@@ -264,6 +264,18 @@
                 Please complete all sections below.</p>
             </div>
 
+            @php
+                // Helper variables for preserving checkbox/array inputs on validation error
+                $oldSchoolTypes = old('school_types', []);
+                $oldTransportAssets = old('transport_assets', []);
+                $oldLearningResources = old('learning_resources', []);
+                $oldExpenseCategories = old('expense_categories', []);
+                $oldAssetTypes = old('asset_types', []);
+                $oldAssetQuantities = old('asset_quantities', []);
+                $oldLiabilityTypes = old('liability_types', []);
+                $oldLiabilityAmounts = old('liability_amounts', []);
+            @endphp
+
             <!-- Section 1: Extended School Identification -->
             <div class="section-card">
                 <h3 class="section-title">
@@ -286,31 +298,36 @@
                     <div class="row">
                         <div class="col-md-3 mb-2">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="Nursery" id="type_nursery" name="school_types[]" {{ $school->school_type == 'Nursery' ? 'checked' : '' }}>
+                                <input class="form-check-input" type="checkbox" value="Nursery" id="type_nursery" name="school_types[]" 
+                                    {{ (count($oldSchoolTypes) > 0 && in_array('Nursery', $oldSchoolTypes)) || (count($oldSchoolTypes) == 0 && $school->school_type == 'Nursery') ? 'checked' : '' }}>
                                 <label class="form-check-label" for="type_nursery">Nursery</label>
                             </div>
                         </div>
                         <div class="col-md-3 mb-2">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="Primary" id="type_primary" name="school_types[]" {{ $school->school_type == 'Primary' ? 'checked' : '' }}>
+                                <input class="form-check-input" type="checkbox" value="Primary" id="type_primary" name="school_types[]" 
+                                    {{ (count($oldSchoolTypes) > 0 && in_array('Primary', $oldSchoolTypes)) || (count($oldSchoolTypes) == 0 && $school->school_type == 'Primary') ? 'checked' : '' }}>
                                 <label class="form-check-label" for="type_primary">Primary</label>
                             </div>
                         </div>
                         <div class="col-md-3 mb-2">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="Secondary" id="type_secondary" name="school_types[]" {{ $school->school_type == 'Secondary' ? 'checked' : '' }}>
+                                <input class="form-check-input" type="checkbox" value="Secondary" id="type_secondary" name="school_types[]" 
+                                    {{ (count($oldSchoolTypes) > 0 && in_array('Secondary', $oldSchoolTypes)) || (count($oldSchoolTypes) == 0 && $school->school_type == 'Secondary') ? 'checked' : '' }}>
                                 <label class="form-check-label" for="type_secondary">Secondary</label>
                             </div>
                         </div>
                         <div class="col-md-3 mb-2">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="Vocational" id="type_vocational" name="school_types[]" {{ $school->school_type == 'Vocational' ? 'checked' : '' }}>
+                                <input class="form-check-input" type="checkbox" value="Vocational" id="type_vocational" name="school_types[]" 
+                                    {{ (count($oldSchoolTypes) > 0 && in_array('Vocational', $oldSchoolTypes)) || (count($oldSchoolTypes) == 0 && $school->school_type == 'Vocational') ? 'checked' : '' }}>
                                 <label class="form-check-label" for="type_vocational">Vocational</label>
                             </div>
                         </div>
                         <div class="col-12 mb-2">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="Other" id="type_other" name="school_types[]" {{ $school->school_type == 'Other' ? 'checked' : '' }}>
+                                <input class="form-check-input" type="checkbox" value="Other" id="type_other" name="school_types[]" 
+                                    {{ (count($oldSchoolTypes) > 0 && in_array('Other', $oldSchoolTypes)) || (count($oldSchoolTypes) == 0 && $school->school_type == 'Other') ? 'checked' : '' }}>
                                 <label class="form-check-label" for="type_other">Other</label>
                                 <input type="text" class="form-control mt-2" id="school_type_other" name="school_type_other" placeholder="Specify other type" value="{{ old('school_type_other', $school->school_type_other) }}">
                             </div>
@@ -343,9 +360,11 @@
                         <label for="district_select" class="form-label">District <span class="text-danger">*</span></label>
                         <select class="form-select" id="district_select" name="district" required onchange="handleDistrictChange(this.value)">
                             <option value="">Select District</option>
-                            <option value="other">Other (Not in list)</option>
+                            <option value="other" {{ old('district') == 'other' ? 'selected' : '' }}>Other (Not in list)</option>
                         </select>
-                        <input type="text" class="form-control mt-2" id="district_other" name="district_other" placeholder="Enter district name" style="display: none;">
+                        <input type="text" class="form-control mt-2" id="district_other" name="district_other" placeholder="Enter district name" 
+                            value="{{ old('district_other', $school->district_other) }}" 
+                            style="display: {{ old('district') == 'other' || $school->district_other ? 'block' : 'none' }};">
                         <small class="text-muted">Current: {{ $school->district }}</small>
                     </div>
 
@@ -353,9 +372,11 @@
                         <label for="county" class="form-label">County/Sub-county <span class="text-danger">*</span></label>
                         <select class="form-select" id="county" name="county" required onchange="handleSubcountyChange(this.value)">
                             <option value="">Select County/Sub-county</option>
-                            <option value="other">Other (Not in list)</option>
+                            <option value="other" {{ old('county') == 'other' ? 'selected' : '' }}>Other (Not in list)</option>
                         </select>
-                        <input type="text" class="form-control mt-2" id="county_other" name="county_other" placeholder="Enter subcounty name" style="display: none;">
+                        <input type="text" class="form-control mt-2" id="county_other" name="county_other" placeholder="Enter subcounty name" 
+                            value="{{ old('county_other', $school->county_other) }}" 
+                            style="display: {{ old('county') == 'other' || $school->county_other ? 'block' : 'none' }};">
                         <small class="text-muted">Current: {{ $school->county }}</small>
                     </div>
 
@@ -363,9 +384,11 @@
                         <label for="parish" class="form-label">Parish <span class="text-danger">*</span></label>
                         <select class="form-select" id="parish" name="parish" required onchange="handleParishChange(this.value)">
                             <option value="">Select Parish</option>
-                            <option value="other">Other (Not in list)</option>
+                            <option value="other" {{ old('parish') == 'other' ? 'selected' : '' }}>Other (Not in list)</option>
                         </select>
-                        <input type="text" class="form-control mt-2" id="parish_other" name="parish_other" placeholder="Enter parish name" style="display: none;">
+                        <input type="text" class="form-control mt-2" id="parish_other" name="parish_other" placeholder="Enter parish name" 
+                            value="{{ old('parish_other', $school->parish_other) }}" 
+                            style="display: {{ old('parish') == 'other' || $school->parish_other ? 'block' : 'none' }};">
                         <small class="text-muted">Current: {{ $school->parish }}</small>
                     </div>
 
@@ -373,9 +396,11 @@
                         <label for="village" class="form-label">Village/Zone/Cell</label>
                         <select class="form-select" id="village_select" name="village" onchange="handleVillageChange(this.value)">
                             <option value="">Select Village</option>
-                            <option value="other">Other (Not in list)</option>
+                            <option value="other" {{ old('village') == 'other' ? 'selected' : '' }}>Other (Not in list)</option>
                         </select>
-                        <input type="text" class="form-control mt-2" id="village_other" name="village_other" value="{{ old('village', $school->village) }}" placeholder="Enter village name" style="display: {{ $school->village ? 'block' : 'none' }};">
+                        <input type="text" class="form-control mt-2" id="village_other" name="village_other" value="{{ old('village_other', $school->village_other) }}" 
+                            placeholder="Enter village name" 
+                            style="display: {{ old('village') == 'other' || old('village_other') || $school->village ? 'block' : 'none' }};">
                         <small class="text-muted">Current: {{ $school->village }}</small>
                     </div>
 
@@ -427,17 +452,17 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label for="administrator_name" class="form-label required">Name of Head Administrator</label>
-                        <input type="text" class="form-control" id="administrator_name" name="administrator_name" required value="{{ $school->administrator_name ?? $school->contact_person }}">
+                        <input type="text" class="form-control" id="administrator_name" name="administrator_name" required value="{{ old('administrator_name', $school->administrator_name ?? $school->contact_person) }}">
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label for="administrator_contact_number" class="form-label required">Administrator's Contact Number</label>
-                        <input type="tel" class="form-control" id="administrator_contact_number" name="administrator_contact_number" required value="{{ $school->administrator_contact_number ?? $school->phone }}">
+                        <input type="tel" class="form-control" id="administrator_contact_number" name="administrator_contact_number" required value="{{ old('administrator_contact_number', $school->administrator_contact_number ?? $school->phone) }}">
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label for="administrator_email" class="form-label">Administrator's Email Address</label>
-                        <input type="email" class="form-control" id="administrator_email" name="administrator_email" value="{{ $school->administrator_email ?? $school->email }}">
+                        <input type="email" class="form-control" id="administrator_email" name="administrator_email" value="{{ old('administrator_email', $school->administrator_email ?? $school->email) }}">
                     </div>
                 </div>
             </div>
@@ -485,7 +510,16 @@
                 
                 <div id="incomeSourcesContainer">
                     @php
-                        $incomeSources = $school->other_income_sources ? explode(',', $school->other_income_sources) : [];
+                        // Check for old input first (from validation errors), then fall back to database
+                        $oldIncomeSources = old('income_sources', []);
+                        $oldIncomeAmounts = old('income_amounts', []);
+                        
+                        // If no old data, use database data
+                        if (empty($oldIncomeSources)) {
+                            $incomeSources = $school->other_income_sources ? explode(',', $school->other_income_sources) : [];
+                        } else {
+                            $incomeSources = $oldIncomeSources;
+                        }
                     @endphp
                     
                     @if(count($incomeSources) > 0)
@@ -495,7 +529,7 @@
                                     <input type="text" class="form-control" name="income_sources[]" placeholder="Income source (e.g., Boarding)" value="{{ trim($source) }}">
                                 </div>
                                 <div class="col-md-5">
-                                    <input type="text" class="form-control amount-input" name="income_amounts[]" placeholder="e.g., 500,000" data-allow-decimal="false">
+                                    <input type="text" class="form-control amount-input" name="income_amounts[]" placeholder="e.g., 500,000" data-allow-decimal="false" value="{{ isset($oldIncomeAmounts[$index]) ? $oldIncomeAmounts[$index] : '' }}">
                                 </div>
                                 <div class="col-md-2">
                                     <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeIncomeSource(this)">
@@ -555,8 +589,8 @@
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Electricity Connection</label>
                         <select class="form-select" name="has_electricity" id="has_electricity">
-                            <option value="0" {{ $school->has_electricity == 0 ? 'selected' : '' }}>No</option>
-                            <option value="1" {{ $school->has_electricity == 1 ? 'selected' : '' }}>Yes</option>
+                            <option value="0" {{ old('has_electricity', $school->has_electricity) == 0 ? 'selected' : '' }}>No</option>
+                            <option value="1" {{ old('has_electricity', $school->has_electricity) == 1 ? 'selected' : '' }}>Yes</option>
                         </select>
                     </div>
 
@@ -589,8 +623,8 @@
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Internet Access</label>
                         <select class="form-select" name="has_internet_access" id="has_internet_access">
-                            <option value="0" {{ $school->has_internet_access == 0 ? 'selected' : '' }}>No</option>
-                            <option value="1" {{ $school->has_internet_access == 1 ? 'selected' : '' }}>Yes</option>
+                            <option value="0" {{ old('has_internet_access', $school->has_internet_access) == 0 ? 'selected' : '' }}>No</option>
+                            <option value="1" {{ old('has_internet_access', $school->has_internet_access) == 1 ? 'selected' : '' }}>Yes</option>
                         </select>
                     </div>
 
@@ -617,54 +651,62 @@
                             <div class="row">
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="School Bus" id="transport_bus" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="School Bus" id="transport_bus" name="transport_assets[]" 
+                                            {{ in_array('School Bus', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_bus">School Bus</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Van" id="transport_van" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="Van" id="transport_van" name="transport_assets[]" 
+                                            {{ in_array('Van', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_van">Van/Minibus</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Pickup Truck" id="transport_pickup" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="Pickup Truck" id="transport_pickup" name="transport_assets[]" 
+                                            {{ in_array('Pickup Truck', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_pickup">Pickup Truck</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Car" id="transport_car" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="Car" id="transport_car" name="transport_assets[]" 
+                                            {{ in_array('Car', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_car">Car/Sedan</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Motorcycle" id="transport_motorcycle" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="Motorcycle" id="transport_motorcycle" name="transport_assets[]" 
+                                            {{ in_array('Motorcycle', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_motorcycle">Motorcycle/Boda</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Bicycle" id="transport_bicycle" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="Bicycle" id="transport_bicycle" name="transport_assets[]" 
+                                            {{ in_array('Bicycle', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_bicycle">Bicycle</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="None" id="transport_none" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="None" id="transport_none" name="transport_assets[]" 
+                                            {{ in_array('None', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_none">None</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Other" id="transport_other_check" name="transport_assets[]">
+                                        <input class="form-check-input" type="checkbox" value="Other" id="transport_other_check" name="transport_assets[]" 
+                                            {{ in_array('Other', $oldTransportAssets) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="transport_other_check">Other</label>
                                     </div>
                                 </div>
                                 <div class="col-12 mt-2">
-                                    <input type="text" class="form-control" id="transport_assets_other" name="transport_assets_other" placeholder="Specify other transport assets" style="display: none;">
+                                    <input type="text" class="form-control" id="transport_assets_other" name="transport_assets_other" placeholder="Specify other transport assets" style="display: none;" value="{{ old('transport_assets_other', $school->transport_assets_other) }}">
                                 </div>
                             </div>
                         </div>
@@ -676,78 +718,80 @@
                             <div class="row">
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Library" id="resource_library" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Library" id="resource_library" name="learning_resources[]" {{ in_array('Library', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_library">Library</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Science Laboratory" id="resource_lab" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Science Laboratory" id="resource_lab" name="learning_resources[]" {{ in_array('Science Laboratory', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_lab">Science Laboratory</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Computer Lab" id="resource_computer" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Computer Lab" id="resource_computer" name="learning_resources[]" {{ in_array('Computer Lab', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_computer">Computer Lab</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Textbooks" id="resource_textbooks" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Textbooks" id="resource_textbooks" name="learning_resources[]" {{ in_array('Textbooks', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_textbooks">Textbooks</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Sports Equipment" id="resource_sports" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Sports Equipment" id="resource_sports" name="learning_resources[]" {{ in_array('Sports Equipment', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_sports">Sports Equipment</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Projector/Smart Board" id="resource_projector" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Projector/Smart Board" id="resource_projector" name="learning_resources[]" {{ in_array('Projector/Smart Board', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_projector">Projector/Smart Board</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Musical Instruments" id="resource_music" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Musical Instruments" id="resource_music" name="learning_resources[]" {{ in_array('Musical Instruments', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_music">Musical Instruments</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Art Supplies" id="resource_art" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Art Supplies" id="resource_art" name="learning_resources[]" {{ in_array('Art Supplies', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_art">Art Supplies</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Playground Equipment" id="resource_playground" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Playground Equipment" id="resource_playground" name="learning_resources[]" {{ in_array('Playground Equipment', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_playground">Playground Equipment</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Teaching Aids" id="resource_teaching" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Teaching Aids" id="resource_teaching" name="learning_resources[]" {{ in_array('Teaching Aids', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_teaching">Teaching Aids</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="None" id="resource_none" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="None" id="resource_none" name="learning_resources[]" {{ in_array('None', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_none">None</label>
                                     </div>
                                 </div>
                                 <div class="col-md-3 mb-2">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" value="Other" id="resource_other_check" name="learning_resources[]">
+                                        <input class="form-check-input" type="checkbox" value="Other" id="resource_other_check" name="learning_resources[]" {{ in_array('Other', $oldLearningResources) ? 'checked' : '' }}>
                                         <label class="form-check-label" for="resource_other_check">Other</label>
                                     </div>
                                 </div>
                                 <div class="col-12 mt-2">
-                                    <input type="text" class="form-control" id="learning_resources_other" name="learning_resources_other" placeholder="Specify other learning resources" style="display: none;">
+                                    <input type="text" class="form-control" id="learning_resources_other" name="learning_resources_other" placeholder="Specify other learning resources" 
+                                        value="{{ old('learning_resources_other', $school->learning_resources_other) }}" 
+                                        style="display: {{ in_array('Other', $oldLearningResources) ? 'block' : 'none' }};">
                                 </div>
                             </div>
                         </div>
@@ -771,7 +815,7 @@
 
                     <div class="col-md-6 mb-3">
                         <label for="last_month_expenditure" class="form-label">Last Month's Total Operating Expenditure (UGX)</label>
-                        <input type="number" class="form-control" id="last_month_expenditure" name="last_month_expenditure" min="0" step="1000" placeholder="e.g., 10,800,000" value="{{ old('last_month_expenditure', $school->last_month_expenditure) }}">
+                        <input type="text" class="form-control amount-input" id="last_month_expenditure" name="last_month_expenditure" placeholder="e.g., 10,800,000" value="{{ old('last_month_expenditure', number_format($school->last_month_expenditure ?? 0)) }}" data-allow-decimal="false">
                     </div>
                 </div>
 
@@ -785,58 +829,79 @@
                     <div class="row" id="expenseCategories">
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Salaries" id="expense_salaries" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Salaries" id="expense_salaries" name="expense_categories[]" 
+                                    {{ in_array('Salaries', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_salaries">Salaries</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 5,000,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 5,000,000" data-allow-decimal="false" 
+                                value="{{ in_array('Salaries', $oldExpenseCategories) ? old('expense_amounts')[array_search('Salaries', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Salaries', $oldExpenseCategories) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Utilities" id="expense_utilities" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Utilities" id="expense_utilities" name="expense_categories[]" 
+                                    {{ in_array('Utilities', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_utilities">Utilities</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 1,500,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 1,500,000" data-allow-decimal="false" 
+                                value="{{ in_array('Utilities', $oldExpenseCategories) ? old('expense_amounts')[array_search('Utilities', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Utilities', $oldExpenseCategories) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Maintenance" id="expense_maintenance" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Maintenance" id="expense_maintenance" name="expense_categories[]" 
+                                    {{ in_array('Maintenance', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_maintenance">Maintenance</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 800,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 800,000" data-allow-decimal="false" 
+                                value="{{ in_array('Maintenance', $oldExpenseCategories) ? old('expense_amounts')[array_search('Maintenance', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Maintenance', $oldExpenseCategories) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Learning Materials" id="expense_materials" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Learning Materials" id="expense_materials" name="expense_categories[]" 
+                                    {{ in_array('Learning Materials', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_materials">Learning Materials</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 600,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 600,000" data-allow-decimal="false" 
+                                value="{{ in_array('Learning Materials', $oldExpenseCategories) ? old('expense_amounts')[array_search('Learning Materials', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Learning Materials', $oldExpenseCategories) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Meals" id="expense_meals" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Meals" id="expense_meals" name="expense_categories[]" 
+                                    {{ in_array('Meals', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_meals">Meals</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 3,000,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 3,000,000" data-allow-decimal="false" 
+                                value="{{ in_array('Meals', $oldExpenseCategories) ? old('expense_amounts')[array_search('Meals', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Meals', $oldExpenseCategories) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Transport" id="expense_transport" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Transport" id="expense_transport" name="expense_categories[]" 
+                                    {{ in_array('Transport', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_transport">Transport</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 2,000,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input" name="expense_amounts[]" placeholder="e.g., 2,000,000" data-allow-decimal="false" 
+                                value="{{ in_array('Transport', $oldExpenseCategories) ? old('expense_amounts')[array_search('Transport', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Transport', $oldExpenseCategories) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-12 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input expense-category" type="checkbox" value="Other" id="expense_other" name="expense_categories[]">
+                                <input class="form-check-input expense-category" type="checkbox" value="Other" id="expense_other" name="expense_categories[]" 
+                                    {{ in_array('Other', $oldExpenseCategories) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="expense_other">Other (Specify)</label>
                             </div>
-                            <input type="text" class="form-control expense-amount amount-input mb-2" name="expense_amounts[]" placeholder="e.g., 1,000,000" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control expense-amount amount-input mb-2" name="expense_amounts[]" placeholder="e.g., 1,000,000" data-allow-decimal="false" 
+                                value="{{ in_array('Other', $oldExpenseCategories) ? old('expense_amounts')[array_search('Other', $oldExpenseCategories)] : '' }}" 
+                                {{ in_array('Other', $oldExpenseCategories) ? '' : 'disabled' }}>
                             <input type="text" class="form-control" placeholder="Specify other expense" disabled>
                         </div>
                     </div>
@@ -892,12 +957,12 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label for="past_two_terms_shortfall" class="form-label">Tuition Shortfall in Past Two Terms (UGX)</label>
-                        <input type="number" class="form-control" id="past_two_terms_shortfall" name="past_two_terms_shortfall" min="0" step="1000" placeholder="e.g., 8,750,000" value="{{ old('past_two_terms_shortfall', $school->past_two_terms_shortfall) }}">
+                        <input type="text" class="form-control amount-input" id="past_two_terms_shortfall" name="past_two_terms_shortfall" placeholder="e.g., 8,750,000" value="{{ old('past_two_terms_shortfall', number_format($school->past_two_terms_shortfall ?? 0)) }}" data-allow-decimal="false">
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label for="expected_shortfall_this_term" class="form-label">Expected Fee Collection Shortfall This Term (UGX)</label>
-                        <input type="number" class="form-control" id="expected_shortfall_this_term" name="expected_shortfall_this_term" min="0" step="1000" placeholder="e.g., 4,500,000" value="{{ old('expected_shortfall_this_term', $school->expected_shortfall_this_term) }}">
+                        <input type="text" class="form-control amount-input" id="expected_shortfall_this_term" name="expected_shortfall_this_term" placeholder="e.g., 4,500,000" value="{{ old('expected_shortfall_this_term', number_format($school->expected_shortfall_this_term ?? 0)) }}" data-allow-decimal="false">
                     </div>
 
                     <div class="col-12 mb-3">
@@ -959,9 +1024,9 @@
                         <label for="reserve_funds_status" class="form-label">Reserve Funds or Emergency Financing</label>
                         <select class="form-select" id="reserve_funds_status" name="reserve_funds_status">
                             <option value="">Select option</option>
-                            <option value="Sufficient for one term" {{ $school->reserve_funds_status == 'Sufficient for one term' ? 'selected' : '' }}>Yes, sufficient for one term</option>
-                            <option value="Limited" {{ $school->reserve_funds_status == 'Limited' ? 'selected' : '' }}>Yes, but limited</option>
-                            <option value="No reserves" {{ $school->reserve_funds_status == 'No reserves' ? 'selected' : '' }}>No reserves available</option>
+                            <option value="Sufficient for one term" {{ old('reserve_funds_status', $school->reserve_funds_status) == 'Sufficient for one term' ? 'selected' : '' }}>Yes, sufficient for one term</option>
+                            <option value="Limited" {{ old('reserve_funds_status', $school->reserve_funds_status) == 'Limited' ? 'selected' : '' }}>Yes, but limited</option>
+                            <option value="No reserves" {{ old('reserve_funds_status', $school->reserve_funds_status) == 'No reserves' ? 'selected' : '' }}>No reserves available</option>
                         </select>
                     </div>
                 </div>
@@ -977,17 +1042,17 @@
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label for="average_monthly_income" class="form-label">Average Monthly Income (UGX)</label>
-                        <input type="number" class="form-control" id="average_monthly_income" name="average_monthly_income" min="0" step="1000" value="{{ old('average_monthly_income', $school->average_monthly_income) }}">
+                        <input type="text" class="form-control amount-input" id="average_monthly_income" name="average_monthly_income" placeholder="e.g., 15,000,000" value="{{ old('average_monthly_income', number_format($school->average_monthly_income ?? 0)) }}" data-allow-decimal="false">
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label for="average_monthly_expenses" class="form-label">Average Monthly Expenses (UGX)</label>
-                        <input type="number" class="form-control" id="average_monthly_expenses" name="average_monthly_expenses" min="0" step="1000" value="{{ old('average_monthly_expenses', $school->average_monthly_expenses) }}">
+                        <input type="text" class="form-control amount-input" id="average_monthly_expenses" name="average_monthly_expenses" placeholder="e.g., 12,000,000" value="{{ old('average_monthly_expenses', number_format($school->average_monthly_expenses ?? 0)) }}" data-allow-decimal="false">
                     </div>
 
                     <div class="col-md-4 mb-3">
                         <label for="profit_or_surplus" class="form-label">Monthly Profit or Surplus (UGX)</label>
-                        <input type="number" class="form-control" id="profit_or_surplus" name="profit_or_surplus" step="1000" value="{{ old('profit_or_surplus', $school->profit_or_surplus) }}">
+                        <input type="text" class="form-control amount-input" id="profit_or_surplus" name="profit_or_surplus" placeholder="e.g., 3,000,000" value="{{ old('profit_or_surplus', number_format($school->profit_or_surplus ?? 0)) }}" data-allow-decimal="true">
                         <small class="text-muted">Can be negative for losses</small>
                     </div>
 
@@ -995,30 +1060,32 @@
                         <label for="banking_institutions_used" class="form-label">Banking Institution(s) Used</label>
                         <select class="form-select" id="banking_institutions_used" name="banking_institutions_used" onchange="handleBankChange(this.value)">
                             <option value="">Select banking institution</option>
-                            <option value="Centenary Bank" {{ $school->banking_institutions_used == 'Centenary Bank' ? 'selected' : '' }}>Centenary Bank</option>
-                            <option value="Stanbic Bank" {{ $school->banking_institutions_used == 'Stanbic Bank' ? 'selected' : '' }}>Stanbic Bank</option>
-                            <option value="DFCU Bank" {{ $school->banking_institutions_used == 'DFCU Bank' ? 'selected' : '' }}>DFCU Bank</option>
-                            <option value="Equity Bank" {{ $school->banking_institutions_used == 'Equity Bank' ? 'selected' : '' }}>Equity Bank</option>
-                            <option value="Standard Chartered Bank" {{ $school->banking_institutions_used == 'Standard Chartered Bank' ? 'selected' : '' }}>Standard Chartered Bank</option>
-                            <option value="Absa Bank" {{ $school->banking_institutions_used == 'Absa Bank' ? 'selected' : '' }}>Absa Bank (formerly Barclays)</option>
-                            <option value="Bank of Africa" {{ $school->banking_institutions_used == 'Bank of Africa' ? 'selected' : '' }}>Bank of Africa (BOA)</option>
-                            <option value="Crane Bank" {{ $school->banking_institutions_used == 'Crane Bank' ? 'selected' : '' }}>Crane Bank (dfcu acquired)</option>
-                            <option value="Cairo Bank" {{ $school->banking_institutions_used == 'Cairo Bank' ? 'selected' : '' }}>Cairo International Bank</option>
-                            <option value="Ecobank" {{ $school->banking_institutions_used == 'Ecobank' ? 'selected' : '' }}>Ecobank Uganda</option>
-                            <option value="Finance Trust Bank" {{ $school->banking_institutions_used == 'Finance Trust Bank' ? 'selected' : '' }}>Finance Trust Bank</option>
-                            <option value="GT Bank" {{ $school->banking_institutions_used == 'GT Bank' ? 'selected' : '' }}>GT Bank Uganda</option>
-                            <option value="Housing Finance Bank" {{ $school->banking_institutions_used == 'Housing Finance Bank' ? 'selected' : '' }}>Housing Finance Bank</option>
-                            <option value="KCB Bank" {{ $school->banking_institutions_used == 'KCB Bank' ? 'selected' : '' }}>KCB Bank Uganda</option>
-                            <option value="NC Bank" {{ $school->banking_institutions_used == 'NC Bank' ? 'selected' : '' }}>NC Bank Uganda</option>
-                            <option value="Opportunity Bank" {{ $school->banking_institutions_used == 'Opportunity Bank' ? 'selected' : '' }}>Opportunity Bank</option>
-                            <option value="Orient Bank" {{ $school->banking_institutions_used == 'Orient Bank' ? 'selected' : '' }}>Orient Bank</option>
-                            <option value="Post Bank" {{ $school->banking_institutions_used == 'Post Bank' ? 'selected' : '' }}>Post Bank Uganda</option>
-                            <option value="Pride Microfinance" {{ $school->banking_institutions_used == 'Pride Microfinance' ? 'selected' : '' }}>Pride Microfinance</option>
-                            <option value="Tropical Bank" {{ $school->banking_institutions_used == 'Tropical Bank' ? 'selected' : '' }}>Tropical Bank</option>
-                            <option value="United Bank for Africa" {{ $school->banking_institutions_used == 'United Bank for Africa' ? 'selected' : '' }}>United Bank for Africa (UBA)</option>
-                            <option value="Other" {{ ($school->banking_institutions_used && !in_array($school->banking_institutions_used, ['Centenary Bank', 'Stanbic Bank', 'DFCU Bank', 'Equity Bank', 'Standard Chartered Bank', 'Absa Bank', 'Bank of Africa', 'Crane Bank', 'Cairo Bank', 'Ecobank', 'Finance Trust Bank', 'GT Bank', 'Housing Finance Bank', 'KCB Bank', 'NC Bank', 'Opportunity Bank', 'Orient Bank', 'Post Bank', 'Pride Microfinance', 'Tropical Bank', 'United Bank for Africa'])) ? 'selected' : '' }}>Other (Specify)</option>
+                            <option value="Centenary Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Centenary Bank' ? 'selected' : '' }}>Centenary Bank</option>
+                            <option value="Stanbic Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Stanbic Bank' ? 'selected' : '' }}>Stanbic Bank</option>
+                            <option value="DFCU Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'DFCU Bank' ? 'selected' : '' }}>DFCU Bank</option>
+                            <option value="Equity Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Equity Bank' ? 'selected' : '' }}>Equity Bank</option>
+                            <option value="Standard Chartered Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Standard Chartered Bank' ? 'selected' : '' }}>Standard Chartered Bank</option>
+                            <option value="Absa Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Absa Bank' ? 'selected' : '' }}>Absa Bank (formerly Barclays)</option>
+                            <option value="Bank of Africa" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Bank of Africa' ? 'selected' : '' }}>Bank of Africa (BOA)</option>
+                            <option value="Crane Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Crane Bank' ? 'selected' : '' }}>Crane Bank (dfcu acquired)</option>
+                            <option value="Cairo Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Cairo Bank' ? 'selected' : '' }}>Cairo International Bank</option>
+                            <option value="Ecobank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Ecobank' ? 'selected' : '' }}>Ecobank Uganda</option>
+                            <option value="Finance Trust Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Finance Trust Bank' ? 'selected' : '' }}>Finance Trust Bank</option>
+                            <option value="GT Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'GT Bank' ? 'selected' : '' }}>GT Bank Uganda</option>
+                            <option value="Housing Finance Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Housing Finance Bank' ? 'selected' : '' }}>Housing Finance Bank</option>
+                            <option value="KCB Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'KCB Bank' ? 'selected' : '' }}>KCB Bank Uganda</option>
+                            <option value="NC Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'NC Bank' ? 'selected' : '' }}>NC Bank Uganda</option>
+                            <option value="Opportunity Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Opportunity Bank' ? 'selected' : '' }}>Opportunity Bank</option>
+                            <option value="Orient Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Orient Bank' ? 'selected' : '' }}>Orient Bank</option>
+                            <option value="Post Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Post Bank' ? 'selected' : '' }}>Post Bank Uganda</option>
+                            <option value="Pride Microfinance" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Pride Microfinance' ? 'selected' : '' }}>Pride Microfinance</option>
+                            <option value="Tropical Bank" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Tropical Bank' ? 'selected' : '' }}>Tropical Bank</option>
+                            <option value="United Bank for Africa" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'United Bank for Africa' ? 'selected' : '' }}>United Bank for Africa (UBA)</option>
+                            <option value="Other" {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Other' ? 'selected' : '' }}>Other (Specify)</option>
                         </select>
-                        <input type="text" class="form-control mt-2" id="banking_institutions_other" name="banking_institutions_other" placeholder="Specify other banking institution" style="display: {{ ($school->banking_institutions_used && !in_array($school->banking_institutions_used, ['Centenary Bank', 'Stanbic Bank', 'DFCU Bank', 'Equity Bank', 'Standard Chartered Bank', 'Absa Bank', 'Bank of Africa', 'Crane Bank', 'Cairo Bank', 'Ecobank', 'Finance Trust Bank', 'GT Bank', 'Housing Finance Bank', 'KCB Bank', 'NC Bank', 'Opportunity Bank', 'Orient Bank', 'Post Bank', 'Pride Microfinance', 'Tropical Bank', 'United Bank for Africa', ''])) ? 'block' : 'none' }};" value="{{ ($school->banking_institutions_used && !in_array($school->banking_institutions_used, ['Centenary Bank', 'Stanbic Bank', 'DFCU Bank', 'Equity Bank', 'Standard Chartered Bank', 'Absa Bank', 'Bank of Africa', 'Crane Bank', 'Cairo Bank', 'Ecobank', 'Finance Trust Bank', 'GT Bank', 'Housing Finance Bank', 'KCB Bank', 'NC Bank', 'Opportunity Bank', 'Orient Bank', 'Post Bank', 'Pride Microfinance', 'Tropical Bank', 'United Bank for Africa', ''])) ? $school->banking_institutions_used : '' }}">
+                        <input type="text" class="form-control mt-2" id="banking_institutions_other" name="banking_institutions_other" placeholder="Specify other banking institution" 
+                            value="{{ old('banking_institutions_other', $school->banking_institutions_other) }}" 
+                            style="display: {{ old('banking_institutions_used', $school->banking_institutions_used) == 'Other' ? 'block' : 'none' }};">
                     </div>
 
                     <div class="col-md-6 mb-3">
@@ -1048,9 +1115,9 @@
                         <label for="preferred_repayment_period" class="form-label">Preferred Repayment Frequency</label>
                         <select class="form-select" name="preferred_repayment_period" id="preferred_repayment_period">
                             <option value="">Select repayment frequency</option>
-                            <option value="Daily" {{ $school->preferred_repayment_period == 'Daily' ? 'selected' : '' }}>Daily</option>
-                            <option value="Weekly" {{ $school->preferred_repayment_period == 'Weekly' ? 'selected' : '' }}>Weekly</option>
-                            <option value="Monthly" {{ $school->preferred_repayment_period == 'Monthly' ? 'selected' : '' }}>Monthly</option>
+                            <option value="Daily" {{ old('preferred_repayment_period', $school->preferred_repayment_period) == 'Daily' ? 'selected' : '' }}>Daily</option>
+                            <option value="Weekly" {{ old('preferred_repayment_period', $school->preferred_repayment_period) == 'Weekly' ? 'selected' : '' }}>Weekly</option>
+                            <option value="Monthly" {{ old('preferred_repayment_period', $school->preferred_repayment_period) == 'Monthly' ? 'selected' : '' }}>Monthly</option>
                         </select>
                         <small class="text-muted">The repayment amount will be calculated by the system</small>
                     </div>
@@ -1090,64 +1157,113 @@
                 <div class="row">
                     <div class="col-md-6 mb-4">
                         <label class="form-label">School Registration Certificate</label>
+                        @if($school->registration_certificate_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->registration_certificate_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="registration_certificate" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->registration_certificate_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
 
                     <div class="col-md-6 mb-4">
                         <label class="form-label">School License</label>
+                        @if($school->school_license_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->school_license_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="school_license" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->school_license_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
 
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Audited Financial Statements</label>
+                        @if($school->audited_statements_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->audited_statements_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="audited_statements" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->audited_statements_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
 
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Bank Statements (Last 6 months)</label>
+                        @if($school->bank_statements_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->bank_statements_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="bank_statements" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->bank_statements_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
 
                     <div class="col-md-6 mb-4">
                         <label class="form-label">National ID of Owner(s)</label>
+                        @if($school->owner_national_id_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->owner_national_id_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="owner_national_id" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->owner_national_id_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
 
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Land Title or Lease Agreement</label>
+                        @if($school->land_title_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->land_title_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="land_title" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->land_title_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
 
                     <div class="col-md-6 mb-4">
                         <label class="form-label">Existing Loan Agreements (if any)</label>
+                        @if($school->existing_loan_agreements_path)
+                            <div class="alert alert-info py-2 mb-2">
+                                <i class="fas fa-check-circle me-2"></i>Already uploaded
+                                <a href="{{ Storage::url($school->existing_loan_agreements_path) }}" target="_blank" class="ms-2">View</a>
+                            </div>
+                        @endif
                         <div class="file-upload-box">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-2"></i>
                             <p class="mb-2">Click to upload or drag and drop</p>
                             <input type="file" class="form-control" name="existing_loan_agreements" accept=".pdf,.jpg,.jpeg,.png">
+                            <small class="text-muted">{{ $school->existing_loan_agreements_path ? 'Upload new to replace' : 'Max 5MB' }}</small>
                         </div>
                     </div>
                 </div>
@@ -1171,66 +1287,90 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="School Buildings" id="asset_buildings" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="School Buildings" id="asset_buildings" name="asset_types[]" 
+                                    {{ in_array('School Buildings', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_buildings">School Buildings</label>
                             </div>
-                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of buildings" min="0" disabled>
+                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of buildings" min="0" 
+                                value="{{ in_array('School Buildings', $oldAssetTypes) ? $oldAssetQuantities[array_search('School Buildings', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('School Buildings', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="School Buses" id="asset_buses" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="School Buses" id="asset_buses" name="asset_types[]" 
+                                    {{ in_array('School Buses', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_buses">School Buses</label>
                             </div>
-                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of buses" min="0" disabled>
+                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of buses" min="0" 
+                                value="{{ in_array('School Buses', $oldAssetTypes) ? $oldAssetQuantities[array_search('School Buses', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('School Buses', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Vehicles (Cars/Vans)" id="asset_vehicles" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="Vehicles (Cars/Vans)" id="asset_vehicles" name="asset_types[]" 
+                                    {{ in_array('Vehicles (Cars/Vans)', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_vehicles">Vehicles (Cars/Vans)</label>
                             </div>
-                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of vehicles" min="0" disabled>
+                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of vehicles" min="0" 
+                                value="{{ in_array('Vehicles (Cars/Vans)', $oldAssetTypes) ? $oldAssetQuantities[array_search('Vehicles (Cars/Vans)', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('Vehicles (Cars/Vans)', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Computers" id="asset_computers" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="Computers" id="asset_computers" name="asset_types[]" 
+                                    {{ in_array('Computers', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_computers">Computers</label>
                             </div>
-                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of computers" min="0" disabled>
+                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of computers" min="0" 
+                                value="{{ in_array('Computers', $oldAssetTypes) ? $oldAssetQuantities[array_search('Computers', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('Computers', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Library Books" id="asset_books" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="Library Books" id="asset_books" name="asset_types[]" 
+                                    {{ in_array('Library Books', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_books">Library Books</label>
                             </div>
-                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of books" min="0" disabled>
+                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of books" min="0" 
+                                value="{{ in_array('Library Books', $oldAssetTypes) ? $oldAssetQuantities[array_search('Library Books', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('Library Books', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Sports Equipment" id="asset_sports" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="Sports Equipment" id="asset_sports" name="asset_types[]" 
+                                    {{ in_array('Sports Equipment', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_sports">Sports Equipment</label>
                             </div>
-                            <input type="text" class="form-control" name="asset_quantities[]" placeholder="e.g., Football, Netball sets" disabled>
+                            <input type="text" class="form-control" name="asset_quantities[]" placeholder="e.g., Football, Netball sets" 
+                                value="{{ in_array('Sports Equipment', $oldAssetTypes) ? $oldAssetQuantities[array_search('Sports Equipment', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('Sports Equipment', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Furniture (Desks/Chairs)" id="asset_furniture" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="Furniture (Desks/Chairs)" id="asset_furniture" name="asset_types[]" 
+                                    {{ in_array('Furniture (Desks/Chairs)', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_furniture">Furniture (Desks/Chairs)</label>
                             </div>
-                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of sets" min="0" disabled>
+                            <input type="number" class="form-control" name="asset_quantities[]" placeholder="Number of sets" min="0" 
+                                value="{{ in_array('Furniture (Desks/Chairs)', $oldAssetTypes) ? $oldAssetQuantities[array_search('Furniture (Desks/Chairs)', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('Furniture (Desks/Chairs)', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Land/Property" id="asset_land" name="asset_types[]">
+                                <input class="form-check-input" type="checkbox" value="Land/Property" id="asset_land" name="asset_types[]" 
+                                    {{ in_array('Land/Property', $oldAssetTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="asset_land">Land/Property</label>
                             </div>
-                            <input type="text" class="form-control" name="asset_quantities[]" placeholder="e.g., 5 acres" disabled>
+                            <input type="text" class="form-control" name="asset_quantities[]" placeholder="e.g., 5 acres" 
+                                value="{{ in_array('Land/Property', $oldAssetTypes) ? $oldAssetQuantities[array_search('Land/Property', $oldAssetTypes)] : '' }}" 
+                                {{ in_array('Land/Property', $oldAssetTypes) ? '' : 'disabled' }}>
                         </div>
                     </div>
                 </div>
@@ -1256,50 +1396,68 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Outstanding Salaries" id="liability_salaries" name="liability_types[]">
+                                <input class="form-check-input" type="checkbox" value="Outstanding Salaries" id="liability_salaries" name="liability_types[]" 
+                                    {{ in_array('Outstanding Salaries', $oldLiabilityTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="liability_salaries">Outstanding Salaries</label>
                             </div>
-                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" 
+                                value="{{ in_array('Outstanding Salaries', $oldLiabilityTypes) ? $oldLiabilityAmounts[array_search('Outstanding Salaries', $oldLiabilityTypes)] : '' }}" 
+                                {{ in_array('Outstanding Salaries', $oldLiabilityTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Supplier Debts" id="liability_suppliers" name="liability_types[]">
+                                <input class="form-check-input" type="checkbox" value="Supplier Debts" id="liability_suppliers" name="liability_types[]" 
+                                    {{ in_array('Supplier Debts', $oldLiabilityTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="liability_suppliers">Supplier Debts</label>
                             </div>
-                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" 
+                                value="{{ in_array('Supplier Debts', $oldLiabilityTypes) ? $oldLiabilityAmounts[array_search('Supplier Debts', $oldLiabilityTypes)] : '' }}" 
+                                {{ in_array('Supplier Debts', $oldLiabilityTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Loan Repayments" id="liability_loans" name="liability_types[]">
+                                <input class="form-check-input" type="checkbox" value="Loan Repayments" id="liability_loans" name="liability_types[]" 
+                                    {{ in_array('Loan Repayments', $oldLiabilityTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="liability_loans">Loan Repayments</label>
                             </div>
-                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" 
+                                value="{{ in_array('Loan Repayments', $oldLiabilityTypes) ? $oldLiabilityAmounts[array_search('Loan Repayments', $oldLiabilityTypes)] : '' }}" 
+                                {{ in_array('Loan Repayments', $oldLiabilityTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Utility Bills" id="liability_utilities" name="liability_types[]">
+                                <input class="form-check-input" type="checkbox" value="Utility Bills" id="liability_utilities" name="liability_types[]" 
+                                    {{ in_array('Utility Bills', $oldLiabilityTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="liability_utilities">Utility Bills (Electricity, Water)</label>
                             </div>
-                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" 
+                                value="{{ in_array('Utility Bills', $oldLiabilityTypes) ? $oldLiabilityAmounts[array_search('Utility Bills', $oldLiabilityTypes)] : '' }}" 
+                                {{ in_array('Utility Bills', $oldLiabilityTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Rent Arrears" id="liability_rent" name="liability_types[]">
+                                <input class="form-check-input" type="checkbox" value="Rent Arrears" id="liability_rent" name="liability_types[]" 
+                                    {{ in_array('Rent Arrears', $oldLiabilityTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="liability_rent">Rent Arrears</label>
                             </div>
-                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" 
+                                value="{{ in_array('Rent Arrears', $oldLiabilityTypes) ? $oldLiabilityAmounts[array_search('Rent Arrears', $oldLiabilityTypes)] : '' }}" 
+                                {{ in_array('Rent Arrears', $oldLiabilityTypes) ? '' : 'disabled' }}>
                         </div>
 
                         <div class="col-md-6 mb-3">
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="Tax Obligations" id="liability_tax" name="liability_types[]">
+                                <input class="form-check-input" type="checkbox" value="Tax Obligations" id="liability_tax" name="liability_types[]" 
+                                    {{ in_array('Tax Obligations', $oldLiabilityTypes) ? 'checked' : '' }}>
                                 <label class="form-check-label" for="liability_tax">Tax Obligations</label>
                             </div>
-                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" disabled>
+                            <input type="text" class="form-control amount-input" name="liability_amounts[]" placeholder="Amount owed (UGX)" data-allow-decimal="false" 
+                                value="{{ in_array('Tax Obligations', $oldLiabilityTypes) ? $oldLiabilityAmounts[array_search('Tax Obligations', $oldLiabilityTypes)] : '' }}" 
+                                {{ in_array('Tax Obligations', $oldLiabilityTypes) ? '' : 'disabled' }}>
                         </div>
                     </div>
                 </div>
@@ -1328,7 +1486,30 @@
                             <i class="fas fa-plus"></i> Add Debtor
                         </button>
                         <div id="debtorsList">
-                            <!-- Dynamic debtor rows will be added here -->
+                            @php
+                                $oldDebtorNames = old('debtor_names', []);
+                                $oldDebtorAmounts = old('debtor_amounts', []);
+                            @endphp
+                            
+                            @if(count($oldDebtorNames) > 0)
+                                @foreach($oldDebtorNames as $index => $debtorName)
+                                    <div class="debtor-row mb-2">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <input type="text" class="form-control" name="debtor_names[]" placeholder="Debtor name" value="{{ $debtorName }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <input type="text" class="form-control amount-input" name="debtor_amounts[]" placeholder="Amount owed" data-allow-decimal="false" value="{{ $oldDebtorAmounts[$index] ?? '' }}">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeDebtor(this)">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            @endif
                         </div>
                     </div>
 
@@ -1338,7 +1519,30 @@
                             <i class="fas fa-plus"></i> Add Creditor
                         </button>
                         <div id="creditorsList">
-                            <!-- Dynamic creditor rows will be added here -->
+                            @php
+                                $oldCreditorNames = old('creditor_names', []);
+                                $oldCreditorAmounts = old('creditor_amounts', []);
+                            @endphp
+                            
+                            @if(count($oldCreditorNames) > 0)
+                                @foreach($oldCreditorNames as $index => $creditorName)
+                                    <div class="creditor-row mb-2">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <input type="text" class="form-control" name="creditor_names[]" placeholder="Creditor name" value="{{ $creditorName }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <input type="text" class="form-control amount-input" name="creditor_amounts[]" placeholder="Amount owed" data-allow-decimal="false" value="{{ $oldCreditorAmounts[$index] ?? '' }}">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeCreditor(this)">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -1369,8 +1573,71 @@
                     </div>
 
                     <div class="col-12 mb-3">
-                        <label for="ownership_details" class="form-label">School Ownership Details and Percentage Shares</label>
-                        <textarea class="form-control" id="ownership_details" name="ownership_details" rows="4" placeholder="e.g., John Doe - 60%, Jane Smith - 30%, ABC Foundation - 10%">{{ old('ownership_details', $school->ownership_details) }}</textarea>
+                        <label class="form-label">School Ownership Details and Percentage Shares</label>
+                        <p class="text-muted small mb-2">Add all owners and their respective ownership percentages. Total must equal 100%.</p>
+                        
+                        <div id="ownershipContainer">
+                            @php
+                                $ownershipList = [];
+                                if ($school->ownership_details) {
+                                    // Try to parse as JSON first
+                                    $ownershipList = json_decode($school->ownership_details, true);
+                                    // If not JSON, it's old format - create single entry
+                                    if (!is_array($ownershipList)) {
+                                        $ownershipList = [];
+                                    }
+                                }
+                            @endphp
+                            
+                            @if(count($ownershipList) > 0)
+                                @foreach($ownershipList as $index => $owner)
+                                    <div class="ownership-row row mb-2" data-index="{{ $index }}">
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control" name="owner_names[]" placeholder="Owner name (e.g., John Doe)" value="{{ $owner['name'] ?? '' }}" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="input-group">
+                                                <input type="number" class="form-control ownership-percentage" name="owner_percentages[]" placeholder="Percentage" min="0" max="100" step="0.01" value="{{ $owner['percentage'] ?? '' }}" required>
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeOwner(this)">
+                                                <i class="fas fa-trash"></i> Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            @else
+                                <div class="ownership-row row mb-2" data-index="0">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="owner_names[]" placeholder="Owner name (e.g., John Doe)" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="input-group">
+                                            <input type="number" class="form-control ownership-percentage" name="owner_percentages[]" placeholder="Percentage" min="0" max="100" step="0.01" required>
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeOwner(this)">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                        
+                        <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="addOwner()">
+                            <i class="fas fa-plus"></i> Add Another Owner
+                        </button>
+                        
+                        <div class="mt-2">
+                            <small class="text-muted">Total Ownership: <span id="totalOwnership" class="fw-bold">0</span>%</small>
+                            <span id="ownershipWarning" class="text-danger ms-2" style="display: none;">
+                                <i class="fas fa-exclamation-triangle"></i> Total must equal 100%
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -1477,14 +1744,39 @@
         let parishesData = {};
         let villagesData = {};
         
-        // Store selected values for pre-population
-        let selectedDistrict = "{{ $school->district ?? '' }}";
-        let selectedCounty = "{{ $school->county ?? '' }}";
-        let selectedParish = "{{ $school->parish ?? '' }}";
-        let selectedVillage = "{{ $school->village ?? '' }}";
+        // Store selected values for pre-population (prefer old values from validation errors)
+        let selectedDistrict = "{{ old('district') && old('district') != 'other' ? old('district') : ($school->district ?? '') }}";
+        let selectedCounty = "{{ old('county') && old('county') != 'other' ? old('county') : ($school->county ?? '') }}";
+        let selectedParish = "{{ old('parish') && old('parish') != 'other' ? old('parish') : ($school->parish ?? '') }}";
+        let selectedVillage = "{{ old('village') && old('village') != 'other' ? old('village') : ($school->village ?? '') }}";
+        
+        // Check if "other" option was selected
+        let districtIsOther = "{{ old('district') == 'other' ? 'true' : 'false' }}" === 'true';
+        let countyIsOther = "{{ old('county') == 'other' ? 'true' : 'false' }}" === 'true';
+        let parishIsOther = "{{ old('parish') == 'other' ? 'true' : 'false' }}" === 'true';
+        let villageIsOther = "{{ old('village') == 'other' ? 'true' : 'false' }}" === 'true';
 
         // Load districts on page load
         document.addEventListener('DOMContentLoaded', async function() {
+            // Auto-scroll to first error if validation failed
+            @if ($errors->any())
+                const firstError = document.querySelector('.is-invalid, .alert-danger');
+                if (firstError) {
+                    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    // Highlight all invalid fields
+                    const form = document.querySelector('form');
+                    if (form) {
+                        @foreach ($errors->keys() as $field)
+                            const field_{{ str_replace(['.', '[', ']'], '_', $field) }} = form.querySelector('[name="{{ $field }}"]');
+                            if (field_{{ str_replace(['.', '[', ']'], '_', $field) }}) {
+                                field_{{ str_replace(['.', '[', ']'], '_', $field) }}.classList.add('is-invalid');
+                            }
+                        @endforeach
+                    }
+                }
+            @endif
+            
             await loadDistricts();
         });
 
@@ -1507,6 +1799,7 @@
                         option.textContent = district.name;
                         option.dataset.name = district.name;
                         
+                        // Check if this district matches the selected one (by name, not ID)
                         if (district.name === selectedDistrict) {
                             option.selected = true;
                         }
@@ -1518,10 +1811,19 @@
                     const otherOption = document.createElement('option');
                     otherOption.value = 'other';
                     otherOption.textContent = 'Other (Not in list)';
+                    if (districtIsOther) {
+                        otherOption.selected = true;
+                    }
                     districtSelect.appendChild(otherOption);
                     
-                    // If there's a pre-selected district, load its subcounties
-                    if (selectedDistrict) {
+                    // If "other" was selected, show the text input
+                    if (districtIsOther) {
+                        document.getElementById('district_other').style.display = 'block';
+                        document.getElementById('district_other').required = true;
+                    }
+                    
+                    // If there's a pre-selected district (not "other"), load its subcounties
+                    if (selectedDistrict && !districtIsOther) {
                         const selectedOption = Array.from(districtSelect.options).find(opt => opt.dataset.name === selectedDistrict);
                         if (selectedOption) {
                             await loadSubcounties(selectedOption.value);
@@ -1589,10 +1891,19 @@
                     const otherOption = document.createElement('option');
                     otherOption.value = 'other';
                     otherOption.textContent = 'Other (Not in list)';
+                    if (countyIsOther) {
+                        otherOption.selected = true;
+                    }
                     countySelect.appendChild(otherOption);
                     
-                    // If there's a pre-selected subcounty, load its parishes
-                    if (selectedCounty) {
+                    // If "other" was selected, show the text input
+                    if (countyIsOther) {
+                        document.getElementById('county_other').style.display = 'block';
+                        document.getElementById('county_other').required = true;
+                    }
+                    
+                    // If there's a pre-selected subcounty (not "other"), load its parishes
+                    if (selectedCounty && !countyIsOther) {
                         const selectedOption = Array.from(countySelect.options).find(opt => opt.dataset.name === selectedCounty);
                         if (selectedOption) {
                             await loadParishes(selectedOption.value);
@@ -1656,10 +1967,19 @@
                     const otherOption = document.createElement('option');
                     otherOption.value = 'other';
                     otherOption.textContent = 'Other (Not in list)';
+                    if (parishIsOther) {
+                        otherOption.selected = true;
+                    }
                     parishSelect.appendChild(otherOption);
 
-                    // If there's a pre-selected parish, load its villages
-                    if (selectedParish) {
+                    // If "other" was selected, show the text input
+                    if (parishIsOther) {
+                        document.getElementById('parish_other').style.display = 'block';
+                        document.getElementById('parish_other').required = true;
+                    }
+
+                    // If there's a pre-selected parish (not "other"), load its villages
+                    if (selectedParish && !parishIsOther) {
                         const selectedOption = Array.from(parishSelect.options).find(opt => opt.dataset.name === selectedParish);
                         if (selectedOption) {
                             await loadVillages(selectedOption.value);
@@ -1722,7 +2042,15 @@
                     const otherOption = document.createElement('option');
                     otherOption.value = 'other';
                     otherOption.textContent = 'Other (Not in list)';
+                    if (villageIsOther) {
+                        otherOption.selected = true;
+                    }
                     villageSelect.appendChild(otherOption);
+
+                    // If "other" was selected, show the text input
+                    if (villageIsOther) {
+                        document.getElementById('village_other').style.display = 'block';
+                    }
 
                     // If no villages found, show the text input
                     if (result.data.length === 0) {
@@ -2093,6 +2421,90 @@
             button.closest('.creditor-row').remove();
         }
 
+        // Ownership Management
+        let ownershipIndex = {{ count($ownershipList ?? []) }};
+
+        function addOwner() {
+            const container = document.getElementById('ownershipContainer');
+            const newRow = document.createElement('div');
+            newRow.className = 'ownership-row row mb-2';
+            newRow.setAttribute('data-index', ownershipIndex);
+            newRow.innerHTML = `
+                <div class="col-md-5">
+                    <input type="text" class="form-control" name="owner_names[]" placeholder="Owner name (e.g., John Doe)" required>
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="number" class="form-control ownership-percentage" name="owner_percentages[]" placeholder="Percentage" min="0" max="100" step="0.01" required>
+                        <span class="input-group-text">%</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeOwner(this)">
+                        <i class="fas fa-trash"></i> Remove
+                    </button>
+                </div>
+            `;
+            container.appendChild(newRow);
+            
+            // Attach change event to new percentage input
+            const percentageInput = newRow.querySelector('.ownership-percentage');
+            percentageInput.addEventListener('input', calculateTotalOwnership);
+            
+            ownershipIndex++;
+            calculateTotalOwnership();
+        }
+
+        function removeOwner(button) {
+            const container = document.getElementById('ownershipContainer');
+            const rows = container.querySelectorAll('.ownership-row');
+            
+            // Don't allow removing the last row
+            if (rows.length > 1) {
+                button.closest('.ownership-row').remove();
+                calculateTotalOwnership();
+            } else {
+                alert('At least one owner must remain.');
+            }
+        }
+
+        function calculateTotalOwnership() {
+            const percentageInputs = document.querySelectorAll('.ownership-percentage');
+            let total = 0;
+            
+            percentageInputs.forEach(input => {
+                const value = parseFloat(input.value) || 0;
+                total += value;
+            });
+            
+            const totalSpan = document.getElementById('totalOwnership');
+            const warningSpan = document.getElementById('ownershipWarning');
+            
+            totalSpan.textContent = total.toFixed(2);
+            
+            // Show warning if total doesn't equal 100%
+            if (Math.abs(total - 100) > 0.01) {
+                totalSpan.classList.add('text-danger');
+                totalSpan.classList.remove('text-success');
+                warningSpan.style.display = 'inline';
+            } else {
+                totalSpan.classList.add('text-success');
+                totalSpan.classList.remove('text-danger');
+                warningSpan.style.display = 'none';
+            }
+        }
+
+        // Initialize ownership percentage calculation on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Attach change event to existing percentage inputs
+            document.querySelectorAll('.ownership-percentage').forEach(input => {
+                input.addEventListener('input', calculateTotalOwnership);
+            });
+            
+            // Calculate initial total
+            calculateTotalOwnership();
+        });
+
         // Student fees file preview
         function previewStudentFees(input) {
             const file = input.files[0];
@@ -2201,7 +2613,7 @@
                             <td>${formatCurrency(expectedFees)}</td>
                             <td>${formatCurrency(amountPaid)}</td>
                             <td class="text-danger fw-bold">${formatCurrency(balance)}</td>
-                            <td><span class="badge ${paymentPercentage >= 75 ? 'bg-warning' : 'bg-danger'}">${paymentPercentage}%</span></td>
+                            <td><span class="badge ${paymentPercentage >= 65 ? 'bg-warning' : 'bg-danger'}">${paymentPercentage}%</span></td>
                         `;
                         previewTableBody.appendChild(tr);
                         

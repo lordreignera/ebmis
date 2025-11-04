@@ -94,10 +94,53 @@
                                         <th style="color: #000000;">School Type:</th>
                                         <td>{{ $school->school_type ?? 'Not specified' }}</td>
                                     </tr>
+                                    @if($school->school_types)
+                                    <tr>
+                                        <th style="color: #000000;">Additional School Types:</th>
+                                        <td>
+                                            @php
+                                                $schoolTypes = is_array($school->school_types) ? $school->school_types : json_decode($school->school_types, true);
+                                            @endphp
+                                            @if($schoolTypes && is_array($schoolTypes))
+                                                @foreach($schoolTypes as $type)
+                                                    <span class="badge bg-info me-1">{{ $type }}</span>
+                                                @endforeach
+                                            @endif
+                                        </td>
+                                    </tr>
+                                    @endif
                                     <tr>
                                         <th style="color: #000000;">Ownership:</th>
                                         <td>{{ $school->ownership ?? 'Not specified' }}</td>
                                     </tr>
+                                    @if($school->ownership_details)
+                                    <tr>
+                                        <th style="color: #000000;">Ownership Details:</th>
+                                        <td>
+                                            @php
+                                                $ownershipDetails = is_array($school->ownership_details) ? $school->ownership_details : json_decode($school->ownership_details, true);
+                                            @endphp
+                                            @if($ownershipDetails && is_array($ownershipDetails))
+                                                <table class="table table-sm table-bordered">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Owner Name</th>
+                                                            <th>Percentage (%)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach($ownershipDetails as $owner)
+                                                            <tr>
+                                                                <td>{{ $owner['name'] ?? 'N/A' }}</td>
+                                                                <td>{{ number_format($owner['percentage'] ?? 0, 2) }}%</td>
+                                                            </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                </table>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                    @endif
                                     <tr>
                                         <th style="color: #000000;">Date Established:</th>
                                         <td>{{ $school->date_of_establishment ? \Carbon\Carbon::parse($school->date_of_establishment)->format('d M Y') : 'Not specified' }}</td>
@@ -309,13 +352,35 @@
                                     @if($school->transport_assets)
                                     <tr>
                                         <th style="color: #000000;">Transport Assets:</th>
-                                        <td>{{ $school->transport_assets }}</td>
+                                        <td>
+                                            @php
+                                                $transportAssets = is_array($school->transport_assets) ? $school->transport_assets : json_decode($school->transport_assets, true);
+                                            @endphp
+                                            @if($transportAssets && is_array($transportAssets))
+                                                @foreach($transportAssets as $asset)
+                                                    <span class="badge bg-secondary me-1">{{ $asset }}</span>
+                                                @endforeach
+                                            @else
+                                                {{ $school->transport_assets }}
+                                            @endif
+                                        </td>
                                     </tr>
                                     @endif
                                     @if($school->learning_resources_available)
                                     <tr>
                                         <th style="color: #000000;">Learning Resources:</th>
-                                        <td>{{ $school->learning_resources_available }}</td>
+                                        <td>
+                                            @php
+                                                $learningResources = is_array($school->learning_resources_available) ? $school->learning_resources_available : json_decode($school->learning_resources_available, true);
+                                            @endphp
+                                            @if($learningResources && is_array($learningResources))
+                                                @foreach($learningResources as $resource)
+                                                    <span class="badge bg-primary me-1">{{ $resource }}</span>
+                                                @endforeach
+                                            @else
+                                                {{ $school->learning_resources_available }}
+                                            @endif
+                                        </td>
                                     </tr>
                                     @endif
                                 </table>
@@ -401,6 +466,24 @@
                                                         <ul class="mb-0">
                                                             @foreach($expenses as $category => $amount)
                                                                 <li>{{ $category }}: UGX {{ number_format($amount) }}</li>
+                                                            @endforeach
+                                                        </ul>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                            @endif
+                                            @if($school->expense_categories && $school->expense_amounts)
+                                            <tr>
+                                                <th style="color: #000000;">Monthly Expense Categories:</th>
+                                                <td>
+                                                    @php
+                                                        $expenseCategories = is_array($school->expense_categories) ? $school->expense_categories : json_decode($school->expense_categories, true);
+                                                        $expenseAmounts = is_array($school->expense_amounts) ? $school->expense_amounts : json_decode($school->expense_amounts, true);
+                                                    @endphp
+                                                    @if($expenseCategories && $expenseAmounts && is_array($expenseCategories) && is_array($expenseAmounts))
+                                                        <ul class="mb-0">
+                                                            @foreach($expenseCategories as $index => $category)
+                                                                <li>{{ $category }}: UGX {{ number_format($expenseAmounts[$index] ?? 0) }}/month</li>
                                                             @endforeach
                                                         </ul>
                                                     @endif

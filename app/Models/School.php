@@ -142,6 +142,17 @@ class School extends Model
         'consent_to_share_information',
         'assessment_completed_at',
         'assessment_complete',
+        'assessment_completion_percentage',
+        // Additional fields for checkboxes and "other" options
+        'school_types',
+        'electricity_provider_other',
+        'internet_provider_other',
+        'transport_assets_other',
+        'learning_resources_other',
+        'banking_institutions_other',
+        'unpaid_students_file_path',
+        'expense_categories',
+        'expense_amounts',
     ];
 
     /**
@@ -170,6 +181,12 @@ class School extends Model
             'expense_breakdown' => 'array',
             'income_sources' => 'array',
             'income_amounts' => 'array',
+            'ownership_details' => 'array',
+            'school_types' => 'array',
+            'transport_assets' => 'array',
+            'learning_resources_available' => 'array',
+            'expense_categories' => 'array',
+            'expense_amounts' => 'array',
             'annual_fees_primary' => 'decimal:2',
             'annual_fees_secondary' => 'decimal:2',
             'average_tuition_fees_per_term' => 'decimal:2',

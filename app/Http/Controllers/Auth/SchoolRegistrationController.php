@@ -153,6 +153,8 @@ class SchoolRegistrationController extends Controller
         $validated = $request->validate([
             // Section 1: Extended School Identification
             'date_of_establishment' => 'nullable|date',
+            'school_types' => 'nullable|array',
+            'school_types.*' => 'nullable|string|in:Nursery,Primary,Secondary,Vocational,Other',
             'school_type_other' => 'nullable|string|max:255',
             'ownership_type_other' => 'nullable|string|max:255',
             
@@ -192,20 +194,29 @@ class SchoolRegistrationController extends Controller
             'number_of_toilets' => 'nullable|integer|min:0',
             'has_electricity' => 'nullable|boolean',
             'electricity_provider' => 'nullable|string|max:255',
+            'electricity_provider_other' => 'nullable|string|max:255',
             'water_source' => 'nullable|string|max:255',
             'has_internet_access' => 'nullable|boolean',
             'internet_provider' => 'nullable|string|max:255',
-            'transport_assets' => 'nullable|string',
-            'learning_resources_available' => 'nullable|string',
+            'internet_provider_other' => 'nullable|string|max:255',
+            'transport_assets' => 'nullable|array',
+            'transport_assets.*' => 'nullable|string',
+            'transport_assets_other' => 'nullable|string|max:255',
+            'learning_resources' => 'nullable|array',
+            'learning_resources.*' => 'nullable|string',
+            'learning_resources_other' => 'nullable|string|max:255',
             
             // Section 6: Financial Projections
             'first_month_revenue' => 'nullable|numeric|min:0',
             'last_month_expenditure' => 'nullable|numeric|min:0',
+            'expense_categories' => 'nullable|array',
             'expense_categories.*' => 'nullable|string',
+            'expense_amounts' => 'nullable|array',
             'expense_amounts.*' => 'nullable|numeric|min:0',
             'past_two_terms_shortfall' => 'nullable|numeric|min:0',
             'expected_shortfall_this_term' => 'nullable|numeric|min:0',
             'unpaid_students_list' => 'nullable|string',
+            'unpaid_students_file' => 'nullable|file|mimes:xlsx,xls,csv|max:5120',
             'reserve_funds_status' => 'nullable|string',
             
             // Section 7: Financial Performance
@@ -213,6 +224,7 @@ class SchoolRegistrationController extends Controller
             'average_monthly_expenses' => 'nullable|numeric|min:0',
             'profit_or_surplus' => 'nullable|numeric',
             'banking_institutions_used' => 'nullable|string|max:255',
+            'banking_institutions_other' => 'nullable|string|max:255',
             'has_audited_statements' => 'nullable|boolean',
             
             // Section 8: Loan Request
@@ -238,7 +250,10 @@ class SchoolRegistrationController extends Controller
             'debtors_creditors_list' => 'nullable|string',
             'ministry_of_education_standing' => 'nullable|string|max:255',
             'license_validity_status' => 'nullable|string|max:255',
-            'ownership_details' => 'nullable|string',
+            'owner_names' => 'nullable|array',
+            'owner_names.*' => 'nullable|string|max:255',
+            'owner_percentages' => 'nullable|array',
+            'owner_percentages.*' => 'nullable|numeric|min:0|max:100',
             'has_outstanding_loans' => 'nullable|boolean',
             'outstanding_loans_details' => 'nullable|string',
             'has_assets_as_collateral' => 'nullable|boolean',
@@ -292,6 +307,19 @@ class SchoolRegistrationController extends Controller
                 ]);
             }
 
+            // Handle unpaid students file upload
+            if ($request->hasFile('unpaid_students_file')) {
+                $file = $request->file('unpaid_students_file');
+                $filename = time() . '_unpaid_students.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs('school-documents/' . $schoolId, $filename, 'public');
+                $documentPaths['unpaid_students_file_path'] = $path;
+                
+                \Log::info('Unpaid students file uploaded', [
+                    'school_id' => $schoolId,
+                    'path' => $path
+                ]);
+            }
+
             // Process income sources and amounts
             $incomeSources = [];
             $incomeAmounts = [];
@@ -320,25 +348,91 @@ class SchoolRegistrationController extends Controller
                 }
             }
 
+            // Process ownership details
+            $ownershipList = [];
+            if ($request->has('owner_names') && $request->has('owner_percentages')) {
+                $names = $request->owner_names;
+                $percentages = $request->owner_percentages;
+                
+                $totalPercentage = 0;
+                foreach ($names as $index => $name) {
+                    if (!empty($name) && isset($percentages[$index])) {
+                        $percentage = floatval($percentages[$index]);
+                        $ownershipList[] = [
+                            'name' => $name,
+                            'percentage' => $percentage
+                        ];
+                        $totalPercentage += $percentage;
+                    }
+                }
+                
+                // Validate that total ownership equals 100%
+                if (count($ownershipList) > 0 && abs($totalPercentage - 100) > 0.01) {
+                    return back()->withErrors(['ownership' => 'Total ownership percentage must equal 100%. Current total: ' . number_format($totalPercentage, 2) . '%'])->withInput();
+                }
+            }
+
+            // Process school_types (checkboxes)
+            $schoolTypes = [];
+            if ($request->has('school_types') && is_array($request->school_types)) {
+                $schoolTypes = array_values(array_filter($request->school_types));
+            }
+
+            // Process transport_assets (checkboxes)
+            $transportAssets = [];
+            if ($request->has('transport_assets') && is_array($request->transport_assets)) {
+                $transportAssets = array_values(array_filter($request->transport_assets));
+            }
+
+            // Process learning_resources (checkboxes)
+            $learningResources = [];
+            if ($request->has('learning_resources') && is_array($request->learning_resources)) {
+                $learningResources = array_values(array_filter($request->learning_resources));
+            }
+
+            // Process expense categories and amounts separately (new JSON fields)
+            $expenseCategories = [];
+            $expenseAmounts = [];
+            if ($request->has('expense_categories') && is_array($request->expense_categories)) {
+                $categories = $request->expense_categories;
+                $amounts = $request->expense_amounts ?? [];
+                
+                foreach ($categories as $index => $category) {
+                    if (!empty($category)) {
+                        $expenseCategories[] = $category;
+                        $expenseAmounts[] = isset($amounts[$index]) ? floatval($amounts[$index]) : 0;
+                    }
+                }
+            }
+
             // Update school with assessment data
             $updateData = array_merge($validated, $documentPaths);
             $updateData['expense_breakdown'] = !empty($expenseBreakdown) ? json_encode($expenseBreakdown) : null;
             $updateData['income_sources'] = !empty($incomeSources) ? json_encode($incomeSources) : null;
             $updateData['income_amounts'] = !empty($incomeAmounts) ? json_encode($incomeAmounts) : null;
+            $updateData['ownership_details'] = !empty($ownershipList) ? json_encode($ownershipList) : null;
+            
+            // Add new JSON fields
+            $updateData['school_types'] = !empty($schoolTypes) ? json_encode($schoolTypes) : null;
+            $updateData['transport_assets'] = !empty($transportAssets) ? json_encode($transportAssets) : null;
+            $updateData['learning_resources_available'] = !empty($learningResources) ? json_encode($learningResources) : null;
+            $updateData['expense_categories'] = !empty($expenseCategories) ? json_encode($expenseCategories) : null;
+            $updateData['expense_amounts'] = !empty($expenseAmounts) ? json_encode($expenseAmounts) : null;
             
             // Calculate assessment completion percentage
             $assessableFields = [
-                'date_of_establishment', 'school_type_other', 'ownership_type_other',
+                'date_of_establishment', 'school_types', 'school_type_other', 'ownership_type_other',
                 'county', 'county_other', 'parish', 'parish_other', 'village', 'village_other', 'gps_coordinates',
                 'school_phone_number', 'school_email_address', 'website', 'administrator_name', 'administrator_contact_number', 'administrator_email',
                 'total_teaching_staff', 'total_non_teaching_staff', 'current_student_enrollment', 'maximum_student_capacity', 
                 'average_tuition_fees_per_term', 'student_fees_file_path', 'income_sources', 'income_amounts',
                 'number_of_classrooms', 'number_of_dormitories', 'number_of_toilets', 'has_electricity', 'electricity_provider', 
-                'water_source', 'has_internet_access', 'internet_provider', 'transport_assets', 'learning_resources_available',
-                'first_month_revenue', 'last_month_expenditure', 'expense_breakdown', 'past_two_terms_shortfall', 
-                'expected_shortfall_this_term', 'unpaid_students_list', 'reserve_funds_status',
+                'electricity_provider_other', 'water_source', 'has_internet_access', 'internet_provider', 'internet_provider_other',
+                'transport_assets', 'transport_assets_other', 'learning_resources_available', 'learning_resources_other',
+                'first_month_revenue', 'last_month_expenditure', 'expense_breakdown', 'expense_categories', 'expense_amounts',
+                'past_two_terms_shortfall', 'expected_shortfall_this_term', 'unpaid_students_list', 'unpaid_students_file_path', 'reserve_funds_status',
                 'average_monthly_income', 'average_monthly_expenses', 'profit_or_surplus', 'banking_institutions_used', 
-                'has_audited_statements', 'audited_statements_path',
+                'banking_institutions_other', 'has_audited_statements', 'audited_statements_path',
                 'registration_certificate_path', 'school_license_path', 'bank_statements_path', 'owner_national_id_path', 
                 'land_title_path', 'existing_loan_agreements_path',
                 'current_assets_list', 'current_liabilities_list', 'debtors_creditors_list', 'ministry_of_education_standing', 
@@ -360,9 +454,9 @@ class SchoolRegistrationController extends Controller
             
             $completionPercentage = round(($filledCount / $totalFields) * 100, 2);
             
-            // Validation: Minimum 75% required to save assessment
-            if ($completionPercentage < 75) {
-                \Log::warning('Assessment submission rejected - below 75%', [
+            // Validation: Minimum 65% required to save assessment
+            if ($completionPercentage < 65) {
+                \Log::warning('Assessment submission rejected - below 65%', [
                     'school_id' => $schoolId,
                     'completion' => $completionPercentage,
                     'filled_fields' => $filledCount,
@@ -370,11 +464,11 @@ class SchoolRegistrationController extends Controller
                 ]);
                 
                 return back()->withErrors([
-                    'assessment' => "Assessment is only {$completionPercentage}% complete. Please fill at least 75% of the assessment form before submitting. You have filled {$filledCount} out of {$totalFields} required fields. Please complete more sections before submitting."
+                    'assessment' => "Assessment is only {$completionPercentage}% complete. Please fill at least 65% of the assessment form before submitting. You have filled {$filledCount} out of {$totalFields} required fields. Please complete more sections before submitting."
                 ])->withInput();
             }
             
-            // Assessment is complete (75% or more)
+            // Assessment is complete (65% or more)
             $updateData['assessment_complete'] = true;
             $updateData['assessment_completed_at'] = now();
             
