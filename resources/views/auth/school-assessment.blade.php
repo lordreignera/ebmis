@@ -369,8 +369,8 @@
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label for="county" class="form-label">County/Sub-county <span class="text-danger">*</span></label>
-                        <select class="form-select" id="county" name="county" required onchange="handleSubcountyChange(this.value)">
+                        <label for="county" class="form-label">County/Sub-county</label>
+                        <select class="form-select" id="county" name="county" onchange="handleSubcountyChange(this.value)">
                             <option value="">Select County/Sub-county</option>
                             <option value="other" {{ old('county') == 'other' ? 'selected' : '' }}>Other (Not in list)</option>
                         </select>
@@ -381,8 +381,8 @@
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label for="parish" class="form-label">Parish <span class="text-danger">*</span></label>
-                        <select class="form-select" id="parish" name="parish" required onchange="handleParishChange(this.value)">
+                        <label for="parish" class="form-label">Parish</label>
+                        <select class="form-select" id="parish" name="parish" onchange="handleParishChange(this.value)">
                             <option value="">Select Parish</option>
                             <option value="other" {{ old('parish') == 'other' ? 'selected' : '' }}>Other (Not in list)</option>
                         </select>
@@ -1861,6 +1861,11 @@
 
             try {
                 const response = await fetch(`/api/locations/subcounties/${districtId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
@@ -1899,7 +1904,6 @@
                     // If "other" was selected, show the text input
                     if (countyIsOther) {
                         document.getElementById('county_other').style.display = 'block';
-                        document.getElementById('county_other').required = true;
                     }
                     
                     // If there's a pre-selected subcounty (not "other"), load its parishes
@@ -1909,10 +1913,30 @@
                             await loadParishes(selectedOption.value);
                         }
                     }
+                } else {
+                    // No subcounties found, show "Other" option and text input
+                    console.log('No subcounties found for this district');
+                    const countySelect = document.getElementById('county');
+                    countySelect.innerHTML = '<option value="">Select Subcounty/County</option>';
+                    const otherOption = document.createElement('option');
+                    otherOption.value = 'other';
+                    otherOption.textContent = 'Other (Not in list)';
+                    otherOption.selected = true;
+                    countySelect.appendChild(otherOption);
+                    document.getElementById('county_other').style.display = 'block';
                 }
             } catch (error) {
                 console.error('Error loading subcounties:', error);
-                alert('Failed to load subcounties. Please try again.');
+                // Don't show alert - just enable the "other" option
+                const countySelect = document.getElementById('county');
+                countySelect.innerHTML = '<option value="">Select Subcounty/County</option>';
+                const otherOption = document.createElement('option');
+                otherOption.value = 'other';
+                otherOption.textContent = 'Other (Not in list)';
+                otherOption.selected = true;
+                countySelect.appendChild(otherOption);
+                document.getElementById('county_other').style.display = 'block';
+                console.log('Subcounty data not available. Please use "Other" option.');
             }
         }
 
@@ -1921,12 +1945,10 @@
             const countyOther = document.getElementById('county_other');
             if (value === 'other') {
                 countyOther.style.display = 'block';
-                countyOther.required = true;
                 document.getElementById('parish').innerHTML = '<option value="">Select Parish</option><option value="other">Other (Not in list)</option>';
                 document.getElementById('village_select').innerHTML = '<option value="">Select Village</option><option value="other">Other (Not in list)</option>';
             } else {
                 countyOther.style.display = 'none';
-                countyOther.required = false;
                 loadParishes(value);
             }
         }
@@ -1939,6 +1961,11 @@
 
             try {
                 const response = await fetch(`/api/locations/parishes/${subcountyId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
@@ -1975,7 +2002,6 @@
                     // If "other" was selected, show the text input
                     if (parishIsOther) {
                         document.getElementById('parish_other').style.display = 'block';
-                        document.getElementById('parish_other').required = true;
                     }
 
                     // If there's a pre-selected parish (not "other"), load its villages
@@ -1985,10 +2011,30 @@
                             await loadVillages(selectedOption.value);
                         }
                     }
+                } else {
+                    // No parishes found, show "Other" option and text input
+                    console.log('No parishes found for this subcounty');
+                    const parishSelect = document.getElementById('parish');
+                    parishSelect.innerHTML = '<option value="">Select Parish</option>';
+                    const otherOption = document.createElement('option');
+                    otherOption.value = 'other';
+                    otherOption.textContent = 'Other (Not in list)';
+                    otherOption.selected = true;
+                    parishSelect.appendChild(otherOption);
+                    document.getElementById('parish_other').style.display = 'block';
                 }
             } catch (error) {
                 console.error('Error loading parishes:', error);
-                alert('Failed to load parishes. Please try again.');
+                // Don't show alert - just enable the "other" option
+                const parishSelect = document.getElementById('parish');
+                parishSelect.innerHTML = '<option value="">Select Parish</option>';
+                const otherOption = document.createElement('option');
+                otherOption.value = 'other';
+                otherOption.textContent = 'Other (Not in list)';
+                otherOption.selected = true;
+                parishSelect.appendChild(otherOption);
+                document.getElementById('parish_other').style.display = 'block';
+                console.log('Parish data not available. Please use "Other" option.');
             }
         }
 
@@ -1997,11 +2043,9 @@
             const parishOther = document.getElementById('parish_other');
             if (value === 'other') {
                 parishOther.style.display = 'block';
-                parishOther.required = true;
                 document.getElementById('village_select').innerHTML = '<option value="">Select Village</option><option value="other">Other (Not in list)</option>';
             } else {
                 parishOther.style.display = 'none';
-                parishOther.required = false;
                 loadVillages(value);
             }
         }
@@ -2014,6 +2058,11 @@
 
             try {
                 const response = await fetch(`/api/locations/villages/${parishId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
@@ -2055,12 +2104,32 @@
                     // If no villages found, show the text input
                     if (result.data.length === 0) {
                         document.getElementById('village_other').style.display = 'block';
+                        console.log('No villages found for this parish');
                     }
+                } else {
+                    // No villages found, show "Other" option and text input
+                    console.log('No villages found for this parish');
+                    const villageSelect = document.getElementById('village_select');
+                    villageSelect.innerHTML = '<option value="">Select Village</option>';
+                    const otherOption = document.createElement('option');
+                    otherOption.value = 'other';
+                    otherOption.textContent = 'Other (Not in list)';
+                    otherOption.selected = true;
+                    villageSelect.appendChild(otherOption);
+                    document.getElementById('village_other').style.display = 'block';
                 }
             } catch (error) {
                 console.error('Error loading villages:', error);
-                // Don't alert for villages as they might not exist
-                console.log('No villages found for this parish');
+                // Don't show alert - just enable the "other" option
+                const villageSelect = document.getElementById('village_select');
+                villageSelect.innerHTML = '<option value="">Select Village</option>';
+                const otherOption = document.createElement('option');
+                otherOption.value = 'other';
+                otherOption.textContent = 'Other (Not in list)';
+                otherOption.selected = true;
+                villageSelect.appendChild(otherOption);
+                document.getElementById('village_other').style.display = 'block';
+                console.log('Village data not available. Please use "Other" option or text input.');
             }
         }
 

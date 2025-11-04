@@ -82,46 +82,48 @@
                 <!-- Basic Information -->
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="card">
+                        <div class="card h-100">
                             <div class="card-body">
                                 <h4 class="card-title" style="color: #000000;">Basic Information</h4>
-                                <table class="table table-borderless">
+                                <table class="table table-borderless table-sm">
                                     <tr>
                                         <th style="color: #000000; width: 40%;">School Name:</th>
-                                        <td>{{ $school->school_name }}</td>
+                                        <td class="text-wrap">{{ $school->school_name }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">School Type:</th>
-                                        <td>{{ $school->school_type ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->school_type ?? 'Not specified' }}</td>
                                     </tr>
                                     @if($school->school_types)
                                     <tr>
-                                        <th style="color: #000000;">Additional School Types:</th>
+                                        <th style="color: #000000;" class="align-top">Additional School Types:</th>
                                         <td>
                                             @php
                                                 $schoolTypes = is_array($school->school_types) ? $school->school_types : json_decode($school->school_types, true);
                                             @endphp
                                             @if($schoolTypes && is_array($schoolTypes))
-                                                @foreach($schoolTypes as $type)
-                                                    <span class="badge bg-info me-1">{{ $type }}</span>
-                                                @endforeach
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    @foreach($schoolTypes as $type)
+                                                        <span class="badge bg-info mb-1">{{ $type }}</span>
+                                                    @endforeach
+                                                </div>
                                             @endif
                                         </td>
                                     </tr>
                                     @endif
                                     <tr>
                                         <th style="color: #000000;">Ownership:</th>
-                                        <td>{{ $school->ownership ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->ownership ?? 'Not specified' }}</td>
                                     </tr>
                                     @if($school->ownership_details)
                                     <tr>
-                                        <th style="color: #000000;">Ownership Details:</th>
+                                        <th style="color: #000000;" class="align-top">Ownership Details:</th>
                                         <td>
                                             @php
                                                 $ownershipDetails = is_array($school->ownership_details) ? $school->ownership_details : json_decode($school->ownership_details, true);
                                             @endphp
                                             @if($ownershipDetails && is_array($ownershipDetails))
-                                                <table class="table table-sm table-bordered">
+                                                <table class="table table-sm table-bordered mb-0">
                                                     <thead>
                                                         <tr>
                                                             <th>Owner Name</th>
@@ -131,7 +133,7 @@
                                                     <tbody>
                                                         @foreach($ownershipDetails as $owner)
                                                             <tr>
-                                                                <td>{{ $owner['name'] ?? 'N/A' }}</td>
+                                                                <td class="text-wrap">{{ $owner['name'] ?? 'N/A' }}</td>
                                                                 <td>{{ number_format($owner['percentage'] ?? 0, 2) }}%</td>
                                                             </tr>
                                                         @endforeach
@@ -143,15 +145,15 @@
                                     @endif
                                     <tr>
                                         <th style="color: #000000;">Date Established:</th>
-                                        <td>{{ $school->date_of_establishment ? \Carbon\Carbon::parse($school->date_of_establishment)->format('d M Y') : 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->date_of_establishment ? \Carbon\Carbon::parse($school->date_of_establishment)->format('d M Y') : 'Not specified' }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Registration Number:</th>
-                                        <td>{{ $school->registration_number ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->registration_number ?? 'Not specified' }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">TIN:</th>
-                                        <td>{{ $school->tin ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->tin ?? 'Not specified' }}</td>
                                     </tr>
                                 </table>
                             </div>
@@ -159,33 +161,33 @@
                     </div>
 
                     <div class="col-md-6">
-                        <div class="card">
+                        <div class="card h-100">
                             <div class="card-body">
                                 <h4 class="card-title" style="color: #000000;">Contact Information</h4>
-                                <table class="table table-borderless">
+                                <table class="table table-borderless table-sm">
                                     <tr>
                                         <th style="color: #000000; width: 40%;">Contact Person:</th>
-                                        <td>{{ $school->contact_person }}</td>
+                                        <td class="text-wrap">{{ $school->contact_person }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Position:</th>
-                                        <td>{{ $school->contact_position }}</td>
+                                        <td class="text-wrap">{{ $school->contact_position }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Email:</th>
-                                        <td><a href="mailto:{{ $school->email }}">{{ $school->email }}</a></td>
+                                        <td class="text-wrap"><a href="mailto:{{ $school->email }}">{{ $school->email }}</a></td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Phone:</th>
-                                        <td>{{ $school->phone }}</td>
+                                        <td class="text-wrap">{{ $school->phone }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Alternative Phone:</th>
-                                        <td>{{ $school->alternative_phone ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->alternative_phone ?? 'Not specified' }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Website:</th>
-                                        <td>{{ $school->website ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->website ?? 'Not specified' }}</td>
                                     </tr>
                                 </table>
                             </div>
@@ -201,50 +203,50 @@
                                 <h4 class="card-title" style="color: #000000;">Location Details</h4>
                                 <div class="row">
                                     <div class="col-md-4">
-                                        <table class="table table-borderless">
+                                        <table class="table table-borderless table-sm">
                                             <tr>
-                                                <th style="color: #000000;">District:</th>
-                                                <td>{{ $school->district_other ?? $school->district }}</td>
+                                                <th style="color: #000000; width: 50%;">District:</th>
+                                                <td class="text-wrap">{{ $school->district_other ?? $school->district }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">County/Subcounty:</th>
-                                                <td>{{ $school->county_other ?? $school->county ?? 'Not specified' }}</td>
+                                                <td class="text-wrap">{{ $school->county_other ?? $school->county ?? 'Not specified' }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Parish:</th>
-                                                <td>{{ $school->parish_other ?? $school->parish ?? 'Not specified' }}</td>
+                                                <td class="text-wrap">{{ $school->parish_other ?? $school->parish ?? 'Not specified' }}</td>
                                             </tr>
                                         </table>
                                     </div>
                                     <div class="col-md-4">
-                                        <table class="table table-borderless">
+                                        <table class="table table-borderless table-sm">
                                             <tr>
-                                                <th style="color: #000000;">Village:</th>
-                                                <td>{{ $school->village_other ?? $school->village ?? 'Not specified' }}</td>
+                                                <th style="color: #000000; width: 50%;">Village:</th>
+                                                <td class="text-wrap">{{ $school->village_other ?? $school->village ?? 'Not specified' }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Physical Address:</th>
-                                                <td>{{ $school->physical_address ?? 'Not specified' }}</td>
+                                                <td class="text-wrap">{{ $school->physical_address ?? 'Not specified' }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">GPS Coordinates:</th>
-                                                <td>{{ $school->gps_coordinates ?? 'Not specified' }}</td>
+                                                <td class="text-wrap">{{ $school->gps_coordinates ?? 'Not specified' }}</td>
                                             </tr>
                                         </table>
                                     </div>
                                     <div class="col-md-4">
-                                        <table class="table table-borderless">
+                                        <table class="table table-borderless table-sm">
                                             <tr>
-                                                <th style="color: #000000;">Administrator Name:</th>
-                                                <td>{{ $school->administrator_name ?? 'Not specified' }}</td>
+                                                <th style="color: #000000; width: 45%;">Administrator Name:</th>
+                                                <td class="text-wrap">{{ $school->administrator_name ?? 'Not specified' }}</td>
                                             </tr>
                                             <tr>
-                                                <th style="color: #000000;">Administrator Email:</th>
-                                                <td>{{ $school->administrator_email ?? 'Not specified' }}</td>
+                                                <th style="color: #000000; width: 45%;">Administrator Email:</th>
+                                                <td class="text-wrap" style="word-break: break-all;">{{ $school->administrator_email ?? 'Not specified' }}</td>
                                             </tr>
                                             <tr>
-                                                <th style="color: #000000;">Administrator Phone:</th>
-                                                <td>{{ $school->administrator_contact_number ?? 'Not specified' }}</td>
+                                                <th style="color: #000000; width: 45%;">Administrator Phone:</th>
+                                                <td class="text-wrap">{{ $school->administrator_contact_number ?? 'Not specified' }}</td>
                                             </tr>
                                         </table>
                                     </div>
@@ -257,10 +259,10 @@
                 <!-- Staffing & Enrollment -->
                 <div class="row mt-4">
                     <div class="col-md-6">
-                        <div class="card">
+                        <div class="card h-100">
                             <div class="card-body">
                                 <h4 class="card-title" style="color: #000000;">Staffing & Enrollment</h4>
-                                <table class="table table-borderless">
+                                <table class="table table-borderless table-sm">
                                     <tr>
                                         <th style="color: #000000; width: 50%;">Teaching Staff:</th>
                                         <td>{{ $school->total_teaching_staff ?? '0' }}</td>
@@ -279,19 +281,19 @@
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Average School Fees:</th>
-                                        <td>UGX {{ number_format($school->average_tuition_fees_per_term ?? 0) }}</td>
+                                        <td class="text-wrap">UGX {{ number_format($school->average_tuition_fees_per_term ?? 0) }}</td>
                                     </tr>
                                     @if($school->income_sources && json_decode($school->income_sources))
                                     <tr>
-                                        <th style="color: #000000;">Other Income:</th>
+                                        <th style="color: #000000;" class="align-top">Other Income:</th>
                                         <td>
-                                            <ul class="mb-0">
+                                            <ul class="mb-0 small ps-3">
                                                 @php
                                                     $sources = json_decode($school->income_sources);
                                                     $amounts = json_decode($school->income_amounts);
                                                 @endphp
                                                 @foreach($sources as $index => $source)
-                                                    <li>{{ $source }}: UGX {{ number_format($amounts[$index] ?? 0) }}/month</li>
+                                                    <li class="text-wrap">{{ $source }}: UGX {{ number_format($amounts[$index] ?? 0) }}/month</li>
                                                 @endforeach
                                             </ul>
                                         </td>
@@ -313,12 +315,12 @@
                     </div>
 
                     <div class="col-md-6">
-                        <div class="card">
+                        <div class="card h-100">
                             <div class="card-body">
                                 <h4 class="card-title" style="color: #000000;">Infrastructure</h4>
-                                <table class="table table-borderless">
+                                <table class="table table-borderless table-sm">
                                     <tr>
-                                        <th style="color: #000000; width: 50%;">Classrooms:</th>
+                                        <th style="color: #000000; width: 40%;">Classrooms:</th>
                                         <td>{{ $school->number_of_classrooms ?? '0' }}</td>
                                     </tr>
                                     <tr>
@@ -331,7 +333,7 @@
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Electricity:</th>
-                                        <td>{{ $school->has_electricity ? 'Yes' : 'No' }}
+                                        <td class="text-wrap">{{ $school->has_electricity ? 'Yes' : 'No' }}
                                             @if($school->has_electricity && $school->electricity_provider)
                                                 ({{ $school->electricity_provider }})
                                             @endif
@@ -339,11 +341,11 @@
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Water Supply:</th>
-                                        <td>{{ $school->water_source ?? 'Not specified' }}</td>
+                                        <td class="text-wrap">{{ $school->water_source ?? 'Not specified' }}</td>
                                     </tr>
                                     <tr>
                                         <th style="color: #000000;">Internet Access:</th>
-                                        <td>{{ $school->has_internet_access ? 'Yes' : 'No' }}
+                                        <td class="text-wrap">{{ $school->has_internet_access ? 'Yes' : 'No' }}
                                             @if($school->has_internet_access && $school->internet_provider)
                                                 ({{ $school->internet_provider }})
                                             @endif
@@ -351,35 +353,39 @@
                                     </tr>
                                     @if($school->transport_assets)
                                     <tr>
-                                        <th style="color: #000000;">Transport Assets:</th>
+                                        <th style="color: #000000;" class="align-top">Transport Assets:</th>
                                         <td>
-                                            @php
-                                                $transportAssets = is_array($school->transport_assets) ? $school->transport_assets : json_decode($school->transport_assets, true);
-                                            @endphp
-                                            @if($transportAssets && is_array($transportAssets))
-                                                @foreach($transportAssets as $asset)
-                                                    <span class="badge bg-secondary me-1">{{ $asset }}</span>
-                                                @endforeach
-                                            @else
-                                                {{ $school->transport_assets }}
-                                            @endif
+                                            <div class="d-flex flex-wrap gap-1">
+                                                @php
+                                                    $transportAssets = is_array($school->transport_assets) ? $school->transport_assets : json_decode($school->transport_assets, true);
+                                                @endphp
+                                                @if($transportAssets && is_array($transportAssets))
+                                                    @foreach($transportAssets as $asset)
+                                                        <span class="badge bg-secondary mb-1">{{ $asset }}</span>
+                                                    @endforeach
+                                                @else
+                                                    <span class="text-wrap">{{ $school->transport_assets }}</span>
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                     @endif
                                     @if($school->learning_resources_available)
                                     <tr>
-                                        <th style="color: #000000;">Learning Resources:</th>
+                                        <th style="color: #000000;" class="align-top">Learning Resources:</th>
                                         <td>
-                                            @php
-                                                $learningResources = is_array($school->learning_resources_available) ? $school->learning_resources_available : json_decode($school->learning_resources_available, true);
-                                            @endphp
-                                            @if($learningResources && is_array($learningResources))
-                                                @foreach($learningResources as $resource)
-                                                    <span class="badge bg-primary me-1">{{ $resource }}</span>
-                                                @endforeach
-                                            @else
-                                                {{ $school->learning_resources_available }}
-                                            @endif
+                                            <div class="d-flex flex-wrap gap-1">
+                                                @php
+                                                    $learningResources = is_array($school->learning_resources_available) ? $school->learning_resources_available : json_decode($school->learning_resources_available, true);
+                                                @endphp
+                                                @if($learningResources && is_array($learningResources))
+                                                    @foreach($learningResources as $resource)
+                                                        <span class="badge bg-primary mb-1">{{ $resource }}</span>
+                                                    @endforeach
+                                                @else
+                                                    <span class="text-wrap">{{ $school->learning_resources_available }}</span>
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                     @endif
@@ -399,56 +405,56 @@
                                 <div class="row">
                                     <div class="col-md-4">
                                         <h6 style="color: #000000;">Cash Flow</h6>
-                                        <table class="table table-borderless">
+                                        <table class="table table-borderless table-sm">
                                             <tr>
-                                                <th style="color: #000000;">First Month Revenue:</th>
-                                                <td>UGX {{ number_format($school->first_month_revenue ?? 0) }}</td>
+                                                <th style="color: #000000; width: 60%;">First Month Revenue:</th>
+                                                <td class="text-wrap">UGX {{ number_format($school->first_month_revenue ?? 0) }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Last Month Expenditure:</th>
-                                                <td>UGX {{ number_format($school->last_month_expenditure ?? 0) }}</td>
+                                                <td class="text-wrap">UGX {{ number_format($school->last_month_expenditure ?? 0) }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Past 2 Terms Shortfall:</th>
-                                                <td>UGX {{ number_format($school->past_two_terms_shortfall ?? 0) }}</td>
+                                                <td class="text-wrap">UGX {{ number_format($school->past_two_terms_shortfall ?? 0) }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Expected Shortfall:</th>
-                                                <td>UGX {{ number_format($school->expected_shortfall_this_term ?? 0) }}</td>
+                                                <td class="text-wrap">UGX {{ number_format($school->expected_shortfall_this_term ?? 0) }}</td>
                                             </tr>
                                             @if($school->unpaid_students_list)
                                             <tr>
-                                                <th style="color: #000000;">Unpaid Students:</th>
-                                                <td>{{ $school->unpaid_students_list }}</td>
+                                                <th style="color: #000000;" class="align-top">Unpaid Students:</th>
+                                                <td class="text-wrap small">{{ $school->unpaid_students_list }}</td>
                                             </tr>
                                             @endif
                                             @if($school->reserve_funds_status)
                                             <tr>
                                                 <th style="color: #000000;">Reserve Funds:</th>
-                                                <td>{{ $school->reserve_funds_status }}</td>
+                                                <td class="text-wrap">{{ $school->reserve_funds_status }}</td>
                                             </tr>
                                             @endif
                                         </table>
                                     </div>
                                     <div class="col-md-4">
                                         <h6 style="color: #000000;">Performance</h6>
-                                        <table class="table table-borderless">
+                                        <table class="table table-borderless table-sm">
                                             <tr>
-                                                <th style="color: #000000;">Avg Monthly Income:</th>
-                                                <td>UGX {{ number_format($school->average_monthly_income ?? 0) }}</td>
+                                                <th style="color: #000000; width: 60%;">Avg Monthly Income:</th>
+                                                <td class="text-wrap">UGX {{ number_format($school->average_monthly_income ?? 0) }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Avg Monthly Expenses:</th>
-                                                <td>UGX {{ number_format($school->average_monthly_expenses ?? 0) }}</td>
+                                                <td class="text-wrap">UGX {{ number_format($school->average_monthly_expenses ?? 0) }}</td>
                                             </tr>
                                             <tr>
                                                 <th style="color: #000000;">Profit/Surplus:</th>
-                                                <td>UGX {{ number_format($school->profit_or_surplus ?? 0) }}</td>
+                                                <td class="text-wrap">UGX {{ number_format($school->profit_or_surplus ?? 0) }}</td>
                                             </tr>
                                             @if($school->banking_institutions_used)
                                             <tr>
                                                 <th style="color: #000000;">Banking Institutions:</th>
-                                                <td>{{ $school->banking_institutions_used }}</td>
+                                                <td class="text-wrap">{{ $school->banking_institutions_used }}</td>
                                             </tr>
                                             @endif
                                             <tr>
@@ -457,15 +463,15 @@
                                             </tr>
                                             @if($school->expense_breakdown)
                                             <tr>
-                                                <th style="color: #000000;">Expense Breakdown:</th>
+                                                <th style="color: #000000;" class="align-top">Expense Breakdown:</th>
                                                 <td>
                                                     @php
                                                         $expenses = json_decode($school->expense_breakdown, true);
                                                     @endphp
                                                     @if($expenses)
-                                                        <ul class="mb-0">
+                                                        <ul class="mb-0 small ps-3">
                                                             @foreach($expenses as $category => $amount)
-                                                                <li>{{ $category }}: UGX {{ number_format($amount) }}</li>
+                                                                <li class="text-wrap">{{ $category }}: UGX {{ number_format($amount) }}</li>
                                                             @endforeach
                                                         </ul>
                                                     @endif
@@ -474,16 +480,16 @@
                                             @endif
                                             @if($school->expense_categories && $school->expense_amounts)
                                             <tr>
-                                                <th style="color: #000000;">Monthly Expense Categories:</th>
+                                                <th style="color: #000000;" class="align-top">Monthly Expense Categories:</th>
                                                 <td>
                                                     @php
                                                         $expenseCategories = is_array($school->expense_categories) ? $school->expense_categories : json_decode($school->expense_categories, true);
                                                         $expenseAmounts = is_array($school->expense_amounts) ? $school->expense_amounts : json_decode($school->expense_amounts, true);
                                                     @endphp
                                                     @if($expenseCategories && $expenseAmounts && is_array($expenseCategories) && is_array($expenseAmounts))
-                                                        <ul class="mb-0">
+                                                        <ul class="mb-0 small ps-3">
                                                             @foreach($expenseCategories as $index => $category)
-                                                                <li>{{ $category }}: UGX {{ number_format($expenseAmounts[$index] ?? 0) }}/month</li>
+                                                                <li class="text-wrap">{{ $category }}: UGX {{ number_format($expenseAmounts[$index] ?? 0) }}/month</li>
                                                             @endforeach
                                                         </ul>
                                                     @endif
@@ -494,35 +500,35 @@
                                     </div>
                                     <div class="col-md-4">
                                         <h6 style="color: #000000;">Institutional Standing</h6>
-                                        <table class="table table-borderless">
+                                        <table class="table table-borderless table-sm">
                                             @if($school->current_assets_list)
                                             <tr>
-                                                <th style="color: #000000;">Current Assets:</th>
-                                                <td>{{ $school->current_assets_list }}</td>
+                                                <th style="color: #000000; width: 50%;" class="align-top">Current Assets:</th>
+                                                <td class="text-wrap small">{{ $school->current_assets_list }}</td>
                                             </tr>
                                             @endif
                                             @if($school->current_liabilities_list)
                                             <tr>
-                                                <th style="color: #000000;">Current Liabilities:</th>
-                                                <td>{{ $school->current_liabilities_list }}</td>
+                                                <th style="color: #000000;" class="align-top">Current Liabilities:</th>
+                                                <td class="text-wrap small">{{ $school->current_liabilities_list }}</td>
                                             </tr>
                                             @endif
                                             @if($school->debtors_creditors_list)
                                             <tr>
-                                                <th style="color: #000000;">Debtors/Creditors:</th>
-                                                <td>{{ $school->debtors_creditors_list }}</td>
+                                                <th style="color: #000000;" class="align-top">Debtors/Creditors:</th>
+                                                <td class="text-wrap small">{{ $school->debtors_creditors_list }}</td>
                                             </tr>
                                             @endif
                                             @if($school->ministry_of_education_standing)
                                             <tr>
-                                                <th style="color: #000000;">MOE Standing:</th>
-                                                <td>{{ $school->ministry_of_education_standing }}</td>
+                                                <th style="color: #000000;" class="align-top">MOE Standing:</th>
+                                                <td class="text-wrap">{{ $school->ministry_of_education_standing }}</td>
                                             </tr>
                                             @endif
                                             @if($school->license_validity_status)
                                             <tr>
                                                 <th style="color: #000000;">License Status:</th>
-                                                <td>{{ $school->license_validity_status }}</td>
+                                                <td class="text-wrap">{{ $school->license_validity_status }}</td>
                                             </tr>
                                             @endif
                                             <tr>
@@ -531,8 +537,8 @@
                                             </tr>
                                             @if($school->has_outstanding_loans && $school->outstanding_loans_details)
                                             <tr>
-                                                <th style="color: #000000;">Loan Details:</th>
-                                                <td>{{ $school->outstanding_loans_details }}</td>
+                                                <th style="color: #000000;" class="align-top">Loan Details:</th>
+                                                <td class="text-wrap small">{{ $school->outstanding_loans_details }}</td>
                                             </tr>
                                             @endif
                                             <tr>
@@ -541,8 +547,8 @@
                                             </tr>
                                             @if($school->has_assets_as_collateral && $school->collateral_assets_details)
                                             <tr>
-                                                <th style="color: #000000;">Collateral Details:</th>
-                                                <td>{{ $school->collateral_assets_details }}</td>
+                                                <th style="color: #000000;" class="align-top">Collateral Details:</th>
+                                                <td class="text-wrap small">{{ $school->collateral_assets_details }}</td>
                                             </tr>
                                             @endif
                                         </table>
@@ -775,6 +781,28 @@
 </div>
 
 <style>
+/* Custom gap utility for flex wrapping */
+.gap-1 {
+    gap: 0.25rem !important;
+}
+
+/* Ensure text wraps properly in table cells */
+.text-wrap {
+    word-wrap: break-word;
+    white-space: normal;
+}
+
+/* Make tables more compact */
+.table-sm th, .table-sm td {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Ensure cards have equal height in rows */
+.h-100 {
+    height: 100%;
+}
+
 .timeline {
     list-style: none;
     padding-left: 0;
