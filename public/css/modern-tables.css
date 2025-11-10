@@ -137,6 +137,24 @@
     border: 1px solid #dbeafe;
 }
 
+.status-approved {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.status-pending {
+    background: #fef3c7;
+    color: #d97706;
+    border: 1px solid #fde68a;
+}
+
+.status-disbursed {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
 /* Action Buttons */
 .action-buttons {
     display: flex;
@@ -154,6 +172,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    text-decoration: none;
 }
 
 .btn-view {
@@ -163,6 +182,7 @@
 
 .btn-view:hover {
     background: #7c3aed;
+    color: white;
 }
 
 .btn-delete {
@@ -172,6 +192,27 @@
 
 .btn-delete:hover {
     background: #dc2626;
+    color: white;
+}
+
+.btn-process {
+    background: #10b981;
+    color: white;
+}
+
+.btn-process:hover {
+    background: #059669;
+    color: white;
+}
+
+.btn-warning {
+    background: #f59e0b;
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+    color: white;
 }
 
 /* Modern Pagination */

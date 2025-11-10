@@ -150,21 +150,42 @@
 
                     <!-- Loans Table -->
                     @if($loans->count() > 0)
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-striped align-middle table-nowrap mb-0">
+                    <div class="table-container">
+                        <div class="table-header">
+                            <div class="table-search">
+                                <input type="text" placeholder="Search loan approvals..." id="quickSearch">
+                            </div>
+                            <div class="table-actions">
+                                <div class="table-show-entries">
+                                    Show 
+                                    <select onchange="window.location.href='{{ url()->current() }}?per_page='+this.value">
+                                        <option value="10" {{ request('per_page', 10) == 10 ? 'selected' : '' }}>10</option>
+                                        <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
+                                        <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
+                                        <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
+                                    </select>
+                                    entries
+                                </div>
+                                <a href="{{ route('admin.loans.export') }}" class="export-btn">
+                                    <i class="mdi mdi-download"></i> Export
+                                </a>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="modern-table table-hover">
                             <thead>
                                 <tr>
-                                    <th scope="col">#</th>
-                                    <th scope="col">Loan Code</th>
-                                    <th scope="col">Borrower</th>
-                                    <th scope="col">Type</th>
-                                    <th scope="col">Product</th>
-                                    <th scope="col">Principal</th>
-                                    <th scope="col">Interest (%)</th>
-                                    <th scope="col">Period</th>
-                                    <th scope="col">Status</th>
-                                    <th scope="col">Date Applied</th>
-                                    <th scope="col">Actions</th>
+                                    <th>#</th>
+                                    <th>Loan Code</th>
+                                    <th>Borrower</th>
+                                    <th>Type</th>
+                                    <th>Product</th>
+                                    <th>Principal</th>
+                                    <th>Interest (%)</th>
+                                    <th>Period</th>
+                                    <th>Status</th>
+                                    <th>Date Applied</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -182,106 +203,116 @@
                                                 </div>
                                             </div>
                                             <div class="flex-grow-1">
-                                                <h6 class="mb-0">{{ $loan->code }}</h6>
+                                                <span class="account-number">{{ $loan->code }}</span>
                                             </div>
                                         </div>
                                     </td>
                                     <td>
                                         @if($loan->loan_type === 'personal')
                                             <div>
-                                                <h6 class="mb-0">{{ $loan->member->fname ?? 'N/A' }} {{ $loan->member->lname ?? '' }}</h6>
+                                                <div class="fw-medium">{{ $loan->member->fname ?? 'N/A' }} {{ $loan->member->lname ?? '' }}</div>
                                                 <small class="text-muted">{{ $loan->member->contact ?? 'N/A' }}</small>
                                             </div>
                                         @else
                                             <div>
-                                                <h6 class="mb-0">{{ $loan->group->group_name ?? 'N/A' }}</h6>
+                                                <div class="fw-medium">{{ $loan->group->group_name ?? 'N/A' }}</div>
                                                 <small class="text-muted">Group Loan</small>
                                             </div>
                                         @endif
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{ $loan->loan_type === 'personal' ? 'info' : 'warning' }}-subtle text-{{ $loan->loan_type === 'personal' ? 'info' : 'warning' }}">
+                                        <span class="status-badge status-{{ $loan->loan_type === 'personal' ? 'individual' : 'verified' }}">
                                             {{ ucfirst($loan->loan_type) }}
                                         </span>
                                     </td>
                                     <td>{{ $loan->product->name ?? 'N/A' }}</td>
                                     <td>
-                                        <strong>UGX {{ number_format($loan->principal, 0) }}</strong>
+                                        <span class="fw-semibold">UGX {{ number_format($loan->principal, 0) }}</span>
                                     </td>
                                     <td>{{ $loan->interest }}%</td>
                                     <td>{{ $loan->period ?? 'N/A' }}</td>
                                     <td>
                                         @if($loan->status == 0)
-                                            <span class="badge bg-warning-subtle text-warning">
+                                            <span class="status-badge status-pending">
                                                 <i class="mdi mdi-clock me-1"></i>Pending
                                             </span>
                                         @elseif($loan->status == 1)
-                                            <span class="badge bg-success-subtle text-success">
+                                            <span class="status-badge status-verified">
                                                 <i class="mdi mdi-check-circle me-1"></i>Approved
                                             </span>
                                         @else
-                                            <span class="badge bg-secondary-subtle text-secondary">
+                                            <span class="status-badge status-not-verified">
                                                 Status: {{ $loan->status }}
                                             </span>
                                         @endif
                                     </td>
                                     <td>{{ \Carbon\Carbon::parse($loan->datecreated)->format('M d, Y') }}</td>
                                     <td>
-                                        <div class="dropdown">
-                                            <a href="#" role="button" id="dropdownMenuLink{{ $loan->id }}" 
-                                               data-bs-toggle="dropdown" aria-expanded="false" 
-                                               class="btn btn-soft-secondary btn-sm">
-                                                <i class="bx bx-dots-horizontal-rounded"></i>
+                                        <div class="action-buttons">
+                                            <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $loan->loan_type }}" 
+                                               class="btn-modern btn-view" title="View Details">
+                                                <i class="mdi mdi-eye"></i>
                                             </a>
-                                            <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink{{ $loan->id }}">
-                                                <li>
-                                                    <a class="dropdown-item" href="{{ route('admin.loans.show', $loan->id) }}?type={{ $loan->loan_type }}">
-                                                        <i class="mdi mdi-eye text-info me-2"></i> View Details
-                                                    </a>
-                                                </li>
-                                                @if($loan->status == 0)
-                                                <li>
-                                                    <button class="dropdown-item" onclick="approveLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')">
-                                                        <i class="mdi mdi-check-circle text-success me-2"></i> Approve
-                                                    </button>
-                                                </li>
-                                                <li>
-                                                    <button class="dropdown-item" onclick="rejectLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')">
-                                                        <i class="mdi mdi-close-circle text-danger me-2"></i> Reject
-                                                    </button>
-                                                </li>
-                                                @elseif($loan->status == 1)
-                                                <li>
-                                                    <a class="dropdown-item" href="{{ route('admin.loans.disbursements.approve.show', $loan->id) }}">
-                                                        <i class="mdi mdi-cash text-primary me-2"></i> Process Disbursement
-                                                    </a>
-                                                </li>
-                                                @endif
-                                                <li><hr class="dropdown-divider"></li>
-                                                <li>
-                                                    <a class="dropdown-item" href="{{ route('admin.loans.edit', $loan->id) }}">
-                                                        <i class="mdi mdi-pencil text-warning me-2"></i> Edit
-                                                    </a>
-                                                </li>
-                                            </ul>
+                                            @if($loan->status == 0)
+                                            <button class="btn-modern btn-process" 
+                                                    onclick="approveLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
+                                                    title="Approve">
+                                                <i class="mdi mdi-check-circle"></i>
+                                            </button>
+                                            <button class="btn-modern btn-delete" 
+                                                    onclick="rejectLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
+                                                    title="Reject">
+                                                <i class="mdi mdi-close-circle"></i>
+                                            </button>
+                                            @elseif($loan->status == 1)
+                                            <a href="{{ route('admin.loans.disbursements.approve.show', $loan->id) }}" 
+                                               class="btn-modern btn-process" title="Process Disbursement">
+                                                <i class="mdi mdi-cash"></i>
+                                            </a>
+                                            @endif
+                                            <a href="{{ route('admin.loans.edit', $loan->id) }}" 
+                                               class="btn-modern btn-warning" title="Edit">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
                                         </div>
                                     </td>
                                 </tr>
                                 @endforeach
                             </tbody>
                         </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div class="row align-items-center mt-4">
-                        <div class="col-sm-6">
-                            <div class="text-muted">
-                                Showing {{ $loans->firstItem() }} to {{ $loans->lastItem() }} of {{ $loans->total() }} entries
-                            </div>
                         </div>
-                        <div class="col-sm-6">
-                            <div class="float-sm-end">
-                                {{ $loans->appends(request()->query())->links() }}
+                        <div class="modern-pagination">
+                            <div class="pagination-info">
+                                @if($loans->total() > 0)
+                                    Showing {{ $loans->firstItem() ?? 1 }} to {{ $loans->lastItem() ?? $loans->count() }} of {{ $loans->total() }} entries
+                                @else
+                                    No entries found
+                                @endif
+                            </div>
+                            <div class="pagination-controls">
+                                @if($loans->hasPages())
+                                    @if ($loans->onFirstPage())
+                                        <span class="pagination-btn" disabled>Previous</span>
+                                    @else
+                                        <a class="pagination-btn" href="{{ $loans->previousPageUrl() }}">Previous</a>
+                                    @endif
+
+                                    <div class="pagination-numbers">
+                                        @foreach ($loans->getUrlRange(1, $loans->lastPage()) as $page => $url)
+                                            @if ($page == $loans->currentPage())
+                                                <span class="pagination-btn active">{{ $page }}</span>
+                                            @else
+                                                <a class="pagination-btn" href="{{ $url }}">{{ $page }}</a>
+                                            @endif
+                                        @endforeach
+                                    </div>
+
+                                    @if ($loans->hasMorePages())
+                                        <a class="pagination-btn" href="{{ $loans->nextPageUrl() }}">Next</a>
+                                    @else
+                                        <span class="pagination-btn" disabled>Next</span>
+                                    @endif
+                                @endif
                             </div>
                         </div>
                     </div>

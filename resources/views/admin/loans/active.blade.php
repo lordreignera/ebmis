@@ -199,9 +199,40 @@
                 </div>
                 <div class="card-body">
                     @if($loans->count() > 0)
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover table-sm">
-                                <thead class="table-light">
+                        <div class="table-container">
+                            <div class="table-header">
+                                <div class="table-search">
+                                    <input type="text" placeholder="Search active loans..." id="quickSearch">
+                                </div>
+                                <div class="table-actions">
+                                    <div class="table-show-entries">
+                                        Show 
+                                        <select onchange="window.location.href='{{ url()->current() }}?per_page='+this.value">
+                                            <option value="10" {{ request('per_page', 10) == 10 ? 'selected' : '' }}>10</option>
+                                            <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
+                                            <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
+                                            <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
+                                        </select>
+                                        entries
+                                    </div>
+                                    <div class="dropdown">
+                                        <button class="export-btn dropdown-toggle" data-bs-toggle="dropdown">
+                                            <i class="mdi mdi-export"></i> Export
+                                        </button>
+                                        <div class="dropdown-menu dropdown-menu-end">
+                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'excel'] + request()->all()) }}">
+                                                <i class="mdi mdi-file-excel me-1"></i> Excel
+                                            </a>
+                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'pdf'] + request()->all()) }}">
+                                                <i class="mdi mdi-file-pdf me-1"></i> PDF
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="modern-table table-hover">
+                                <thead>
                                     <tr>
                                         <th style="width: 5%;">#</th>
                                         <th style="width: 12%;">Loan Code</th>
@@ -220,26 +251,25 @@
                                     @foreach($loans as $index => $loan)
                                         @php
                                             $daysLate = $loan->days_overdue ?? 0;
-                                            $statusClass = $daysLate > 0 ? 'table-danger' : ($daysLate > -7 ? 'table-warning' : '');
                                         @endphp
-                                        <tr class="{{ $statusClass }}">
+                                        <tr>
                                             <td>{{ $loans->firstItem() + $index }}</td>
                                             <td>
-                                                <strong>{{ $loan->loan_code }}</strong>
+                                                <span class="account-number">{{ $loan->loan_code }}</span>
                                                 <br><small class="text-muted">{{ $loan->product_name ?? 'N/A' }}</small>
                                             </td>
                                             <td>
-                                                <strong>{{ $loan->borrower_name }}</strong>
-                                                <br><small class="text-muted">{{ $loan->branch_name ?? 'No Branch' }}</small>
+                                                <div class="fw-medium">{{ $loan->borrower_name }}</div>
+                                                <small class="text-muted">{{ $loan->branch_name ?? 'No Branch' }}</small>
                                             </td>
                                             <td>
                                                 <small>{{ $loan->phone_number }}</small>
                                             </td>
                                             <td class="text-end">
-                                                <strong>{{ number_format($loan->principal_amount, 0) }}</strong>
+                                                <span class="fw-semibold">{{ number_format($loan->principal_amount, 0) }}</span>
                                             </td>
                                             <td class="text-end">
-                                                <strong class="text-primary">{{ number_format($loan->outstanding_balance, 0) }}</strong>
+                                                <span class="fw-semibold text-primary">{{ number_format($loan->outstanding_balance, 0) }}</span>
                                             </td>
                                             <td class="text-center">
                                                 @if($loan->next_due_date)
@@ -250,47 +280,47 @@
                                             </td>
                                             <td class="text-end">
                                                 @if($loan->next_due_amount)
-                                                    <strong class="{{ $daysLate > 0 ? 'text-danger' : 'text-success' }}">
+                                                    <span class="fw-semibold {{ $daysLate > 0 ? 'text-danger' : 'text-success' }}">
                                                         {{ number_format($loan->next_due_amount, 0) }}
-                                                    </strong>
+                                                    </span>
                                                 @else
                                                     <small class="text-muted">N/A</small>
                                                 @endif
                                             </td>
                                             <td class="text-center">
                                                 @if($daysLate > 0)
-                                                    <span class="badge bg-danger">{{ $daysLate }} days</span>
+                                                    <span class="status-badge status-not-verified">{{ $daysLate }} days</span>
                                                 @elseif($daysLate > -7)
-                                                    <span class="badge bg-warning">Due soon</span>
+                                                    <span class="status-badge status-pending">Due soon</span>
                                                 @else
-                                                    <span class="badge bg-success">Current</span>
+                                                    <span class="status-badge status-verified">Current</span>
                                                 @endif
                                             </td>
                                             <td>
                                                 @if($loan->is_restructured)
-                                                    <span class="badge bg-info">Restructured</span>
+                                                    <span class="status-badge status-individual">Restructured</span>
                                                 @elseif($daysLate > 30)
-                                                    <span class="badge bg-danger">Critical</span>
+                                                    <span class="status-badge status-not-verified">Critical</span>
                                                 @elseif($daysLate > 0)
-                                                    <span class="badge bg-warning">Overdue</span>
+                                                    <span class="status-badge status-pending">Overdue</span>
                                                 @else
-                                                    <span class="badge bg-success">Current</span>
+                                                    <span class="status-badge status-verified">Current</span>
                                                 @endif
                                             </td>
                                             <td>
-                                                <div class="btn-group btn-group-sm" role="group">
+                                                <div class="action-buttons">
                                                     <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
-                                                       class="btn btn-primary btn-sm" title="View Schedules">
+                                                       class="btn-modern btn-view" title="View Schedules">
                                                         <i class="mdi mdi-calendar-clock"></i>
                                                     </a>
-                                                    <button type="button" class="btn btn-success btn-sm" 
+                                                    <button type="button" class="btn-modern btn-process" 
                                                             onclick="quickRepay({{ $loan->id }}, '{{ $loan->loan_code }}', {{ $loan->next_due_amount ?? 0 }}, '{{ $loan->phone_number }}')"
                                                             title="Quick Repayment" {{ !$loan->next_due_amount ? 'disabled' : '' }}>
                                                         <i class="mdi mdi-cash-fast"></i>
                                                     </button>
                                                     <div class="dropdown">
-                                                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" 
-                                                                data-bs-toggle="dropdown">
+                                                        <button class="btn-modern btn-warning dropdown-toggle" type="button" 
+                                                                data-bs-toggle="dropdown" title="More Actions">
                                                             <i class="mdi mdi-dots-vertical"></i>
                                                         </button>
                                                         <ul class="dropdown-menu">
@@ -314,17 +344,40 @@
                                     @endforeach
                                 </tbody>
                             </table>
-                        </div>
-
-                        <!-- Pagination -->
-                        <div class="d-flex justify-content-between align-items-center mt-3">
-                            <div>
-                                <small class="text-muted">
-                                    Showing {{ $loans->firstItem() }} to {{ $loans->lastItem() }} of {{ $loans->total() }} results
-                                </small>
                             </div>
-                            <div>
-                                {{ $loans->appends(request()->query())->links() }}
+                            <div class="modern-pagination">
+                                <div class="pagination-info">
+                                    @if($loans->total() > 0)
+                                        Showing {{ $loans->firstItem() ?? 1 }} to {{ $loans->lastItem() ?? $loans->count() }} of {{ $loans->total() }} entries
+                                    @else
+                                        No entries found
+                                    @endif
+                                </div>
+                                <div class="pagination-controls">
+                                    @if($loans->hasPages())
+                                        @if ($loans->onFirstPage())
+                                            <span class="pagination-btn" disabled>Previous</span>
+                                        @else
+                                            <a class="pagination-btn" href="{{ $loans->previousPageUrl() }}">Previous</a>
+                                        @endif
+
+                                        <div class="pagination-numbers">
+                                            @foreach ($loans->getUrlRange(1, $loans->lastPage()) as $page => $url)
+                                                @if ($page == $loans->currentPage())
+                                                    <span class="pagination-btn active">{{ $page }}</span>
+                                                @else
+                                                    <a class="pagination-btn" href="{{ $url }}">{{ $page }}</a>
+                                                @endif
+                                            @endforeach
+                                        </div>
+
+                                        @if ($loans->hasMorePages())
+                                            <a class="pagination-btn" href="{{ $loans->nextPageUrl() }}">Next</a>
+                                        @else
+                                            <span class="pagination-btn" disabled>Next</span>
+                                        @endif
+                                    @endif
+                                </div>
                             </div>
                         </div>
                     @else

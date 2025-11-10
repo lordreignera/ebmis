@@ -227,9 +227,30 @@
                     </div>
 
                     <!-- Loans Table -->
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="table-light">
+                    <div class="table-container">
+                        <div class="table-header">
+                            <div class="table-search">
+                                <input type="text" placeholder="Search loans..." id="quickSearch">
+                            </div>
+                            <div class="table-actions">
+                                <div class="table-show-entries">
+                                    Show 
+                                    <select onchange="window.location.href='{{ url()->current() }}?per_page='+this.value">
+                                        <option value="10" {{ request('per_page', 10) == 10 ? 'selected' : '' }}>10</option>
+                                        <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
+                                        <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
+                                        <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
+                                    </select>
+                                    entries
+                                </div>
+                                <a href="{{ route('admin.loans.create') }}@if(isset($loanType) && isset($repayPeriod))?type={{ $loanType }}&period={{ $repayPeriod }}@endif" class="export-btn">
+                                    <i class="mdi mdi-plus"></i> New Loan
+                                </a>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="modern-table table-hover">
+                            <thead>
                                 <tr>
                                     <th>Loan Code</th>
                                     <th>Member</th>
@@ -246,7 +267,7 @@
                                 @forelse($loans as $loan)
                                     <tr>
                                         <td>
-                                            <span class="badge bg-secondary">{{ $loan->code ?? 'LN-' . str_pad($loan->id, 6, '0', STR_PAD_LEFT) }}</span>
+                                            <span class="account-number">{{ $loan->code ?? 'LN-' . str_pad($loan->id, 6, '0', STR_PAD_LEFT) }}</span>
                                         </td>
                                         <td>
                                             <div class="d-flex align-items-center">
@@ -260,23 +281,23 @@
                                                     </div>
                                                 @endif
                                                 <div>
-                                                    <strong>{{ $loan->member->fname }} {{ $loan->member->lname }}</strong>
-                                                    <br><small class="text-muted">{{ $loan->member->contact }}</small>
+                                                    <div class="fw-medium">{{ $loan->member->fname }} {{ $loan->member->lname }}</div>
+                                                    <small class="text-muted">{{ $loan->member->contact }}</small>
                                                 </div>
                                             </div>
                                         </td>
                                         <td>{{ $loan->product->name ?? 'N/A' }}</td>
-                                        <td><strong>UGX {{ number_format($loan->principal, 2) }}</strong></td>
+                                        <td><span class="fw-semibold">UGX {{ number_format($loan->principal, 2) }}</span></td>
                                         <td>{{ $loan->interest }}%</td>
                                         <td>{{ $loan->period }} {{ $loan->period_type ?? 'days' }}</td>
                                         <td>
                                             @php
                                                 $statusClass = match($loan->status) {
-                                                    0 => 'bg-warning text-dark',
-                                                    1 => 'bg-info',
-                                                    2 => 'bg-success',
-                                                    3 => 'bg-secondary',
-                                                    default => 'bg-dark'
+                                                    0 => 'status-pending',
+                                                    1 => 'status-approved',
+                                                    2 => 'status-disbursed',
+                                                    3 => 'status-verified',
+                                                    default => 'status-not-verified'
                                                 };
                                                 $statusText = match($loan->status) {
                                                     0 => 'Pending',
@@ -286,7 +307,7 @@
                                                     default => 'Unknown'
                                                 };
                                             @endphp
-                                            <span class="badge {{ $statusClass }}">{{ $statusText }}</span>
+                                            <span class="status-badge {{ $statusClass }}">{{ $statusText }}</span>
                                             
                                             @if($loan->member->status !== 'approved')
                                                 <br><small class="text-danger">
@@ -296,28 +317,28 @@
                                         </td>
                                         <td>{{ $loan->created_at->format('M d, Y') }}</td>
                                         <td>
-                                            <div class="btn-group" role="group">
+                                            <div class="action-buttons">
                                                 <a href="{{ route('admin.loans.show', $loan) }}" 
-                                                   class="btn btn-sm btn-outline-primary" title="View Details">
+                                                   class="btn-modern btn-view" title="View Details">
                                                     <i class="mdi mdi-eye"></i>
                                                 </a>
                                                 @if($loan->status == 0)
                                                     <a href="{{ route('admin.loans.edit', $loan) }}" 
-                                                       class="btn btn-sm btn-outline-warning" title="Edit">
+                                                       class="btn-modern btn-warning" title="Edit">
                                                         <i class="mdi mdi-pencil"></i>
                                                     </a>
-                                                    <button type="button" class="btn btn-sm btn-outline-success" 
+                                                    <button type="button" class="btn-modern btn-process" 
                                                             onclick="approveLoan({{ $loan->id }})" title="Approve">
                                                         <i class="mdi mdi-check"></i>
                                                     </button>
-                                                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                    <button type="button" class="btn-modern btn-delete" 
                                                             onclick="rejectLoan({{ $loan->id }})" title="Reject">
                                                         <i class="mdi mdi-close"></i>
                                                     </button>
                                                 @endif
                                                 @if($loan->status == 1 && $loan->member->isApproved())
                                                     <a href="{{ route('admin.disbursements.create', ['loan_id' => $loan->id]) }}" 
-                                                       class="btn btn-sm btn-outline-success" title="Disburse">
+                                                       class="btn-modern btn-process" title="Disburse">
                                                         <i class="mdi mdi-cash-usd"></i>
                                                     </a>
                                                 @endif
@@ -334,14 +355,42 @@
                                 @endforelse
                             </tbody>
                         </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    @if($loans->hasPages())
-                        <div class="d-flex justify-content-center mt-4">
-                            {{ $loans->appends(request()->query())->links() }}
                         </div>
-                    @endif
+                        @if($loans->hasPages())
+                        <div class="modern-pagination">
+                            <div class="pagination-info">
+                                @if($loans->total() > 0)
+                                    Showing {{ $loans->firstItem() ?? 1 }} to {{ $loans->lastItem() ?? $loans->count() }} of {{ $loans->total() }} entries
+                                @else
+                                    No entries found
+                                @endif
+                            </div>
+                            <div class="pagination-controls">
+                                @if ($loans->onFirstPage())
+                                    <span class="pagination-btn" disabled>Previous</span>
+                                @else
+                                    <a class="pagination-btn" href="{{ $loans->previousPageUrl() }}">Previous</a>
+                                @endif
+
+                                <div class="pagination-numbers">
+                                    @foreach ($loans->getUrlRange(1, $loans->lastPage()) as $page => $url)
+                                        @if ($page == $loans->currentPage())
+                                            <span class="pagination-btn active">{{ $page }}</span>
+                                        @else
+                                            <a class="pagination-btn" href="{{ $url }}">{{ $page }}</a>
+                                        @endif
+                                    @endforeach
+                                </div>
+
+                                @if ($loans->hasMorePages())
+                                    <a class="pagination-btn" href="{{ $loans->nextPageUrl() }}">Next</a>
+                                @else
+                                    <span class="pagination-btn" disabled>Next</span>
+                                @endif
+                            </div>
+                        </div>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>
