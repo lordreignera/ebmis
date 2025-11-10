@@ -35,4 +35,20 @@ return [
         ],
     ],
 
+    'flexipay' => [
+        'base_url' => env('FLEXIPAY_BASE_URL', 'https://emuria.net/flexipay/'),
+        'merchant_id' => env('FLEXIPAY_MERCHANT_ID'),
+        'api_key' => env('FLEXIPAY_API_KEY'),
+        'callback_url' => env('FLEXIPAY_CALLBACK_URL'),
+        'endpoints' => [
+            'disburse' => 'marchanToMobilePayprod.php',
+            'collect' => 'marchanFromMobileProd.php',
+            'status_check' => 'checkFromMMStatusProd.php',
+        ],
+        'networks' => [
+            'mtn_prefixes' => ['77', '78', '76'],
+            'airtel_prefixes' => ['70', '75', '74'],
+        ],
+    ],
+
 ];

@@ -22,6 +22,12 @@
     <!-- Bootstrap 5 JS Bundle (includes Popper) - Load LAST to override old Bootstrap -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!-- Reports Export Script -->
+    <script src="{{ asset('js/reports-export.js') }}"></script>
+    
     <!-- Simple and reliable dropdown functionality -->
     <script>
     // Simple dropdown toggle function

@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             SuperAdminSeeder::class,
             CompleteUgandaLocationsSeeder::class,  // All Uganda districts
             TesoRegionLocationsSeeder::class,       // Detailed Teso region data
+            FeeTypesSeeder::class,                  // Fee types from old EBIMS system
         ]);
     }
 }

@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -22,6 +23,7 @@ return new class extends Migration
             $table->integer('verified')->default(0)->comment('0-no,1-yes');
             $table->unsignedBigInteger('branch_id');
             $table->unsignedBigInteger('added_by');
+            $table->timestamp('datecreated')->default(DB::raw('CURRENT_TIMESTAMP'));
             $table->timestamps();
             
             $table->foreign('branch_id')->references('id')->on('branches');

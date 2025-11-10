@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -13,16 +14,13 @@ return new class extends Migration
     {
         Schema::create('product_charges', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('product_id');
+            $table->integer('product_id');
             $table->string('name', 70);
             $table->integer('type');
             $table->string('value', 10);
-            $table->unsignedBigInteger('added_by');
-            $table->boolean('isactive')->default(true);
-            $table->timestamps();
-            
-            $table->foreign('product_id')->references('id')->on('products')->onDelete('cascade');
-            $table->foreign('added_by')->references('id')->on('users');
+            $table->integer('added_by');
+            $table->timestamp('datecreated')->default(DB::raw('CURRENT_TIMESTAMP'));
+            $table->integer('isactive')->default(1);
         });
     }
 

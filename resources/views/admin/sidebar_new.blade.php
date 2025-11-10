@@ -357,13 +357,13 @@
       </a>
       <div class="collapse" id="members">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Add Client</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Individual Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Corporate Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Client Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Send Bulk SMS</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">View Bulk SMS Records</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.create') }}">Add Client</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=2">Individual Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=1">Group Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=3">Corporate Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.pending') }}">Client Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.create') }}">Send Bulk SMS</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.index') }}">View Bulk SMS Records</a></li>
         </ul>
       </div>
     </li>
@@ -378,8 +378,8 @@
       </a>
       <div class="collapse" id="groups">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Create Group</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">View Groups</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.groups.create') }}">Create Group</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.groups.index') }}">View Groups</a></li>
         </ul>
       </div>
     </li>
@@ -410,8 +410,16 @@
       </a>
       <div class="collapse" id="investments">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Individual (International)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Individual (Local)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}">Investment Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.investors') }}">All Investors</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.create-investor') }}">Add New Investor</a></li>
+          <li class="nav-item"><hr class="dropdown-divider"></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.investors') }}?type=local">Local Investors</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.investors') }}?type=international">International Investors</a></li>
+          <li class="nav-item"><hr class="dropdown-divider"></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}?status=active">Active Investments</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}?status=pending">Pending Investments</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}?status=matured">Matured Investments</a></li>
         </ul>
       </div>
     </li>
@@ -426,25 +434,29 @@
       </a>
       <div class="collapse" id="loans">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Personal Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Personal Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Personal Loan (Monthly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">eSign Personal Loan</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Personal Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Personal Loan Disbursement</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Personal Loan Repayment</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=daily">Personal Loan (Daily)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=personal&period=weekly">Personal Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=personal&period=monthly">Personal Loan (Monthly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.esign') }}">eSign Personal Loan</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}">Personal Loan Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}">Loan Disbursements (Enhanced)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.disbursements.index') }}">Personal Loan Disbursement (Legacy)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}">Active Loans Management</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayment (Legacy)</a></li>
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Loan (Monthly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Manage Group Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Loan Disbursement</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Loan Repayment</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group&period=daily">Group Loan (Daily)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group&period=weekly">Group Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group&period=monthly">Group Loan (Monthly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group">Manage Group Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Group Loan Disbursements (Enhanced)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.disbursements.index') }}?type=group">Group Loan Disbursement (Legacy)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=group">Active Group Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayment (Legacy)</a></li>
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Branch Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Loan Product Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Individual Loan Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Group Loan Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.branch') }}">Branch Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.product') }}">Loan Product Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.individual') }}">Individual Loan Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.group') }}">Group Loan Portfolio</a></li>
         </ul>
       </div>
     </li>
@@ -467,16 +479,16 @@
       </a>
       <div class="collapse" id="reports">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Pending Loan Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Disbursed Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Rejected Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Loans Due</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Paid Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Loans Repayments</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Payments Transactions</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Loans Interest</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Cash Securities</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Loan Charges</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.pending-loans') }}">Pending Loan Applications</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.disbursed-loans') }}">Disbursed Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.rejected-loans') }}">Rejected Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loans-due') }}">Loans Due</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.paid-loans') }}">Paid Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loan-repayments') }}">Loans Repayments</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.payment-transactions') }}">Payments Transactions</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loan-interest') }}">Loans Interest</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.cash-securities') }}">Cash Securities</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loan-charges') }}">Loan Charges</a></li>
         </ul>
       </div>
     </li>

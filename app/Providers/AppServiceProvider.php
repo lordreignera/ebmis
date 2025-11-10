@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,7 +20,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if(env('APP_ENV') === 'production') {
+            URL::forceScheme('https');
+        }
+        
         // Fix for MySQL key length issue with utf8mb4
         \Illuminate\Support\Facades\Schema::defaultStringLength(191);
+        
+        // Fix route model binding for loan parameter
+        \Illuminate\Support\Facades\Route::model('loan', \App\Models\Loan::class);
     }
 }

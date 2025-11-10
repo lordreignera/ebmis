@@ -17,6 +17,130 @@
     <!-- endinject -->
     <!-- Layout styles -->
     <link rel="stylesheet" href="{{ asset('admin/assets/css/style.css') }}">
+    <!-- Enhanced Table Styles -->
+    <link rel="stylesheet" href="{{ asset('css/enhanced-tables.css') }}">
+    <!-- Modern Clean Table Styles -->
+    <link rel="stylesheet" href="{{ asset('css/modern-tables.css') }}">
+    <!-- Force Scroll CSS -->
+    <link rel="stylesheet" href="{{ asset('css/force-scroll.css') }}">
+    <!-- Select2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    
+    <!-- Custom Select2 Styling -->
+    <style>
+        /* Select2 Custom Styling */
+        .select2-container--default .select2-selection--single {
+            height: 45px !important;
+            border: 1px solid #e3e6f0 !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            background-color: #ffffff !important;
+        }
+        
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: #2d3748 !important;
+            line-height: 28px !important;
+            padding-left: 0 !important;
+            font-size: 0.9rem !important;
+            font-weight: 500 !important;
+        }
+        
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 43px !important;
+            right: 10px !important;
+        }
+        
+        .select2-dropdown {
+            border: 1px solid #e3e6f0 !important;
+            border-radius: 8px !important;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15) !important;
+        }
+        
+        .select2-container--default .select2-search--dropdown .select2-search__field {
+            border: 1px solid #e3e6f0 !important;
+            border-radius: 6px !important;
+            padding: 8px 12px !important;
+            font-size: 0.9rem !important;
+        }
+        
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: #667eea !important;
+            color: white !important;
+        }
+        
+        .select2-container--default .select2-results__option[aria-selected=true] {
+            background-color: #f8f9fc !important;
+            color: #5a5c69 !important;
+        }
+        
+        .select2-results__option {
+            padding: 10px 15px !important;
+            font-size: 0.9rem !important;
+        }
+        
+        /* Custom member result styling */
+        .select2-result-member {
+            padding: 8px 0;
+        }
+        
+        .select2-result-member__title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 2px;
+        }
+        
+        .select2-result-member__description {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+        
+        /* Focus styles */
+        .select2-container--default.select2-container--focus .select2-selection--single {
+            border-color: #667eea !important;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25) !important;
+        }
+        
+        /* Placeholder styling */
+        .select2-container--default .select2-selection--single .select2-selection__placeholder {
+            color: #6c757d !important;
+            font-style: italic !important;
+        }
+        
+        /* Clear button styling */
+        .select2-container--default .select2-selection--single .select2-selection__clear {
+            color: #dc3545 !important;
+            font-size: 1.2rem !important;
+            margin-right: 10px !important;
+            margin-top: -2px !important;
+        }
+        
+        /* Selected text styling improvements */
+        .select2-container--default .select2-selection--single .select2-selection__rendered[title] {
+            display: block !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            max-width: calc(100% - 30px) !important;
+        }
+    </style>
+    
+    <!-- Critical table hover fix -->
+    <style>
+        /* Override Bootstrap table hover variables */
+        :root {
+            --bs-table-hover-bg: #f1f5f9 !important;
+            --bs-table-hover-color: #1a202c !important;
+        }
+        
+        /* Force override for all table hover states */
+        .table-hover > tbody > tr:hover > *,
+        .table tbody tr:hover,
+        .table tbody tr:hover td,
+        .table tbody tr:hover th {
+            background-color: #f1f5f9 !important;
+            color: #1a202c !important;
+        }
+    </style>
     <!-- End layout styles -->
     <link rel="shortcut icon" href="{{ asset('admin/assets/images/icon1.png') }}" />
     
@@ -275,18 +399,20 @@
         font-size: 1rem;
     }
 
-    /* Tables */
+    /* Tables - Enhanced with proper hover effects */
     .table {
         background-color: #ffffff !important;
         color: #333333 !important;
         border-radius: 8px;
         overflow: hidden;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
     }
 
     .table thead th {
-        background-color: #f8f9fa !important;
-        color: #2d3748 !important;
-        border-bottom: 2px solid #e2e8f0 !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: #ffffff !important;
+        border: none !important;
         font-weight: 600;
         padding: 15px;
         text-transform: uppercase;
@@ -300,10 +426,37 @@
         border-bottom: 1px solid #e2e8f0 !important;
         padding: 15px;
         vertical-align: middle;
+        transition: all 0.2s ease !important;
     }
 
     .table tbody tr:hover {
-        background-color: #f8f9fa !important;
+        background-color: #f1f5f9 !important;
+        color: #1a202c !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .table tbody tr:hover td {
+        background-color: #f1f5f9 !important;
+        color: #1a202c !important;
+        border-color: #cbd5e0 !important;
+    }
+
+    /* Ensure text elements maintain readability on hover */
+    .table tbody tr:hover td * {
+        color: inherit !important;
+    }
+
+    .table tbody tr:hover .badge {
+        color: #ffffff !important;
+    }
+
+    .table tbody tr:hover .text-primary {
+        color: #3182ce !important;
+    }
+
+    .table tbody tr:hover .text-muted {
+        color: #718096 !important;
     }
 
     .table tbody tr:last-child td {

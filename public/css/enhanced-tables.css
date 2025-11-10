@@ -1,0 +1,741 @@
+/* Enhanced Table Styles for EBIMS - Override Conflicts */
+
+/* Page Container Improvements */
+.container-fluid {
+    padding: 20px;
+}
+
+.page-header {
+    margin-bottom: 30px;
+    padding: 20px 0;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.page-title {
+    color: #2d3748;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+/* Card Enhancements */
+.card {
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07) !important;
+    margin-bottom: 24px !important;
+    overflow: hidden !important;
+}
+
+.card-header {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding: 20px 24px !important;
+}
+
+.card-title {
+    color: #2d3748 !important;
+    font-weight: 600 !important;
+    margin-bottom: 4px !important;
+    font-size: 1.125rem !important;
+}
+
+.card-description {
+    color: #718096 !important;
+    margin-bottom: 0 !important;
+    font-size: 0.875rem !important;
+}
+
+.card-body {
+    padding: 24px !important;
+}
+
+/* Override Bootstrap CSS Variables that cause black hover */
+:root {
+    --bs-table-hover-bg: #f1f5f9 !important;
+    --bs-table-hover-color: #1a202c !important;
+}
+
+/* Base Table Styling with Higher Specificity */
+.table,
+table.table {
+    background-color: #ffffff !important;
+    color: #333333 !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1) !important;
+    margin-bottom: 24px !important;
+}
+
+/* Table Header Styling with Maximum Specificity */
+.table thead th,
+table.table thead th,
+.table-responsive .table thead th {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+    padding: 16px 12px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    position: relative !important;
+    white-space: nowrap !important;
+}
+
+.table thead th:first-child,
+table.table thead th:first-child {
+    border-top-left-radius: 8px !important;
+}
+
+.table thead th:last-child,
+table.table thead th:last-child {
+    border-top-right-radius: 8px !important;
+}
+
+/* Table Body Styling with Maximum Specificity */
+.table tbody td,
+table.table tbody td,
+.table-responsive .table tbody td {
+    padding: 14px 12px !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    border-top: none !important;
+    transition: all 0.2s ease !important;
+    background-color: #ffffff !important;
+    color: #2d3748 !important;
+}
+
+/* CRITICAL: Enhanced Row Hover Effects - Fix for black background */
+.table tbody tr,
+table.table tbody tr,
+.table-responsive .table tbody tr {
+    transition: all 0.3s ease !important;
+    background-color: #ffffff !important;
+    color: #2d3748 !important;
+}
+
+.table tbody tr:hover,
+table.table tbody tr:hover,
+.table-responsive .table tbody tr:hover,
+.table tbody tr:hover td,
+table.table tbody tr:hover td,
+.table-responsive .table tbody tr:hover td {
+    background-color: #f1f5f9 !important;
+    color: #1a202c !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+    border-color: #cbd5e0 !important;
+}
+
+/* Fix for all text elements inside hovered rows */
+.table tbody tr:hover td *,
+table.table tbody tr:hover td *,
+.table-responsive .table tbody tr:hover td * {
+    color: inherit !important;
+}
+
+/* Preserve badge colors on hover */
+.table tbody tr:hover .badge,
+table.table tbody tr:hover .badge {
+    color: #ffffff !important;
+}
+
+/* Preserve primary text color on hover */
+.table tbody tr:hover .text-primary,
+table.table tbody tr:hover .text-primary {
+    color: #3182ce !important;
+}
+
+/* Preserve muted text color on hover */
+.table tbody tr:hover .text-muted,
+table.table tbody tr:hover .text-muted {
+    color: #718096 !important;
+}
+
+/* Preserve dark text on light backgrounds */
+.table tbody tr:hover .text-dark,
+table.table tbody tr:hover .text-dark {
+    color: #2d3748 !important;
+}
+
+/* Striped Tables */
+.table-striped tbody tr:nth-of-type(odd),
+table.table-striped tbody tr:nth-of-type(odd) {
+    background-color: #f7fafc !important;
+}
+
+.table-striped tbody tr:nth-of-type(even),
+table.table-striped tbody tr:nth-of-type(even) {
+    background-color: #ffffff !important;
+}
+
+.table-striped tbody tr:hover,
+table.table-striped tbody tr:hover {
+    background-color: #edf2f7 !important;
+    color: #1a202c !important;
+}
+
+/* Bordered Tables */
+.table-bordered,
+table.table-bordered {
+    border: 1px solid #e2e8f0 !important;
+}
+
+.table-bordered th,
+.table-bordered td,
+table.table-bordered th,
+table.table-bordered td {
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Responsive Table Container */
+.table-responsive {
+    border-radius: 8px !important;
+    overflow: auto !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1) !important;
+    max-height: 500px !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+}
+
+/* Force scrollbars to be visible */
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Alternative scrollable table container */
+.table-scrollable {
+    max-height: 400px !important;
+    overflow-y: auto !important;
+    overflow-x: auto !important;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.table-scrollable .table {
+    margin-bottom: 0;
+    box-shadow: none;
+}
+
+/* Small Tables */
+.table-sm th,
+.table-sm td,
+table.table-sm th,
+table.table-sm td {
+    padding: 8px 10px !important;
+    font-size: 0.875rem !important;
+}
+
+/* Action Buttons in Tables */
+.table .btn,
+table.table .btn {
+    margin: 2px !important;
+    border-radius: 6px !important;
+    font-size: 0.75rem !important;
+    padding: 4px 8px !important;
+    transition: all 0.2s ease !important;
+}
+
+.table .btn:hover,
+table.table .btn:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Badge Styling in Tables */
+.table .badge,
+table.table .badge {
+    font-size: 0.75rem !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
+    font-weight: 500 !important;
+}
+
+/* Profile Images in Tables */
+.table .rounded-circle,
+table.table .rounded-circle {
+    border: 2px solid #e2e8f0 !important;
+    transition: all 0.2s ease !important;
+}
+
+.table tr:hover .rounded-circle,
+table.table tr:hover .rounded-circle {
+    border-color: #a0aec0 !important;
+    transform: scale(1.05) !important;
+}
+
+/* Loading State */
+.table-loading {
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.table-loading::after {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent) !important;
+    animation: shimmer 1.5s infinite !important;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* Pagination with Tables */
+.table + .d-flex {
+    margin-top: 20px !important;
+}
+
+/* Empty State */
+.table-empty {
+    text-align: center !important;
+    padding: 40px 20px !important;
+    color: #718096 !important;
+}
+
+.table-empty i {
+    font-size: 3rem !important;
+    margin-bottom: 16px !important;
+    color: #cbd5e0 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.875rem !important;
+    }
+    
+    .table thead th,
+    table.table thead th {
+        padding: 12px 8px !important;
+        font-size: 0.75rem !important;
+    }
+    
+    .table tbody td,
+    table.table tbody td {
+        padding: 10px 8px !important;
+    }
+}
+
+/* Table with Cards */
+.card .table,
+.card table.table {
+    margin-bottom: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
+
+.card .table thead th:first-child,
+.card table.table thead th:first-child {
+    border-top-left-radius: 0 !important;
+}
+
+.card .table thead th:last-child,
+.card table.table thead th:last-child {
+    border-top-right-radius: 0 !important;
+}
+
+/* Status Indicators */
+.status-indicator {
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 50% !important;
+    display: inline-block !important;
+    margin-right: 8px !important;
+}
+
+.status-active {
+    background-color: #48bb78 !important;
+}
+
+.status-inactive {
+    background-color: #ed8936 !important;
+}
+
+.status-pending {
+    background-color: #ecc94b !important;
+}
+
+.status-rejected {
+    background-color: #f56565 !important;
+}
+
+/* Sortable Headers */
+.table thead th.sortable,
+table.table thead th.sortable {
+    cursor: pointer !important;
+    user-select: none !important;
+    position: relative !important;
+}
+
+.table thead th.sortable:hover,
+table.table thead th.sortable:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%) !important;
+}
+
+.table thead th.sortable::after,
+table.table thead th.sortable::after {
+    content: '\f0dc' !important;
+    font-family: 'Font Awesome 5 Free' !important;
+    font-weight: 900 !important;
+    position: absolute !important;
+    right: 8px !important;
+    opacity: 0.5 !important;
+}
+
+.table thead th.sortable.asc::after,
+table.table thead th.sortable.asc::after {
+    content: '\f0de' !important;
+    opacity: 1 !important;
+}
+
+.table thead th.sortable.desc::after,
+table.table thead th.sortable.desc::after {
+    content: '\f0dd' !important;
+    opacity: 1 !important;
+}
+
+/* Override any theme-specific table styles */
+.main-panel .table tbody tr:hover,
+.main-panel table.table tbody tr:hover,
+.content-wrapper .table tbody tr:hover,
+.content-wrapper table.table tbody tr:hover {
+    background-color: #f1f5f9 !important;
+    color: #1a202c !important;
+}
+
+/* Bootstrap hover overrides */
+.table-hover > tbody > tr:hover > *,
+.table-hover tbody tr:hover td,
+.table-hover tbody tr:hover th {
+    --bs-table-accent-bg: #f1f5f9 !important;
+    background-color: #f1f5f9 !important;
+    color: #1a202c !important;
+}
+
+/* Direct class overrides for maximum specificity */
+.table.table-hover tbody tr:hover,
+table.table.table-hover tbody tr:hover {
+    background-color: #f1f5f9 !important;
+    color: #1a202c !important;
+}
+
+.table.table-hover tbody tr:hover td,
+table.table.table-hover tbody tr:hover td,
+.table.table-hover tbody tr:hover th,
+table.table.table-hover tbody tr:hover th {
+    background-color: #f1f5f9 !important;
+    color: #1a202c !important;
+}
+
+/* Striped Tables */
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: #f7fafc !important;
+}
+
+.table-striped tbody tr:nth-of-type(even) {
+    background-color: #ffffff !important;
+}
+
+.table-striped tbody tr:hover {
+    background-color: #edf2f7 !important;
+}
+
+/* Bordered Tables */
+.table-bordered {
+    border: 1px solid #e2e8f0;
+}
+
+.table-bordered th,
+.table-bordered td {
+    border: 1px solid #e2e8f0;
+}
+
+/* Responsive Table Container */
+.table-responsive {
+    border-radius: 8px;
+    overflow: auto;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    max-height: 600px; /* Set maximum height */
+    min-height: 300px; /* Set minimum height */
+}
+
+/* Custom Scrollbar for Tables */
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+}
+
+.table-responsive::-webkit-scrollbar-corner {
+    background: #f1f5f9;
+}
+
+/* For Firefox */
+.table-responsive {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f1f5f9;
+}
+
+/* Sticky Table Header */
+.table-responsive .table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Small Tables */
+.table-sm th,
+.table-sm td {
+    padding: 8px 10px;
+    font-size: 0.875rem;
+}
+
+/* Action Buttons in Tables */
+.table .btn {
+    margin: 2px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    transition: all 0.2s ease;
+}
+
+.table .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Badge Styling in Tables */
+.table .badge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+/* Profile Images in Tables */
+.table .rounded-circle {
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.table tr:hover .rounded-circle {
+    border-color: #a0aec0;
+    transform: scale(1.05);
+}
+
+/* Loading State */
+.table-loading {
+    position: relative;
+    overflow: hidden;
+}
+
+.table-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* Pagination with Tables */
+.table + .d-flex {
+    margin-top: 20px;
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .table {
+        background-color: #2d3748 !important;
+        color: #e2e8f0 !important;
+    }
+    
+    .table tbody tr:hover {
+        background-color: #4a5568 !important;
+        color: #f7fafc !important;
+    }
+    
+    .table thead th {
+        background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%) !important;
+    }
+}
+
+/* Custom DataTable Styling */
+.dataTables_wrapper {
+    padding: 20px;
+}
+
+.dataTables_filter input {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-left: 8px;
+}
+
+.dataTables_length select {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    margin: 0 8px;
+}
+
+/* Table Actions Toolbar */
+.table-actions {
+    background: #f8fafc;
+    padding: 16px;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 0;
+}
+
+/* Empty State */
+.table-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #718096;
+}
+
+.table-empty i {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    color: #cbd5e0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .table thead th {
+        padding: 12px 8px;
+        font-size: 0.75rem;
+    }
+    
+    .table tbody td {
+        padding: 10px 8px;
+    }
+}
+
+/* Table with Cards */
+.card .table {
+    margin-bottom: 0;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.card .table thead th:first-child {
+    border-top-left-radius: 0;
+}
+
+.card .table thead th:last-child {
+    border-top-right-radius: 0;
+}
+
+/* Status Indicators */
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.status-active {
+    background-color: #48bb78;
+}
+
+.status-inactive {
+    background-color: #ed8936;
+}
+
+.status-pending {
+    background-color: #ecc94b;
+}
+
+.status-rejected {
+    background-color: #f56565;
+}
+
+/* Sortable Headers */
+.table thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.table thead th.sortable:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%) !important;
+}
+
+.table thead th.sortable::after {
+    content: '\f0dc';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    right: 8px;
+    opacity: 0.5;
+}
+
+.table thead th.sortable.asc::after {
+    content: '\f0de';
+    opacity: 1;
+}
+
+.table thead th.sortable.desc::after {
+    content: '\f0dd';
+    opacity: 1;
+}

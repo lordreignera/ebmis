@@ -34,6 +34,52 @@
     flex: 1;
   }
   
+  /* Enhanced KPI Card Styling */
+  .audit-card {
+    border: 1px solid #e5e9f2 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+    transition: all 0.3s ease !important;
+    min-height: 140px !important;
+  }
+  
+  .audit-card:hover {
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15) !important;
+    transform: translateY(-3px) !important;
+  }
+  
+  .audit-card .card-body {
+    padding: 1.5rem !important;
+    height: 100% !important;
+  }
+  
+  .audit-card h3 {
+    font-size: 2.2rem !important;
+    font-weight: 700 !important;
+    line-height: 1.1 !important;
+  }
+  
+  .audit-card h6 {
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.75rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+  }
+  
+  .audit-card .icon {
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  
+  .audit-card .icon-item {
+    font-size: 24px !important;
+  }
+  
   /* Card titles */
   .card-title-sm h6.title {
     font-size: 0.95rem;
@@ -169,6 +215,24 @@
     height: 100% !important;
   }
   
+  /* Force equal height for all KPI cards */
+  .row .stretch-card {
+    display: flex !important;
+  }
+  
+  .row .stretch-card .card {
+    width: 100% !important;
+    min-height: 160px !important;
+  }
+  
+  .d-flex.flex-column {
+    height: 100% !important;
+  }
+  
+  .flex-grow-1 {
+    flex-grow: 1 !important;
+  }
+  
   /* Remove bottom margin from last row */
   .row:last-of-type .grid-margin:last-child {
     margin-bottom: 0 !important;
@@ -199,99 +263,102 @@
       
       <!-- Total Members Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card">
-          <div class="card-body">
-            <div class="row">
+        <div class="card audit-card h-100">
+          <div class="card-body d-flex flex-column">
+            <div class="row flex-grow-1">
               <div class="col-9">
-                <div class="d-flex align-items-center align-self-start">
-                  <h3 class="mb-0">{{ number_format($stats['total_members'] ?? 0) }}</h3>
+                <div class="d-flex align-items-center align-self-start mb-2">
+                  <h3 class="mb-0 text-primary fw-bold">{{ number_format($stats['total_members'] ?? 0) }}</h3>
                 </div>
+                <h6 class="text-dark font-weight-bold mb-2">Total Registered Members</h6>
+                <p class="text-success mb-0">
+                  <i class="mdi mdi-check-circle"></i> {{ number_format($stats['activated_members'] ?? 0) }} Activated
+                  @if($stats['pending_members'] > 0)
+                    <br><span class="text-warning"><i class="mdi mdi-clock"></i> {{ $stats['pending_members'] }} Pending</span>
+                  @endif
+                </p>
               </div>
-              <div class="col-3">
+              <div class="col-3 d-flex align-items-center justify-content-center">
                 <div class="icon icon-box-success">
                   <span class="mdi mdi-account-multiple icon-item"></span>
                 </div>
               </div>
             </div>
-            <h6 class="text-muted font-weight-normal">Total Members</h6>
-            <p class="text-success mb-0">
-              <i class="mdi mdi-check-circle"></i> {{ number_format($stats['activated_members'] ?? 0) }} Activated
-              @if($stats['pending_members'] > 0)
-                <br><span class="text-warning"><i class="mdi mdi-clock"></i> {{ $stats['pending_members'] }} Pending</span>
-              @endif
-            </p>
           </div>
         </div>
       </div>
 
       <!-- Active Loans Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card">
-          <div class="card-body">
-            <div class="row">
+        <div class="card audit-card h-100">
+          <div class="card-body d-flex flex-column">
+            <div class="row flex-grow-1">
               <div class="col-9">
-                <div class="d-flex align-items-center align-self-start">
-                  <h3 class="mb-0">{{ number_format($stats['total_active_loans'] ?? 0) }}</h3>
+                <div class="d-flex align-items-center align-self-start mb-2">
+                  <h3 class="mb-0 text-primary fw-bold">{{ number_format($stats['total_active_loans'] ?? 0) }}</h3>
                 </div>
+                <h6 class="text-dark font-weight-bold mb-2">Total Active Loans</h6>
+                <p class="text-primary mb-0">
+                  <i class="mdi mdi-currency-usd"></i> <strong>{{ number_format($stats['total_active_loans_value'] ?? 0) }} UGX</strong>
+                  <br><small class="text-muted">Portfolio Value</small>
+                </p>
               </div>
-              <div class="col-3">
+              <div class="col-3 d-flex align-items-center justify-content-center">
                 <div class="icon icon-box-primary">
                   <span class="mdi mdi-cash-multiple icon-item"></span>
                 </div>
               </div>
             </div>
-            <h6 class="text-muted font-weight-normal">Active Loans</h6>
-            <p class="text-primary mb-0">
-              <strong>UGX {{ number_format($stats['total_active_loans_value'] ?? 0) }}</strong>
-            </p>
           </div>
         </div>
       </div>
 
       <!-- Repayments Due (Overdue) Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card">
-          <div class="card-body">
-            <div class="row">
+        <div class="card audit-card h-100">
+          <div class="card-body d-flex flex-column">
+            <div class="row flex-grow-1">
               <div class="col-9">
-                <div class="d-flex align-items-center align-self-start">
-                  <h3 class="mb-0">{{ number_format($stats['repayments_due_count'] ?? 0) }}</h3>
+                <div class="d-flex align-items-center align-self-start mb-2">
+                  <h3 class="mb-0 text-danger fw-bold">{{ number_format($stats['repayments_due_count'] ?? 0) }}</h3>
                 </div>
+                <h6 class="text-dark font-weight-bold mb-2">Total Overdue Loans</h6>
+                <p class="text-danger mb-0">
+                  <i class="mdi mdi-alert-circle"></i> <strong>{{ number_format($stats['repayments_due'] ?? 0) }} UGX</strong>
+                  <br><small class="text-muted">Amount Overdue</small>
+                </p>
               </div>
-              <div class="col-3">
+              <div class="col-3 d-flex align-items-center justify-content-center">
                 <div class="icon icon-box-danger">
                   <span class="mdi mdi-alert icon-item"></span>
                 </div>
               </div>
             </div>
-            <h6 class="text-muted font-weight-normal">Overdue Repayments</h6>
-            <p class="text-danger mb-0">
-              <strong>UGX {{ number_format($stats['repayments_due'] ?? 0) }}</strong>
-            </p>
           </div>
         </div>
       </div>
 
       <!-- Repayments Due Today Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card">
-          <div class="card-body">
-            <div class="row">
+        <div class="card audit-card h-100">
+          <div class="card-body d-flex flex-column">
+            <div class="row flex-grow-1">
               <div class="col-9">
-                <div class="d-flex align-items-center align-self-start">
-                  <h3 class="mb-0">{{ number_format($stats['repayments_due_today_count'] ?? 0) }}</h3>
+                <div class="d-flex align-items-center align-self-start mb-2">
+                  <h3 class="mb-0 text-warning fw-bold">{{ number_format($stats['repayments_due_today_count'] ?? 0) }}</h3>
                 </div>
+                <h6 class="text-dark font-weight-bold mb-2">Payments Due Today</h6>
+                <p class="text-warning mb-0">
+                  <i class="mdi mdi-calendar-check"></i> <strong>{{ number_format($stats['repayments_due_today'] ?? 0) }} UGX</strong>
+                  <br><small class="text-muted">Expected Today</small>
+                </p>
               </div>
-              <div class="col-3">
+              <div class="col-3 d-flex align-items-center justify-content-center">
                 <div class="icon icon-box-warning">
                   <span class="mdi mdi-calendar-today icon-item"></span>
                 </div>
               </div>
             </div>
-            <h6 class="text-muted font-weight-normal">Due Today</h6>
-            <p class="text-warning mb-0">
-              <strong>UGX {{ number_format($stats['repayments_due_today'] ?? 0) }}</strong>
-            </p>
           </div>
         </div>
       </div>

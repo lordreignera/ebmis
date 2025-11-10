@@ -39,6 +39,11 @@ Route::middleware([
 
     Route::get('/admin/home', [\App\Http\Controllers\AdminController::class, 'home'])->name('admin.home');
     
+    // Table Demo Route (for testing enhanced tables)
+    Route::get('/admin/tables-demo', function() {
+        return view('admin.tables-demo');
+    })->name('admin.tables.demo');
+    
     // School Dashboard Route
     Route::get('/school/dashboard', [\App\Http\Controllers\School\SchoolDashboardController::class, 'index'])
         ->name('school.dashboard');
@@ -69,6 +74,199 @@ Route::middleware([
     Route::post('/schools/{school}/reject', [\App\Http\Controllers\Admin\SchoolsController::class, 'reject'])->name('schools.reject');
     Route::post('/schools/{school}/suspend', [\App\Http\Controllers\Admin\SchoolsController::class, 'suspend'])->name('schools.suspend');
     
+    // Member Management Routes
+    Route::resource('members', \App\Http\Controllers\Admin\MemberController::class);
+    Route::get('/members-pending', [\App\Http\Controllers\Admin\MemberController::class, 'pending'])->name('members.pending');
+    Route::post('/members/{member}/approve', [\App\Http\Controllers\Admin\MemberController::class, 'approve'])->name('members.approve');
+    Route::post('/members/{member}/reject', [\App\Http\Controllers\Admin\MemberController::class, 'reject'])->name('members.reject');
+    Route::post('/members/{member}/suspend', [\App\Http\Controllers\Admin\MemberController::class, 'suspend'])->name('members.suspend');
+    Route::get('/members/{member}/details', [\App\Http\Controllers\Admin\MemberController::class, 'getMemberDetails'])->name('members.details');
+    Route::post('/members/check-duplicate', [\App\Http\Controllers\Admin\MemberController::class, 'checkDuplicate'])->name('members.check-duplicate');
+    
+    // Tables Demo Route
+    Route::get('/tables-demo', function () {
+        return view('admin.tables-demo');
+    })->name('tables.demo');
+    
+    // Modern Table Demo Route
+    Route::get('/modern-table', function () {
+        return view('admin.modern-table');
+    })->name('modern.table');
+    
+    // Loan Additional Routes (Must be BEFORE resource route to avoid conflicts)
+    Route::get('/loans/esign', [\App\Http\Controllers\Admin\LoanController::class, 'esignIndex'])->name('loans.esign');
+    Route::get('/loans/approvals', [\App\Http\Controllers\Admin\LoanController::class, 'approvalsIndex'])->name('loans.approvals');
+    Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
+    Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
+    
+    // Loan Management Routes
+    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class);
+    Route::get('/loans/{loan}/details', [\App\Http\Controllers\Admin\LoanController::class, 'getLoanDetails'])->name('loans.details');
+    Route::post('/loans/{loan}/approve', [\App\Http\Controllers\Admin\LoanController::class, 'approve'])->name('loans.approve');
+    Route::post('/loans/{loan}/reject', [\App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('loans.reject');
+    
+    // Enhanced Loan Services Integration
+    Route::post('/loans/generate-schedule-service', [\App\Http\Controllers\Admin\LoanController::class, 'generateScheduleWithService'])->name('loans.generate-schedule-service');
+    Route::post('/loans/calculate-fees-service', [\App\Http\Controllers\Admin\LoanController::class, 'calculateFeesWithService'])->name('loans.calculate-fees-service');
+    Route::post('/loans/check-eligibility-service', [\App\Http\Controllers\Admin\LoanController::class, 'checkEligibilityWithService'])->name('loans.check-eligibility-service');
+    
+    // Loan Agreement & Signing Routes
+    Route::get('/loans/agreements', [\App\Http\Controllers\Admin\LoanController::class, 'agreements'])->name('loans.agreements');
+    Route::post('/loans/send-otp', [\App\Http\Controllers\Admin\LoanController::class, 'sendOTP'])->name('loans.send-otp');
+    Route::post('/loans/sign-agreement', [\App\Http\Controllers\Admin\LoanController::class, 'signAgreement'])->name('loans.sign-agreement');
+    Route::get('/loans/view-agreement/{loan}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'viewAgreement'])->name('loans.view-agreement');
+    Route::get('/loans/download-signed-agreement/{loan}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'downloadSignedAgreement'])->name('loans.download-signed-agreement');
+    
+    // Enhanced Loan Management Routes (New Services Integration)
+    Route::prefix('loan-management')->name('loan-management.')->group(function () {
+        // Loan Approval Routes
+        Route::get('/approve/{id}/{type?}', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showLoanApproval'])->name('approve.show');
+        Route::post('/approve', [\App\Http\Controllers\Admin\LoanManagementController::class, 'approveLoan'])->name('approve');
+        Route::post('/reject', [\App\Http\Controllers\Admin\LoanManagementController::class, 'rejectLoan'])->name('reject');
+        
+        // Disbursement Routes
+        Route::get('/disbursements', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showDisbursements'])->name('disbursements');
+        Route::post('/disbursements/process', [\App\Http\Controllers\Admin\LoanManagementController::class, 'processDisbursement'])->name('disbursements.process');
+        
+        // Repayment Routes
+        Route::get('/repayments', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showRepayments'])->name('repayments');
+        Route::post('/repayments/process', [\App\Http\Controllers\Admin\LoanManagementController::class, 'processRepayment'])->name('repayments.process');
+        
+        // Schedule Routes
+        Route::get('/schedule/{id}/{type?}', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showLoanSchedule'])->name('schedule.show');
+        Route::post('/schedule/generate', [\App\Http\Controllers\Admin\LoanManagementController::class, 'generateSchedule'])->name('schedule.generate');
+        
+        // Fee Management Routes
+        Route::get('/fees/{id}/{type?}', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showLoanFees'])->name('fees.show');
+        
+        // Mobile Money Routes
+        Route::post('/mobile-money/callback', [\App\Http\Controllers\Admin\LoanManagementController::class, 'mobileMoneyCallback'])->name('mobile-money.callback');
+        Route::get('/mobile-money/test-connection', [\App\Http\Controllers\Admin\LoanManagementController::class, 'testMobileMoneyConnection'])->name('mobile-money.test');
+    });
+    
+    // Disbursement Management Routes
+    Route::resource('disbursements', \App\Http\Controllers\Admin\DisbursementController::class);
+    Route::get('/disbursements/loan-details/{loan}', [\App\Http\Controllers\Admin\DisbursementController::class, 'getLoanDetails'])->name('disbursements.loan-details');
+    
+    // NEW: Enhanced Disbursement Routes for UI
+    Route::prefix('loans/disbursements')->name('loans.disbursements.')->group(function () {
+        Route::get('/pending', [\App\Http\Controllers\Admin\DisbursementController::class, 'pending'])->name('pending');
+        Route::get('/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'showApprove'])->name('approve.show');
+        Route::put('/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'approve'])->name('approve');
+        Route::post('/check-status/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'checkStatus'])->name('check-status');
+        Route::get('/export', [\App\Http\Controllers\Admin\DisbursementController::class, 'export'])->name('export');
+    });
+    
+    // NEW: Enhanced Repayment Routes for UI
+    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class);
+    Route::get('/repayments/pending', [\App\Http\Controllers\Admin\RepaymentController::class, 'pending'])->name('repayments.pending');
+    Route::get('/repayments/history', [\App\Http\Controllers\Admin\RepaymentController::class, 'history'])->name('repayments.history');
+    Route::get('/repayments/loan-details/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getLoanDetails'])->name('repayments.loan-details');
+    Route::get('/repayments/{repayment}/receipt', [\App\Http\Controllers\Admin\RepaymentController::class, 'receipt'])->name('repayments.receipt');
+    
+    // NEW: Enhanced Repayment Routes for UI
+    Route::prefix('loans/repayments')->name('loans.repayments.')->group(function () {
+        Route::get('/schedules/{id}', [\App\Http\Controllers\Admin\RepaymentController::class, 'schedules'])->name('schedules');
+        Route::post('/quick', [\App\Http\Controllers\Admin\RepaymentController::class, 'quickRepayment'])->name('quick');
+        Route::post('/store', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeRepayment'])->name('store');
+        Route::post('/partial', [\App\Http\Controllers\Admin\RepaymentController::class, 'partialPayment'])->name('partial');
+    });
+    
+    // NEW: Loan History and Statements Routes
+    Route::prefix('loans')->name('loans.')->group(function () {
+        Route::get('/{id}/history', [\App\Http\Controllers\Admin\LoanController::class, 'history'])->name('history');
+        Route::get('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructure'])->name('restructure');
+        Route::get('/{id}/statements/print', [\App\Http\Controllers\Admin\LoanController::class, 'printStatement'])->name('statements.print');
+        Route::get('/{id}/schedules/print', [\App\Http\Controllers\Admin\LoanController::class, 'printSchedule'])->name('schedules.print');
+        Route::get('/{id}/notices/print', [\App\Http\Controllers\Admin\LoanController::class, 'printNotice'])->name('notices.print');
+    });
+    
+    // Portfolio Management Routes
+    Route::get('/portfolio/running', [\App\Http\Controllers\Admin\PortfolioController::class, 'running'])->name('portfolio.running');
+    Route::get('/portfolio/pending', [\App\Http\Controllers\Admin\PortfolioController::class, 'pending'])->name('portfolio.pending');
+    Route::get('/portfolio/overdue', [\App\Http\Controllers\Admin\PortfolioController::class, 'overdue'])->name('portfolio.overdue');
+    Route::get('/portfolio/paid', [\App\Http\Controllers\Admin\PortfolioController::class, 'paid'])->name('portfolio.paid');
+    Route::get('/portfolio/bad', [\App\Http\Controllers\Admin\PortfolioController::class, 'bad'])->name('portfolio.bad');
+    Route::get('/portfolio/branch', [\App\Http\Controllers\Admin\PortfolioController::class, 'branch'])->name('portfolio.branch');
+    Route::get('/portfolio/product', [\App\Http\Controllers\Admin\PortfolioController::class, 'product'])->name('portfolio.product');
+    Route::get('/portfolio/individual', [\App\Http\Controllers\Admin\PortfolioController::class, 'individual'])->name('portfolio.individual');
+    Route::get('/portfolio/group', [\App\Http\Controllers\Admin\PortfolioController::class, 'group'])->name('portfolio.group');
+    
+    // Bulk SMS Routes
+    Route::resource('bulk-sms', \App\Http\Controllers\Admin\BulkSmsController::class);
+    
+    // Groups Management Routes
+    Route::resource('groups', \App\Http\Controllers\Admin\GroupController::class);
+    Route::post('/groups/{group}/approve', [\App\Http\Controllers\Admin\GroupController::class, 'approve'])->name('groups.approve');
+    Route::post('/groups/{group}/suspend', [\App\Http\Controllers\Admin\GroupController::class, 'suspend'])->name('groups.suspend');
+    Route::post('/groups/{group}/activate', [\App\Http\Controllers\Admin\GroupController::class, 'activate'])->name('groups.activate');
+    Route::get('/groups/{group}/members', [\App\Http\Controllers\Admin\GroupController::class, 'members'])->name('groups.members');
+    Route::post('/groups/{group}/add-member', [\App\Http\Controllers\Admin\GroupController::class, 'addMember'])->name('groups.add-member');
+    Route::delete('/groups/{group}/remove-member/{member}', [\App\Http\Controllers\Admin\GroupController::class, 'removeMember'])->name('groups.remove-member');
+    Route::get('/groups/{group}/available-members', [\App\Http\Controllers\Admin\GroupController::class, 'getAvailableMembers'])->name('groups.available-members');
+    Route::get('/groups/{group}/loan-eligibility', [\App\Http\Controllers\Admin\GroupController::class, 'checkLoanEligibility'])->name('groups.loan-eligibility');
+    
+    // Fee Management Routes
+    Route::resource('fees', \App\Http\Controllers\Admin\FeeController::class);
+    Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->name('fees.mark-paid');
+    Route::get('/fees/{fee}/receipt', [\App\Http\Controllers\Admin\FeeController::class, 'receipt'])->name('fees.receipt');
+    Route::get('/fees/{fee}/receipt-modal', [\App\Http\Controllers\Admin\FeeController::class, 'getReceiptModal'])->name('fees.receipt-modal');
+    Route::get('/members/{member}/quick-info', [\App\Http\Controllers\Admin\MemberController::class, 'quickInfo'])->name('members.quick-info');
+    Route::get('/members/{member}/loans', [\App\Http\Controllers\Admin\MemberController::class, 'getLoans'])->name('members.loans');
+    Route::get('/members/{member}/recent-fees', [\App\Http\Controllers\Admin\MemberController::class, 'getRecentFees'])->name('members.recent-fees');
+    Route::get('/fee-types/{feeType}/info', [\App\Http\Controllers\Admin\FeeController::class, 'getFeeTypeInfo'])->name('fee-types.info');
+    
+    // Savings Management Routes
+    Route::resource('savings', \App\Http\Controllers\Admin\SavingController::class);
+    Route::get('/savings/pending', [\App\Http\Controllers\Admin\SavingController::class, 'pending'])->name('savings.pending');
+    Route::get('/savings/approved', [\App\Http\Controllers\Admin\SavingController::class, 'approved'])->name('savings.approved');
+    Route::post('/savings/{saving}/approve', [\App\Http\Controllers\Admin\SavingController::class, 'approve'])->name('savings.approve');
+    Route::post('/savings/{saving}/reject', [\App\Http\Controllers\Admin\SavingController::class, 'reject'])->name('savings.reject');
+    
+    // Investment Management Routes
+    Route::prefix('investments')->name('investments.')->group(function () {
+        // Investment Dashboard
+        Route::get('/', [\App\Http\Controllers\Admin\InvestmentController::class, 'index'])->name('index');
+        
+        // Investor Management
+        Route::get('/investors', [\App\Http\Controllers\Admin\InvestmentController::class, 'investors'])->name('investors');
+        Route::get('/investors/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestor'])->name('create-investor');
+        Route::post('/investors', [\App\Http\Controllers\Admin\InvestmentController::class, 'storeInvestor'])->name('store-investor');
+        Route::get('/investors/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'showInvestor'])->name('show-investor');
+        Route::get('/investors/{investor}/edit', [\App\Http\Controllers\Admin\InvestmentController::class, 'editInvestor'])->name('edit-investor');
+        Route::put('/investors/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestor'])->name('update-investor');
+        Route::post('/investors/{investor}/activate', [\App\Http\Controllers\Admin\InvestmentController::class, 'activateInvestor'])->name('activate-investor');
+        Route::post('/investors/{investor}/deactivate', [\App\Http\Controllers\Admin\InvestmentController::class, 'deactivateInvestor'])->name('deactivate-investor');
+        
+        // Investment Management
+        Route::get('/investments/{investor}/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestment'])->name('create-investment');
+        Route::post('/investments/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'storeInvestment'])->name('store-investment');
+        Route::get('/investments/{investment}/show', [\App\Http\Controllers\Admin\InvestmentController::class, 'showInvestment'])->name('show-investment');
+        Route::get('/investments/{investment}/edit', [\App\Http\Controllers\Admin\InvestmentController::class, 'editInvestment'])->name('edit-investment');
+        Route::put('/investments/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestment'])->name('update-investment');
+        Route::delete('/investments/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'destroyInvestment'])->name('destroy');
+        
+        // Investment Calculations
+        Route::post('/calculate-returns', [\App\Http\Controllers\Admin\InvestmentController::class, 'calculateReturns'])->name('calculate-returns');
+        
+        // API Routes for dropdowns
+        Route::get('/api/investor-portfolio/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'getInvestorPortfolio'])->name('api.investor-portfolio');
+        Route::get('/api/investment-statistics', [\App\Http\Controllers\Admin\InvestmentController::class, 'getInvestmentStatistics'])->name('api.investment-statistics');
+    });
+    
+    // Location API Routes
+    Route::get('/api/states', function(\Illuminate\Http\Request $request) {
+        $countryId = $request->get('country_id');
+        $states = \App\Models\State::where('country_id', $countryId)->orderBy('name')->get(['id', 'name']);
+        return response()->json($states);
+    })->name('api.states');
+    
+    Route::get('/api/cities', function(\Illuminate\Http\Request $request) {
+        $stateId = $request->get('state_id');
+        $cities = \App\Models\City::where('state_id', $stateId)->orderBy('name')->get(['id', 'name']);
+        return response()->json($cities);
+    })->name('api.cities');
+    
     // User Management
     Route::get('/users', [\App\Http\Controllers\Admin\AccessControlController::class, 'users'])->name('users.index');
     Route::get('/users/create', [\App\Http\Controllers\Admin\AccessControlController::class, 'createUser'])->name('users.create');
@@ -90,6 +288,18 @@ Route::middleware([
     Route::get('/permissions/create', [\App\Http\Controllers\Admin\AccessControlController::class, 'createPermission'])->name('permissions.create');
     Route::post('/permissions', [\App\Http\Controllers\Admin\AccessControlController::class, 'storePermission'])->name('permissions.store');
     Route::delete('/permissions/{permission}', [\App\Http\Controllers\Admin\AccessControlController::class, 'deletePermission'])->name('permissions.delete');
+    
+    // Reports Routes
+    Route::get('/reports/pending-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'pendingLoans'])->name('reports.pending-loans');
+    Route::get('/reports/disbursed-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'disbursedLoans'])->name('reports.disbursed-loans');
+    Route::get('/reports/rejected-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'rejectedLoans'])->name('reports.rejected-loans');
+    Route::get('/reports/loans-due', [\App\Http\Controllers\Admin\ReportsController::class, 'loansDue'])->name('reports.loans-due');
+    Route::get('/reports/paid-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'paidLoans'])->name('reports.paid-loans');
+    Route::get('/reports/loan-repayments', [\App\Http\Controllers\Admin\ReportsController::class, 'loanRepayments'])->name('reports.loan-repayments');
+    Route::get('/reports/payment-transactions', [\App\Http\Controllers\Admin\ReportsController::class, 'paymentTransactions'])->name('reports.payment-transactions');
+    Route::get('/reports/loan-interest', [\App\Http\Controllers\Admin\ReportsController::class, 'loanInterest'])->name('reports.loan-interest');
+    Route::get('/reports/cash-securities', [\App\Http\Controllers\Admin\ReportsController::class, 'cashSecurities'])->name('reports.cash-securities');
+    Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
 });
 
 // School Dashboard Routes (For approved schools)

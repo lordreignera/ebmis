@@ -1,0 +1,16 @@
+{
+  "name": "EBIMS - School Banking System",
+  "short_name": "EBIMS",
+  "description": "School Banking & Investment Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4fd1c7",
+  "icons": [
+    {
+      "src": "/admin/assets/images/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

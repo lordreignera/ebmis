@@ -16,7 +16,10 @@ return new class extends Migration
             $table->unsignedBigInteger('sms_id');
             $table->unsignedBigInteger('member_id');
             $table->string('phone', 30);
-            $table->string('statusCode', 100);
+            $table->text('message');
+            $table->enum('status', ['pending', 'sent', 'failed'])->default('pending');
+            $table->timestamp('sent_at')->nullable();
+            $table->text('error_message')->nullable();
             $table->timestamps();
             
             $table->foreign('sms_id')->references('id')->on('bulk_sms')->onDelete('cascade');

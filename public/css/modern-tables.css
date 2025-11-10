@@ -1,0 +1,361 @@
+/* Modern Clean Table Styles - Matching the design in the second image */
+
+/* Base Table Container */
+.table-container {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+/* Table Header with Search and Controls */
+.table-header {
+    background: #f8fafc;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.table-search {
+    flex: 1;
+    min-width: 200px;
+    max-width: 300px;
+}
+
+.table-search input {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 12px;
+    width: 100%;
+    font-size: 14px;
+    background: #ffffff;
+}
+
+.table-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.table-show-entries {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.table-show-entries select {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 14px;
+}
+
+/* Clean Table Styling */
+.modern-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    font-size: 14px;
+}
+
+.modern-table thead th {
+    background: #f9fafb;
+    color: #374151;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.modern-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #111827;
+    vertical-align: middle;
+}
+
+.modern-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.modern-table tbody tr:hover {
+    background-color: #f9fafb !important;
+}
+
+.modern-table tbody tr:hover td {
+    background-color: transparent !important;
+}
+
+/* Account Number Styling */
+.account-number {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: #6366f1;
+    background: #f0f9ff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #e0e7ff;
+}
+
+/* Status Badges */
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.status-verified {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.status-not-verified {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.status-individual {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #dbeafe;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-modern {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-view {
+    background: #8b5cf6;
+    color: white;
+}
+
+.btn-view:hover {
+    background: #7c3aed;
+}
+
+.btn-delete {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-delete:hover {
+    background: #dc2626;
+}
+
+/* Modern Pagination */
+.modern-pagination {
+    padding: 16px 20px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.pagination-info {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.pagination-controls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.pagination-btn {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #374151;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pagination-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+    color: #111827;
+    text-decoration: none;
+}
+
+.pagination-btn.active {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+    color: white;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-btn:disabled:hover {
+    background: #ffffff;
+    border-color: #d1d5db;
+    color: #374151;
+}
+
+/* Numbers in pagination */
+.pagination-numbers {
+    display: flex;
+    gap: 2px;
+}
+
+.pagination-numbers .pagination-btn {
+    min-width: 40px;
+    justify-content: center;
+}
+
+/* Export buttons */
+.export-btn {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #374151;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.export-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .table-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .table-search {
+        max-width: none;
+    }
+    
+    .modern-pagination {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+    }
+    
+    .pagination-controls {
+        justify-content: center;
+    }
+    
+    .modern-table {
+        font-size: 12px;
+    }
+    
+    .modern-table thead th,
+    .modern-table tbody td {
+        padding: 8px 12px;
+    }
+}
+
+/* Loading State */
+.table-loading {
+    position: relative;
+    opacity: 0.7;
+}
+
+.table-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Fix for Bootstrap conflicts */
+.table-responsive {
+    border: none;
+    box-shadow: none;
+}
+
+.table-responsive .table {
+    margin-bottom: 0;
+}
+
+/* Override Bootstrap table hover */
+.table-hover > tbody > tr:hover > * {
+    --bs-table-accent-bg: #f9fafb !important;
+    color: var(--bs-table-color) !important;
+}
+
+/* Ensure text stays readable on hover */
+.modern-table tbody tr:hover,
+.modern-table tbody tr:hover td,
+.modern-table tbody tr:hover * {
+    color: #111827 !important;
+}
+
+.modern-table tbody tr:hover .status-badge {
+    color: inherit !important;
+}
+
+.modern-table tbody tr:hover .status-verified {
+    color: #166534 !important;
+}
+
+.modern-table tbody tr:hover .status-not-verified {
+    color: #dc2626 !important;
+}
+
+.modern-table tbody tr:hover .status-individual {
+    color: #1d4ed8 !important;
+}
+
+.modern-table tbody tr:hover .account-number {
+    color: #6366f1 !important;
+}

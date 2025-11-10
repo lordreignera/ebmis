@@ -103,6 +103,74 @@ class User extends Authenticatable
     }
 
     // ===============================================================
+    // BIMS RELATIONSHIPS
+    // ===============================================================
+
+    /**
+     * Get all members added by this user
+     */
+    public function addedMembers()
+    {
+        return $this->hasMany(Member::class, 'added_by');
+    }
+
+    /**
+     * Get all loans added by this user
+     */
+    public function addedLoans()
+    {
+        return $this->hasMany(Loan::class, 'added_by');
+    }
+
+    /**
+     * Get all loans assigned to this user
+     */
+    public function assignedLoans()
+    {
+        return $this->hasMany(Loan::class, 'assigned_to');
+    }
+
+    /**
+     * Get all repayments added by this user
+     */
+    public function addedRepayments()
+    {
+        return $this->hasMany(Repayment::class, 'added_by');
+    }
+
+    /**
+     * Get all savings added by this user
+     */
+    public function addedSavings()
+    {
+        return $this->hasMany(Saving::class, 'added_by');
+    }
+
+    /**
+     * Get all products added by this user
+     */
+    public function addedProducts()
+    {
+        return $this->hasMany(Product::class, 'added_by');
+    }
+
+    /**
+     * Get all groups added by this user
+     */
+    public function addedGroups()
+    {
+        return $this->hasMany(Group::class, 'added_by');
+    }
+
+    /**
+     * Get all disbursements added by this user
+     */
+    public function addedDisbursements()
+    {
+        return $this->hasMany(Disbursement::class, 'added_by');
+    }
+
+    // ===============================================================
     // SCOPES
     // ===============================================================
     
