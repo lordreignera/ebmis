@@ -19,7 +19,7 @@ class MobileMoneyService
     /**
      * Disburse money via mobile money
      */
-    public function disburse(string $phone, float $amount, string $network = null): array
+    public function disburse(string $phone, float $amount, ?string $network = null): array
     {
         try {
             // Format phone number
@@ -103,7 +103,7 @@ class MobileMoneyService
     /**
      * Send money to a mobile money account (disbursement)
      */
-    public function sendMoney(string $recipientName, string $phone, float $amount, string $description = null): array
+    public function sendMoney(string $recipientName, string $phone, float $amount, ?string $description = null): array
     {
         try {
             // Format phone number
@@ -189,7 +189,7 @@ class MobileMoneyService
     /**
      * Collect money from a mobile money account (repayment collection)
      */
-    public function collectMoney(string $payerName, string $phone, float $amount, string $description = null): array
+    public function collectMoney(string $payerName, string $phone, float $amount, ?string $description = null): array
     {
         try {
             // Format phone number

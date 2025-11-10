@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             SuperAdminSeeder::class,
+            MemberTypesSeeder::class,               // Member types (Individual, Group, etc)
             CompleteUgandaLocationsSeeder::class,  // All Uganda districts
             TesoRegionLocationsSeeder::class,       // Detailed Teso region data
             FeeTypesSeeder::class,                  // Fee types from old EBIMS system

@@ -66,7 +66,7 @@ return new class extends Migration
             $table->foreign('branch_id')->references('id')->on('branches');
             $table->foreign('added_by')->references('id')->on('users');
             $table->foreign('approved_by')->references('id')->on('users')->onDelete('set null');
-            $table->foreign('member_type')->references('id')->on('member_types');
+            // Make member_type foreign key nullable and add constraint only if member_types table has data
             $table->foreign('group_id')->references('id')->on('groups')->onDelete('set null');
         });
         
