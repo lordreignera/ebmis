@@ -300,6 +300,45 @@ Route::middleware([
     Route::get('/reports/loan-interest', [\App\Http\Controllers\Admin\ReportsController::class, 'loanInterest'])->name('reports.loan-interest');
     Route::get('/reports/cash-securities', [\App\Http\Controllers\Admin\ReportsController::class, 'cashSecurities'])->name('reports.cash-securities');
     Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
+    
+    // System Settings Routes
+    Route::prefix('settings')->name('settings.')->group(function () {
+        // Settings Dashboard
+        Route::get('/', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'dashboard'])->name('dashboard');
+        
+        // Organization Settings
+        Route::get('/agencies', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'agencies'])->name('agencies');
+        Route::get('/branches', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'branches'])->name('branches');
+        Route::get('/company-info', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'companyInfo'])->name('company-info');
+        
+        // Product Settings
+        Route::get('/loan-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'loanProducts'])->name('loan-products');
+        Route::get('/savings-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'savingsProducts'])->name('savings-products');
+        Route::get('/fees-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'feesProducts'])->name('fees-products');
+        Route::get('/product-categories', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'productCategories'])->name('product-categories');
+        
+        // Account Settings
+        Route::get('/system-accounts', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'systemAccounts'])->name('system-accounts');
+        Route::get('/chart-accounts', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'chartAccounts'])->name('chart-accounts');
+        Route::get('/account-types', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'accountTypes'])->name('account-types');
+        
+        // Security & Codes
+        Route::get('/security-codes', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'securityCodes'])->name('security-codes');
+        Route::get('/transaction-codes', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'transactionCodes'])->name('transaction-codes');
+        Route::get('/audit-trail', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'auditTrail'])->name('audit-trail');
+        
+        // System Configuration
+        Route::get('/general-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'generalConfig'])->name('general-config');
+        Route::get('/email-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'emailConfig'])->name('email-config');
+        Route::get('/sms-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'smsConfig'])->name('sms-config');
+        Route::get('/notification-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'notificationConfig'])->name('notification-config');
+        
+        // Maintenance & Tools
+        Route::get('/backup', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'backup'])->name('backup');
+        Route::get('/database-maintenance', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'databaseMaintenance'])->name('database-maintenance');
+        Route::get('/system-logs', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'systemLogs'])->name('system-logs');
+        Route::get('/data-import', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'dataImport'])->name('data-import');
+    });
 });
 
 // School Dashboard Routes (For approved schools)

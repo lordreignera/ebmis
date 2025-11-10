@@ -608,5 +608,128 @@
 @endif
 <!-- END ADMIN ONLY: ACCESS CONTROL -->
 
+@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+    <!-- SYSTEM SETTINGS SECTION - ADMIN ONLY -->
+    <li class="nav-item nav-category">
+      <span class="nav-link">SYSTEM SETTINGS</span>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" href="{{ route('admin.settings.dashboard') }}">
+        <span class="menu-icon">
+          <i class="mdi mdi-settings"></i>
+        </span>
+        <span class="menu-title">Settings Dashboard</span>
+      </a>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#organization-settings" aria-expanded="false" aria-controls="organization-settings">
+        <span class="menu-icon">
+          <i class="mdi mdi-office-building"></i>
+        </span>
+        <span class="menu-title">Organization</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="organization-settings">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.agencies') }}">Agency Management</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.branches') }}">Branch Management</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.company-info') }}">Company Information</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#product-settings" aria-expanded="false" aria-controls="product-settings">
+        <span class="menu-icon">
+          <i class="mdi mdi-package-variant"></i>
+        </span>
+        <span class="menu-title">Product Settings</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="product-settings">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.loan-products') }}">Loan Products</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.savings-products') }}">Savings Products</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.fees-products') }}">Fees & Products</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.product-categories') }}">Product Categories</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#account-settings" aria-expanded="false" aria-controls="account-settings">
+        <span class="menu-icon">
+          <i class="mdi mdi-bank"></i>
+        </span>
+        <span class="menu-title">Account Settings</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="account-settings">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.system-accounts') }}">System Accounts</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.chart-accounts') }}">Chart of Accounts</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.account-types') }}">Account Types</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#security-settings" aria-expanded="false" aria-controls="security-settings">
+        <span class="menu-icon">
+          <i class="mdi mdi-security"></i>
+        </span>
+        <span class="menu-title">Security & Codes</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="security-settings">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.security-codes') }}">Security Codes</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.transaction-codes') }}">Transaction Codes</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.audit-trail') }}">Audit Trail Settings</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#system-config" aria-expanded="false" aria-controls="system-config">
+        <span class="menu-icon">
+          <i class="mdi mdi-wrench"></i>
+        </span>
+        <span class="menu-title">System Configuration</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="system-config">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.general-config') }}">General Settings</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.email-config') }}">Email Configuration</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.sms-config') }}">SMS Configuration</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.notification-config') }}">Notification Settings</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#maintenance-tools" aria-expanded="false" aria-controls="maintenance-tools">
+        <span class="menu-icon">
+          <i class="mdi mdi-tools"></i>
+        </span>
+        <span class="menu-title">Maintenance & Tools</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="maintenance-tools">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.backup') }}">Backup & Restore</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.database-maintenance') }}">Database Maintenance</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.system-logs') }}">System Logs</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.data-import') }}">Data Import/Export</a></li>
+        </ul>
+      </div>
+    </li>
+
+@endif
+<!-- END ADMIN ONLY: SYSTEM SETTINGS -->
+
   </ul>
 </nav>

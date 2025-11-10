@@ -20,8 +20,7 @@ return new class extends Migration
             $table->string('actual_value', 20);
             $table->unsignedBigInteger('added_by');
             $table->timestamps();
-            
-            $table->foreign('loan_id')->references('id')->on('loans')->onDelete('cascade');
+            // Note: Foreign key for loan_id will be added later after personal_loans table is created
             $table->foreign('added_by')->references('id')->on('users');
         });
     }

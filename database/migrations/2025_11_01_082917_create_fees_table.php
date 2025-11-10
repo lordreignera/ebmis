@@ -28,7 +28,7 @@ return new class extends Migration
             $table->timestamps();
             
             $table->foreign('member_id')->references('id')->on('members');
-            $table->foreign('loan_id')->references('id')->on('loans')->onDelete('cascade');
+            // Note: loan_id foreign key will be added later after personal_loans table is created
             $table->foreign('added_by')->references('id')->on('users');
         });
     }
