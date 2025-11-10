@@ -1,4 +1,12 @@
 <nav class="sidebar sidebar-offcanvas" id="sidebar">
+  <div class="sidebar-brand-wrapper d-flex align-items-center justify-content-center">
+    <a class="sidebar-brand brand-logo" href="{{ url('admin/home') }}">
+      <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS" style="max-height: 50px; width: auto;" />
+    </a>
+    <a class="sidebar-brand brand-logo-mini" href="{{ url('admin/home') }}">
+      <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS" style="max-height: 40px; width: auto;" />
+    </a>
+  </div>
   
   <ul class="nav">
     <li class="nav-item nav-category">

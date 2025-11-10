@@ -43,8 +43,9 @@
                 <div class="card-body">
                     <div class="d-flex align-items-center">
                         <div class="flex-grow-1">
-                            <p class="text-uppercase fw-medium text-muted mb-0">Approved Loans</p>
+                            <p class="text-uppercase fw-medium text-muted mb-0">Awaiting Disbursement</p>
                             <h4 class="fs-22 fw-semibold ff-secondary mb-0">{{ $stats['approved_loans'] }}</h4>
+                            <small class="text-muted">Approved & ready</small>
                         </div>
                         <div class="avatar-sm flex-shrink-0">
                             <span class="avatar-title bg-success-subtle rounded fs-3">
@@ -98,22 +99,16 @@
                     <div class="row align-items-center">
                         <div class="col">
                             <h5 class="card-title mb-0">Loans Pending Approval</h5>
+                            <p class="text-muted small mb-0">Review and approve loan applications. Approved loans will move to disbursement list.</p>
                         </div>
                         <div class="col-auto">
                             <div class="d-flex gap-2">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="refreshData()">
                                     <i class="mdi mdi-refresh me-1"></i> Refresh
                                 </button>
-                                <div class="dropdown">
-                                    <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                        <i class="mdi mdi-filter me-1"></i> Filter
-                                    </button>
-                                    <div class="dropdown-menu">
-                                        <a class="dropdown-item" href="{{ route('admin.loans.approvals') }}">All Loans</a>
-                                        <a class="dropdown-item" href="{{ route('admin.loans.approvals', ['status' => 'pending']) }}">Pending Only</a>
-                                        <a class="dropdown-item" href="{{ route('admin.loans.approvals', ['status' => 'approved']) }}">Approved Only</a>
-                                    </div>
-                                </div>
+                                <a href="{{ route('admin.disbursements.index') }}" class="btn btn-info btn-sm">
+                                    <i class="mdi mdi-cash-multiple me-1"></i> View Approved Loans
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -128,20 +123,13 @@
                                 <i class="ri-search-line search-icon"></i>
                             </div>
                         </div>
-                        <div class="col-md-2">
-                            <select class="form-select" name="status" id="statusFilter">
-                                <option value="">All Status</option>
-                                <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
-                                <option value="approved" {{ request('status') == 'approved' ? 'selected' : '' }}>Approved</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <select class="form-select" name="branch_id" id="branchFilter">
                                 <option value="">All Branches</option>
                                 {{-- Add branch options here --}}
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <button type="button" class="btn btn-secondary w-100" onclick="clearFilters()">
                                 <i class="mdi mdi-filter-off me-1"></i> Clear Filters
                             </button>
@@ -232,45 +220,28 @@
                                     <td>{{ $loan->interest }}%</td>
                                     <td>{{ $loan->period ?? 'N/A' }}</td>
                                     <td>
-                                        @if($loan->status == 0)
-                                            <span class="status-badge status-pending">
-                                                <i class="mdi mdi-clock me-1"></i>Pending
-                                            </span>
-                                        @elseif($loan->status == 1)
-                                            <span class="status-badge status-verified">
-                                                <i class="mdi mdi-check-circle me-1"></i>Approved
-                                            </span>
-                                        @else
-                                            <span class="status-badge status-not-verified">
-                                                Status: {{ $loan->status }}
-                                            </span>
-                                        @endif
+                                        <span class="status-badge status-pending">
+                                            <i class="mdi mdi-clock me-1"></i>Pending Approval
+                                        </span>
                                     </td>
                                     <td>{{ \Carbon\Carbon::parse($loan->datecreated)->format('M d, Y') }}</td>
                                     <td>
                                         <div class="action-buttons">
                                             <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $loan->loan_type }}" 
-                                               class="btn-modern btn-view" title="View Details">
+                                               class="btn-modern btn-view" title="Review & View Details">
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
-                                            @if($loan->status == 0)
                                             <button class="btn-modern btn-process" 
                                                     onclick="approveLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
-                                                    title="Approve">
+                                                    title="Approve Loan">
                                                 <i class="mdi mdi-check-circle"></i>
                                             </button>
                                             <button class="btn-modern btn-delete" 
                                                     onclick="rejectLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
-                                                    title="Reject">
+                                                    title="Reject Loan">
                                                 <i class="mdi mdi-close-circle"></i>
                                             </button>
-                                            @elseif($loan->status == 1)
-                                            <a href="{{ route('admin.loans.disbursements.approve.show', $loan->id) }}" 
-                                               class="btn-modern btn-process" title="Process Disbursement">
-                                                <i class="mdi mdi-cash"></i>
-                                            </a>
-                                            @endif
-                                            <a href="{{ route('admin.loans.edit', $loan->id) }}" 
+                                            <a href="{{ route('admin.loans.edit', $loan->id) }}?type={{ $loan->loan_type }}" 
                                                class="btn-modern btn-warning" title="Edit">
                                                 <i class="mdi mdi-pencil"></i>
                                             </a>
@@ -431,12 +402,10 @@ function debounce(func, wait) {
 
 function filterLoans() {
     const search = $('#searchInput').val();
-    const status = $('#statusFilter').val();
     const branch = $('#branchFilter').val();
     
     const params = new URLSearchParams();
     if (search) params.append('search', search);
-    if (status) params.append('status', status);
     if (branch) params.append('branch_id', branch);
     
     window.location.href = window.location.pathname + '?' + params.toString();
@@ -444,7 +413,6 @@ function filterLoans() {
 
 function clearFilters() {
     $('#searchInput').val('');
-    $('#statusFilter').val('');
     $('#branchFilter').val('');
     window.location.href = window.location.pathname;
 }

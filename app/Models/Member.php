@@ -449,13 +449,18 @@ class Member extends Model
      */
     public function getStatusBadgeAttribute(): string
     {
-        return match($this->status) {
-            'pending' => 'bg-warning text-dark',
-            'approved' => 'bg-success',
-            'suspended' => 'bg-secondary',
-            'rejected' => 'bg-danger',
-            default => 'bg-dark'
-        };
+        switch ($this->status) {
+            case 'pending':
+                return 'bg-warning text-dark';
+            case 'approved':
+                return 'bg-success';
+            case 'suspended':
+                return 'bg-secondary';
+            case 'rejected':
+                return 'bg-danger';
+            default:
+                return 'bg-dark';
+        }
     }
 
     /**
@@ -463,13 +468,18 @@ class Member extends Model
      */
     public function getStatusDisplayAttribute(): string
     {
-        return match($this->status) {
-            'pending' => 'Pending Approval',
-            'approved' => 'Approved',
-            'suspended' => 'Suspended',
-            'rejected' => 'Rejected',
-            default => 'Unknown'
-        };
+        switch ($this->status) {
+            case 'pending':
+                return 'Pending Approval';
+            case 'approved':
+                return 'Approved';
+            case 'suspended':
+                return 'Suspended';
+            case 'rejected':
+                return 'Rejected';
+            default:
+                return 'Unknown';
+        }
     }
 
     /**

@@ -115,7 +115,9 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo">{{ config('app.name', 'EBIMS') }}</div>
+        <div style="text-align: center; margin-bottom: 10px;">
+            <img src="{{ public_path('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS Logo" style="max-width: 150px; height: auto;">
+        </div>
         <div class="subtitle">Electronic Banking and Information Management System</div>
         @if($loan->branch)
             <div class="subtitle">{{ $loan->branch->name }} Branch</div>

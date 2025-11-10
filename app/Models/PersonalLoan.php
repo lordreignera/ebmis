@@ -23,6 +23,10 @@ class PersonalLoan extends Model
         'verified',
         'branch_id',
         'added_by',
+        'approved_by',
+        'date_approved',
+        'rejected_by',
+        'date_rejected',
         'trading_file',
         'bank_file',
         'business_file',
@@ -52,6 +56,8 @@ class PersonalLoan extends Model
         'installment' => 'decimal:2',
         'interest' => 'decimal:2',
         'date_closed' => 'datetime',
+        'date_approved' => 'datetime',
+        'date_rejected' => 'datetime',
         'datecreated' => 'datetime',
         'is_esign' => 'boolean',
         'otp_expires_at' => 'datetime',
@@ -98,7 +104,7 @@ class PersonalLoan extends Model
      */
     public function repayments()
     {
-        return $this->hasMany(Repayment::class, 'loan_id')->where('loan_type', '1');
+        return $this->hasMany(Repayment::class, 'loan_id');
     }
 
     /**
@@ -107,6 +113,46 @@ class PersonalLoan extends Model
     public function schedules()
     {
         return $this->hasMany(\App\Models\LoanSchedule::class, 'loan_id');
+    }
+
+    /**
+     * Get the user who added this loan
+     */
+    public function addedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'added_by');
+    }
+
+    /**
+     * Get the user who approved this loan
+     */
+    public function approvedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'approved_by');
+    }
+
+    /**
+     * Get the user assigned to this loan
+     */
+    public function assignedTo()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'assigned_to');
+    }
+
+    /**
+     * Get all guarantors for this loan
+     */
+    public function guarantors()
+    {
+        return $this->hasMany(\App\Models\Guarantor::class, 'loan_id');
+    }
+
+    /**
+     * Get all charges for this loan
+     */
+    public function charges()
+    {
+        return $this->hasMany(\App\Models\LoanCharge::class, 'loan_id');
     }
 
     /**

@@ -23,18 +23,45 @@ class Loan extends Model
         'verified',
         'branch_id',
         'added_by',
+        'assigned_to',
+        'approved_by',
+        'date_approved',
+        'rejected_by',
+        'date_rejected',
         'comments',
         'charge_type',
         'date_closed',
+        'trading_file',
+        'bank_file',
+        'business_file',
+        'repay_strategy',
+        'repay_name',
+        'repay_address',
+        'sign_code',
+        'OLoanID',
+        'Rcomments',
+        'restructured',
+        'is_esign',
+        'otp_code',
+        'otp_expires_at',
+        'signature_status',
+        'signature_date',
+        'signature_comments',
     ];
 
     protected $casts = [
         'verified' => 'integer',
+        'restructured' => 'integer',
         'principal' => 'decimal:2',
         'installment' => 'decimal:2',
         'interest' => 'decimal:2',
         'date_closed' => 'datetime',
+        'date_approved' => 'datetime',
+        'date_rejected' => 'datetime',
         'datecreated' => 'datetime',
+        'is_esign' => 'boolean',
+        'otp_expires_at' => 'datetime',
+        'signature_date' => 'datetime',
     ];
 
     public $timestamps = false;
@@ -69,6 +96,54 @@ class Loan extends Model
     public function addedBy()
     {
         return $this->belongsTo(User::class, 'added_by');
+    }
+
+    /**
+     * Get the user assigned to this loan
+     */
+    public function assignedTo()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * Get the user who approved this loan
+     */
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /**
+     * Get all guarantors for this loan
+     */
+    public function guarantors()
+    {
+        return $this->hasMany(Guarantor::class, 'loan_id');
+    }
+
+    /**
+     * Get all disbursements for this loan
+     */
+    public function disbursements()
+    {
+        return $this->hasMany(Disbursement::class, 'loan_id');
+    }
+
+    /**
+     * Get all charges for this loan
+     */
+    public function charges()
+    {
+        return $this->hasMany(LoanCharge::class, 'loan_id');
+    }
+
+    /**
+     * Get all attachments for this loan
+     */
+    public function attachments()
+    {
+        return $this->hasMany(LoanAttachment::class, 'loan_id');
     }
 
     /**

@@ -96,11 +96,16 @@ Route::middleware([
     // Loan Additional Routes (Must be BEFORE resource route to avoid conflicts)
     Route::get('/loans/esign', [\App\Http\Controllers\Admin\LoanController::class, 'esignIndex'])->name('loans.esign');
     Route::get('/loans/approvals', [\App\Http\Controllers\Admin\LoanController::class, 'approvalsIndex'])->name('loans.approvals');
+    Route::get('/loans/export', [\App\Http\Controllers\Admin\LoanController::class, 'export'])->name('loans.export');
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
     
+    // Loan Show Route (explicit to handle type parameter)
+    Route::get('/loans/{id}', [\App\Http\Controllers\Admin\LoanController::class, 'show'])->name('loans.show');
+    Route::get('/loans/{id}/edit', [\App\Http\Controllers\Admin\LoanController::class, 'edit'])->name('loans.edit');
+    
     // Loan Management Routes
-    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class);
+    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class)->except(['show', 'edit']);
     Route::get('/loans/{loan}/details', [\App\Http\Controllers\Admin\LoanController::class, 'getLoanDetails'])->name('loans.details');
     Route::post('/loans/{loan}/approve', [\App\Http\Controllers\Admin\LoanController::class, 'approve'])->name('loans.approve');
     Route::post('/loans/{loan}/reject', [\App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('loans.reject');
@@ -114,8 +119,8 @@ Route::middleware([
     Route::get('/loans/agreements', [\App\Http\Controllers\Admin\LoanController::class, 'agreements'])->name('loans.agreements');
     Route::post('/loans/send-otp', [\App\Http\Controllers\Admin\LoanController::class, 'sendOTP'])->name('loans.send-otp');
     Route::post('/loans/sign-agreement', [\App\Http\Controllers\Admin\LoanController::class, 'signAgreement'])->name('loans.sign-agreement');
-    Route::get('/loans/view-agreement/{loan}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'viewAgreement'])->name('loans.view-agreement');
-    Route::get('/loans/download-signed-agreement/{loan}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'downloadSignedAgreement'])->name('loans.download-signed-agreement');
+    Route::get('/loans/view-agreement/{id}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'viewAgreement'])->name('loans.view-agreement');
+    Route::get('/loans/download-signed-agreement/{id}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'downloadSignedAgreement'])->name('loans.download-signed-agreement');
     
     // Enhanced Loan Management Routes (New Services Integration)
     Route::prefix('loan-management')->name('loan-management.')->group(function () {

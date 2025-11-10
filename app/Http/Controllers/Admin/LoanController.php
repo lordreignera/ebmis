@@ -404,54 +404,101 @@ class LoanController extends Controller
     /**
      * Display the specified loan
      */
-    public function show(Loan $loan)
+    public function show(Request $request, $id)
     {
-        $loan->load([
-            'member.country',
-            'member.branch',
-            'product',
-            'branch',
-            'addedBy',
-            'assignedTo',
-            'repayments.addedBy',
-            'disbursements.addedBy',
-            'schedules',
-            'guarantors.member',
-            'charges',
-            'attachments'
-        ]);
+        $loanType = $request->query('type', 'personal');
+        
+        // Get loan based on type
+        if ($loanType === 'group') {
+            $loan = GroupLoan::with([
+                'group.members',
+                'product.charges',
+                'branch',
+                'addedBy',
+                'assignedTo',
+                'approvedBy',
+                'schedules',
+                'guarantors.member',
+                'loanMembers.member',
+                'disbursements',
+                'charges'
+            ])->findOrFail($id);
+            
+            // Set loan_type attribute for view
+            $loan->loan_type = 'group';
+        } else {
+            $loan = PersonalLoan::with([
+                'member.country',
+                'member.branch',
+                'member.savings',
+                'product.charges',
+                'branch',
+                'addedBy',
+                'assignedTo',
+                'approvedBy',
+                'repayments',
+                'disbursements',
+                'schedules',
+                'guarantors.member',
+                'charges'
+            ])->findOrFail($id);
+            
+            // Set loan_type attribute for view
+            $loan->loan_type = 'personal';
+        }
 
-        return view('admin.loans.show', compact('loan'));
+        return view('admin.loans.show', compact('loan', 'loanType'));
     }
 
     /**
      * Show the form for editing the specified loan
      */
-    public function edit(Loan $loan)
+    public function edit(Request $request, $id)
     {
+        $loanType = $request->query('type', 'personal');
+        
+        // Get loan based on type
+        if ($loanType === 'group') {
+            $loan = GroupLoan::with(['group', 'product', 'branch'])->findOrFail($id);
+            $loan->loan_type = 'group';
+        } else {
+            $loan = PersonalLoan::with(['member', 'product', 'branch'])->findOrFail($id);
+            $loan->loan_type = 'personal';
+        }
+        
         // Only allow editing of pending loans
         if ($loan->status > 0) {
-            return redirect()->route('admin.loans.show', $loan)
+            return redirect()->route('admin.loans.show', ['id' => $id, 'type' => $loanType])
                             ->with('error', 'Cannot edit approved/disbursed loans.');
         }
 
         // Get eligible members for loan application (only approved members can apply for loans)
         $members = Member::approved()->verified()->notDeleted()->get();
+        $groups = \App\Models\Group::where('verified', 1)->get();
         $products = Product::loanProducts()->active()->get();
         $branches = Branch::active()->get();
         $guarantors = $loan->guarantors()->with('member')->get();
 
-        return view('admin.loans.edit', compact('loan', 'members', 'products', 'branches', 'guarantors'));
+        return view('admin.loans.edit', compact('loan', 'members', 'groups', 'products', 'branches', 'guarantors', 'loanType'));
     }
 
     /**
      * Update the specified loan
      */
-    public function update(Request $request, Loan $loan)
+    public function update(Request $request, $id)
     {
+        $loanType = $request->input('loan_type', 'personal');
+        
+        // Get loan based on type
+        if ($loanType === 'group') {
+            $loan = GroupLoan::findOrFail($id);
+        } else {
+            $loan = PersonalLoan::findOrFail($id);
+        }
+        
         // Only allow editing of pending loans
         if ($loan->status > 0) {
-            return redirect()->route('admin.loans.show', $loan)
+            return redirect()->route('admin.loans.show', ['id' => $id, 'type' => $loanType])
                             ->with('error', 'Cannot edit approved/disbursed loans.');
         }
 
@@ -514,7 +561,7 @@ class LoanController extends Controller
             $this->generateLoanSchedule($loan);
         }
 
-        return redirect()->route('admin.loans.show', $loan)
+        return redirect()->route('admin.loans.show', ['id' => $id, 'type' => $loanType])
                         ->with('success', 'Loan updated successfully.');
     }
 
@@ -539,10 +586,12 @@ class LoanController extends Controller
 
             // Check if loan is in correct status for approval
             if ($loan->status != 0) { // Assuming 0 = pending
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Loan is not in pending status and cannot be approved.'
-                ], 400);
+                $message = 'Loan is not in pending status and cannot be approved.';
+                
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json(['success' => false, 'message' => $message], 400);
+                }
+                return back()->with('error', $message);
             }
 
             $loan->update([
@@ -553,16 +602,22 @@ class LoanController extends Controller
                 'approved_by' => auth()->id()
             ]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Loan approved successfully and is now ready for disbursement.'
-            ]);
+            $message = 'Loan approved successfully and is now ready for disbursement.';
+            
+            // Return JSON for AJAX requests, redirect for form submissions
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => $message]);
+            }
+            
+            return redirect()->route('admin.loans.approvals')->with('success', $message);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to approve loan: ' . $e->getMessage()
-            ], 500);
+            $message = 'Failed to approve loan: ' . $e->getMessage();
+            
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $message], 500);
+            }
+            return back()->with('error', $message);
         }
     }
 
@@ -587,10 +642,12 @@ class LoanController extends Controller
 
             // Check if loan is in correct status for rejection
             if ($loan->status != 0) { // Assuming 0 = pending
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Loan is not in pending status and cannot be rejected.'
-                ], 400);
+                $message = 'Loan is not in pending status and cannot be rejected.';
+                
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json(['success' => false, 'message' => $message], 400);
+                }
+                return back()->with('error', $message);
             }
 
             $loan->update([
@@ -601,16 +658,22 @@ class LoanController extends Controller
                 'rejected_by' => auth()->id()
             ]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Loan has been rejected successfully.'
-            ]);
+            $message = 'Loan has been rejected successfully.';
+            
+            // Return JSON for AJAX requests, redirect for form submissions
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => $message]);
+            }
+            
+            return redirect()->route('admin.loans.approvals')->with('success', $message);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to reject loan: ' . $e->getMessage()
-            ], 500);
+            $message = 'Failed to reject loan: ' . $e->getMessage();
+            
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $message], 500);
+            }
+            return back()->with('error', $message);
         }
     }
 
@@ -764,9 +827,9 @@ class LoanController extends Controller
             'date_closed'
         ];
         
-        // Get approval pending loans from both personal and group loans
+        // Get ONLY pending loans (status = 0) from both personal and group loans
         $personalLoans = PersonalLoan::with(['member', 'product', 'branch', 'addedBy'])
-                         ->whereIn('status', [0, 1]) // 0=pending, 1=approved
+                         ->where('status', 0) // Only pending approval
                          ->select(array_merge($commonColumns, [
                              'member_id',
                              DB::raw("'personal' as loan_type"),
@@ -774,19 +837,12 @@ class LoanController extends Controller
                          ]));
 
         $groupLoans = GroupLoan::with(['group', 'product', 'branch', 'addedBy'])
-                      ->whereIn('status', [0, 1]) // 0=pending, 1=approved
+                      ->where('status', 0) // Only pending approval
                       ->select(array_merge($commonColumns, [
                           'group_id',
                           DB::raw("'group' as loan_type"),
                           DB::raw("NULL as member_id")
                       ]));
-
-        // Apply filters if needed
-        if ($request->filled('status')) {
-            $statusValue = $request->status === 'pending' ? 0 : ($request->status === 'approved' ? 1 : $request->status);
-            $personalLoans->where('status', $statusValue);
-            $groupLoans->where('status', $statusValue);
-        }
 
         if ($request->filled('branch_id')) {
             $personalLoans->where('branch_id', $request->branch_id);
@@ -1296,46 +1352,60 @@ class LoanController extends Controller
     /**
      * View loan agreement PDF
      */
-    public function viewAgreement($loanId, $type)
+    public function viewAgreement($id, $type)
     {
         try {
             // Get loan with related data
             if ($type === 'personal') {
-                $loan = PersonalLoan::with(['member', 'product', 'branch'])->find($loanId);
+                $loan = PersonalLoan::with(['member', 'product', 'branch'])->findOrFail($id);
+                if (!$loan->member) {
+                    abort(404, 'Member not found for this loan');
+                }
                 $borrower = $loan->member;
             } else {
-                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->find($loanId);
+                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->findOrFail($id);
+                if (!$loan->group) {
+                    abort(404, 'Group not found for this loan');
+                }
                 $borrower = $loan->group;
             }
 
-            if (!$loan) {
-                abort(404, 'Loan not found');
-            }
-
-            // Generate loan agreement PDF
-            $pdf = app('dompdf.wrapper');
-            $pdf->loadView('admin.loans.agreement-pdf', compact('loan', 'borrower', 'type'));
+            // Use DOMPDF directly
+            $options = new \Dompdf\Options();
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('isRemoteEnabled', true);
             
-            return $pdf->stream("loan-agreement-{$loan->code}.pdf");
+            $dompdf = new \Dompdf\Dompdf($options);
+            
+            // Load HTML from view
+            $html = view('admin.loans.agreement-pdf', compact('loan', 'borrower', 'type'))->render();
+            $dompdf->loadHtml($html);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            
+            // Stream the PDF
+            return response($dompdf->output(), 200)
+                ->header('Content-Type', 'application/pdf')
+                ->header('Content-Disposition', 'inline; filename="loan-agreement-' . $loan->code . '.pdf"');
 
         } catch (\Exception $e) {
             \Log::error('Agreement viewing error: ' . $e->getMessage());
-            abort(500, 'Error generating agreement');
+            return back()->with('error', 'Error generating agreement: ' . $e->getMessage());
         }
     }
 
     /**
      * Download signed loan agreement
      */
-    public function downloadSignedAgreement($loanId, $type)
+    public function downloadSignedAgreement($id, $type)
     {
         try {
             // Get loan
             if ($type === 'personal') {
-                $loan = PersonalLoan::with(['member', 'product', 'branch'])->find($loanId);
+                $loan = PersonalLoan::with(['member', 'product', 'branch'])->find($id);
                 $borrower = $loan->member;
             } else {
-                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->find($loanId);
+                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->find($id);
                 $borrower = $loan->group;
             }
 
@@ -1343,15 +1413,27 @@ class LoanController extends Controller
                 abort(404, 'Signed agreement not found');
             }
 
-            // Generate signed agreement PDF with signature info
-            $pdf = app('dompdf.wrapper');
-            $pdf->loadView('admin.loans.signed-agreement-pdf', compact('loan', 'borrower', 'type'));
+            // Use DOMPDF directly
+            $options = new \Dompdf\Options();
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('isRemoteEnabled', true);
             
-            return $pdf->download("signed-agreement-{$loan->code}.pdf");
+            $dompdf = new \Dompdf\Dompdf($options);
+            
+            // Load HTML from view
+            $html = view('admin.loans.signed-agreement-pdf', compact('loan', 'borrower', 'type'))->render();
+            $dompdf->loadHtml($html);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            
+            // Download the PDF
+            return response($dompdf->output(), 200)
+                ->header('Content-Type', 'application/pdf')
+                ->header('Content-Disposition', 'attachment; filename="signed-agreement-' . $loan->code . '.pdf"');
 
         } catch (\Exception $e) {
             \Log::error('Signed agreement download error: ' . $e->getMessage());
-            abort(500, 'Error downloading signed agreement');
+            return back()->with('error', 'Error downloading signed agreement: ' . $e->getMessage());
         }
     }
 
@@ -1398,5 +1480,111 @@ class LoanController extends Controller
                 'product_name' => $loan->product->name ?? 'N/A'
             ]
         ]);
+    }
+
+    /**
+     * Export loans to CSV
+     */
+    public function export(Request $request)
+    {
+        try {
+            // Get loans based on filters
+            $personalLoans = PersonalLoan::with(['member', 'product', 'branch'])
+                ->select([
+                    'id', 'code', 'member_id', 'product_type', 'principal', 
+                    'interest', 'period', 'status', 'verified', 'datecreated', 'branch_id'
+                ]);
+
+            $groupLoans = GroupLoan::with(['group', 'product', 'branch'])
+                ->select([
+                    'id', 'code', 'group_id', 'product_type', 'principal', 
+                    'interest', 'period', 'status', 'verified', 'datecreated', 'branch_id'
+                ]);
+
+            // Apply filters
+            if ($request->filled('status')) {
+                $personalLoans->where('status', $request->status);
+                $groupLoans->where('status', $request->status);
+            }
+
+            if ($request->filled('type')) {
+                if ($request->type === 'personal') {
+                    $loans = $personalLoans->get();
+                } elseif ($request->type === 'group') {
+                    $loans = $groupLoans->get();
+                } else {
+                    $loans = $personalLoans->get()->merge($groupLoans->get());
+                }
+            } else {
+                $loans = $personalLoans->get()->merge($groupLoans->get());
+            }
+
+            // Prepare CSV data
+            $filename = 'loans_export_' . date('Y-m-d_H-i-s') . '.csv';
+            
+            $callback = function() use ($loans) {
+                $file = fopen('php://output', 'w');
+                
+                // Add CSV headers
+                fputcsv($file, [
+                    'Loan Code',
+                    'Borrower Name',
+                    'Type',
+                    'Product',
+                    'Principal (UGX)',
+                    'Interest (%)',
+                    'Period',
+                    'Status',
+                    'Branch',
+                    'Date Created'
+                ]);
+                
+                // Add data rows
+                foreach ($loans as $loan) {
+                    $borrowerName = 'N/A';
+                    $loanType = 'Personal';
+                    
+                    if (isset($loan->member)) {
+                        $borrowerName = $loan->member->fname . ' ' . $loan->member->lname;
+                    } elseif (isset($loan->group)) {
+                        $borrowerName = $loan->group->name ?? 'Unknown Group';
+                        $loanType = 'Group';
+                    }
+                    
+                    $statusName = [
+                        0 => 'Pending',
+                        1 => 'Approved',
+                        2 => 'Disbursed',
+                        3 => 'Completed',
+                        4 => 'Rejected'
+                    ][$loan->status] ?? 'Unknown';
+                    
+                    fputcsv($file, [
+                        $loan->code,
+                        $borrowerName,
+                        $loanType,
+                        $loan->product->name ?? 'N/A',
+                        number_format($loan->principal, 0),
+                        $loan->interest,
+                        $loan->period,
+                        $statusName,
+                        $loan->branch->name ?? 'N/A',
+                        date('Y-m-d H:i:s', strtotime($loan->datecreated))
+                    ]);
+                }
+                
+                fclose($file);
+            };
+            
+            return response()->stream($callback, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Loan export error: ' . $e->getMessage());
+            
+            return redirect()->back()->with('error', 'Failed to export loans: ' . $e->getMessage());
+        }
     }
 }

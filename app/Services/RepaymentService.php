@@ -343,6 +343,11 @@ class RepaymentService
         });
         
         return $successfulRepayments->map(function ($repayment) {
+            $memberName = 'Unknown';
+            if ($repayment->personalLoan && $repayment->personalLoan->member) {
+                $memberName = $repayment->personalLoan->member->full_name;
+            }
+            
             return [
                 'id' => $repayment->id,
                 'amount' => $repayment->amount,
@@ -350,7 +355,7 @@ class RepaymentService
                 'date_created' => $repayment->date_created,
                 'pay_status' => $repayment->pay_status,
                 'txn_id' => $repayment->txn_id,
-                'member_name' => $repayment->personalLoan?->member?->full_name ?? 'Unknown'
+                'member_name' => $memberName
             ];
         })->values()->toArray();
     }
