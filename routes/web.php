@@ -109,6 +109,7 @@ Route::middleware([
     Route::get('/loans/{loan}/details', [\App\Http\Controllers\Admin\LoanController::class, 'getLoanDetails'])->name('loans.details');
     Route::post('/loans/{loan}/approve', [\App\Http\Controllers\Admin\LoanController::class, 'approve'])->name('loans.approve');
     Route::post('/loans/{loan}/reject', [\App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('loans.reject');
+    Route::post('/loans/{loan}/pay-fees', [\App\Http\Controllers\Admin\LoanController::class, 'payFees'])->name('loans.pay-fees');
     
     // Enhanced Loan Services Integration
     Route::post('/loans/generate-schedule-service', [\App\Http\Controllers\Admin\LoanController::class, 'generateScheduleWithService'])->name('loans.generate-schedule-service');

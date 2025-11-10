@@ -38,6 +38,16 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
 
+        // Register login view
+        Fortify::loginView(function () {
+            return view('auth.login');
+        });
+
+        // Register register view if needed
+        Fortify::registerView(function () {
+            return view('auth.register');
+        });
+
         // ===============================================================
         // CUSTOM AUTHENTICATION WITH APPROVAL STATUS VALIDATION
         // ===============================================================

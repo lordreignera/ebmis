@@ -43,6 +43,27 @@
                 </a>
                 
                 @if($loan->status == 0)
+                    @if($loan->charge_type == 2)
+                    {{-- Show Pay Fees button if there are unpaid upfront charges --}}
+                    @php
+                        $hasUnpaidFees = false;
+                        if(isset($upfrontFees)) {
+                            foreach($upfrontFees as $fee) {
+                                if(!$fee['paid']) {
+                                    $hasUnpaidFees = true;
+                                    break;
+                                }
+                            }
+                        }
+                    @endphp
+                    
+                    @if($hasUnpaidFees)
+                    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#payFeesModal">
+                        <i class="mdi mdi-cash me-1"></i> Pay Upfront Fees
+                    </button>
+                    @endif
+                    @endif
+                    
                 <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveLoanModal">
                     <i class="mdi mdi-check me-1"></i> Approve Loan
                 </button>
@@ -407,17 +428,46 @@
                                 // Get upfront fees if charge_type = 2
                                 $upfrontFees = [];
                                 if ($loan->charge_type == 2) {
-                                    $upfrontFeeTypes = \App\Models\FeeType::where('required_disbursement', 1)
-                                                                           ->where('isactive', 1)
-                                                                           ->get();
-                                    foreach ($upfrontFeeTypes as $feeType) {
+                                    // Get charges from product that are upfront (charge_type = 2)
+                                    $upfrontCharges = $productCharges->where('charge_type', 2);
+                                    
+                                    $memberId = $loanType === 'personal' ? $loan->member_id : ($loan->group->members()->first()->id ?? null);
+                                    
+                                    foreach ($upfrontCharges as $charge) {
+                                        // Calculate charge amount
+                                        $chargeAmount = 0;
+                                        if ($charge->type == 1) { // Fixed
+                                            $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0);
+                                        } elseif ($charge->type == 2) { // Percentage
+                                            $percentageValue = floatval($charge->getRawOriginal('value') ?? 0);
+                                            $chargeAmount = ($principal * $percentageValue) / 100;
+                                        } elseif ($charge->type == 3) { // Per Day
+                                            $perDayValue = floatval($charge->getRawOriginal('value') ?? 0);
+                                            $chargeAmount = $perDayValue * $loan->period;
+                                        } elseif ($charge->type == 4) { // Per Month
+                                            $perMonthValue = floatval($charge->getRawOriginal('value') ?? 0);
+                                            $chargeAmount = $perMonthValue * $loan->period;
+                                        }
+                                        
+                                        // Check if fee has been paid
                                         $paidFee = \App\Models\Fee::where('loan_id', $loan->id)
-                                                                   ->where('fees_type_id', $feeType->id)
+                                                                   ->where('fees_type_id', $charge->id)
                                                                    ->where('status', 1)
                                                                    ->first();
+                                        
+                                        // For registration fees, check if member has paid before (one-time payment)
+                                        $isRegistrationFee = stripos($charge->name, 'registration') !== false;
+                                        if ($isRegistrationFee && !$paidFee && $memberId) {
+                                            $paidFee = \App\Models\Fee::where('member_id', $memberId)
+                                                                       ->where('fees_type_id', $charge->id)
+                                                                       ->where('status', 1)
+                                                                       ->first();
+                                        }
+                                        
                                         $upfrontFees[] = [
-                                            'name' => $feeType->name,
-                                            'amount' => $paidFee ? $paidFee->amount : 0,
+                                            'id' => $charge->id,
+                                            'name' => $charge->name,
+                                            'amount' => $chargeAmount,
                                             'paid' => $paidFee ? true : false,
                                             'payment_date' => $paidFee ? $paidFee->datecreated : null
                                         ];
@@ -702,5 +752,187 @@
         </div>
     </div>
 </div>
+
+<!-- Pay Upfront Fees Modal -->
+<div class="modal fade" id="payFeesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title"><i class="mdi mdi-cash me-2"></i>Pay Upfront Loan Fees</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ route('admin.loans.pay-fees', $loan->id) }}" method="POST" id="payFeesForm">
+                @csrf
+                <input type="hidden" name="loan_type" value="{{ $loanType }}">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information me-1"></i>
+                        Record payment for upfront loan fees. <strong>Registration fees</strong> are paid once per member, while <strong>other fees</strong> must be paid for each loan application.
+                    </div>
+
+                    @if(isset($upfrontFees) && count($upfrontFees) > 0)
+                    <h6 class="mb-3">Select Fees to Pay:</h6>
+                    
+                    <div class="table-responsive mb-3">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="50">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="selectAllFees">
+                                            <label class="form-check-label" for="selectAllFees"></label>
+                                        </div>
+                                    </th>
+                                    <th>Fee Type</th>
+                                    <th class="text-end">Amount (UGX)</th>
+                                    <th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @php $totalUnpaidFees = 0; @endphp
+                                @foreach($upfrontFees as $index => $fee)
+                                @if(!$fee['paid'])
+                                @php 
+                                    $totalUnpaidFees += $fee['amount'];
+                                    $isRegistrationFee = stripos($fee['name'], 'registration') !== false;
+                                @endphp
+                                <tr>
+                                    <td>
+                                        <div class="form-check">
+                                            <input class="form-check-input fee-checkbox" 
+                                                   type="checkbox" 
+                                                   name="fees[]" 
+                                                   value="{{ $fee['id'] }}"
+                                                   data-amount="{{ $fee['amount'] }}"
+                                                   id="fee_{{ $index }}">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <label for="fee_{{ $index }}" class="mb-0">
+                                            {{ $fee['name'] }}
+                                            @if($isRegistrationFee)
+                                            <span class="badge bg-info">One-time fee</span>
+                                            @else
+                                            <span class="badge bg-warning">Per loan</span>
+                                            @endif
+                                        </label>
+                                    </td>
+                                    <td class="text-end">{{ number_format($fee['amount'], 0) }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-danger">Unpaid</span>
+                                    </td>
+                                </tr>
+                                @endif
+                                @endforeach
+                                <tr class="table-info">
+                                    <td colspan="2" class="text-end"><strong>Total Selected:</strong></td>
+                                    <td class="text-end"><strong id="totalSelectedAmount">0</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Payment Method <span class="text-danger">*</span></label>
+                            <select class="form-select" name="payment_method" required>
+                                <option value="">Select Payment Method</option>
+                                <option value="1">Cash</option>
+                                <option value="2">Bank Transfer</option>
+                                <option value="3">Mobile Money</option>
+                                <option value="4">Card Payment</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Payment Reference</label>
+                            <input type="text" class="form-control" name="payment_reference" 
+                                   placeholder="e.g., Transaction ID, Receipt Number">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Payment Notes</label>
+                        <textarea class="form-control" name="payment_notes" rows="2" 
+                                  placeholder="Optional notes about this payment"></textarea>
+                    </div>
+
+                    <div class="alert alert-warning mb-0">
+                        <i class="mdi mdi-alert me-1"></i>
+                        <strong>Note:</strong> Please ensure payment has been received before recording it in the system.
+                    </div>
+                    @else
+                    <div class="alert alert-success">
+                        <i class="mdi mdi-check-circle me-1"></i>
+                        All upfront fees have been paid!
+                    </div>
+                    @endif
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="submitPaymentBtn">
+                        <i class="mdi mdi-cash-check me-1"></i> Record Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Fee selection and calculation
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAllFees');
+    const feeCheckboxes = document.querySelectorAll('.fee-checkbox');
+    const totalAmountDisplay = document.getElementById('totalSelectedAmount');
+    const submitBtn = document.getElementById('submitPaymentBtn');
+
+    function updateTotalAmount() {
+        let total = 0;
+        let selectedCount = 0;
+        
+        feeCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                total += parseFloat(checkbox.dataset.amount);
+                selectedCount++;
+            }
+        });
+
+        if (totalAmountDisplay) {
+            totalAmountDisplay.textContent = total.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        }
+
+        if (submitBtn) {
+            submitBtn.disabled = selectedCount === 0;
+        }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            feeCheckboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            updateTotalAmount();
+        });
+    }
+
+    feeCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateTotalAmount();
+            
+            // Update "Select All" checkbox state
+            if (selectAllCheckbox) {
+                const allChecked = Array.from(feeCheckboxes).every(cb => cb.checked);
+                const noneChecked = Array.from(feeCheckboxes).every(cb => !cb.checked);
+                selectAllCheckbox.checked = allChecked;
+                selectAllCheckbox.indeterminate = !allChecked && !noneChecked;
+            }
+        });
+    });
+
+    // Initial calculation
+    updateTotalAmount();
+});
+</script>
 
 @endsection

@@ -678,6 +678,125 @@ class LoanController extends Controller
     }
 
     /**
+     * Pay upfront fees for a loan
+     */
+    public function payFees(Request $request, $id)
+    {
+        $request->validate([
+            'loan_type' => 'required|in:personal,group',
+            'fees' => 'required|array',
+            'fees.*' => 'integer',
+            'payment_method' => 'required|integer|in:1,2,3,4',
+            'payment_reference' => 'nullable|string|max:100',
+            'payment_notes' => 'nullable|string|max:500'
+        ]);
+
+        $loanType = $request->input('loan_type');
+        
+        try {
+            DB::beginTransaction();
+
+            // Get the loan
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::findOrFail($id);
+                $memberId = $loan->member_id;
+            } else {
+                $loan = GroupLoan::with('group')->findOrFail($id);
+                // For group loans, we might need to handle this differently
+                // For now, let's use the first member of the group
+                $memberId = $loan->group->members()->first()->id ?? null;
+            }
+
+            if (!$memberId) {
+                throw new \Exception('Could not determine member for payment.');
+            }
+
+            $selectedFeeIds = $request->input('fees');
+            $paymentMethod = $request->input('payment_method');
+            $paymentRef = $request->input('payment_reference');
+            $paymentNotes = $request->input('payment_notes');
+
+            // Get product charges for this loan
+            $product = Product::with('charges')->find($loan->product_type);
+            if (!$product) {
+                throw new \Exception('Product not found.');
+            }
+
+            $paidFeesCount = 0;
+            $totalAmount = 0;
+
+            foreach ($product->charges as $charge) {
+                // Only process upfront charges (charge_type = 2)
+                if ($charge->charge_type != 2) {
+                    continue;
+                }
+
+                // Check if this fee is in the selected list
+                if (!in_array($charge->id, $selectedFeeIds)) {
+                    continue;
+                }
+
+                // Calculate the actual charge amount
+                $chargeAmount = 0;
+                if ($charge->type == 1) { // Fixed
+                    $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0);
+                } elseif ($charge->type == 2) { // Percentage
+                    $percentageValue = floatval($charge->getRawOriginal('value') ?? 0);
+                    $chargeAmount = ($loan->principal * $percentageValue) / 100;
+                } elseif ($charge->type == 3) { // Per Day
+                    $perDayValue = floatval($charge->getRawOriginal('value') ?? 0);
+                    $chargeAmount = $perDayValue * $loan->period;
+                } elseif ($charge->type == 4) { // Per Month
+                    $perMonthValue = floatval($charge->getRawOriginal('value') ?? 0);
+                    $chargeAmount = $perMonthValue * $loan->period;
+                }
+
+                // Check if registration fee has already been paid by this member
+                $isRegistrationFee = stripos($charge->name, 'registration') !== false;
+                if ($isRegistrationFee) {
+                    $existingPayment = \App\Models\Fee::where('member_id', $memberId)
+                        ->where('fees_type_id', $charge->id)
+                        ->where('status', 1) // Paid
+                        ->first();
+
+                    if ($existingPayment) {
+                        // Skip this fee - already paid once
+                        continue;
+                    }
+                }
+
+                // Create fee payment record
+                $fee = \App\Models\Fee::create([
+                    'member_id' => $memberId,
+                    'loan_id' => $loan->id,
+                    'fees_type_id' => $charge->id,
+                    'payment_type' => $paymentMethod,
+                    'amount' => $chargeAmount,
+                    'description' => 'Upfront payment for ' . $charge->name . ' - Loan ' . $loan->code,
+                    'added_by' => auth()->id(),
+                    'payment_status' => 'Paid',
+                    'payment_description' => $paymentNotes,
+                    'pay_ref' => $paymentRef,
+                    'status' => 1 // Paid
+                ]);
+
+                $totalAmount += $chargeAmount;
+                $paidFeesCount++;
+            }
+
+            DB::commit();
+
+            $message = "Successfully recorded payment of UGX " . number_format($totalAmount, 0) . " for {$paidFeesCount} fee(s).";
+            return redirect()->back()->with('success', $message);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            $message = 'Failed to record payment: ' . $e->getMessage();
+            return back()->with('error', $message);
+        }
+    }
+
+    /**
      * Generate loan schedule
      */
     private function generateLoanSchedule(Loan $loan)
