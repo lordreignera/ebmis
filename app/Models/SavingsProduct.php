@@ -9,9 +9,8 @@ class SavingsProduct extends Model
 {
     use HasFactory;
 
-    // Use datecreated for timestamps (old database compatibility)
-    const CREATED_AT = 'datecreated';
-    const UPDATED_AT = null; // No updated_at in old database
+    // Disable timestamps for old database compatibility
+    public $timestamps = false;
 
     protected $fillable = [
         'code',
@@ -22,8 +21,7 @@ class SavingsProduct extends Model
         'charge',
         'description',
         'account',
-        'isactive',
-        'datecreated'
+        'isactive'
     ];
 
     protected $casts = [

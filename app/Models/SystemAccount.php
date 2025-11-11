@@ -11,9 +11,8 @@ class SystemAccount extends Model
 
     protected $table = 'system_accounts';
     
-    // Use old database timestamp column
-    const CREATED_AT = 'date_created';
-    const UPDATED_AT = null; // No updated_at in old database
+    // Disable timestamps for old database compatibility
+    public $timestamps = false;
 
     protected $fillable = [
         'code',

@@ -33,8 +33,7 @@ class SavingsProductsSeeder extends Seeder
             'charge' => '0',
             'description' => 'Cash Security',
             'isactive' => 1,
-            'account' => 51,
-            'datecreated' => '2025-02-07 00:03:47'
+            'account' => 51
         ]);
 
         // Add additional savings products for current system

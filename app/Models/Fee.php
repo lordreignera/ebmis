@@ -12,6 +12,9 @@ class Fee extends Model
 {
     use HasFactory, HandlesLegacyTimestamps, EastAfricanTime;
 
+    // Disable timestamps for old database compatibility
+    public $timestamps = false;
+
     protected $fillable = [
         'member_id',
         'loan_id',
@@ -31,9 +34,6 @@ class Fee extends Model
         'amount' => 'decimal:2',
         'datecreated' => 'datetime',
     ];
-
-    const CREATED_AT = 'datecreated';
-    const UPDATED_AT = null;
 
     /**
      * Get the member that owns the fee
