@@ -35,16 +35,37 @@ class SuperAdminSeeder extends Seeder
         }
         $role->syncPermissions(Permission::all());
 
-        // Create superadmin user
-        $user = User::firstOrCreate(
-            ['email' => 'superadmin@ebims.com'],
-            [
-                'name' => 'Super Admin',
-                'password' => bcrypt('superadmin123'),
-                'user_type' => 'super_admin', // Set user type
-                'status' => 'active',
-            ]
-        );
+        // Create superadmin user - check which schema is in use
+        $user = null;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'email')) {
+                // New Laravel schema with email column
+                $user = User::firstOrCreate(
+                    ['email' => 'superadmin@ebims.com'],
+                    [
+                        'name' => 'Super Admin',
+                        'password' => bcrypt('superadmin123'),
+                        'user_type' => 'super_admin',
+                        'status' => 'active',
+                    ]
+                );
+            } elseif (\Illuminate\Support\Facades\Schema::hasColumn('users', 'username')) {
+                // Old database schema with username column
+                $user = User::where('username', 'superadmin')->orWhere('username', 'admin')->first();
+                if (!$user) {
+                    $this->command->warn('⚠️  Super admin user not found in imported database. Please ensure superadmin user exists.');
+                    return;
+                }
+            }
+        } catch (\Exception $e) {
+            $this->command->error('❌ Error creating/finding super admin: ' . $e->getMessage());
+            return;
+        }
+        
+        if (!$user) {
+            $this->command->warn('⚠️  Could not create or find super admin user.');
+            return;
+        }
         
         // Ensure role is assigned
         if (!$user->hasRole('Super Administrator')) {

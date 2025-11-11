@@ -74,7 +74,17 @@ class RolesSeeder extends Seeder
         // ===============================================================
         // 5. UPDATE EXISTING SUPER ADMIN USER (IF EXISTS)
         // ===============================================================
-        $superAdminUser = User::where('email', 'superadmin@ebims.com')->first();
+        // Check if email column exists (new Laravel schema) or username column (old database)
+        $superAdminUser = null;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'email')) {
+                $superAdminUser = User::where('email', 'superadmin@ebims.com')->first();
+            } elseif (\Illuminate\Support\Facades\Schema::hasColumn('users', 'username')) {
+                $superAdminUser = User::where('username', 'superadmin')->first();
+            }
+        } catch (\Exception $e) {
+            $this->command->warn('⚠️  Could not check for super admin user: ' . $e->getMessage());
+        }
         
         if ($superAdminUser) {
             // Update user with multi-tenant fields
