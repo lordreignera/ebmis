@@ -9,13 +9,18 @@ class LoanCharge extends Model
 {
     use HasFactory;
 
+    // Use legacy timestamp
+    const CREATED_AT = 'date_created';
+    const UPDATED_AT = null;
+
     protected $fillable = [
         'loan_id',
         'charge_name',
         'charge_type',
         'charge_value',
         'actual_value',
-        'added_by'
+        'added_by',
+        'date_created'
     ];
 
     protected $casts = [

@@ -372,23 +372,68 @@
                         <div class="tab-pane" id="charges" role="tabpanel">
                             <h5 class="mb-3">Charges & Disbursement Calculation</h5>
                             
-                            <!-- Charge Type Badge -->
+                            <!-- Charge Type Selection -->
                             <div class="row mb-3">
                                 <div class="col-12">
+                                    @if($loan->status == 0)
+                                    <!-- Editable Charge Type for Pending Loans -->
+                                    <div class="card border-primary">
+                                        <div class="card-body">
+                                            <form action="{{ route('admin.loans.update-charge-type', $loan->id) }}" method="POST" id="chargeTypeForm">
+                                                @csrf
+                                                @method('PUT')
+                                                <input type="hidden" name="loan_type" value="{{ $loanType }}">
+                                                
+                                                <div class="row align-items-center">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold">
+                                                            <i class="mdi mdi-cash-multiple me-1"></i> How should charges be handled?
+                                                        </label>
+                                                        <select name="charge_type" class="form-select" id="chargeTypeSelect">
+                                                            <option value="1" {{ $loan->charge_type == 1 ? 'selected' : '' }}>
+                                                                Deduct from Disbursement Amount (Member receives less)
+                                                            </option>
+                                                            <option value="2" {{ $loan->charge_type == 2 ? 'selected' : '' }}>
+                                                                Member Pays Upfront (Full amount disbursed after payment)
+                                                            </option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <button type="submit" class="btn btn-primary mt-3">
+                                                            <i class="mdi mdi-check me-1"></i> Update Charge Type
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="mt-3">
+                                                    <div id="chargeTypeDescription" class="alert mb-0">
+                                                        @if($loan->charge_type == 1)
+                                                            <strong>Current Setting:</strong> Charges will be deducted from principal. Member receives reduced amount.
+                                                        @else
+                                                            <strong>Current Setting:</strong> Member must pay charges before disbursement. Full principal amount will be disbursed after payment.
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    @else
+                                    <!-- Display Only for Approved/Disbursed Loans -->
                                     <div class="alert {{ $loan->charge_type == 1 ? 'alert-primary' : 'alert-warning' }}">
                                         <div class="d-flex align-items-center">
                                             <div class="flex-grow-1">
                                                 <strong>Charge Type:</strong> 
                                                 @if($loan->charge_type == 1)
                                                     <span class="badge bg-primary">Charges Deducted on Disbursement</span>
-                                                    <p class="mb-0 mt-2 small">All charges will be automatically deducted from the principal amount at disbursement.</p>
+                                                    <p class="mb-0 mt-2 small">All charges were deducted from the principal amount at disbursement.</p>
                                                 @else
                                                     <span class="badge bg-warning">Charges Paid Upfront</span>
-                                                    <p class="mb-0 mt-2 small">Member must pay all charges BEFORE loan disbursement.</p>
+                                                    <p class="mb-0 mt-2 small">Member paid all charges before loan disbursement.</p>
                                                 @endif
                                             </div>
                                         </div>
                                     </div>
+                                    @endif
                                 </div>
                             </div>
 
@@ -481,10 +526,12 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th width="5%">#</th>
-                                            <th width="35%">Description</th>
-                                            <th width="20%">Calculation</th>
-                                            <th width="20%" class="text-end">Amount (UGX)</th>
-                                            <th width="20%" class="text-center">Type</th>
+                                            <th width="20%">Description</th>
+                                            <th width="15%">Calculation</th>
+                                            <th width="15%" class="text-end">Amount (UGX)</th>
+                                            <th width="10%" class="text-center">Type</th>
+                                            <th width="15%" class="text-center">Payment Status</th>
+                                            <th width="15%" class="text-center">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -533,6 +580,51 @@
                                             <td>{{ $calculation }}</td>
                                             <td class="text-end text-danger">-{{ number_format($chargeAmount, 0) }}</td>
                                             <td class="text-center"><span class="badge bg-danger">Debit</span></td>
+                                            @php
+                                                // Check if this charge is paid
+                                                $chargePaidFee = \App\Models\Fee::where('loan_id', $loan->id)
+                                                                   ->where('fees_type_id', $charge->id)
+                                                                   ->where('status', 1)
+                                                                   ->first();
+                                                
+                                                // For registration fees, check member level
+                                                $isRegFee = stripos($charge->name, 'registration') !== false;
+                                                if ($isRegFee && !$chargePaidFee && isset($memberId)) {
+                                                    $chargePaidFee = \App\Models\Fee::where('member_id', $memberId)
+                                                                       ->where('fees_type_id', $charge->id)
+                                                                       ->where('status', 1)
+                                                                       ->first();
+                                                }
+                                            @endphp
+                                            <td class="text-center">
+                                                @if($loan->charge_type == 1)
+                                                    {{-- For deducted charges, always show as paid --}}
+                                                    <span class="badge bg-success"><i class="mdi mdi-check"></i> Paid (Deducted)</span>
+                                                @elseif($chargePaidFee)
+                                                    <span class="badge bg-success"><i class="mdi mdi-check"></i> Paid</span>
+                                                @else
+                                                    <span class="badge bg-danger"><i class="mdi mdi-close"></i> Unpaid</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-center">
+                                                @if($loan->charge_type == 1)
+                                                    {{-- For deducted charges, no action needed --}}
+                                                    <small class="text-muted">Auto-deducted</small>
+                                                @elseif(!$chargePaidFee && $loan->status == 0)
+                                                    <button class="btn btn-sm btn-warning pay-single-fee-btn" 
+                                                            data-fee-id="{{ $charge->id }}"
+                                                            data-fee-name="{{ $charge->name }}"
+                                                            data-fee-amount="{{ $chargeAmount }}"
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#paySingleFeeModal">
+                                                        <i class="mdi mdi-cash"></i> Pay
+                                                    </button>
+                                                @elseif($chargePaidFee)
+                                                    <small class="text-success">✓ Paid</small>
+                                                @else
+                                                    -
+                                                @endif
+                                            </td>
                                         </tr>
                                         @endforeach
                                         
@@ -932,7 +1024,98 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial calculation
     updateTotalAmount();
+    
+    // Single fee payment button handler
+    document.querySelectorAll('.pay-single-fee-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const feeId = this.dataset.feeId;
+            const feeName = this.dataset.feeName;
+            const feeAmount = parseFloat(this.dataset.feeAmount);
+            
+            // Set modal content
+            document.getElementById('singleFeeName').textContent = feeName;
+            document.getElementById('singleFeeAmount').textContent = feeAmount.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+            document.getElementById('singleFeeIdInput').value = feeId;
+        });
+    });
+    
+    // Charge type selector update description
+    const chargeTypeSelect = document.getElementById('chargeTypeSelect');
+    const chargeTypeDescription = document.getElementById('chargeTypeDescription');
+    
+    if (chargeTypeSelect && chargeTypeDescription) {
+        chargeTypeSelect.addEventListener('change', function() {
+            if (this.value == '1') {
+                chargeTypeDescription.className = 'alert alert-primary mb-0';
+                chargeTypeDescription.innerHTML = '<strong>Selected:</strong> Charges will be deducted from principal. Member receives reduced amount (Principal - Charges).';
+            } else {
+                chargeTypeDescription.className = 'alert alert-warning mb-0';
+                chargeTypeDescription.innerHTML = '<strong>Selected:</strong> Member must pay charges before disbursement. Full principal amount will be disbursed after charges are paid.';
+            }
+        });
+    }
 });
 </script>
+
+<!-- Pay Single Fee Modal -->
+<div class="modal fade" id="paySingleFeeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: #ffc107; color: white;">
+                <h5 class="modal-title"><i class="mdi mdi-cash me-2"></i>Pay Loan Charge</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ route('admin.loans.pay-single-fee', $loan->id) }}" method="POST">
+                @csrf
+                <input type="hidden" name="loan_type" value="{{ $loanType }}">
+                <input type="hidden" name="fee_id" id="singleFeeIdInput">
+                <div class="modal-body" style="background-color: white;">
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information me-1"></i>
+                        Record payment for this upfront loan charge.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Fee Name:</label>
+                        <div class="form-control-plaintext fw-bold" id="singleFeeName"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Amount (UGX):</label>
+                        <div class="form-control-plaintext fw-bold text-success" style="font-size: 1.2rem;" id="singleFeeAmount"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method <span class="text-danger">*</span></label>
+                        <select class="form-select" name="payment_method" required>
+                            <option value="">Select Payment Method</option>
+                            <option value="1">Cash</option>
+                            <option value="2">Bank Transfer</option>
+                            <option value="3">Mobile Money</option>
+                            <option value="4">Card Payment</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Payment Notes</label>
+                        <textarea class="form-control" name="payment_notes" rows="2" 
+                                  placeholder="Optional notes about this payment"></textarea>
+                    </div>
+
+                    <div class="alert alert-warning mb-0">
+                        <i class="mdi mdi-alert me-1"></i>
+                        <strong>Note:</strong> Please ensure payment has been received before recording it.
+                    </div>
+                </div>
+                <div class="modal-footer" style="background-color: white;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="mdi mdi-cash-check me-1"></i> Record Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 @endsection

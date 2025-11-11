@@ -220,11 +220,22 @@
                                     @endif
                                 </td>
                                 <td>
-                                    @if($disbursement->loan && $disbursement->loan->member)
-                                        <div>
-                                            <span>{{ $disbursement->loan->member->fname }} {{ $disbursement->loan->member->lname }}</span>
-                                            <br><small class="text-muted">{{ $disbursement->loan->member->code }}</small>
-                                        </div>
+                                    @if($disbursement->loan)
+                                        @if($disbursement->loan_type == 1 && $disbursement->loan->member)
+                                            {{-- Personal Loan --}}
+                                            <div>
+                                                <span>{{ $disbursement->loan->member->fname }} {{ $disbursement->loan->member->lname }}</span>
+                                                <br><small class="text-muted">{{ $disbursement->loan->member->code }}</small>
+                                            </div>
+                                        @elseif($disbursement->loan_type == 2 && $disbursement->loan->group)
+                                            {{-- Group Loan --}}
+                                            <div>
+                                                <span>{{ $disbursement->loan->group->name }}</span>
+                                                <br><small class="text-muted">Group Loan</small>
+                                            </div>
+                                        @else
+                                            <span class="text-muted">Member not found</span>
+                                        @endif
                                     @else
                                         <span class="text-muted">Member not found</span>
                                     @endif
@@ -238,42 +249,45 @@
                                     </div>
                                 </td>
                                 <td>
-                                    @switch($disbursement->disbursement_method)
-                                        @case('cash')
-                                            <span class="badge badge-secondary">
-                                                <i class="mdi mdi-cash"></i> Cash
-                                            </span>
-                                            @break
-                                        @case('bank')
-                                            <span class="badge badge-primary">
-                                                <i class="mdi mdi-bank"></i> Bank Transfer
-                                            </span>
-                                            @break
-                                        @case('mobile_money')
+                                    @switch($disbursement->payment_type)
+                                        @case(1)
                                             <span class="badge badge-success">
                                                 <i class="mdi mdi-cellphone"></i> Mobile Money
                                             </span>
                                             @break
+                                        @case(2)
+                                            <span class="badge badge-info">
+                                                <i class="mdi mdi-bank"></i> Bank Transfer/Cheque
+                                            </span>
+                                            @break
                                         @default
-                                            <span class="badge badge-secondary">{{ ucfirst($disbursement->disbursement_method) }}</span>
+                                            <span class="badge badge-secondary">-</span>
                                     @endswitch
                                 </td>
                                 <td>
                                     @switch($disbursement->status)
-                                        @case('pending')
-                                            <span class="badge badge-warning">Pending</span>
+                                        @case(0)
+                                            <span class="badge badge-warning">
+                                                <i class="mdi mdi-clock-outline"></i> Pending
+                                            </span>
                                             @break
-                                        @case('completed')
-                                            <span class="badge badge-success">Completed</span>
+                                        @case(1)
+                                            <span class="badge badge-info">
+                                                <i class="mdi mdi-check"></i> Approved
+                                            </span>
                                             @break
-                                        @case('failed')
-                                            <span class="badge badge-danger">Failed</span>
+                                        @case(2)
+                                            <span class="badge badge-success">
+                                                <i class="mdi mdi-check-circle"></i> Disbursed
+                                            </span>
                                             @break
-                                        @case('cancelled')
-                                            <span class="badge badge-secondary">Cancelled</span>
+                                        @case(3)
+                                            <span class="badge badge-danger">
+                                                <i class="mdi mdi-close-circle"></i> Failed
+                                            </span>
                                             @break
                                         @default
-                                            <span class="badge badge-secondary">{{ ucfirst($disbursement->status) }}</span>
+                                            <span class="badge badge-secondary">Unknown</span>
                                     @endswitch
                                 </td>
                                 <td>
@@ -289,7 +303,7 @@
                                             <a class="dropdown-item" href="{{ route('admin.disbursements.show', $disbursement->id) }}">
                                                 <i class="mdi mdi-eye"></i> View Details
                                             </a>
-                                            @if($disbursement->status === 'pending')
+                                            @if($disbursement->status == 0)
                                                 <form action="{{ route('admin.disbursements.complete', $disbursement->id) }}" method="POST" class="d-inline">
                                                     @csrf
                                                     <button type="submit" class="dropdown-item text-success" 
@@ -305,7 +319,7 @@
                                                     </button>
                                                 </form>
                                             @endif
-                                            @if($disbursement->status === 'failed')
+                                            @if($disbursement->status == 3)
                                                 <form action="{{ route('admin.disbursements.retry', $disbursement->id) }}" method="POST" class="d-inline">
                                                     @csrf
                                                     <button type="submit" class="dropdown-item text-warning" 

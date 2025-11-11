@@ -100,16 +100,21 @@ Route::middleware([
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
     
+    // Loan Create Route (Must be BEFORE {id} routes)
+    Route::get('/loans/create', [\App\Http\Controllers\Admin\LoanController::class, 'create'])->name('loans.create');
+    
     // Loan Show Route (explicit to handle type parameter)
     Route::get('/loans/{id}', [\App\Http\Controllers\Admin\LoanController::class, 'show'])->name('loans.show');
     Route::get('/loans/{id}/edit', [\App\Http\Controllers\Admin\LoanController::class, 'edit'])->name('loans.edit');
     
     // Loan Management Routes
-    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class)->except(['show', 'edit']);
+    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class)->except(['show', 'edit', 'create']);
     Route::get('/loans/{loan}/details', [\App\Http\Controllers\Admin\LoanController::class, 'getLoanDetails'])->name('loans.details');
     Route::post('/loans/{loan}/approve', [\App\Http\Controllers\Admin\LoanController::class, 'approve'])->name('loans.approve');
     Route::post('/loans/{loan}/reject', [\App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('loans.reject');
     Route::post('/loans/{loan}/pay-fees', [\App\Http\Controllers\Admin\LoanController::class, 'payFees'])->name('loans.pay-fees');
+    Route::post('/loans/{loan}/pay-single-fee', [\App\Http\Controllers\Admin\LoanController::class, 'paySingleFee'])->name('loans.pay-single-fee');
+    Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');
     
     // Enhanced Loan Services Integration
     Route::post('/loans/generate-schedule-service', [\App\Http\Controllers\Admin\LoanController::class, 'generateScheduleWithService'])->name('loans.generate-schedule-service');
@@ -153,6 +158,9 @@ Route::middleware([
     // Disbursement Management Routes
     Route::resource('disbursements', \App\Http\Controllers\Admin\DisbursementController::class);
     Route::get('/disbursements/loan-details/{loan}', [\App\Http\Controllers\Admin\DisbursementController::class, 'getLoanDetails'])->name('disbursements.loan-details');
+    Route::post('/disbursements/{disbursement}/complete', [\App\Http\Controllers\Admin\DisbursementController::class, 'complete'])->name('disbursements.complete');
+    Route::post('/disbursements/{disbursement}/cancel', [\App\Http\Controllers\Admin\DisbursementController::class, 'cancel'])->name('disbursements.cancel');
+    Route::post('/disbursements/{disbursement}/retry', [\App\Http\Controllers\Admin\DisbursementController::class, 'retry'])->name('disbursements.retry');
     
     // NEW: Enhanced Disbursement Routes for UI
     Route::prefix('loans/disbursements')->name('loans.disbursements.')->group(function () {
@@ -177,6 +185,9 @@ Route::middleware([
         Route::post('/store', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeRepayment'])->name('store');
         Route::post('/partial', [\App\Http\Controllers\Admin\RepaymentController::class, 'partialPayment'])->name('partial');
     });
+    
+    // Loan next schedule route
+    Route::get('/loans/{id}/next-schedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'getNextSchedule'])->name('loans.next-schedule');
     
     // NEW: Loan History and Statements Routes
     Route::prefix('loans')->name('loans.')->group(function () {

@@ -42,7 +42,7 @@ class Disbursement extends Model
      */
     public function personalLoan()
     {
-        return $this->belongsTo(PersonalLoan::class, 'loan_id')->where('loan_type', '1');
+        return $this->belongsTo(PersonalLoan::class, 'loan_id');
     }
 
     /**
@@ -50,7 +50,21 @@ class Disbursement extends Model
      */
     public function groupLoan()
     {
-        return $this->belongsTo(GroupLoan::class, 'loan_id')->where('loan_type', '2');
+        return $this->belongsTo(GroupLoan::class, 'loan_id');
+    }
+
+    /**
+     * Get the loan (returns actual loan object, not relationship)
+     */
+    public function getLoanAttribute()
+    {
+        if ($this->loan_type == 1) {
+            // Return already loaded relationship or fetch fresh
+            return $this->relationLoaded('personalLoan') ? $this->personalLoan : PersonalLoan::find($this->loan_id);
+        } else {
+            // Return already loaded relationship or fetch fresh
+            return $this->relationLoaded('groupLoan') ? $this->groupLoan : GroupLoan::find($this->loan_id);
+        }
     }
 
     /**

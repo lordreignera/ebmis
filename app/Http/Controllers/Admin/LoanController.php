@@ -317,8 +317,9 @@ class LoanController extends Controller
                 $validated['installment'] = $validated['max_installment'];
                 $validated['added_by'] = auth()->id();
                 $validated['status'] = 0; // Pending approval
-                $validated['created_at'] = now();
-                $validated['updated_at'] = now();
+                $validated['datecreated'] = now(); // Use datecreated instead of created_at
+                $validated['verified'] = 0; // Not verified initially
+                $validated['sign_code'] = 0; // Not an eSign loan by default
 
                 // Create the personal loan
                 $loan = PersonalLoan::create($validated);
@@ -395,8 +396,8 @@ class LoanController extends Controller
     {
         $currentTime = now();
         $periodCode = strtoupper(substr($period, 0, 1)); // D, W, M
-        $dailyCount = PersonalLoan::whereDate('created_at', today())->count() + 
-                     GroupLoan::whereDate('created_at', today())->count() + 1;
+        $dailyCount = PersonalLoan::whereDate('datecreated', today())->count() + 
+                     GroupLoan::whereDate('datecreated', today())->count() + 1;
         
         return $type . $periodCode . 'LOAN' . $currentTime->format('ymdHi') . sprintf('%03d', $dailyCount);
     }
@@ -570,12 +571,22 @@ class LoanController extends Controller
      */
     public function approve(Request $request, $id)
     {
+        \Log::info('Approve loan called', [
+            'id' => $id,
+            'request_all' => $request->all()
+        ]);
+        
         $request->validate([
             'loan_type' => 'required|in:personal,group',
             'comments' => 'nullable|string|max:500'
         ]);
 
         $loanType = $request->input('loan_type');
+        
+        \Log::info('Looking for loan', [
+            'id' => $id,
+            'type' => $loanType
+        ]);
         
         try {
             if ($loanType === 'personal') {
@@ -797,6 +808,233 @@ class LoanController extends Controller
     }
 
     /**
+     * Pay a single upfront fee for a loan
+     */
+    public function paySingleFee(Request $request, $id)
+    {
+        $request->validate([
+            'loan_type' => 'required|in:personal,group',
+            'fee_id' => 'required|integer',
+            'payment_method' => 'required|integer|in:1,2,3,4',
+            'payment_reference' => 'nullable|string|max:100',
+            'payment_notes' => 'nullable|string|max:500'
+        ]);
+
+        $loanType = $request->input('loan_type');
+        
+        try {
+            DB::beginTransaction();
+
+            // Get the loan
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::findOrFail($id);
+                $memberId = $loan->member_id;
+            } else {
+                $loan = GroupLoan::with('group')->findOrFail($id);
+                $memberId = $loan->group->members()->first()->id ?? null;
+            }
+
+            if (!$memberId) {
+                throw new \Exception('Could not determine member for payment.');
+            }
+
+            $feeId = $request->input('fee_id');
+            $paymentMethod = $request->input('payment_method');
+            $paymentRef = $request->input('payment_reference');
+            $paymentNotes = $request->input('payment_notes');
+
+            // Get the charge from product charges
+            $charge = \App\Models\ProductCharge::find($feeId);
+            if (!$charge) {
+                throw new \Exception('Charge not found.');
+            }
+
+            // Calculate the actual charge amount
+            $chargeAmount = 0;
+            if ($charge->type == 1) { // Fixed
+                $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0);
+            } elseif ($charge->type == 2) { // Percentage
+                $percentageValue = floatval($charge->getRawOriginal('value') ?? 0);
+                $chargeAmount = ($loan->principal * $percentageValue) / 100;
+            } elseif ($charge->type == 3) { // Per Day
+                $perDayValue = floatval($charge->getRawOriginal('value') ?? 0);
+                $chargeAmount = $perDayValue * $loan->period;
+            } elseif ($charge->type == 4) { // Per Month
+                $perMonthValue = floatval($charge->getRawOriginal('value') ?? 0);
+                $chargeAmount = $perMonthValue * $loan->period;
+            }
+
+            // Check if registration fee has already been paid by this member
+            $isRegistrationFee = stripos($charge->name, 'registration') !== false;
+            if ($isRegistrationFee) {
+                $existingPayment = \App\Models\Fee::where('member_id', $memberId)
+                    ->where('fees_type_id', $charge->id)
+                    ->where('status', 1) // Paid
+                    ->first();
+
+                if ($existingPayment) {
+                    throw new \Exception('Registration fee has already been paid by this member.');
+                }
+            }
+
+            // Check if this specific loan charge has already been paid
+            $existingLoanPayment = \App\Models\Fee::where('loan_id', $loan->id)
+                ->where('fees_type_id', $charge->id)
+                ->where('status', 1)
+                ->first();
+
+            if ($existingLoanPayment) {
+                throw new \Exception('This charge has already been paid for this loan.');
+            }
+
+            // Create fee payment record
+            $fee = \App\Models\Fee::create([
+                'member_id' => $memberId,
+                'loan_id' => $loan->id,
+                'fees_type_id' => $charge->id,
+                'payment_type' => $paymentMethod,
+                'amount' => $chargeAmount,
+                'description' => 'Upfront payment for ' . $charge->name . ' - Loan ' . $loan->code,
+                'added_by' => auth()->id(),
+                'payment_status' => 'Paid',
+                'payment_description' => $paymentNotes,
+                'pay_ref' => $paymentRef,
+                'status' => 1 // Paid
+            ]);
+
+            DB::commit();
+
+            $message = "Successfully recorded payment of UGX " . number_format($chargeAmount, 0) . " for " . $charge->name . ".";
+            return redirect()->back()->with('success', $message);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            $message = 'Failed to record payment: ' . $e->getMessage();
+            return back()->with('error', $message);
+        }
+    }
+
+    /**
+     * Update charge type for a loan
+     */
+    public function updateChargeType(Request $request, $id)
+    {
+        $request->validate([
+            'loan_type' => 'required|in:personal,group',
+            'charge_type' => 'required|in:1,2'
+        ]);
+
+        $loanType = $request->input('loan_type');
+        $chargeType = $request->input('charge_type');
+        
+        try {
+            DB::beginTransaction();
+
+            // Get the loan
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::findOrFail($id);
+                $memberId = $loan->member_id;
+            } else {
+                $loan = GroupLoan::with('group')->findOrFail($id);
+                $memberId = $loan->group->members()->first()->id ?? null;
+            }
+
+            // Only allow changes for pending loans
+            if ($loan->status != 0) {
+                return back()->with('error', 'Cannot change charge type for approved or disbursed loans.');
+            }
+
+            // Update charge type
+            $loan->update(['charge_type' => $chargeType]);
+
+            // If charge_type = 1 (Deduct from Disbursement), automatically mark all charges as paid
+            if ($chargeType == 1) {
+                // Get product charges
+                $product = Product::with('charges')->find($loan->product_type);
+                if ($product && $product->charges) {
+                    $paidCount = 0;
+                    
+                    foreach ($product->charges as $charge) {
+                        // Skip if not active
+                        if ($charge->isactive != 1) {
+                            continue;
+                        }
+
+                        // Check if fee already exists for this loan and charge
+                        $existingFee = \App\Models\Fee::where('loan_id', $loan->id)
+                            ->where('fees_type_id', $charge->id)
+                            ->first();
+
+                        if ($existingFee) {
+                            // Update existing fee to paid status
+                            $existingFee->update([
+                                'status' => 1,
+                                'payment_status' => 'Paid - Deducted from Disbursement',
+                                'payment_description' => 'Automatically marked as paid - charges deducted from disbursement amount'
+                            ]);
+                        } else {
+                            // Calculate the actual charge amount
+                            $chargeAmount = 0;
+                            if ($charge->type == 1) { // Fixed
+                                $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0);
+                            } elseif ($charge->type == 2) { // Percentage
+                                $percentageValue = floatval($charge->getRawOriginal('value') ?? 0);
+                                $chargeAmount = ($loan->principal * $percentageValue) / 100;
+                            } elseif ($charge->type == 3) { // Per Day
+                                $perDayValue = floatval($charge->getRawOriginal('value') ?? 0);
+                                $chargeAmount = $perDayValue * $loan->period;
+                            } elseif ($charge->type == 4) { // Per Month
+                                $perMonthValue = floatval($charge->getRawOriginal('value') ?? 0);
+                                $chargeAmount = $perMonthValue * $loan->period;
+                            }
+
+                            // Create fee payment record marked as paid
+                            \App\Models\Fee::create([
+                                'member_id' => $memberId,
+                                'loan_id' => $loan->id,
+                                'fees_type_id' => $charge->id,
+                                'payment_type' => 1, // Cash (default for deducted charges)
+                                'amount' => $chargeAmount,
+                                'description' => 'Charge deducted from disbursement - ' . $charge->name . ' - Loan ' . $loan->code,
+                                'added_by' => auth()->id(),
+                                'payment_status' => 'Paid - Deducted from Disbursement',
+                                'payment_description' => 'Automatically marked as paid - charges deducted from disbursement amount',
+                                'pay_ref' => 'AUTO-' . $loan->code,
+                                'status' => 1 // Paid
+                            ]);
+                        }
+                        $paidCount++;
+                    }
+                    
+                    DB::commit();
+                    
+                    $message = "Charge type updated: Charges will be deducted from disbursement. {$paidCount} charge(s) automatically marked as paid.";
+                } else {
+                    DB::commit();
+                    $message = 'Charge type updated: Charges will be deducted from disbursement amount.';
+                }
+            } elseif ($chargeType == 2) {
+                // If switching to upfront payment, delete auto-generated fee records
+                \App\Models\Fee::where('loan_id', $loan->id)
+                    ->where('payment_status', 'Paid - Deducted from Disbursement')
+                    ->delete();
+
+                DB::commit();
+                $message = 'Charge type updated: Member must pay charges upfront before disbursement.';
+            } else {
+                DB::commit();
+                $message = 'Charge type updated successfully.';
+            }
+            
+            return redirect()->back()->with('success', $message);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Failed to update charge type: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Generate loan schedule
      */
     private function generateLoanSchedule(Loan $loan)
@@ -875,49 +1113,59 @@ class LoanController extends Controller
             'branch_id',
             'comments',
             'charge_type',
-            'date_closed'
+            'date_closed',
+            'sign_code'
         ];
         
-        // Get eSign loans from both personal and group loans
-        $personalLoans = PersonalLoan::with(['member', 'product', 'branch', 'addedBy'])
-                         ->where('is_esign', true)
-                         ->select(array_merge($commonColumns, [
-                             'member_id',
-                             DB::raw("'personal' as loan_type"),
-                             DB::raw("NULL as group_id")
-                         ]));
-
-        $groupLoans = GroupLoan::with(['group', 'product', 'branch', 'addedBy'])
-                      ->where('is_esign', true)
-                      ->select(array_merge($commonColumns, [
-                          'group_id',
-                          DB::raw("'group' as loan_type"),
-                          DB::raw("NULL as member_id")
-                      ]));
+        // Get eSign loans - get them separately to maintain relationships
+        $personalLoansQuery = PersonalLoan::where('sign_code', '>', 0);
+        $groupLoansQuery = GroupLoan::where('sign_code', '>', 0);
 
         // Apply filters if needed
         if ($request->filled('status')) {
-            $personalLoans->where('status', $request->status);
-            $groupLoans->where('status', $request->status);
+            $personalLoansQuery->where('status', $request->status);
+            $groupLoansQuery->where('status', $request->status);
         }
 
         if ($request->filled('branch_id')) {
-            $personalLoans->where('branch_id', $request->branch_id);
-            $groupLoans->where('branch_id', $request->branch_id);
+            $personalLoansQuery->where('branch_id', $request->branch_id);
+            $groupLoansQuery->where('branch_id', $request->branch_id);
         }
 
-        // Union the queries and paginate
-        $loans = $personalLoans->union($groupLoans)->paginate(20);
+        // Get both types and merge them
+        $personalLoans = $personalLoansQuery->with(['member', 'product', 'branch', 'addedBy'])->get()->map(function($loan) {
+            $loan->loan_type = 'personal';
+            return $loan;
+        });
+
+        $groupLoans = $groupLoansQuery->with(['group', 'product', 'branch', 'addedBy'])->get()->map(function($loan) {
+            $loan->loan_type = 'group';
+            return $loan;
+        });
+
+        // Merge and paginate manually
+        $allLoans = $personalLoans->merge($groupLoans)->sortByDesc('datecreated');
+        
+        // Manual pagination
+        $perPage = 20;
+        $currentPage = $request->input('page', 1);
+        $loans = new \Illuminate\Pagination\LengthAwarePaginator(
+            $allLoans->forPage($currentPage, $perPage),
+            $allLoans->count(),
+            $perPage,
+            $currentPage,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
         
         $stats = [
-            'total_esign' => PersonalLoan::where('is_esign', true)->count() + 
-                           GroupLoan::where('is_esign', true)->count(),
-            'pending_esign' => PersonalLoan::where('is_esign', true)->where('status', 'pending')->count() +
-                             GroupLoan::where('is_esign', true)->where('status', 'pending')->count(),
-            'approved_esign' => PersonalLoan::where('is_esign', true)->where('status', 'approved')->count() +
-                              GroupLoan::where('is_esign', true)->where('status', 'approved')->count(),
-            'disbursed_esign' => PersonalLoan::where('is_esign', true)->where('status', 'disbursed')->count() +
-                               GroupLoan::where('is_esign', true)->where('status', 'disbursed')->count(),
+            'total_esign' => PersonalLoan::where('sign_code', '>', 0)->count() + 
+                           GroupLoan::where('sign_code', '>', 0)->count(),
+            'pending_esign' => PersonalLoan::where('sign_code', '>', 0)->where('status', 0)->count() +
+                             GroupLoan::where('sign_code', '>', 0)->where('status', 0)->count(),
+            'approved_esign' => PersonalLoan::where('sign_code', '>', 0)->where('status', 1)->count() +
+                              GroupLoan::where('sign_code', '>', 0)->where('status', 1)->count(),
+            'disbursed_esign' => PersonalLoan::where('sign_code', '>', 0)->where('status', 2)->count() +
+                               GroupLoan::where('sign_code', '>', 0)->where('status', 2)->count(),
         ];
 
         return view('admin.loans.esign', compact('loans', 'stats'));
@@ -947,29 +1195,38 @@ class LoanController extends Controller
         ];
         
         // Get ONLY pending loans (status = 0) from both personal and group loans
-        $personalLoans = PersonalLoan::with(['member', 'product', 'branch', 'addedBy'])
-                         ->where('status', 0) // Only pending approval
-                         ->select(array_merge($commonColumns, [
-                             'member_id',
-                             DB::raw("'personal' as loan_type"),
-                             DB::raw("NULL as group_id")
-                         ]));
-
-        $groupLoans = GroupLoan::with(['group', 'product', 'branch', 'addedBy'])
-                      ->where('status', 0) // Only pending approval
-                      ->select(array_merge($commonColumns, [
-                          'group_id',
-                          DB::raw("'group' as loan_type"),
-                          DB::raw("NULL as member_id")
-                      ]));
+        $personalLoansQuery = PersonalLoan::where('status', 0);
+        $groupLoansQuery = GroupLoan::where('status', 0);
 
         if ($request->filled('branch_id')) {
-            $personalLoans->where('branch_id', $request->branch_id);
-            $groupLoans->where('branch_id', $request->branch_id);
+            $personalLoansQuery->where('branch_id', $request->branch_id);
+            $groupLoansQuery->where('branch_id', $request->branch_id);
         }
 
-        // Union the queries and paginate
-        $loans = $personalLoans->union($groupLoans)->paginate(20);
+        // Get both types and merge them
+        $personalLoans = $personalLoansQuery->with(['member', 'product', 'branch', 'addedBy'])->get()->map(function($loan) {
+            $loan->loan_type = 'personal';
+            return $loan;
+        });
+
+        $groupLoans = $groupLoansQuery->with(['group', 'product', 'branch', 'addedBy'])->get()->map(function($loan) {
+            $loan->loan_type = 'group';
+            return $loan;
+        });
+
+        // Merge and paginate manually
+        $allLoans = $personalLoans->merge($groupLoans)->sortByDesc('datecreated');
+        
+        // Manual pagination
+        $perPage = 20;
+        $currentPage = $request->input('page', 1);
+        $loans = new \Illuminate\Pagination\LengthAwarePaginator(
+            $allLoans->forPage($currentPage, $perPage),
+            $allLoans->count(),
+            $perPage,
+            $currentPage,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
         
         $stats = [
             'pending_approval' => PersonalLoan::where('status', 0)->count() + 

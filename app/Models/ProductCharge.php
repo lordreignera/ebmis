@@ -20,11 +20,19 @@ class ProductCharge extends Model
 
     protected $casts = [
         'isactive' => 'integer',
-        'value' => 'decimal:2',
     ];
 
     // Disable Laravel timestamps completely for legacy compatibility
     public $timestamps = false;
+    
+    /**
+     * Get the value attribute and clean it (remove % signs from legacy data)
+     */
+    public function getValueAttribute($value)
+    {
+        // Remove % sign if present and convert to float
+        return floatval(str_replace('%', '', $value));
+    }
 
     /**
      * Get the product that owns the charge

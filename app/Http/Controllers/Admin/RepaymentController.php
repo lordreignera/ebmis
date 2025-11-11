@@ -12,6 +12,7 @@ use App\Models\Branch;
 use App\Models\LoanSchedule;
 use App\Models\Product;
 use App\Models\User;
+use App\Models\RawPayment;
 use App\Services\MobileMoneyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -155,7 +156,7 @@ class RepaymentController extends Controller
      */
     public function schedules($loanId)
     {
-        $loan = Loan::with(['member', 'branch', 'product', 'schedules', 'repayments'])
+        $loan = Loan::with(['member', 'branch', 'product', 'schedules.repayments', 'repayments'])
                    ->where('status', 2) // Disbursed
                    ->findOrFail($loanId);
 
@@ -184,24 +185,104 @@ class RepaymentController extends Controller
         $loan->days_overdue = $overdueSchedules->count() > 0 ? 
                              now()->diffInDays($overdueSchedules->first()->payment_date) : 0;
 
-        // Get schedules with payment status
-        $schedules = $loan->schedules->map(function($schedule) {
-            $schedule->due_amount = $schedule->payment;
-            $schedule->penalty_amount = $schedule->penalty ?? 0;
-            $schedule->interest_amount = $schedule->interest ?? 0;
-            $schedule->principal_amount = $schedule->payment - $schedule->interest_amount;
-            $schedule->installment_number = $schedule->id; // Use ID as installment number
-            $schedule->amount_paid = $schedule->paid_amount ?? 0;
+        // Get schedules with payment status - EXACT bimsadmin calculation logic
+        $principal = floatval($loan->principal); // Running principal balance
+        $globalprincipal = floatval($loan->principal); // Global principal for interest calculation
+        
+        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal) {
+            // 1. Calculate "Principal cal Interest" (reducing balance per period)
+            $period = floor($loan->period / 2);
+            $pricipalcalIntrest = $period > 0 ? ($loan->principal / $period) : 0;
             
-            // Calculate days overdue/remaining
-            if ($schedule->status == 1) {
-                $schedule->payment_status = 'paid';
-                $schedule->days_overdue = null;
+            // 2. Calculate "Interest Payable" using global principal
+            $intrestamtpayable = (($globalprincipal * $loan->interest / 100) * 1.99999999);
+            
+            // 3. Calculate periods in arrears
+            $now = $schedule->date_cleared ? strtotime($schedule->date_cleared) : time();
+            $your_date = strtotime($schedule->payment_date);
+            $datediff = $now - $your_date;
+            $d = floor($datediff / (60 * 60 * 24)); // Days overdue
+            
+            $dd = 0; // Periods overdue
+            if ($d > 0) {
+                if ($loan->period_type == '1') {
+                    // Weekly loans: divide by 7
+                    $dd = ceil($d / 7);
+                } else if ($loan->period_type == '2') {
+                    // Monthly loans: divide by 30
+                    $dd = ceil($d / 30);
+                } else if ($loan->period_type == '3') {
+                    // Daily loans: each day is 1 period
+                    $dd = $d;
+                } else {
+                    // Default to weekly
+                    $dd = ceil($d / 7);
+                }
+            }
+            
+            // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
+            $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+            
+            // 5. Get total paid from schedule (or calculate from repayments)
+            $totalPaid = floatval($schedule->paid ?? $schedule->repayments()->where('status', 1)->sum('amount'));
+            
+            // 6. Get pending count
+            $pendingCount = intval($schedule->pending_count ?? $schedule->repayments()->where('status', 0)->where('pay_status', 'Pending')->count());
+            
+            // 7. Allocate payments - BIMSADMIN ORDER: Late Fees → Interest → Principal
+            // Late fees paid
+            $afterlatepayment = $totalPaid - $latepayment;
+            if ($afterlatepayment > 0) {
+                $pafterlatepayment = $latepayment; // Full late payment covered
             } else {
-                $schedule->payment_status = 'pending';
-                $schedule->days_overdue = $schedule->payment_date < now() ? 
-                                         now()->diffInDays($schedule->payment_date) : 
-                                         -now()->diffInDays($schedule->payment_date);
+                $pafterlatepayment = $totalPaid; // Partial payment
+                $afterlatepayment = 0;
+            }
+            
+            // Interest paid
+            $afterinterestpayment = $afterlatepayment - $intrestamtpayable;
+            if ($afterinterestpayment > 0) {
+                $pafterinterestpayment = $intrestamtpayable; // Full interest covered
+            } else {
+                $pafterinterestpayment = $afterlatepayment; // Partial payment
+                $afterinterestpayment = 0;
+            }
+            
+            // Principal paid
+            $afterprinicpalpayment = $afterinterestpayment - $schedule->principal;
+            if ($afterprinicpalpayment > 0) {
+                $pafterprinicpalpayment = $schedule->principal; // Full principal covered
+            } else {
+                $pafterprinicpalpayment = $afterinterestpayment; // Partial payment
+                $afterprinicpalpayment = 0;
+            }
+            
+            // 8. Calculate total balance
+            $act_bal = ($schedule->principal + $intrestamtpayable + $latepayment) - $totalPaid;
+            
+            // 9. Attach calculated values to schedule
+            $schedule->pricipalcalIntrest = $pricipalcalIntrest;
+            $schedule->globalprincipal = $globalprincipal;
+            $schedule->intrestamtpayable = $intrestamtpayable;
+            $schedule->periods_in_arrears = $dd;
+            $schedule->penalty = $latepayment;
+            $schedule->total_payment = $schedule->principal + $intrestamtpayable + $latepayment;
+            $schedule->principal_paid = $pafterprinicpalpayment;
+            $schedule->interest_paid = $pafterinterestpayment;
+            $schedule->penalty_paid = $pafterlatepayment;
+            $schedule->total_balance = $act_bal;
+            $schedule->principal_balance = $principal;
+            $schedule->pending_count = $pendingCount;
+            
+            // 10. Update running balances for next iteration
+            if ($principal > 0) {
+                $principal -= $schedule->principal;
+                if ($principal < 0) $principal = 0;
+            }
+            
+            if ($globalprincipal > 0) {
+                $globalprincipal -= $pricipalcalIntrest;
+                if ($globalprincipal < 0) $globalprincipal = 0;
             }
             
             return $schedule;
@@ -226,16 +307,61 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Get next schedule for a loan (AJAX)
+     */
+    public function getNextSchedule($loanId)
+    {
+        try {
+            $loan = Loan::findOrFail($loanId);
+            
+            $nextSchedule = LoanSchedule::where('loan_id', $loanId)
+                                       ->where('status', 0) // Unpaid
+                                       ->orderBy('payment_date')
+                                       ->first();
+            
+            if ($nextSchedule) {
+                return response()->json([
+                    'success' => true,
+                    'schedule' => [
+                        'id' => $nextSchedule->id,
+                        'due_date' => \Carbon\Carbon::parse($nextSchedule->payment_date)->format('M d, Y'),
+                        'expected_amount' => number_format($nextSchedule->payment, 2),
+                        'payment_amount' => $nextSchedule->payment,
+                        'principal' => $nextSchedule->principal ?? 0,
+                        'interest' => $nextSchedule->interest ?? 0,
+                        'penalty' => $nextSchedule->penalty ?? 0,
+                    ]
+                ]);
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'No pending schedules found for this loan.'
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching schedule: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Process quick repayment (AJAX)
      */
     public function quickRepayment(Request $request)
     {
+        // Accept both numeric and string payment methods
+        $paymentMethod = $request->input('payment_method') ?: $request->input('type');
+        
         $validator = Validator::make($request->all(), [
             'loan_id' => 'required|exists:loans,id',
             'amount' => 'required|numeric|min:1',
-            'payment_method' => 'required|in:mobile_money,cash,bank_transfer',
-            'network' => 'required_if:payment_method,mobile_money|in:MTN,AIRTEL',
-            'phone' => 'required_if:payment_method,mobile_money|string',
+            'payment_method' => 'nullable',
+            'type' => 'nullable',
+            'network' => 'nullable|in:MTN,AIRTEL',
+            'phone' => 'nullable|string',
             'notes' => 'nullable|string|max:500',
         ]);
 
@@ -252,31 +378,78 @@ class RepaymentController extends Controller
         DB::beginTransaction();
 
         try {
+            // Convert payment method to numeric code
+            // Legacy system: 1=cash, 2=mobile_money, 3=bank/cheque
+            $paymentTypeCode = is_numeric($paymentMethod) 
+                ? (int)$paymentMethod 
+                : $this->getPaymentTypeCode($paymentMethod);
+            
             $repaymentData = [
-                'type' => $this->getPaymentTypeCode($request->payment_method),
-                'details' => $request->notes ?: 'Quick repayment',
+                'type' => $paymentTypeCode,
+                'details' => $request->input('notes') ?: $request->input('details', 'Quick repayment'),
                 'loan_id' => $request->loan_id,
-                'schedule_id' => 0,
+                'schedule_id' => $request->input('schedule_id', 0),
                 'amount' => $request->amount,
                 'date_created' => now(),
                 'added_by' => auth()->id(),
-                'platform' => 'Web',
+                'platform' => $request->input('platform', 'Web'),
             ];
 
-            // Handle mobile money
-            if ($request->payment_method === 'mobile_money') {
+            // Handle mobile money (type = 2 in legacy system)
+            if ($paymentTypeCode == 2) {
+                $phone = $request->input('phone');
+                $network = $request->input('network');
+                
+                if (!$phone) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Phone number is required for mobile money payments.'
+                    ], 422);
+                }
+                
+                if (!$network) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Network is required for mobile money payments.'
+                    ], 422);
+                }
+                
                 $mobileMoneyResult = $this->processMobileMoneyCollection(
                     $loan,
                     $request->amount,
-                    $request->phone,
-                    $request->network
+                    $phone,
+                    $network
                 );
 
                 if ($mobileMoneyResult['success']) {
                     $repaymentData['status'] = 0; // Pending mobile money confirmation
                     $repaymentData['txn_id'] = $mobileMoneyResult['reference'];
                     $repaymentData['pay_status'] = 'PENDING';
-                    $repaymentData['pay_message'] = 'Mobile money collection initiated';
+                    $repaymentData['pay_message'] = 'Mobile money collection initiated - check your phone';
+                    
+                    // Increment pending_count on the schedule (bimsadmin style)
+                    if ($request->has('s_id')) {
+                        DB::table('loan_schedules')
+                            ->where('id', $request->s_id)
+                            ->increment('pending_count');
+                    }
+                    
+                    // Create raw_payments record for tracking (bimsadmin style)
+                    RawPayment::create([
+                        'trans_id' => $mobileMoneyResult['reference'],
+                        'phone' => $this->mobileMoneyService->formatPhoneNumber($phone),
+                        'amount' => $request->amount,
+                        'ref' => '', // FlexiPay reference (empty initially)
+                        'message' => 'Payment initiated',
+                        'status' => 'Processed', // Match bimsadmin format
+                        'pay_status' => '00', // Actual status code - pending
+                        'pay_message' => 'Completed successfully',
+                        'date_created' => now(),
+                        'type' => 'repayment', // Must be 'repayment' not 'collection'
+                        'direction' => 'cash_in',
+                        'added_by' => auth()->id(),
+                        'raw_message' => serialize(['schedule_id' => $request->s_id, 'loan_id' => $request->loan_id, 'member_id' => $loan->member_id]),
+                    ]);
                 } else {
                     DB::rollBack();
                     return response()->json([
@@ -285,32 +458,39 @@ class RepaymentController extends Controller
                     ], 400);
                 }
             } else {
-                // For cash/bank transfers, mark as confirmed
+                // For cash/bank transfers/cheque, mark as confirmed
                 $repaymentData['status'] = 1;
                 $repaymentData['pay_status'] = 'SUCCESS';
                 $repaymentData['pay_message'] = 'Payment confirmed';
-                $repaymentData['txn_id'] = 'TXN-' . time() . '-' . $request->payment_method;
+                $repaymentData['txn_id'] = 'TXN-' . time() . '-' . $paymentTypeCode;
             }
 
             $repayment = Repayment::create($repaymentData);
 
-            // Update loan balance if confirmed
+            // Update loan balance and schedules if confirmed
             if ($repaymentData['status'] == 1) {
                 $loan->increment('paid', $request->amount);
                 $this->updateLoanSchedules($loan, $repayment);
+                
+                // Check if loan is fully paid
+                $totalPayable = $loan->principal + $loan->interest;
+                if ($loan->paid >= $totalPayable) {
+                    $loan->update(['status' => 3]); // Completed
+                }
             }
 
             DB::commit();
 
-            $message = "Repayment recorded successfully.";
-            if ($request->payment_method === 'mobile_money') {
-                $message .= " Mobile money collection request sent.";
+            $message = "Payment recorded successfully.";
+            if ($paymentTypeCode == 1) {
+                $message = "Collection request sent to " . $request->phone . ". Please check your phone and enter your Mobile Money PIN to complete the payment.";
             }
 
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'repayment_id' => $repayment->id
+                'repayment_id' => $repayment->id,
+                'payment_type' => $paymentTypeCode
             ]);
 
         } catch (\Exception $e) {
@@ -318,7 +498,8 @@ class RepaymentController extends Controller
             
             Log::error('Quick repayment failed', [
                 'loan_id' => $request->loan_id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
@@ -333,52 +514,67 @@ class RepaymentController extends Controller
      */
     public function storeRepayment(Request $request)
     {
+        // Log incoming request for debugging
+        \Log::info('storeRepayment called', [
+            'all_data' => $request->all(),
+            'has_s_id' => $request->has('s_id'),
+            'has_type' => $request->has('type'),
+            'has_amount' => $request->has('amount')
+        ]);
+
+        // Handle bimsadmin-style form submission (POST with s_id, type, details, amount, medium)
         $validator = Validator::make($request->all(), [
-            'loan_id' => 'required|exists:loans,id',
-            'schedule_id' => 'required|exists:loan_schedules,id',
+            'loan_id' => 'required|exists:personal_loans,id',
+            'member_id' => 'required|exists:members,id',
+            's_id' => 'required|exists:loan_schedules,id',
             'amount' => 'required|numeric|min:1',
-            'payment_method' => 'required|in:mobile_money,cash,bank_transfer,cheque',
-            'network' => 'required_if:payment_method,mobile_money|in:MTN,AIRTEL',
-            'phone_number' => 'required_if:payment_method,mobile_money|string',
-            'payment_date' => 'required|date|before_or_equal:today',
-            'reference_number' => 'nullable|string|max:100',
-            'notes' => 'nullable|string|max:500',
-            'auto_collect' => 'nullable|boolean',
+            'type' => 'required|integer|in:1,2,3', // 1=cash, 2=mobile_money, 3=bank
+            'medium' => 'nullable|integer|in:1,2', // 1=Airtel, 2=MTN (only for mobile money)
+            'details' => 'required|string|max:500',
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error', 'Please fill in all required fields correctly.');
         }
 
         $loan = Loan::findOrFail($request->loan_id);
-        $schedule = LoanSchedule::findOrFail($request->schedule_id);
+        $schedule = LoanSchedule::findOrFail($request->s_id);
+        $member = \App\Models\Member::findOrFail($request->member_id);
 
         DB::beginTransaction();
 
         try {
+            // Determine network name from medium (for mobile money)
+            $network = null;
+            if ($request->type == 2 && $request->medium) {
+                $network = $request->medium == 1 ? 'AIRTEL' : 'MTN';
+            }
+
             $repaymentData = [
-                'type' => $this->getPaymentTypeCode($request->payment_method),
-                'details' => $request->notes ?: 'Scheduled payment',
+                'type' => $request->type, // 1=cash, 2=mobile_money, 3=bank
+                'details' => $request->details,
                 'loan_id' => $request->loan_id,
-                'schedule_id' => $request->schedule_id,
+                'schedule_id' => $request->s_id,
+                'member_id' => $request->member_id,
                 'amount' => $request->amount,
-                'date_created' => $request->payment_date,
+                'date_created' => now(),
                 'added_by' => auth()->id(),
                 'platform' => 'Web',
-                'txn_id' => $request->reference_number ?: ('REF-' . time()),
             ];
 
-            // Handle mobile money with auto-collect
-            if ($request->payment_method === 'mobile_money' && $request->auto_collect) {
+            // Handle mobile money - initiate collection
+            if ($request->type == 2) {
+                $memberName = $member->fname . ' ' . $member->lname;
+                $phoneNumber = $member->contact;
+                
                 $mobileMoneyResult = $this->processMobileMoneyCollection(
                     $loan,
                     $request->amount,
-                    $request->phone_number,
-                    $request->network
+                    $phoneNumber,
+                    $network
                 );
 
                 if ($mobileMoneyResult['success']) {
@@ -386,59 +582,82 @@ class RepaymentController extends Controller
                     $repaymentData['txn_id'] = $mobileMoneyResult['reference'];
                     $repaymentData['pay_status'] = 'PENDING';
                     $repaymentData['pay_message'] = 'Mobile money collection initiated';
+                    $repaymentData['network'] = $network;
+                    $repaymentData['phone_number'] = $phoneNumber;
+                    
+                    // Increment pending_count on the schedule (bimsadmin style)
+                    $schedule->increment('pending_count');
+                    
+                    // Create raw_payments record for tracking (bimsadmin format)
+                    \App\Models\RawPayment::create([
+                        'trans_id' => $mobileMoneyResult['reference'], // THIS is what CheckTransactions searches for
+                        'phone' => $phoneNumber,
+                        'amount' => $request->amount,
+                        'ref' => '', // FlexiPay reference (empty initially)
+                        'message' => 'Repayment initiated',
+                        'status' => 'Processed', // Match bimsadmin format
+                        'pay_status' => '00', // Actual status code - pending (CheckTransactions looks for this)
+                        'pay_message' => 'Completed successfully',
+                        'date_created' => now(),
+                        'type' => 'repayment', // Must be 'repayment' for CheckTransactions filter
+                        'direction' => 'cash_in',
+                        'added_by' => auth()->id(),
+                        'raw_message' => serialize(['schedule_id' => $request->s_id, 'loan_id' => $request->loan_id, 'member_id' => $request->member_id]),
+                    ]);
                 } else {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Mobile money collection failed: ' . $mobileMoneyResult['message']
-                    ]);
+                    return redirect()->back()
+                        ->with('error', 'Mobile money collection failed: ' . $mobileMoneyResult['message']);
                 }
             } else {
-                // Manual confirmation
+                // Cash or Bank Transfer - immediately confirmed
                 $repaymentData['status'] = 1; // Confirmed
                 $repaymentData['pay_status'] = 'SUCCESS';
-                $repaymentData['pay_message'] = 'Payment manually confirmed';
+                $repaymentData['pay_message'] = 'Payment confirmed';
+                $repaymentData['txn_id'] = 'TXN-' . time();
             }
 
             $repayment = Repayment::create($repaymentData);
 
-            // Update loan and schedule if confirmed
+            // Update loan and schedule if confirmed (not mobile money pending)
             if ($repaymentData['status'] == 1) {
                 $loan->increment('paid', $request->amount);
+                $schedule->increment('paid', $request->amount);
                 
-                // Update specific schedule
-                $schedule->increment('paid_amount', $request->amount);
-                if ($schedule->paid_amount >= $schedule->payment) {
+                // Check if schedule is fully paid
+                if ($schedule->paid >= $schedule->payment) {
                     $schedule->update(['status' => 1]); // Fully paid
+                }
+                
+                // Check if loan is fully paid
+                if ($loan->paid >= ($loan->principal + $loan->interest)) {
+                    $loan->update(['status' => 3]); // Completed
                 }
             }
 
             DB::commit();
 
-            $message = "Payment recorded successfully.";
-            if ($request->payment_method === 'mobile_money' && $request->auto_collect) {
-                $message .= " Mobile money collection request sent.";
+            $message = "Repayment recorded successfully.";
+            if ($request->type == 2) {
+                $message = "Mobile money collection request sent to {$member->fname}. Payment pending confirmation.";
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'repayment_id' => $repayment->id
-            ]);
+            return redirect()->route('admin.loans.repayments.schedules', $request->loan_id)
+                ->with('success', $message);
 
         } catch (\Exception $e) {
             DB::rollBack();
             
-            Log::error('Repayment storage failed', [
+            \Log::error('Repayment storage failed', [
                 'loan_id' => $request->loan_id,
-                'schedule_id' => $request->schedule_id,
-                'error' => $e->getMessage()
+                'schedule_id' => $request->s_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment recording failed. Please try again.'
-            ], 500);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Payment recording failed: ' . $e->getMessage());
         }
     }
 
@@ -588,6 +807,7 @@ class RepaymentController extends Controller
 
     /**
      * Get payment type code for database storage
+     * Legacy system mapping: 1=cash, 2=mobile_money, 3=bank/cheque
      */
     protected function getPaymentTypeCode($paymentMethod)
     {

@@ -9,6 +9,9 @@ class LoanSchedule extends Model
 {
     use HasFactory;
 
+    // Disable timestamps (table doesn't have created_at/updated_at)
+    public $timestamps = false;
+
     protected $fillable = [
         'loan_id',
         'payment_date',
@@ -16,6 +19,8 @@ class LoanSchedule extends Model
         'interest',
         'principal',
         'balance',
+        'paid',
+        'pending_count',
         'status',
         'date_modified',
         'raw_message',
@@ -28,6 +33,8 @@ class LoanSchedule extends Model
         'interest' => 'decimal:2',
         'principal' => 'decimal:2',
         'balance' => 'decimal:2',
+        'paid' => 'decimal:2',
+        'pending_count' => 'integer',
         'payment_date' => 'date',
         'date_cleared' => 'datetime',
     ];

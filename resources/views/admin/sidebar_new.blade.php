@@ -447,8 +447,8 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=personal&period=monthly">Personal Loan (Monthly)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.esign') }}">eSign Personal Loan</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}">Personal Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}">Loan Disbursements (Enhanced)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.disbursements.index') }}">Personal Loan Disbursement (Legacy)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}">Loan Disbursemented (Enhanced)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}">Active Loans Management</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayment (Legacy)</a></li>
           <li class="nav-item"><hr class="dropdown-divider"></li>

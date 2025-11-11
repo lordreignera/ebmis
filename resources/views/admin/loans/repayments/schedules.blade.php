@@ -221,113 +221,142 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered" id="schedulesTable">
+                        <table class="table table-sm table-bordered table-hover" id="schedulesTable" style="font-size: 0.875rem;">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 5%;">#</th>
-                                    <th style="width: 12%;">Due Date</th>
-                                    <th style="width: 10%;">Principal</th>
-                                    <th style="width: 10%;">Interest</th>
-                                    <th style="width: 10%;">Total Due</th>
-                                    <th style="width: 10%;">Penalty</th>
-                                    <th style="width: 10%;">Amount Paid</th>
-                                    <th style="width: 10%;">Balance</th>
-                                    <th style="width: 8%;">Status</th>
-                                    <th style="width: 8%;">Days</th>
-                                    <th style="width: 7%;">Actions</th>
+                                    <th style="width: 3%;">#</th>
+                                    <th style="width: 7%;">Installment Date</th>
+                                    <th style="width: 6%;">Principal</th>
+                                    <th style="width: 6%;">Original Interest</th>
+                                    <th style="width: 6%;">Principal cal Intrest</th>
+                                    <th style="width: 6%;">Principal Bal</th>
+                                    <th style="width: 6%;">Principal for Intrest payable</th>
+                                    <th style="width: 6%;">Intrest payable</th>
+                                    <th style="width: 5%;">Periods in Arrears</th>
+                                    <th style="width: 6%;">Late Fees</th>
+                                    <th style="width: 6%;">Total Payment</th>
+                                    <th style="width: 6%;">Principal Paid</th>
+                                    <th style="width: 6%;">Interest Paid</th>
+                                    <th style="width: 6%;">Late fees Paid</th>
+                                    <th style="width: 6%;">Total Amount Paid</th>
+                                    <th style="width: 6%;">Total Balance</th>
+                                    <th style="width: 5%;">Status</th>
+                                    <th style="width: 5%;">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach($schedules as $index => $schedule)
                                     @php
-                                        $totalDue = $schedule->due_amount + $schedule->penalty_amount;
-                                        $balance = $totalDue - $schedule->amount_paid;
-                                        $daysOverdue = $schedule->days_overdue ?? 0;
+                                        // Use values already calculated in controller (EXACT bimsadmin logic)
+                                        $statusClass = '';
+                                        $statusFilter = 'pending';
                                         
-                                        if ($schedule->payment_status === 'paid') {
+                                        if ($schedule->status == 1) {
                                             $statusClass = 'table-success';
                                             $statusFilter = 'paid';
-                                        } elseif ($daysOverdue > 0) {
+                                            $statusBadge = '<span class="badge bg-success">Paid</span>';
+                                        } elseif ($schedule->pending_count > 0) {
+                                            $statusClass = 'table-warning';
+                                            $statusFilter = 'pending';
+                                            $statusBadge = '<span class="badge bg-warning">Pending (' . $schedule->pending_count . ')</span>';
+                                        } elseif ($schedule->periods_in_arrears > 0) {
                                             $statusClass = 'table-danger';
                                             $statusFilter = 'overdue';
+                                            $statusBadge = '<span class="badge bg-danger">Not Paid</span>';
                                         } else {
-                                            $statusClass = $daysOverdue > -7 ? 'table-warning' : '';
-                                            $statusFilter = 'pending';
+                                            $statusBadge = '<span class="badge bg-secondary">Not Paid</span>';
                                         }
                                     @endphp
                                     
                                     <tr class="{{ $statusClass }} schedule-row" data-filter="{{ $statusFilter }}">
-                                        <td class="text-center">{{ $schedule->installment_number }}</td>
-                                        <td class="text-center">
-                                            <strong>{{ date('M d, Y', strtotime($schedule->due_date)) }}</strong>
-                                            <br><small class="text-muted">{{ date('l', strtotime($schedule->due_date)) }}</small>
-                                        </td>
+                                        <td class="text-center">{{ $loop->iteration }}</td>
+                                        <td class="text-center">{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</td>
+                                        <td class="text-end">{{ number_format($schedule->principal, 0) }}</td>
+                                        <td class="text-end">{{ number_format($schedule->interest, 0) }}</td>
+                                        <td class="text-end">{{ number_format($schedule->pricipalcalIntrest, 0) }}</td>
+                                        <td class="text-end">{{ number_format($schedule->principal_balance, 0) }}</td>
+                                        <td class="text-end">{{ number_format($schedule->globalprincipal, 0) }}</td>
+                                        <td class="text-end">{{ number_format($schedule->intrestamtpayable, 0) }}</td>
+                                        <td class="text-center">{{ $schedule->periods_in_arrears }}</td>
                                         <td class="text-end">
-                                            <strong>{{ number_format($schedule->principal_amount, 0) }}</strong>
-                                        </td>
-                                        <td class="text-end">
-                                            <strong>{{ number_format($schedule->interest_amount, 0) }}</strong>
-                                        </td>
-                                        <td class="text-end">
-                                            <strong class="text-primary">{{ number_format($schedule->due_amount, 0) }}</strong>
-                                        </td>
-                                        <td class="text-end">
-                                            @if($schedule->penalty_amount > 0)
-                                                <strong class="text-danger">{{ number_format($schedule->penalty_amount, 0) }}</strong>
+                                            @if($schedule->penalty > 0)
+                                                <span class="text-danger">{{ number_format($schedule->penalty, 0) }}</span>
                                             @else
-                                                <span class="text-muted">0</span>
+                                                0
+                                            @endif
+                                        </td>
+                                        <td class="text-end"><strong>{{ number_format($schedule->total_payment, 0) }}</strong></td>
+                                        <td class="text-end">
+                                            @if($schedule->principal_paid > 0)
+                                                <span class="text-success">{{ number_format($schedule->principal_paid, 0) }}</span>
+                                            @else
+                                                0
                                             @endif
                                         </td>
                                         <td class="text-end">
-                                            @if($schedule->amount_paid > 0)
-                                                <strong class="text-success">{{ number_format($schedule->amount_paid, 0) }}</strong>
-                                                @if($schedule->payment_date)
-                                                    <br><small class="text-muted">{{ date('M d', strtotime($schedule->payment_date)) }}</small>
+                                            @if($schedule->interest_paid > 0)
+                                                <span class="text-success">{{ number_format($schedule->interest_paid, 0) }}</span>
+                                            @else
+                                                0
+                                            @endif
+                                        </td>
+                                        <td class="text-end">
+                                            @if($schedule->penalty_paid > 0)
+                                                <span class="text-success">{{ number_format($schedule->penalty_paid, 0) }}</span>
+                                            @else
+                                                0
+                                            @endif
+                                        </td>
+                                        <td class="text-end">
+                                            @if($schedule->paid > 0)
+                                                <strong class="text-success">{{ number_format($schedule->paid, 0) }}</strong>
+                                            @else
+                                                0
+                                            @endif
+                                        </td>
+                                        <td class="text-end">
+                                            @if($schedule->total_balance > 0)
+                                                <strong class="text-danger">{{ number_format($schedule->total_balance, 0) }}</strong>
+                                            @else
+                                                <span class="text-success">0</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-center">{!! $statusBadge !!}</td>
+                                        <td class="text-center">
+                                            @if($schedule->status == 1)
+                                                {{-- Paid - Show Receipt Button --}}
+                                                @php
+                                                    $repayment = \App\Models\Repayment::where('schedule_id', $schedule->id)
+                                                        ->where('status', 1)
+                                                        ->orderBy('id', 'desc')
+                                                        ->first();
+                                                @endphp
+                                                @if($repayment)
+                                                    <a href="{{ route('admin.repayments.receipt', $repayment->id) }}" 
+                                                       class="btn btn-info btn-sm px-2 py-1" 
+                                                       target="_blank"
+                                                       title="View Receipt">
+                                                        <i class="bi bi-receipt"></i> Receipt
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">Paid</span>
                                                 @endif
-                                            @else
-                                                <span class="text-muted">0</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-end">
-                                            @if($balance > 0)
-                                                <strong class="{{ $daysOverdue > 0 ? 'text-danger' : 'text-warning' }}">
-                                                    {{ number_format($balance, 0) }}
-                                                </strong>
-                                            @else
-                                                <span class="text-muted">0</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-center">
-                                            @if($schedule->payment_status === 'paid')
-                                                <span class="badge bg-success">Paid</span>
-                                            @elseif($daysOverdue > 0)
-                                                <span class="badge bg-danger">Overdue</span>
-                                            @elseif($daysOverdue > -7)
-                                                <span class="badge bg-warning">Due Soon</span>
-                                            @else
-                                                <span class="badge bg-secondary">Pending</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-center">
-                                            @if($schedule->payment_status === 'paid')
-                                                <small class="text-muted">Completed</small>
-                                            @elseif($daysOverdue > 0)
-                                                <span class="text-danger"><strong>+{{ $daysOverdue }}</strong></span>
-                                            @else
-                                                <small class="text-muted">{{ abs($daysOverdue) }}</small>
-                                            @endif
-                                        </td>
-                                        <td class="text-center">
-                                            @if($balance > 0)
-                                                <button type="button" class="btn btn-success btn-sm" 
-                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ $schedule->due_date }}', {{ $balance }})"
-                                                        title="Record Payment">
-                                                    <i class="mdi mdi-cash"></i>
+                                            @elseif($schedule->status == 0 && $schedule->pending_count == 0)
+                                                {{-- Not Paid - Show Repay Button --}}
+                                                <button type="button" class="btn btn-success btn-sm px-2 py-1" 
+                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $schedule->total_balance }})"
+                                                        title="Repay">
+                                                    Repay
+                                                </button>
+                                            @elseif($schedule->pending_count > 0)
+                                                {{-- Pending - Show Retry Button --}}
+                                                <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
+                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $schedule->total_balance }})"
+                                                        title="Retry Payment">
+                                                    Retry
                                                 </button>
                                             @else
-                                                <span class="text-muted">
-                                                    <i class="mdi mdi-check-circle"></i>
-                                                </span>
+                                                <span class="text-muted">-</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -335,14 +364,41 @@
                             </tbody>
                             <tfoot class="table-light">
                                 <tr>
-                                    <th colspan="2" class="text-end">TOTALS:</th>
-                                    <th class="text-end">{{ number_format($schedules->sum('principal_amount'), 0) }}</th>
-                                    <th class="text-end">{{ number_format($schedules->sum('interest_amount'), 0) }}</th>
-                                    <th class="text-end">{{ number_format($schedules->sum('due_amount'), 0) }}</th>
-                                    <th class="text-end">{{ number_format($schedules->sum('penalty_amount'), 0) }}</th>
-                                    <th class="text-end text-success">{{ number_format($schedules->sum('amount_paid'), 0) }}</th>
-                                    <th class="text-end text-primary">{{ number_format($schedules->sum(function($s) { return ($s->due_amount + $s->penalty_amount) - $s->amount_paid; }), 0) }}</th>
-                                    <th colspan="3"></th>
+                                    <th></th>
+                                    <th class="text-end"><strong>Totals</strong></th>
+                                    <th class="text-end">
+                                        <strong>{{ number_format($schedules->sum('principal'), 0) }}</strong>
+                                    </th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th class="text-end">
+                                        <strong>{{ number_format($schedules->sum('intrestamtpayable'), 0) }}</strong>
+                                    </th>
+                                    <th class="text-center">
+                                        <strong>{{ number_format($schedules->sum('periods_in_arrears'), 0) }}</strong>
+                                    </th>
+                                    <th class="text-end">
+                                        <strong>{{ number_format($schedules->sum('penalty'), 0) }}</strong>
+                                    </th>
+                                    <th></th>
+                                    <th class="text-end text-success">
+                                        <strong>{{ number_format($schedules->sum('principal_paid'), 0) }}</strong>
+                                    </th>
+                                    <th class="text-end text-success">
+                                        <strong>{{ number_format($schedules->sum('interest_paid'), 0) }}</strong>
+                                    </th>
+                                    <th class="text-end text-success">
+                                        <strong>{{ number_format($schedules->sum('penalty_paid'), 0) }}</strong>
+                                    </th>
+                                    <th class="text-end text-success">
+                                        <strong>{{ number_format($schedules->sum('paid'), 0) }}</strong>
+                                    </th>
+                                    <th class="text-end text-danger">
+                                        <strong>{{ number_format($schedules->sum('total_balance'), 0) }}</strong>
+                                    </th>
+                                    <th colspan="2"></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -353,108 +409,58 @@
     </div>
 </div>
 
-<!-- Repayment Modal -->
+<!-- Simple Repayment Modal (BimsAdmin Style) -->
 <div class="modal fade" id="repaymentModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Record Loan Repayment</h5>
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-white border-0">
+                <h5 class="modal-title text-dark">Add Repayment Record</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="repaymentForm">
-                <div class="modal-body">
-                    <input type="hidden" id="schedule_id" name="schedule_id">
-                    
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Loan Code</label>
-                            <input type="text" class="form-control" value="{{ $loan->loan_code }}" readonly>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Due Date</label>
-                            <input type="text" class="form-control" id="due_date_display" readonly>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Payment Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" id="payment_date" name="payment_date" 
-                                   value="{{ date('Y-m-d') }}" required>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Amount <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" id="payment_amount" name="amount" 
-                                   step="0.01" min="1" required>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Payment Method <span class="text-danger">*</span></label>
-                            <select class="form-select" id="payment_method" name="payment_method" required>
-                                <option value="">Select Method</option>
-                                <option value="mobile_money">Mobile Money</option>
-                                <option value="cash">Cash</option>
-                                <option value="bank_transfer">Bank Transfer</option>
-                                <option value="cheque">Cheque</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6" id="network_div" style="display: none;">
-                            <label class="form-label">Mobile Network <span class="text-danger">*</span></label>
-                            <select class="form-select" id="network" name="network">
-                                <option value="">Select Network</option>
-                                <option value="MTN">MTN Money</option>
-                                <option value="AIRTEL">Airtel Money</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Phone Number <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="phone_number" name="phone_number" 
-                                   value="{{ $loan->phone_number }}" required>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Reference Number</label>
-                            <input type="text" class="form-control" id="reference_number" name="reference_number"
-                                   placeholder="Transaction reference">
-                        </div>
-                        
-                        <div class="col-12">
-                            <label class="form-label">Notes</label>
-                            <textarea class="form-control" id="payment_notes" name="notes" rows="2"
-                                      placeholder="Additional payment notes..."></textarea>
-                        </div>
+            <form id="repaymentForm" method="POST" action="{{ route('admin.loans.repayments.store') }}">
+                @csrf
+                <input type="hidden" name="loan_id" value="{{ $loan->id }}">
+                <input type="hidden" name="member_id" value="{{ $loan->member_id }}">
+                <input type="hidden" id="schedule_id" name="s_id">
+                
+                <div class="modal-body bg-white">
+                    <div class="mb-3">
+                        <label class="form-label text-dark">Payment Amount</label>
+                        <input type="text" class="form-control bg-white" id="payment_amount" name="amount" required>
                     </div>
                     
-                    <!-- Mobile Money Processing -->
-                    <div id="mobile_money_section" style="display: none;">
-                        <hr>
-                        <div class="alert alert-info">
-                            <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0">
-                                    <i class="mdi mdi-information me-2"></i>
-                                </div>
-                                <div class="flex-grow-1 ms-2">
-                                    <strong>Mobile Money Collection</strong>
-                                    <p class="mb-0">This will initiate a mobile money collection request to the borrower.</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="auto_collect" name="auto_collect">
-                            <label class="form-check-label" for="auto_collect">
-                                Automatically initiate mobile money collection
-                            </label>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label text-dark">Payment Type</label>
+                        <select class="form-select bg-white" id="payment_type" name="type" required onchange="toggleMedium()">
+                            <option value="">Select Payment Type</option>
+                            <option value="3">Direct Bank Transfer</option>
+                            <option value="2">Mobile Money</option>
+                            <option value="1">Cash</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3" id="medium_div" style="display: none;">
+                        <label class="form-label text-dark">Mobile Money Network</label>
+                        <select class="form-select bg-white" id="medium" name="medium">
+                            <option value="">Select Network</option>
+                            <option value="1">Airtel Money</option>
+                            <option value="2">MTN Money</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-dark">Repayment Details</label>
+                        <textarea class="form-control bg-white" name="details" rows="3" placeholder="Type Here..." required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-dark">Transaction Generated By</label>
+                        <div class="text-muted">{{ Auth::user()->fname ?? 'Admin' }} {{ Auth::user()->lname ?? '' }}, {{ date('Y-m-d H:i:s') }}</div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="mdi mdi-cash-check me-1"></i> Record Payment
-                    </button>
+                
+                <div class="modal-footer bg-white border-0">
+                    <button type="submit" class="btn btn-primary">Add Record</button>
                 </div>
             </form>
         </div>
@@ -520,71 +526,29 @@ $(document).ready(function() {
             $('.schedule-row[data-filter="' + filter + '"]').show();
         }
     });
-    
-    // Payment method change handler
-    $('#payment_method').change(function() {
-        if ($(this).val() === 'mobile_money') {
-            $('#network_div, #mobile_money_section').show();
-            $('#network').prop('required', true);
-        } else {
-            $('#network_div, #mobile_money_section').hide();
-            $('#network').prop('required', false);
-        }
-    });
-    
-    // Auto-detect network from phone number
-    $('#phone_number').on('input', function() {
-        if ($('#payment_method').val() === 'mobile_money') {
-            var phone = $(this).val().replace(/[^0-9]/g, '');
-            
-            if (phone.length >= 9) {
-                if (phone.match(/^256(77|78|76)/)) {
-                    $('#network').val('MTN');
-                } else if (phone.match(/^256(70|75|74|71)/)) {
-                    $('#network').val('AIRTEL');
-                }
-            }
-        }
-    });
 });
 
-function openRepayModal(scheduleId, dueDate, amount) {
-    $('#schedule_id').val(scheduleId);
-    $('#due_date_display').val(dueDate);
-    $('#payment_amount').val(amount);
-    $('#repaymentModal').modal('show');
+// Toggle mobile money network field
+function toggleMedium() {
+    var paymentType = document.getElementById('payment_type').value;
+    var mediumDiv = document.getElementById('medium_div');
+    var mediumSelect = document.getElementById('medium');
+    
+    if(paymentType == '2') {
+        mediumDiv.style.display = 'block';
+        mediumSelect.required = true;
+    } else {
+        mediumDiv.style.display = 'none';
+        mediumSelect.required = false;
+    }
 }
 
-// Handle repayment form submission
-$('#repaymentForm').on('submit', function(e) {
-    e.preventDefault();
-    
-    var formData = new FormData(this);
-    formData.append('loan_id', {{ $loan->id }});
-    formData.append('_token', '{{ csrf_token() }}');
-    
-    $.ajax({
-        url: '{{ route("admin.loans.repayments.store") }}',
-        method: 'POST',
-        data: formData,
-        processData: false,
-        contentType: false,
-        success: function(response) {
-            if (response.success) {
-                $('#repaymentModal').modal('hide');
-                Swal.fire('Success!', response.message, 'success').then(() => {
-                    window.location.reload();
-                });
-            } else {
-                Swal.fire('Error!', response.message, 'error');
-            }
-        },
-        error: function(xhr) {
-            var message = xhr.responseJSON?.message || 'An error occurred';
-            Swal.fire('Error!', message, 'error');
-        }
-    });
-});
+// Open repayment modal
+function openRepayModal(scheduleId, dueDate, amount) {
+    $('#schedule_id').val(scheduleId);
+    $('#payment_amount').val(amount.toFixed(0));
+    $('#repaymentModal').modal('show');
+}
 
 // Handle partial payment form submission
 $('#partialPaymentForm').on('submit', function(e) {

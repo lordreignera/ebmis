@@ -19,6 +19,35 @@
         </div>
     </div>
 
+    <!-- Success/Error Messages -->
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-check-circle me-2"></i>
+            {{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            {{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if($errors->any())
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            <ul class="mb-0">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -82,6 +111,20 @@
                                 </div>
                             </div>
 
+                            <!-- Investment Account -->
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="investment_id" class="form-label">Investment Account <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="investment_id" name="investment_id" required>
+                                        <option value="">Select Investment Account</option>
+                                        @foreach($investment_accounts as $investment)
+                                            <option value="{{ $investment->id }}">{{ $investment->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <div class="form-text">Select the account from which funds will be disbursed</div>
+                                </div>
+                            </div>
+
                             <!-- Payment Type -->
                             <div class="col-md-4">
                                 <div class="mb-3">
@@ -125,7 +168,9 @@
                                     <select class="form-select" id="assigned_to" name="assigned_to">
                                         <option value="">Select Staff Member</option>
                                         @foreach($staff_members as $staff)
-                                            <option value="{{ $staff->id }}">{{ $staff->name }}</option>
+                                            <option value="{{ $staff->id }}" {{ $loan->assigned_to == $staff->id ? 'selected' : '' }}>
+                                                {{ $staff->name }}
+                                            </option>
                                         @endforeach
                                     </select>
                                 </div>

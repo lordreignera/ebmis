@@ -27,6 +27,7 @@ class PersonalLoan extends Model
         'date_approved',
         'rejected_by',
         'date_rejected',
+        'datecreated',
         'trading_file',
         'bank_file',
         'business_file',

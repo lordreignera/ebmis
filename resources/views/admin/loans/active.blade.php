@@ -18,6 +18,23 @@
         </div>
     </div>
 
+    <!-- Success/Error Messages -->
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-check-circle me-2"></i>
+            {{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            {{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
     <!-- Stats Cards -->
     <div class="row">
         <div class="col-xl-3 col-md-6">
@@ -397,37 +414,55 @@
 
 <!-- Quick Repayment Modal -->
 <div class="modal fade" id="quickRepayModal" tabindex="-1">
-    <div class="modal-dialog modal-md">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Quick Repayment</h5>
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 500px;">
+        <div class="modal-content" style="background: white !important;">
+            <div class="modal-header" style="background: white !important; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #000;">Record Loan Payment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="quickRepayForm">
-                <div class="modal-body">
+                <div class="modal-body" style="background: white !important; padding: 20px;">
+                    <input type="hidden" id="modal_loan_id">
+                    <input type="hidden" id="modal_schedule_id">
+                    
                     <div class="mb-3">
-                        <label class="form-label">Loan</label>
-                        <input type="text" class="form-control" id="modal_loan_code" readonly>
-                        <input type="hidden" id="modal_loan_id">
+                        <label class="form-label" style="color: #000; font-weight: 500;">Loan Code</label>
+                        <input type="text" class="form-control" id="modal_loan_code" readonly 
+                               style="background-color: #f8f9fa;">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" style="color: #000; font-weight: 500;">Due Date</label>
+                        <input type="text" class="form-control" id="modal_due_date" readonly 
+                               style="background-color: #f8f9fa;">
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label">Amount</label>
-                        <input type="number" class="form-control" id="modal_amount" step="0.01" min="1" required>
+                        <label class="form-label" style="color: #000; font-weight: 500;">Amount <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="modal_amount" step="0.01" min="1" required
+                               placeholder="Enter payment amount">
+                        <div class="form-text">Expected amount: UGX <span id="modal_expected_amount">0</span></div>
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label">Payment Method</label>
+                        <label class="form-label" style="color: #000; font-weight: 500;">Phone Number <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="modal_phone" required
+                               placeholder="Enter phone number">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" style="color: #000; font-weight: 500;">Payment Method <span class="text-danger">*</span></label>
                         <select class="form-select" id="modal_payment_method" required>
-                            <option value="">Select Method</option>
-                            <option value="mobile_money">Mobile Money</option>
-                            <option value="cash">Cash</option>
-                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="">Select Payment Method</option>
+                            <option value="2">Mobile Money</option>
+                            <option value="1">Cash</option>
+                            <option value="3">Bank Transfer</option>
+                            <option value="3">Cheque</option>
                         </select>
                     </div>
                     
                     <div class="mb-3" id="modal_network_div" style="display: none;">
-                        <label class="form-label">Network</label>
+                        <label class="form-label" style="color: #000; font-weight: 500;">Network <span class="text-danger">*</span></label>
                         <select class="form-select" id="modal_network">
                             <option value="">Select Network</option>
                             <option value="MTN">MTN Money</option>
@@ -436,18 +471,16 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label">Phone Number</label>
-                        <input type="text" class="form-control" id="modal_phone" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Notes (Optional)</label>
-                        <textarea class="form-control" id="modal_notes" rows="2"></textarea>
+                        <label class="form-label" style="color: #000; font-weight: 500;">Notes (Optional)</label>
+                        <textarea class="form-control" id="modal_notes" rows="2"
+                                  placeholder="Enter any additional notes"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="background: white !important; border-top: 1px solid #dee2e6;">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">Process Repayment</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-check me-1"></i> Record Payment
+                    </button>
                 </div>
             </form>
         </div>
@@ -468,14 +501,39 @@ $(document).ready(function() {
 function quickRepay(loanId, loanCode, dueAmount, phone) {
     $('#modal_loan_id').val(loanId);
     $('#modal_loan_code').val(loanCode);
-    $('#modal_amount').val(dueAmount);
     $('#modal_phone').val(phone);
+    
+    // Fetch next schedule for this loan
+    $.ajax({
+        url: '/admin/loans/' + loanId + '/next-schedule',
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.schedule) {
+                $('#modal_schedule_id').val(response.schedule.id);
+                $('#modal_due_date').val(response.schedule.payment_date);
+                $('#modal_amount').val(response.schedule.payment);
+                $('#modal_expected_amount').text(new Intl.NumberFormat().format(response.schedule.payment));
+            } else {
+                $('#modal_schedule_id').val('');
+                $('#modal_due_date').val('No pending schedule');
+                $('#modal_amount').val(dueAmount || 0);
+                $('#modal_expected_amount').text(new Intl.NumberFormat().format(dueAmount || 0));
+            }
+        },
+        error: function() {
+            $('#modal_schedule_id').val('');
+            $('#modal_due_date').val('N/A');
+            $('#modal_amount').val(dueAmount || 0);
+            $('#modal_expected_amount').text(new Intl.NumberFormat().format(dueAmount || 0));
+        }
+    });
+    
     $('#quickRepayModal').modal('show');
 }
 
 // Handle payment method change
 $('#modal_payment_method').change(function() {
-    if ($(this).val() === 'mobile_money') {
+    if ($(this).val() === '2') { // Mobile Money (legacy: 1=cash, 2=mm, 3=bank)
         $('#modal_network_div').show();
         $('#modal_network').prop('required', true);
     } else {
@@ -490,11 +548,14 @@ $('#quickRepayForm').on('submit', function(e) {
     
     var formData = {
         loan_id: $('#modal_loan_id').val(),
+        schedule_id: $('#modal_schedule_id').val(),
         amount: $('#modal_amount').val(),
+        type: $('#modal_payment_method').val(),
         payment_method: $('#modal_payment_method').val(),
         network: $('#modal_network').val(),
         phone: $('#modal_phone').val(),
-        notes: $('#modal_notes').val(),
+        details: $('#modal_notes').val(),
+        platform: 'Web',
         _token: '{{ csrf_token() }}'
     };
     

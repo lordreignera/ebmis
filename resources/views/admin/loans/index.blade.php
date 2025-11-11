@@ -315,7 +315,13 @@
                                                 </small>
                                             @endif
                                         </td>
-                                        <td>{{ $loan->created_at->format('M d, Y') }}</td>
+                                        <td>
+                                            @if(is_string($loan->created_at))
+                                                {{ \Carbon\Carbon::parse($loan->created_at)->format('M d, Y') }}
+                                            @else
+                                                {{ $loan->created_at->format('M d, Y') }}
+                                            @endif
+                                        </td>
                                         <td>
                                             <div class="action-buttons">
                                                 <a href="{{ route('admin.loans.show', $loan) }}" 

@@ -7,22 +7,35 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RawPayment extends Model
 {
+    // Use legacy timestamp
+    const CREATED_AT = 'date_created';
+    const UPDATED_AT = null;
+
     protected $fillable = [
-        'txn_id',
-        'amount',
+        'phone',
         'phone_number',
+        'amount',
+        'trans_id',
+        'txn_id',
+        'ref',
+        'message',
         'status',
+        'date_created',
+        'pay_status',
+        'pay_message',
+        'pay_date',
         'type',
+        'added_by',
+        'direction',
+        'raw_message',
         'loan_id',
-        'disbursement_id',
         'schedule_id',
         'member_id',
-        'response_data',
+        'network',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
-        'response_data' => 'array',
     ];
 
     /**

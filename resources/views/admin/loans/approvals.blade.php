@@ -232,12 +232,12 @@
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
                                             <button class="btn-modern btn-process" 
-                                                    onclick="approveLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
+                                                    onclick="approveLoan({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
                                                     title="Approve Loan">
                                                 <i class="mdi mdi-check-circle"></i>
                                             </button>
                                             <button class="btn-modern btn-delete" 
-                                                    onclick="rejectLoan({{ $loan->id }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
+                                                    onclick="rejectLoan({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
                                                     title="Reject Loan">
                                                 <i class="mdi mdi-close-circle"></i>
                                             </button>
@@ -310,9 +310,9 @@
 <!-- Approve Loan Modal -->
 <div class="modal fade" id="approveLoanModal" tabindex="-1" aria-labelledby="approveLoanModalLabel" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="approveLoanModalLabel">Approve Loan</h5>
+        <div class="modal-content" style="background-color: #ffffff !important; color: #000000 !important;">
+            <div class="modal-header" style="background-color: #ffffff !important; color: #000000 !important; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" id="approveLoanModalLabel" style="color: #000000 !important;">Approve Loan</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="approveLoanForm">
@@ -320,22 +320,23 @@
                 <input type="hidden" id="approveLoanId" name="loan_id">
                 <input type="hidden" id="approveLoanType" name="loan_type">
                 
-                <div class="modal-body">
-                    <div class="alert alert-info">
+                <div class="modal-body" style="background-color: #ffffff !important; color: #000000 !important;">
+                    <div class="alert alert-info" style="background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460;">
                         <i class="mdi mdi-information me-2"></i>
-                        You are about to approve loan <strong id="approveLoanCode"></strong>. This action will move the loan to approved status and make it available for disbursement.
+                        You are about to approve loan <strong id="approveLoanCode"></strong>. This will forward it to disbursement.
                     </div>
                     
                     <div class="form-group">
-                        <label for="approveComments" class="form-label">Comments</label>
+                        <label for="approveComments" class="form-label" style="color: #000000 !important;">Comments</label>
                         <textarea class="form-control" id="approveComments" name="comments" rows="3" 
-                                  placeholder="Enter approval comments (optional)"></textarea>
+                                  placeholder="Enter approval comments (optional)" 
+                                  style="background-color: #ffffff; color: #000000; border-color: #ced4da;"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="background-color: #ffffff !important; border-top: 1px solid #dee2e6;">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success">
-                        <i class="mdi mdi-check me-1"></i> Approve Loan
+                        <i class="mdi mdi-check me-1"></i> Forward to Disbursement
                     </button>
                 </div>
             </form>
@@ -446,7 +447,7 @@ $('#approveLoanForm').on('submit', function(e) {
     $.ajax({
         url: '{{ route("admin.loans.approve", ":id") }}'.replace(':id', loanId),
         method: 'POST',
-        data: formData + '&type=' + loanType,
+        data: formData,
         success: function(response) {
             if (response.success) {
                 Swal.fire({
@@ -482,7 +483,7 @@ $('#rejectLoanForm').on('submit', function(e) {
     $.ajax({
         url: '{{ route("admin.loans.reject", ":id") }}'.replace(':id', loanId),
         method: 'POST',
-        data: formData + '&type=' + loanType,
+        data: formData,
         success: function(response) {
             if (response.success) {
                 Swal.fire({

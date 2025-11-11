@@ -23,6 +23,23 @@
         </div>
     </div>
 
+    <!-- Success/Error Messages -->
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-check-circle me-2"></i>
+            {{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            {{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
     <!-- Statistics Cards -->
     <div class="row mb-4">
         <div class="col-lg-3 col-6">
@@ -236,13 +253,13 @@
                                     </td>
                                     <td>
                                         <div class="action-buttons">
-                                            <button class="btn-modern btn-view" onclick="viewLoanDetails({{ $loan->id }}, '{{ $loan->loan_type }}')" title="View Details">
+                                            <button class="btn-modern btn-view" onclick="viewLoanDetails({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}')" title="View Details">
                                                 <i class="mdi mdi-eye"></i>
                                             </button>
-                                            <a href="{{ route('admin.loans.disbursements.approve.show', $loan->id) }}" class="btn-modern btn-view" title="Process Disbursement">
+                                            <a href="{{ route('admin.loans.disbursements.approve.show', $loan->getAttribute('id')) }}" class="btn-modern btn-view" title="Process Disbursement">
                                                 <i class="mdi mdi-check-circle"></i>
                                             </a>
-                                            <button class="btn-modern btn-delete" onclick="rejectDisbursement({{ $loan->id }})" title="Reject">
+                                            <button class="btn-modern btn-delete" onclick="rejectDisbursement({{ $loan->getAttribute('id') }})" title="Reject">
                                                 <i class="mdi mdi-close-circle"></i>
                                             </button>
                                         </div>

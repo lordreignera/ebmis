@@ -238,7 +238,9 @@ class MobileMoneyService
                 if ($responseData && isset($responseData['statusCode'])) {
                     $result = $this->processApiResponse($responseData, $formattedPhone, $amount);
                     $result['type'] = 'collection';
-                    $result['reference'] = $responseData['flexipayReferenceNumber'] ?? 'REF-' . time();
+                    // Use transactionReferenceNumber (EbPxxx) as the main reference for tracking
+                    $result['reference'] = $responseData['transactionReferenceNumber'] ?? ('REF-' . time());
+                    $result['flexipay_ref'] = $responseData['flexipayReferenceNumber'] ?? '';
                     return $result;
                 } else {
                     return [

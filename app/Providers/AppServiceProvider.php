@@ -29,6 +29,6 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\Schema::defaultStringLength(191);
         
         // Fix route model binding for loan parameter
-        \Illuminate\Support\Facades\Route::model('loan', \App\Models\Loan::class);
+        // \Illuminate\Support\Facades\Route::model('loan', \App\Models\Loan::class);
     }
 }

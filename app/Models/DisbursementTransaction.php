@@ -9,18 +9,25 @@ class DisbursementTransaction extends Model
 {
     protected $table = 'disbursement_txn';
 
+    // Use legacy timestamp
+    const CREATED_AT = 'datecreated';
+    const UPDATED_AT = null;
+
     protected $fillable = [
-        'disbursement_id',
-        'txn_reference',
-        'network',
+        'loan_id',
         'phone',
-        'account_number',
+        'amount',
         'status',
-        'response_data',
+        'txnref',
+        'message',
+        'datecreated',
+        'dump',
+        'raw',
+        'request',
     ];
 
     protected $casts = [
-        'response_data' => 'array',
+        'amount' => 'decimal:2',
     ];
 
     /**

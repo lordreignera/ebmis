@@ -17,6 +17,7 @@ use App\Models\ProductCharge;
 use App\Models\LoanCharge;
 use App\Models\User;
 use App\Models\Product;
+use App\Models\Member;
 use App\Services\MobileMoneyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,7 +39,16 @@ class DisbursementController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Disbursement::with(['loan.member', 'loan.product', 'loan.branch', 'addedBy']);
+        // Eager load both personal and group loan relationships
+        $query = Disbursement::with([
+            'personalLoan.member', 
+            'personalLoan.product', 
+            'personalLoan.branch',
+            'groupLoan.group',
+            'groupLoan.product',
+            'groupLoan.branch',
+            'addedBy'
+        ]);
 
         // Search functionality
         if ($request->has('search')) {
@@ -76,11 +86,11 @@ class DisbursementController extends Controller
 
         // Filter by date range
         if ($request->has('start_date') && $request->start_date) {
-            $query->whereDate('disbursement_date', '>=', $request->start_date);
+            $query->whereDate('created_at', '>=', $request->start_date);
         }
 
         if ($request->has('end_date') && $request->end_date) {
-            $query->whereDate('disbursement_date', '<=', $request->end_date);
+            $query->whereDate('created_at', '<=', $request->end_date);
         }
 
         $disbursements = $query->orderBy('created_at', 'desc')->paginate(20);
@@ -88,16 +98,17 @@ class DisbursementController extends Controller
         $branches = Branch::active()->get();
         $investments = Investment::where('status', 1)->get();
 
-        // Calculate totals
-        $totals = [
-            'total_disbursements' => $query->count(),
-            'total_amount' => $query->sum('amount'),
-            'pending_disbursements' => $query->where('status', 0)->count(),
-            'successful_disbursements' => $query->where('status', 1)->count(),
-            'failed_disbursements' => $query->where('status', 2)->count(),
+        // Calculate stats from all disbursements (not filtered query)
+        $stats = [
+            'total_disbursements' => Disbursement::count(),
+            'total_amount' => Disbursement::sum('amount'),
+            'today_disbursements' => Disbursement::whereDate('created_at', today())->count(),
+            'pending_disbursements' => Disbursement::where('status', 0)->count(),
+            'successful_disbursements' => Disbursement::where('status', 2)->count(), // Status 2 = Disbursed
+            'failed_disbursements' => Disbursement::where('status', 3)->count(), // Status 3 = Rejected
         ];
 
-        return view('admin.disbursements.index', compact('disbursements', 'branches', 'investments', 'totals'));
+        return view('admin.disbursements.index', compact('disbursements', 'branches', 'investments', 'stats'));
     }
 
     /**
@@ -105,35 +116,17 @@ class DisbursementController extends Controller
      */
     public function pending(Request $request)
     {
-        // Common columns for both loan types
-        $commonColumns = [
-            'id', 'code', 'product_type', 'principal', 'status', 'verified',
-            'added_by', 'datecreated', 'branch_id'
-        ];
-
-        // Personal loans query
+        // Personal loans query - Only show loans ready for disbursement
         $personalLoansQuery = PersonalLoan::where('status', 1) // Approved loans
                     ->whereDoesntHave('disbursements', function($q) {
                         $q->where('status', 1); // No successful disbursement yet
-                    })
-                    ->with(['member', 'branch', 'product'])
-                    ->select(array_merge($commonColumns, [
-                        'member_id',
-                        DB::raw("'personal' as loan_type"),
-                        DB::raw("NULL as group_id")
-                    ]));
+                    });
 
         // Group loans query
         $groupLoansQuery = GroupLoan::where('status', 1) // Approved loans
                     ->whereDoesntHave('disbursements', function($q) {
                         $q->where('status', 1); // No successful disbursement yet
-                    })
-                    ->with(['group', 'branch', 'product'])
-                    ->select(array_merge($commonColumns, [
-                        'group_id',
-                        DB::raw("'group' as loan_type"),
-                        DB::raw("NULL as member_id")
-                    ]));
+                    });
 
         // Apply filters to both queries
         if ($request->filled('search')) {
@@ -166,10 +159,74 @@ class DisbursementController extends Controller
             $groupLoansQuery->where('product_type', $request->get('product'));
         }
 
-        // Union and paginate
-        $loans = $personalLoansQuery->union($groupLoansQuery)
-                                   ->orderBy('datecreated', 'desc')
-                                   ->paginate(20);
+        // Get both types separately to preserve relationships
+        $personalLoans = $personalLoansQuery->with(['member', 'branch', 'product', 'product.charges'])->get()->map(function($loan) {
+            $loan->loan_type = 'personal';
+            return $loan;
+        });
+
+        $groupLoans = $groupLoansQuery->with(['group', 'branch', 'product', 'product.charges'])->get()->map(function($loan) {
+            $loan->loan_type = 'group';
+            return $loan;
+        });
+
+        // Merge and sort
+        $allLoans = $personalLoans->merge($groupLoans)->sortByDesc('datecreated');
+
+        // Filter loans - Only include those ready for disbursement
+        $readyLoans = $allLoans->filter(function($loan) {
+            // If charge_type = 1, charges are deducted - always ready
+            if ($loan->charge_type == 1) {
+                return true;
+            }
+            
+            // If charge_type = 2, check if all upfront charges are paid
+            if ($loan->charge_type == 2) {
+                $memberId = $loan->loan_type === 'personal' ? $loan->member_id : null;
+                
+                // Get product charges
+                $productCharges = $loan->product->charges()->where('isactive', 1)->get();
+                
+                // Check if all charges are paid
+                foreach ($productCharges as $charge) {
+                    $paidFee = Fee::where('loan_id', $loan->id)
+                                  ->where('fees_type_id', $charge->id)
+                                  ->where('status', 1)
+                                  ->first();
+                    
+                    // For registration fees, check member level
+                    $isRegFee = stripos($charge->name, 'registration') !== false;
+                    if ($isRegFee && !$paidFee && $memberId) {
+                        $paidFee = Fee::where('member_id', $memberId)
+                                      ->where('fees_type_id', $charge->id)
+                                      ->where('status', 1)
+                                      ->first();
+                    }
+                    
+                    // If any charge is unpaid, loan is not ready
+                    if (!$paidFee) {
+                        return false;
+                    }
+                }
+                
+                return true; // All charges are paid
+            }
+            
+            return true; // Default: include the loan
+        });
+
+        // Paginate the filtered results
+        $perPage = 20;
+        $currentPage = request()->get('page', 1);
+        $pagedData = $readyLoans->slice(($currentPage - 1) * $perPage, $perPage)->values();
+        
+        $loans = new \Illuminate\Pagination\LengthAwarePaginator(
+            $pagedData,
+            $readyLoans->count(),
+            $perPage,
+            $currentPage,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
 
         // Get filter options
         $branches = Branch::active()->orderBy('name')->get();
@@ -242,18 +299,27 @@ class DisbursementController extends Controller
         $loan->product_name = $loan->product->name ?? null;
         $loan->loan_code = $loan->code;
         $loan->principal_amount = $loan->principal;
+        $loan->interest_rate = $loan->interest ?? 0;
         $loan->loan_term = $loan->period;
-        $loan->period_type = $this->getPeriodTypeName($loan->period_type);
-        $loan->processing_fee = $chargeCalculation['total_deductions'];
+        $loan->period_type = $this->getPeriodTypeName($loan->period_type ?? 1);
+        $loan->processing_fee = $chargeCalculation['total_deductions'] ?? 0;
         $loan->loan_type = $loanType;
+        $loan->created_at = $loan->datecreated ?? now();
         
-        // Get staff members for assignment
+        // Get staff members for assignment - just get active users
         $staff_members = User::where('status', 1)
-                           ->where('role', '!=', 'member')
                            ->orderBy('name')
                            ->get();
+        
+        // Get investment accounts
+        $investment_accounts = DB::table('investment')
+                                ->orderBy('name')
+                                ->get();
+        
+        // Set current logged-in user as default
+        $loan->assigned_to = auth()->id();
 
-        return view('admin.loans.disbursements.approve', compact('loan', 'staff_members'));
+        return view('admin.loans.disbursements.approve', compact('loan', 'staff_members', 'investment_accounts'));
     }
 
     /**
@@ -266,48 +332,62 @@ class DisbursementController extends Controller
             'payment_type' => 'required|in:mobile_money,bank_transfer,cash,cheque',
             'account_number' => 'required|string|max:50',
             'network' => 'required_if:payment_type,mobile_money|in:MTN,AIRTEL',
+            'investment_id' => 'required|exists:investment,id',
             'assigned_to' => 'nullable|exists:users,id',
-            'comments' => 'nullable|string|max:1000',
+            'comments' => 'nullable|string|max:100',
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
         }
 
         $loan = Loan::with(['member', 'branch', 'product'])
                    ->where('status', 1)
-                   ->whereDoesntHave('disbursements', function($q) {
-                       $q->where('status', 1);
-                   })
                    ->findOrFail($id);
+
+        // Check if loan already has any disbursement records
+        $existingDisbursement = DB::table('disbursements')
+            ->where('loan_id', $loan->id)
+            ->where('loan_type', empty($loan->group_id) ? 1 : 2)
+            ->first();
+
+        if ($existingDisbursement) {
+            return redirect()->route('admin.loans.disbursements.pending')
+                ->with('error', 'This loan has already been disbursed. Cannot disburse again.');
+        }
 
         DB::beginTransaction();
 
         try {
-            // Validate mandatory fees and calculate charges
-            $mandatoryValidation = $this->validateMandatoryFees($loan->member);
-            if (!$mandatoryValidation['valid']) {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Mandatory fees required: ' . $mandatoryValidation['message']
-                ], 400);
+            // Only validate mandatory fees if charge_type = 2 (upfront payment)
+            // If charge_type = 1, charges are deducted from disbursement, so no need to check
+            if ($loan->charge_type == 2) {
+                $mandatoryValidation = $this->validateMandatoryFees($loan->member);
+                if (!$mandatoryValidation['valid']) {
+                    DB::rollBack();
+                    return redirect()->back()
+                        ->with('error', 'Mandatory fees required: ' . $mandatoryValidation['message'])
+                        ->withInput();
+                }
             }
 
             $chargeCalculation = $this->calculateAllChargesAndDeductions($loan);
             if (!$chargeCalculation['valid']) {
                 DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => $chargeCalculation['message']
-                ], 400);
+                return redirect()->back()
+                    ->with('error', $chargeCalculation['message'])
+                    ->withInput();
             }
 
             $disbursementAmount = $chargeCalculation['disbursable_amount'];
+
+            // Update loan assignment
+            if ($request->filled('assigned_to')) {
+                $loan->assigned_to = $request->assigned_to;
+                $loan->save();
+            }
 
             // Convert payment_type to legacy format
             $paymentTypeMapping = [
@@ -323,22 +403,19 @@ class DisbursementController extends Controller
                 $paymentMedium = $request->network === 'AIRTEL' ? 1 : 2; // 1=Airtel, 2=MTN
             }
 
-            // Generate disbursement code
-            $branch = $loan->branch;
-            $disbursementCount = Disbursement::count();
-            $code = 'DISB-' . ($branch->code ?? 'UNK') . '-' . date('Ymd') . '-' . str_pad($disbursementCount + 1, 4, '0', STR_PAD_LEFT);
-
+            // Determine loan type: check if group_id exists
+            $loanType = empty($loan->group_id) ? 1 : 2; // 1=personal, 2=group
+            
             $disbursementData = [
                 'loan_id' => $loan->id,
-                'code' => $code,
+                'loan_type' => $loanType,
                 'amount' => $disbursementAmount,
-                'disbursement_date' => $request->disbursement_date,
+                'comments' => $request->filled('comments') ? substr($request->comments, 0, 100) : null,
                 'payment_type' => $paymentTypeMapping[$request->payment_type],
-                'payment_medium' => $paymentMedium,
+                'account_name' => $loan->member->fname . ' ' . $loan->member->lname,
                 'account_number' => $request->account_number,
-                'investment_id' => 1, // Default investment account - you might want to make this configurable
-                'assigned_to' => $request->assigned_to,
-                'notes' => $request->comments . "\n\n" . $chargeCalculation['detailed_breakdown'],
+                'inv_id' => $request->investment_id,
+                'medium' => $paymentMedium,
                 'status' => 0, // Pending
                 'added_by' => auth()->id(),
                 'created_at' => now(),
@@ -366,10 +443,9 @@ class DisbursementController extends Controller
                     }
                 } else {
                     DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Mobile money disbursement failed: ' . $mobileMoneyResult['message']
-                    ], 400);
+                    return redirect()->back()
+                        ->with('error', 'Mobile money disbursement failed: ' . $mobileMoneyResult['message'])
+                        ->withInput();
                 }
             } else {
                 // For non-mobile money, mark as completed immediately and process
@@ -395,27 +471,21 @@ class DisbursementController extends Controller
                 $message .= " Mobile money transfer initiated.";
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'loan_id' => $loan->id,
-                'disbursement_id' => $disbursement->id,
-                'redirect_url' => route('admin.loans.active')
-            ]);
+            return redirect()->route('admin.loans.active')
+                ->with('success', $message);
 
         } catch (\Exception $e) {
             DB::rollBack();
             
             Log::error('Loan disbursement approval failed', [
-                'loan_id' => $loan->id,
+                'loan_id' => $loan->id ?? 'unknown',
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Disbursement approval failed. Please try again.'
-            ], 500);
+            return redirect()->back()
+                ->with('error', 'Disbursement approval failed: ' . $e->getMessage())
+                ->withInput();
         }
     }
 
@@ -425,8 +495,13 @@ class DisbursementController extends Controller
     protected function processNewMobileMoneyDisbursement($disbursement, $phoneNumber, $network)
     {
         try {
-            $loan = $disbursement->loan;
-            $memberName = $loan->member->fname . ' ' . $loan->member->lname;
+            // Get member name from disbursement account_name field
+            $memberName = $disbursement->account_name;
+            
+            // Get loan code - fetch the actual loan
+            $loan = $disbursement->loan_type == 1 
+                ? PersonalLoan::find($disbursement->loan_id)
+                : GroupLoan::find($disbursement->loan_id);
             
             // Use the MobileMoneyService which handles FlexiPay integration
             $result = $this->mobileMoneyService->sendMoney(
@@ -439,23 +514,33 @@ class DisbursementController extends Controller
             if ($result['success']) {
                 // Create raw payment record for tracking
                 RawPayment::create([
-                    'txn_id' => $result['reference'] ?? 'TXN-' . time(),
+                    'trans_id' => $result['reference'] ?? 'TXN-' . time(),
                     'amount' => $disbursement->amount,
-                    'phone_number' => $phoneNumber,
+                    'phone' => $phoneNumber,
                     'status' => $result['status'] ?? '00',
                     'type' => 'disbursement',
-                    'loan_id' => $disbursement->loan_id,
-                    'disbursement_id' => $disbursement->id,
+                    'message' => $result['message'] ?? 'Disbursement initiated',
+                    'direction' => 'outgoing',
+                    'added_by' => auth()->id(),
+                    'date_created' => now(),
                 ]);
 
                 // Create disbursement transaction record
                 DisbursementTransaction::create([
-                    'disbursement_id' => $disbursement->id,
-                    'txn_reference' => $result['reference'] ?? 'TXN-' . time(),
-                    'network' => $network,
+                    'loan_id' => $disbursement->loan_id,
                     'phone' => $phoneNumber,
+                    'amount' => $disbursement->amount,
                     'status' => $result['status'] ?? '00',
-                    'response_data' => json_encode($result),
+                    'txnref' => $result['reference'] ?? 'TXN-' . time(),
+                    'message' => $result['message'] ?? 'Disbursement initiated',
+                    'datecreated' => now(),
+                    'dump' => json_encode($result),
+                    'raw' => $result['raw_response'] ?? json_encode($result),
+                    'request' => json_encode([
+                        'phone' => $phoneNumber,
+                        'network' => $network,
+                        'amount' => $disbursement->amount,
+                    ]),
                 ]);
 
                 return [
@@ -639,7 +724,7 @@ class DisbursementController extends Controller
             if ($result['success']) {
                 // Update disbursement status if immediately successful
                 if (isset($result['immediate_success']) && $result['immediate_success']) {
-                    $disbursement->update(['status' => 1]);
+                    $disbursement->update(['status' => 2]); // Mark as disbursed
                     $this->completeDisbursement($disbursement);
                 }
 
@@ -814,37 +899,130 @@ class DisbursementController extends Controller
     private function completeDisbursement(Disbursement $disbursement)
     {
         try {
-            $loan = $disbursement->loan;
+            // Update disbursement status to disbursed
+            $disbursement->update(['status' => 2]);
 
-            // Update loan status to active/disbursed
-            $loan->update(['status' => 2]);
+            // Get the actual loan model based on loan_type
+            $loan = $disbursement->loan_type == 1 
+                ? PersonalLoan::find($disbursement->loan_id)
+                : GroupLoan::find($disbursement->loan_id);
 
-            // Deduct from investment account
-            $investment = $disbursement->investment;
-            $investment->decrement('amount', $disbursement->amount);
+            if (!$loan) {
+                throw new \Exception('Loan not found for disbursement ' . $disbursement->id);
+            }
 
-            // Recalculate loan schedule dates from disbursement date
-            $this->recalculateLoanSchedule($loan, $disbursement->disbursement_date);
+            // Update loan status to active/disbursed (status 2)
+            DB::table($disbursement->loan_type == 1 ? 'personal_loans' : 'group_loans')
+                ->where('id', $loan->id)
+                ->update(['status' => 2]);
 
-            // Send SMS notification to member
-            $this->sendDisbursementNotification($loan->member, $disbursement);
+            // Generate or recalculate loan repayment schedules
+            $this->generateRepaymentSchedules($loan, $disbursement);
+
+            // Deduct from investment account if exists
+            if ($disbursement->inv_id) {
+                DB::table('investment')
+                    ->where('id', $disbursement->inv_id)
+                    ->decrement('amount', $disbursement->amount);
+            }
 
             Log::info('Disbursement completed successfully', [
                 'disbursement_id' => $disbursement->id,
                 'loan_id' => $loan->id,
+                'loan_type' => $disbursement->loan_type,
                 'amount' => $disbursement->amount
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error completing disbursement: ' . $e->getMessage());
+            Log::error('Error completing disbursement', [
+                'disbursement_id' => $disbursement->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             throw $e;
         }
     }
 
     /**
+     * Generate repayment schedules for disbursed loan
+     */
+    private function generateRepaymentSchedules($loan, $disbursement)
+    {
+        // Check if schedules already exist
+        $existingSchedules = DB::table('loan_schedules')
+            ->where('loan_id', $loan->id)
+            ->count();
+
+        if ($existingSchedules > 0) {
+            // Schedules exist, just recalculate dates
+            $this->recalculateLoanSchedule($loan, $disbursement->disbursement_date);
+            return;
+        }
+
+        // Generate new schedules
+        $principal = $loan->principal;
+        $interest = $loan->interest / 100; // Convert to decimal
+        $period = $loan->period;
+        $periodType = $loan->period_type ?? 3; // Default to daily
+        
+        $disbursementDate = \Carbon\Carbon::parse($disbursement->disbursement_date);
+        $installment = $loan->installment ?? 0;
+
+        // Calculate per-period interest based on period type
+        $interestPerPeriod = 0;
+        if ($periodType == 1) {
+            // Weekly
+            $interestPerPeriod = ($interest * 7) / 365;
+        } elseif ($periodType == 2) {
+            // Monthly
+            $interestPerPeriod = $interest / 12;
+        } else {
+            // Daily
+            $interestPerPeriod = $interest / 365;
+        }
+
+        $balance = $principal;
+
+        for ($i = 1; $i <= $period; $i++) {
+            $interestAmount = $balance * $interestPerPeriod;
+            $principalAmount = $installment - $interestAmount;
+            
+            // Ensure balance doesn't go negative
+            if ($principalAmount > $balance) {
+                $principalAmount = $balance;
+                $installment = $principalAmount + $interestAmount;
+            }
+            
+            $balance -= $principalAmount;
+            
+            // Calculate payment date
+            $paymentDate = $this->calculatePaymentDate($disbursementDate, $i, $periodType);
+
+            DB::table('loan_schedules')->insert([
+                'loan_id' => $loan->id,
+                'payment_date' => $paymentDate->format('Y-m-d'),
+                'principal' => round($principalAmount, 2),
+                'interest' => round($interestAmount, 2),
+                'payment' => round($installment, 2),
+                'balance' => round($balance, 2),
+                'status' => 0, // 0=pending, 1=paid
+                'date_created' => now(),
+            ]);
+
+            if ($balance <= 0) break;
+        }
+
+        Log::info('Generated loan schedules', [
+            'loan_id' => $loan->id,
+            'periods' => $period,
+            'schedules_created' => min($period, ceil($principal / ($installment - ($balance * $interestPerPeriod))))
+        ]);
+    }
+
+    /**
      * Recalculate loan schedule dates from disbursement date
      */
-    private function recalculateLoanSchedule(Loan $loan, $disbursementDate)
+    private function recalculateLoanSchedule($loan, $disbursementDate)
     {
         $schedules = LoanSchedule::where('loan_id', $loan->id)
                                 ->orderBy('payment_date')
@@ -1033,24 +1211,32 @@ class DisbursementController extends Controller
      */
     public function cancel(Disbursement $disbursement)
     {
-        if ($disbursement->status !== 0) {
+        if ($disbursement->status == 2) {
             return redirect()->back()
-                            ->with('error', 'Can only cancel pending disbursements.');
+                            ->with('error', 'Cannot cancel a disbursement that has already been disbursed.');
+        }
+
+        if ($disbursement->status == 3) {
+            return redirect()->back()
+                            ->with('info', 'Disbursement is already cancelled/failed.');
         }
 
         try {
             DB::beginTransaction();
 
-            $disbursement->update(['status' => 2]); // Cancelled/Failed
+            $disbursement->update([
+                'status' => 3, // Failed/Cancelled (not 2!)
+                'notes' => ($disbursement->notes ?? '') . "\n\nCancelled by: " . auth()->user()->name . " on " . now()->format('Y-m-d H:i:s')
+            ]);
 
             // Update transaction status if exists
             if ($disbursement->transaction) {
-                $disbursement->transaction->update(['status' => '02']);
+                $disbursement->transaction->update(['status' => '57']); // Failed status
             }
 
             // Update raw payment status if exists
             if ($disbursement->rawPayment) {
-                $disbursement->rawPayment->update(['status' => '02']);
+                $disbursement->rawPayment->update(['pay_status' => '57']); // Failed status
             }
 
             DB::commit();
@@ -1160,48 +1346,19 @@ class DisbursementController extends Controller
      * Calculate ALL charges (upfront + product) and determine final disbursable amount
      * Upfront charges can be auto-deducted if not already paid
      */
-    private function calculateAllChargesAndDeductions(Loan $loan)
+    private function calculateAllChargesAndDeductions($loan)
     {
         $product = $loan->product;
-        $principal = $loan->principal;
+        $principal = floatval($loan->principal ?? 0);
         $totalDeductions = 0;
         $chargeBreakdown = [];
         $feeRecords = [];
         $loanChargeRecords = [];
 
-        // 1. GET UPFRONT CHARGES (can be auto-deducted if not paid)
-        $upfrontFeeTypes = FeeType::active()
-                                 ->where('required_disbursement', 1)
-                                 ->get();
+        // Check charge_type: 1 = Deduct from disbursement, 2 = Pay upfront
+        $chargeType = $loan->charge_type ?? 2; // Default to 2 if not set
 
-        foreach ($upfrontFeeTypes as $feeType) {
-            // Check if already paid
-            $paidFee = Fee::where('loan_id', $loan->id)
-                         ->where('fees_type_id', $feeType->id)
-                         ->where('status', 1)
-                         ->first();
-
-            if (!$paidFee) {
-                // Not paid - will be auto-deducted
-                // For upfront fees, we need to determine the amount
-                // This could be a fixed amount or percentage - let's assume fixed for now
-                $upfrontAmount = 50000; // This should come from configuration or fee type
-                
-                $totalDeductions += $upfrontAmount;
-                $chargeBreakdown[] = $feeType->name . ': UGX ' . number_format($upfrontAmount, 2) . ' (Auto-deducted upfront charge)';
-                
-                // Record for auto-creation
-                $feeRecords[] = [
-                    'fees_type_id' => $feeType->id,
-                    'amount' => $upfrontAmount,
-                    'description' => 'Auto-deducted during disbursement'
-                ];
-            } else {
-                $chargeBreakdown[] = $feeType->name . ': UGX ' . number_format($paidFee->amount, 2) . ' (Already paid)';
-            }
-        }
-
-        // 2. GET PRODUCT CHARGES (always auto-deducted)
+        // 1. GET PRODUCT CHARGES - Only deduct if charge_type = 1
         $productCharges = ProductCharge::where('product_id', $product->id)
                                       ->active()
                                       ->get();
@@ -1211,36 +1368,52 @@ class DisbursementController extends Controller
 
             switch ($charge->type) {
                 case 1: // Fixed Amount
-                    $chargeAmount = $charge->value;
+                    $chargeAmount = floatval($charge->value ?? 0);
                     break;
                     
                 case 2: // Percentage
-                    $chargeAmount = ($principal * $charge->value) / 100;
+                    $chargeAmount = ($principal * floatval($charge->value ?? 0)) / 100;
                     break;
                     
                 case 3: // Per Day
-                    $chargeAmount = $charge->value * $loan->period;
+                    $chargeAmount = floatval($charge->value ?? 0) * intval($loan->period ?? 0);
                     break;
                     
                 case 4: // Per Month
-                    $months = ceil($loan->period / 30);
-                    $chargeAmount = $charge->value * $months;
+                    $months = ceil(intval($loan->period ?? 0) / 30);
+                    $chargeAmount = floatval($charge->value ?? 0) * $months;
                     break;
                     
                 default:
-                    $chargeAmount = $charge->value;
+                    $chargeAmount = floatval($charge->value ?? 0);
             }
 
-            $totalDeductions += $chargeAmount;
-            $chargeBreakdown[] = $charge->name . ': UGX ' . number_format($chargeAmount, 2) . 
-                               ' (' . $charge->type_name . ' - Product charge)';
-            
-            $loanChargeRecords[] = [
-                'charge_name' => $charge->name,
-                'charge_type' => $charge->type,
-                'charge_value' => $charge->value,
-                'actual_value' => $chargeAmount
-            ];
+            if ($chargeType == 1) {
+                // Deduct from disbursement
+                $totalDeductions += $chargeAmount;
+                $chargeBreakdown[] = $charge->name . ': UGX ' . number_format($chargeAmount, 2) . 
+                                   ' (' . $charge->type_name . ' - Deducted from disbursement)';
+                
+                $loanChargeRecords[] = [
+                    'charge_name' => $charge->name,
+                    'charge_type' => $charge->type,
+                    'charge_value' => $charge->value,
+                    'actual_value' => $chargeAmount,
+                    'deducted' => true
+                ];
+            } else {
+                // charge_type = 2: Already paid upfront, no deduction
+                $chargeBreakdown[] = $charge->name . ': UGX ' . number_format($chargeAmount, 2) . 
+                                   ' (Paid upfront - Not deducted)';
+                
+                $loanChargeRecords[] = [
+                    'charge_name' => $charge->name,
+                    'charge_type' => $charge->type,
+                    'charge_value' => $charge->value,
+                    'actual_value' => $chargeAmount,
+                    'deducted' => false
+                ];
+            }
         }
 
         $disbursableAmount = $principal - $totalDeductions;
@@ -1277,25 +1450,9 @@ class DisbursementController extends Controller
     /**
      * Record all charges and auto-deducted fees
      */
-    private function recordAllCharges(Loan $loan, array $chargeCalculation)
+    private function recordAllCharges($loan, array $chargeCalculation)
     {
-        // Record auto-deducted upfront fees
-        foreach ($chargeCalculation['auto_deducted_fees'] as $feeData) {
-            Fee::create([
-                'member_id' => $loan->member_id,
-                'loan_id' => $loan->id,
-                'fees_type_id' => $feeData['fees_type_id'],
-                'payment_type' => 4, // Auto-deducted
-                'amount' => $feeData['amount'],
-                'description' => $feeData['description'],
-                'added_by' => auth()->id(),
-                'payment_status' => 'Auto-deducted',
-                'payment_description' => 'Automatically deducted during loan disbursement',
-                'status' => 1, // Paid (via deduction)
-            ]);
-        }
-
-        // Record product charges
+        // Record product charges and create Fee records if deducted
         foreach ($chargeCalculation['loan_charges'] as $chargeData) {
             LoanCharge::create([
                 'loan_id' => $loan->id,
@@ -1305,13 +1462,38 @@ class DisbursementController extends Controller
                 'actual_value' => $chargeData['actual_value'],
                 'added_by' => auth()->id(),
             ]);
+
+            // If this charge was deducted (charge_type = 1), create Fee record
+            if (isset($chargeData['deducted']) && $chargeData['deducted']) {
+                // Find the ProductCharge to get the fees_type_id
+                $productCharge = ProductCharge::where('product_id', $loan->product_id)
+                                             ->where('name', $chargeData['charge_name'])
+                                             ->first();
+                
+                if ($productCharge) {
+                    Fee::create([
+                        'member_id' => $loan->member_id,
+                        'loan_id' => $loan->id,
+                        'fees_type_id' => $productCharge->id, // Using product_charge.id as fees_type_id
+                        'payment_type' => 4, // Auto-deducted
+                        'amount' => $chargeData['actual_value'],
+                        'description' => 'Deducted from disbursement amount',
+                        'added_by' => auth()->id(),
+                        'payment_status' => 'Paid - Deducted from Disbursement',
+                        'payment_description' => 'Automatically deducted during loan disbursement on ' . now()->format('Y-m-d H:i:s'),
+                        'status' => 1, // Paid (via deduction)
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
         }
     }
 
     /**
      * Validate upfront charges are paid before disbursement
      */
-    private function validateUpfrontCharges(Loan $loan)
+    private function validateUpfrontCharges($loan)
     {
         // Get fee types that require disbursement (upfront charges)
         $upfrontFeeTypes = FeeType::active()
@@ -1422,7 +1604,7 @@ class DisbursementController extends Controller
     /**
      * Get upfront fees breakdown for a loan
      */
-    private function getUpfrontFeesBreakdown(Loan $loan)
+    private function getUpfrontFeesBreakdown($loan)
     {
         $upfrontFeeTypes = FeeType::active()
                                  ->where('required_disbursement', 1)
@@ -1615,5 +1797,90 @@ class DisbursementController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Mark disbursement as complete
+     */
+    public function complete(Disbursement $disbursement)
+    {
+        try {
+            if ($disbursement->status == 2) {
+                return back()->with('info', 'Disbursement is already marked as disbursed.');
+            }
+
+            if ($disbursement->status == 3) {
+                return back()->with('error', 'Cannot complete a failed disbursement.');
+            }
+
+            DB::beginTransaction();
+
+            // Update disbursement status to disbursed (2)
+            $disbursement->update(['status' => 2]);
+
+            // Complete the disbursement (update loan, create schedules, etc.)
+            $this->completeDisbursement($disbursement);
+
+            DB::commit();
+
+            return back()->with('success', 'Disbursement marked as complete successfully.');
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Error completing disbursement: ' . $e->getMessage());
+            return back()->with('error', 'Error completing disbursement: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Retry a failed disbursement
+     */
+    public function retry(Disbursement $disbursement)
+    {
+        try {
+            if ($disbursement->status != 3) {
+                return back()->with('error', 'Only failed disbursements can be retried.');
+            }
+
+            DB::beginTransaction();
+
+            // Reset status to pending (0)
+            $disbursement->update([
+                'status' => 0,
+                'notes' => ($disbursement->notes ?? '') . "\n\nRetried by: " . auth()->user()->name . " on " . now()->format('Y-m-d H:i:s')
+            ]);
+
+            // If mobile money, initiate new transaction
+            if ($disbursement->payment_type == 1) {
+                $result = $this->processMobileMoneyDisbursement(
+                    $disbursement,
+                    $disbursement->account_number,
+                    $disbursement->payment_medium
+                );
+
+                if ($result['success']) {
+                    // Update disbursement status if immediately successful
+                    if (isset($result['immediate_success']) && $result['immediate_success']) {
+                        $disbursement->update(['status' => 2]);
+                        $this->completeDisbursement($disbursement);
+                    }
+
+                    DB::commit();
+                    return back()->with('success', $result['message']);
+                } else {
+                    DB::rollback();
+                    return back()->with('error', $result['message']);
+                }
+            } else {
+                // For non-mobile money, just reset status
+                DB::commit();
+                return back()->with('success', 'Disbursement reset to pending. Please process manually.');
+            }
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Error retrying disbursement: ' . $e->getMessage());
+            return back()->with('error', 'Error retrying disbursement: ' . $e->getMessage());
+        }
     }
 }
