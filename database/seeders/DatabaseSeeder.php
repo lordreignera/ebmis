@@ -24,7 +24,7 @@ class DatabaseSeeder extends Seeder
             RolesSeeder::class,                     // Roles & Permissions
             BranchesSeeder::class,                  // Initial branches
             PermissionsSeeder::class,              // Additional permissions
-            SavingsTypesSeeder::class,              // Savings types
+            SavingsProductsSeeder::class,           // Savings products
             CountriesSeeder::class,                 // Countries list
             SystemAccountsSeeder::class,          // System accounts
         ]);

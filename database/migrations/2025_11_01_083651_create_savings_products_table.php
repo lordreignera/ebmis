@@ -22,7 +22,7 @@ return new class extends Migration
             $table->string('description', 150);
             $table->integer('account');
             $table->boolean('isactive')->default(true);
-            $table->timestamps();
+            $table->timestamp('datecreated')->nullable();
         });
     }
 

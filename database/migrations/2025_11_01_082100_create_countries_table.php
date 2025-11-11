@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('name', 191);
             $table->string('code', 10)->nullable();
             $table->boolean('is_active')->default(true);
-            $table->timestamps();
+            $table->timestamp('date_created')->nullable();
         });
     }
 

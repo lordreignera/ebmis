@@ -23,7 +23,7 @@ return new class extends Migration
             $table->double('running_balance');
             $table->unsignedBigInteger('added_by');
             $table->integer('status')->default(0);
-            $table->timestamps();
+            $table->timestamp('date_created')->nullable();
             
             $table->foreign('added_by')->references('id')->on('users');
         });
