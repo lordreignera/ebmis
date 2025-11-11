@@ -232,6 +232,11 @@ class School extends Model
         return $this->hasMany(Staff::class);
     }
 
+    public function schoolLoans()
+    {
+        return $this->hasMany(SchoolLoan::class);
+    }
+
     // ===============================================================
     // STATUS METHODS
     // ===============================================================

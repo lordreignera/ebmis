@@ -110,6 +110,14 @@ class Staff extends Model
     }
 
     /**
+     * Get staff loans.
+     */
+    public function staffLoans()
+    {
+        return $this->hasMany(StaffLoan::class);
+    }
+
+    /**
      * Get full name.
      */
     public function getFullNameAttribute()

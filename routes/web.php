@@ -9,11 +9,6 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
-// Explicit login route (in case Fortify doesn't register it)
-Route::get('/login', function () {
-    return view('auth.login');
-})->name('login');
-
 // School Registration Routes (Public)
 Route::get('/school/register', [SchoolRegistrationController::class, 'show'])->name('school.register');
 Route::post('/school/register', [SchoolRegistrationController::class, 'store'])->name('school.register.store');
@@ -94,6 +89,17 @@ Route::middleware([
     Route::get('/modern-table', function () {
         return view('admin.modern-table');
     })->name('modern.table');
+    
+    // School Loan Routes (Must be BEFORE regular loan routes to avoid conflicts)
+    Route::prefix('school-loans')->name('school.loans.')->group(function () {
+        Route::get('/create', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'create'])->name('create');
+        Route::post('/store', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'store'])->name('store');
+        Route::get('/approvals', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'approvals'])->name('approvals');
+        Route::get('/disbursements', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'disbursements'])->name('disbursements');
+        Route::get('/active', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'active'])->name('active');
+        Route::get('/repayments', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'repayments'])->name('repayments');
+        Route::get('/portfolio', [\App\Http\Controllers\Admin\SchoolLoanController::class, 'portfolio'])->name('portfolio');
+    });
     
     // Loan Additional Routes (Must be BEFORE resource route to avoid conflicts)
     Route::get('/loans/esign', [\App\Http\Controllers\Admin\LoanController::class, 'esignIndex'])->name('loans.esign');

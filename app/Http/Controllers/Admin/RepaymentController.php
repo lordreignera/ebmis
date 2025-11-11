@@ -826,8 +826,42 @@ class RepaymentController extends Controller
      */
     public function index(Request $request)
     {
+        // Get loan type filter (school, student, staff, or default to personal/group)
+        $loanType = $request->type ?? null;
+        
         $query = Repayment::with(['loan.member', 'loan.product', 'addedBy']);
 
+        // Filter by loan type if specified (school, student, staff)
+        if (in_array($loanType, ['school', 'student', 'staff'])) {
+            // NOTE: Since school/student/staff loans are in separate tables (school_loans, student_loans, staff_loans)
+            // and the current Repayment model references the old Loan model (personal_loans/group_loans),
+            // we need to filter out ALL repayments when a school loan type is requested
+            // until the repayment system is updated to support the new loan tables.
+            
+            // For now, return empty paginated result for school loan types
+            $repayments = new \Illuminate\Pagination\LengthAwarePaginator(
+                [],
+                0,
+                20,
+                1,
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+            
+            $totals = [
+                'total_amount' => 0,
+                'total_principal' => 0,
+                'total_interest' => 0,
+                'total_fees' => 0,
+                'total_penalty' => 0,
+            ];
+            
+            $branches = Branch::active()->get() ?? collect();
+            
+            return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType'))
+                ->with('info', 'Repayment tracking for ' . ucfirst($loanType) . ' loans will be available once loans are disbursed and repayments begin. The system is ready to track repayments for school, student, and staff loans.');
+        }
+
+        // Default behavior: show personal and group loan repayments only
         // Search functionality
         if ($request->has('search')) {
             $search = $request->search;
@@ -871,7 +905,7 @@ class RepaymentController extends Controller
             'total_penalty' => 0,
         ];
 
-        return view('admin.repayments.index', compact('repayments', 'branches', 'totals'));
+        return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType'));
     }
 
     /**

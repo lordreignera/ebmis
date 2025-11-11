@@ -66,16 +66,20 @@
       </a>
       <div class="collapse" id="school-loans">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">School Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan (Monthly)</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Create School Loans</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=school&period=daily">School Loan (Daily)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=school&period=weekly">School Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=school&period=monthly">School Loan (Monthly)</a></li>
+          
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan Repayments</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">School Loan Management</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=school">School Loan Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=school">School Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=school">Active School Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=school">School Loan Repayments</a></li>
+          
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loan Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.portfolio') }}?type=school">School Loan Portfolio</a></li>
         </ul>
       </div>
     </li>
@@ -90,16 +94,20 @@
       </a>
       <div class="collapse" id="student-loans">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan (Monthly)</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Create Student Loans</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=student&period=daily">Student Loan (Daily)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=student&period=weekly">Student Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=student&period=monthly">Student Loan (Monthly)</a></li>
+          
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan Repayments</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Student Loan Management</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=student">Student Loan Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=student">Student Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=student">Active Student Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=student">Student Loan Repayments</a></li>
+          
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loan Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.portfolio') }}?type=student">Student Loan Portfolio</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Students by School</a></li>
         </ul>
       </div>
@@ -136,16 +144,20 @@
       </a>
       <div class="collapse" id="staff-loans">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan (Monthly)</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Create Staff Loans</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=staff&period=daily">Staff Loan (Daily)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=staff&period=weekly">Staff Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=staff&period=monthly">Staff Loan (Monthly)</a></li>
+          
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan Repayments</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Staff Loan Management</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=staff">Staff Loan Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=staff">Staff Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=staff">Active Staff Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=staff">Staff Loan Repayments</a></li>
+          
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loan Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.portfolio') }}?type=staff">Staff Loan Portfolio</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Staff by School</a></li>
         </ul>
       </div>
@@ -439,29 +451,43 @@
       </a>
       <div class="collapse" id="loans">
         <ul class="nav flex-column sub-menu">
+          <!-- Personal Loans Section -->
+          <li class="nav-item"><strong class="text-muted ps-3">Personal Loans</strong></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=daily">Personal Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=personal&period=weekly">Personal Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=personal&period=monthly">Personal Loan (Monthly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=weekly">Personal Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=monthly">Personal Loan (Monthly)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.esign') }}">eSign Personal Loan</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}">Personal Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.disbursements.index') }}">Personal Loan Disbursement (Legacy)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}">Loan Disbursemented (Enhanced)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}">Active Loans Management</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayment (Legacy)</a></li>
+          
+          <!-- Group Loans Section -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group&period=daily">Group Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group&period=weekly">Group Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group&period=monthly">Group Loan (Monthly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.index') }}?type=group">Manage Group Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Group Loan Disbursements (Enhanced)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.disbursements.index') }}?type=group">Group Loan Disbursement (Legacy)</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Group Loans</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=daily">Group Loan (Daily)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=weekly">Group Loan (Weekly)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=monthly">Group Loan (Monthly)</a></li>
+          
+          <!-- Personal Loan Management -->
+          <li class="nav-item"><hr class="dropdown-divider"></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Personal Loan Management</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Personal Loan Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Personal Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayments</a></li>
+          
+          <!-- Group Loan Management -->
+          <li class="nav-item"><hr class="dropdown-divider"></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Group Loan Management</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=group">Group Loan Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Group Loan Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=group">Active Group Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayment (Legacy)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayments</a></li>
+          
+          <!-- Loan Portfolio Reports -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.branch') }}">Branch Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.product') }}">Loan Product Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.individual') }}">Individual Loan Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.group') }}">Group Loan Portfolio</a></li>
+          <li class="nav-item"><strong class="text-muted ps-3">Portfolio Analysis</strong></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.branch') }}">By Branch</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.product') }}">By Product</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.individual') }}">Personal Portfolio</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.group') }}">Group Portfolio</a></li>
         </ul>
       </div>
     </li>

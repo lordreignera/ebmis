@@ -93,6 +93,14 @@ class Student extends Model
     }
 
     /**
+     * Get student loans.
+     */
+    public function studentLoans()
+    {
+        return $this->hasMany(StudentLoan::class);
+    }
+
+    /**
      * Get full name.
      */
     public function getFullNameAttribute()
