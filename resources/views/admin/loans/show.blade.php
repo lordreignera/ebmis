@@ -71,9 +71,15 @@
                     <i class="mdi mdi-close me-1"></i> Reject Loan
                 </button>
                 @elseif($loan->status == 1)
-                <a href="{{ route('admin.disbursements.approve.show', $loan->id) }}?type={{ $loanType }}" class="btn btn-primary">
-                    <i class="mdi mdi-cash-multiple me-1"></i> Process Disbursement
-                </a>
+                    @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+                    <a href="{{ route('admin.disbursements.approve.show', $loan->id) }}?type={{ $loanType }}" class="btn btn-primary">
+                        <i class="mdi mdi-cash-multiple me-1"></i> Process Disbursement
+                    </a>
+                    @else
+                    <button class="btn btn-secondary" disabled title="Only Super Administrator can process disbursements">
+                        <i class="mdi mdi-lock me-1"></i> Process Disbursement (Restricted)
+                    </button>
+                    @endif
                 @endif
             </div>
         </div>

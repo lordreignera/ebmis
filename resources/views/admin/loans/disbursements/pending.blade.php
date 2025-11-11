@@ -256,12 +256,18 @@
                                             <button class="btn-modern btn-view" onclick="viewLoanDetails({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}')" title="View Details">
                                                 <i class="mdi mdi-eye"></i>
                                             </button>
-                                            <a href="{{ route('admin.loans.disbursements.approve.show', $loan->getAttribute('id')) }}" class="btn-modern btn-view" title="Process Disbursement">
-                                                <i class="mdi mdi-check-circle"></i>
-                                            </a>
-                                            <button class="btn-modern btn-delete" onclick="rejectDisbursement({{ $loan->getAttribute('id') }})" title="Reject">
-                                                <i class="mdi mdi-close-circle"></i>
-                                            </button>
+                                            @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+                                                <a href="{{ route('admin.loans.disbursements.approve.show', $loan->getAttribute('id')) }}" class="btn-modern btn-view" title="Process Disbursement">
+                                                    <i class="mdi mdi-check-circle"></i>
+                                                </a>
+                                                <button class="btn-modern btn-delete" onclick="rejectDisbursement({{ $loan->getAttribute('id') }})" title="Reject">
+                                                    <i class="mdi mdi-close-circle"></i>
+                                                </button>
+                                            @else
+                                                <button class="btn-modern btn-secondary" disabled title="Only Super Administrator can disburse">
+                                                    <i class="mdi mdi-lock"></i>
+                                                </button>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>

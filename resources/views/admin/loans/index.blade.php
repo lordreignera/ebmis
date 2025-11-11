@@ -343,10 +343,12 @@
                                                     </button>
                                                 @endif
                                                 @if($loan->status == 1 && $loan->member->isApproved())
-                                                    <a href="{{ route('admin.disbursements.create', ['loan_id' => $loan->id]) }}" 
-                                                       class="btn-modern btn-process" title="Disburse">
-                                                        <i class="mdi mdi-cash-usd"></i>
-                                                    </a>
+                                                    @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+                                                        <a href="{{ route('admin.disbursements.create', ['loan_id' => $loan->id]) }}" 
+                                                           class="btn-modern btn-process" title="Disburse">
+                                                            <i class="mdi mdi-cash-usd"></i>
+                                                        </a>
+                                                    @endif
                                                 @endif
                                             </div>
                                         </td>

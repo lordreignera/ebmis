@@ -327,6 +327,11 @@ class DisbursementController extends Controller
      */
     public function approve(Request $request, $id)
     {
+        // Only Super Administrator can disburse loans
+        if (!auth()->user()->hasRole('Super Administrator') && !auth()->user()->hasRole('superadmin')) {
+            return redirect()->back()->with('error', 'Access denied. Only Super Administrator can disburse loans.');
+        }
+
         $validator = Validator::make($request->all(), [
             'disbursement_date' => 'required|date|before_or_equal:today',
             'payment_type' => 'required|in:mobile_money,bank_transfer,cash,cheque',
@@ -618,6 +623,11 @@ class DisbursementController extends Controller
      */
     public function store(Request $request)
     {
+        // Only Super Administrator can disburse loans
+        if (!auth()->user()->hasRole('Super Administrator') && !auth()->user()->hasRole('superadmin')) {
+            return redirect()->back()->with('error', 'Access denied. Only Super Administrator can disburse loans.');
+        }
+
         $validated = $request->validate([
             'loan_id' => 'required|exists:loans,id',
             'disbursement_date' => 'required|date',
@@ -1802,6 +1812,11 @@ class DisbursementController extends Controller
      */
     public function complete(Disbursement $disbursement)
     {
+        // Only Super Administrator can complete disbursements
+        if (!auth()->user()->hasRole('Super Administrator') && !auth()->user()->hasRole('superadmin')) {
+            return redirect()->back()->with('error', 'Access denied. Only Super Administrator can complete disbursements.');
+        }
+
         try {
             if ($disbursement->status == 2) {
                 return back()->with('info', 'Disbursement is already marked as disbursed.');
