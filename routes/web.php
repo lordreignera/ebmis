@@ -28,6 +28,11 @@ Route::middleware([
             return redirect()->route('admin.home');
         }
         
+        // Redirect Branch Managers to admin dashboard
+        if ($user->hasRole('Branch Manager')) {
+            return redirect()->route('admin.home');
+        }
+        
         // Redirect School users to school dashboard
         if ($user->user_type === 'school' && $user->school) {
             return redirect()->route('school.dashboard');
@@ -58,21 +63,13 @@ Route::middleware([
     Route::get('/admin/users/{user}/edit', [\App\Http\Controllers\AdminController::class, 'editUser'])->name('admin.users.edit');
 });
 
-// Access Control Routes (Super Admin only)
+// EBIMS Module Routes (Super Admin + Branch Manager access)
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
-    'super_admin'
+    'ebims_module'
 ])->prefix('admin')->name('admin.')->group(function () {
-    // Access Control Dashboard
-    Route::get('/access-control', [\App\Http\Controllers\Admin\AccessControlController::class, 'index'])->name('access-control.index');
-    
-    // School Management Routes
-    Route::resource('schools', \App\Http\Controllers\Admin\SchoolsController::class);
-    Route::post('/schools/{school}/approve', [\App\Http\Controllers\Admin\SchoolsController::class, 'approve'])->name('schools.approve');
-    Route::post('/schools/{school}/reject', [\App\Http\Controllers\Admin\SchoolsController::class, 'reject'])->name('schools.reject');
-    Route::post('/schools/{school}/suspend', [\App\Http\Controllers\Admin\SchoolsController::class, 'suspend'])->name('schools.suspend');
     
     // Member Management Routes
     Route::resource('members', \App\Http\Controllers\Admin\MemberController::class);
@@ -284,6 +281,35 @@ Route::middleware([
         return response()->json($cities);
     })->name('api.cities');
     
+    // Reports Routes (Available to Branch Managers)
+    Route::get('/reports/pending-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'pendingLoans'])->name('reports.pending-loans');
+    Route::get('/reports/disbursed-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'disbursedLoans'])->name('reports.disbursed-loans');
+    Route::get('/reports/rejected-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'rejectedLoans'])->name('reports.rejected-loans');
+    Route::get('/reports/loans-due', [\App\Http\Controllers\Admin\ReportsController::class, 'loansDue'])->name('reports.loans-due');
+    Route::get('/reports/paid-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'paidLoans'])->name('reports.paid-loans');
+    Route::get('/reports/loan-repayments', [\App\Http\Controllers\Admin\ReportsController::class, 'loanRepayments'])->name('reports.loan-repayments');
+    Route::get('/reports/payment-transactions', [\App\Http\Controllers\Admin\ReportsController::class, 'paymentTransactions'])->name('reports.payment-transactions');
+    Route::get('/reports/loan-interest', [\App\Http\Controllers\Admin\ReportsController::class, 'loanInterest'])->name('reports.loan-interest');
+    Route::get('/reports/cash-securities', [\App\Http\Controllers\Admin\ReportsController::class, 'cashSecurities'])->name('reports.cash-securities');
+    Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
+});
+
+// Super Admin Only Routes (School Management, Access Control, System Settings)
+Route::middleware([
+    'auth:sanctum',
+    config('jetstream.auth_session'),
+    'verified',
+    'super_admin'
+])->prefix('admin')->name('admin.')->group(function () {
+    // Access Control Dashboard
+    Route::get('/access-control', [\App\Http\Controllers\Admin\AccessControlController::class, 'index'])->name('access-control.index');
+    
+    // School Management Routes
+    Route::resource('schools', \App\Http\Controllers\Admin\SchoolsController::class);
+    Route::post('/schools/{school}/approve', [\App\Http\Controllers\Admin\SchoolsController::class, 'approve'])->name('schools.approve');
+    Route::post('/schools/{school}/reject', [\App\Http\Controllers\Admin\SchoolsController::class, 'reject'])->name('schools.reject');
+    Route::post('/schools/{school}/suspend', [\App\Http\Controllers\Admin\SchoolsController::class, 'suspend'])->name('schools.suspend');
+    
     // User Management
     Route::get('/users', [\App\Http\Controllers\Admin\AccessControlController::class, 'users'])->name('users.index');
     Route::get('/users/create', [\App\Http\Controllers\Admin\AccessControlController::class, 'createUser'])->name('users.create');
@@ -305,18 +331,6 @@ Route::middleware([
     Route::get('/permissions/create', [\App\Http\Controllers\Admin\AccessControlController::class, 'createPermission'])->name('permissions.create');
     Route::post('/permissions', [\App\Http\Controllers\Admin\AccessControlController::class, 'storePermission'])->name('permissions.store');
     Route::delete('/permissions/{permission}', [\App\Http\Controllers\Admin\AccessControlController::class, 'deletePermission'])->name('permissions.delete');
-    
-    // Reports Routes
-    Route::get('/reports/pending-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'pendingLoans'])->name('reports.pending-loans');
-    Route::get('/reports/disbursed-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'disbursedLoans'])->name('reports.disbursed-loans');
-    Route::get('/reports/rejected-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'rejectedLoans'])->name('reports.rejected-loans');
-    Route::get('/reports/loans-due', [\App\Http\Controllers\Admin\ReportsController::class, 'loansDue'])->name('reports.loans-due');
-    Route::get('/reports/paid-loans', [\App\Http\Controllers\Admin\ReportsController::class, 'paidLoans'])->name('reports.paid-loans');
-    Route::get('/reports/loan-repayments', [\App\Http\Controllers\Admin\ReportsController::class, 'loanRepayments'])->name('reports.loan-repayments');
-    Route::get('/reports/payment-transactions', [\App\Http\Controllers\Admin\ReportsController::class, 'paymentTransactions'])->name('reports.payment-transactions');
-    Route::get('/reports/loan-interest', [\App\Http\Controllers\Admin\ReportsController::class, 'loanInterest'])->name('reports.loan-interest');
-    Route::get('/reports/cash-securities', [\App\Http\Controllers\Admin\ReportsController::class, 'cashSecurities'])->name('reports.cash-securities');
-    Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
     
     // System Settings Routes
     Route::prefix('settings')->name('settings.')->group(function () {

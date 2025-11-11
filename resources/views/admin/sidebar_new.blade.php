@@ -22,8 +22,8 @@
       </a>
     </li>
 
-    @if(auth()->user()->user_type !== 'school')
-    <!-- ADMIN ONLY: SCHOOL MANAGEMENT -->
+    @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+    <!-- SUPER ADMIN ONLY: SCHOOL MANAGEMENT -->
     <li class="nav-item nav-category">
       <span class="nav-link">SCHOOL MANAGEMENT</span>
     </li>
@@ -198,18 +198,13 @@
       </div>
     </li>
     @endif
-    <!-- END ADMIN ONLY: SCHOOL MANAGEMENT -->
+    <!-- END SUPER ADMIN ONLY: SCHOOL MANAGEMENT -->
 
-    <!-- SCHOOL PORTAL SECTION - Only visible to schools -->
+    <!-- SCHOOL PORTAL SECTION - Only visible to school users -->
     @if(auth()->user()->user_type === 'school')
     <li class="nav-item nav-category">
       <span class="nav-link">MY SCHOOL</span>
     </li>
-    @else
-    <li class="nav-item nav-category">
-      <span class="nav-link">SCHOOL PORTAL</span>
-    </li>
-    @endif
 
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ url('school/dashboard') }}">
@@ -348,9 +343,11 @@
         </ul>
       </div>
     </li>
+    @endif
+    <!-- END SCHOOL PORTAL SECTION -->
 
     @if(auth()->user()->user_type !== 'school')
-    <!-- ADMIN ONLY: EBIMS MODULES -->
+    <!-- EBIMS MODULES (For Super Admin & Branch Managers) -->
     <li class="nav-item nav-category">
       <span class="nav-link">EBIMS MODULES</span>
     </li>
@@ -560,6 +557,10 @@
       </div>
     </li>
 
+@endif
+<!-- END ADMIN ONLY: REPORTS & SETTINGS -->
+
+@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
         <!-- ACCESS CONTROL SECTION - ADMIN ONLY -->
     <li class="nav-item nav-category">
       <span class="nav-link">ACCESS CONTROL</span>

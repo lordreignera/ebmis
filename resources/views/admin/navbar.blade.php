@@ -254,10 +254,17 @@
                     </div>
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item d-flex align-items-center" 
-                       href="{{ route('admin.users.edit', Auth::id()) }}" 
+                       href="{{ route('profile.show') }}" 
                        style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <i class="mdi mdi-account-outline me-3" style="font-size: 1.25rem; color: #4299e1;"></i>
-                        <span>My Profile</span>
+                        <div>
+                            <span class="d-block">My Profile</span>
+                            @if(Auth::user()->email && str_ends_with(Auth::user()->email, '@ebims.local'))
+                                <small class="text-warning d-block" style="font-size: 0.75rem;">
+                                    <i class="mdi mdi-lock-alert"></i> Change your password
+                                </small>
+                            @endif
+                        </div>
                     </a>
                     <a class="dropdown-item d-flex align-items-center" 
                        href="#" 

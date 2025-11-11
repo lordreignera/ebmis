@@ -482,6 +482,9 @@
             <!-- Main Panel -->
             <div class="main-panel">
                 <div class="content-wrapper">
+                    <!-- Password Change Reminder -->
+                    <x-password-change-reminder />
+                    
                     @yield('content')
                 </div>
                 

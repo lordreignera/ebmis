@@ -18,7 +18,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
+            'ebims_module' => \App\Http\Middleware\EbimsModuleAccess::class,
             'approved_school' => \App\Http\Middleware\EnsureSchoolIsApproved::class,
+            'check_password_change' => \App\Http\Middleware\CheckPasswordChange::class,
+        ]);
+        
+        // Add password change check to web middleware group
+        $middleware->web(append: [
+            \App\Http\Middleware\CheckPasswordChange::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
