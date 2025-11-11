@@ -15,6 +15,13 @@ class RolesSeeder extends Seeder
      */
     public function run(): void
     {
+        // Check if permissions table has Spatie structure (name column)
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('permissions', 'name')) {
+            $this->command->warn('⚠️  Old permissions table structure detected. Skipping role permissions setup.');
+            $this->command->info('💡 Run migrations to create Spatie permissions tables, or manually set up roles.');
+            return;
+        }
+
         // Clear cache to avoid conflicts
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 

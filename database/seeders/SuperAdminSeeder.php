@@ -14,6 +14,12 @@ class SuperAdminSeeder extends Seeder
      */
     public function run(): void
     {
+        // Check if permissions table has Spatie structure
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('permissions', 'name')) {
+            $this->command->warn('⚠️  Old permissions table structure detected. Skipping super admin setup.');
+            return;
+        }
+
         // Create Super Administrator role (matching middleware check)
         $role = Role::firstOrCreate(['name' => 'Super Administrator']);
 

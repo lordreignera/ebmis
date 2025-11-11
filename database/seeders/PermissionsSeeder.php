@@ -13,6 +13,12 @@ class PermissionsSeeder extends Seeder
      */
     public function run(): void
     {
+        // Check if permissions table has Spatie structure
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('permissions', 'name')) {
+            $this->command->warn('⚠️  Old permissions table structure detected. Skipping permissions seeder.');
+            return;
+        }
+
         // Define all permissions
         $allPermissions = [
             // SUPER ADMIN PERMISSIONS (8)
