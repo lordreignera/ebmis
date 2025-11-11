@@ -6,8 +6,13 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\SchoolRegistrationController;
 
 Route::get('/', function () {
-    return view('auth.login');
+    return redirect()->route('login');
 });
+
+// Explicit login route (in case Fortify doesn't register it)
+Route::get('/login', function () {
+    return view('auth.login');
+})->name('login');
 
 // School Registration Routes (Public)
 Route::get('/school/register', [SchoolRegistrationController::class, 'show'])->name('school.register');
