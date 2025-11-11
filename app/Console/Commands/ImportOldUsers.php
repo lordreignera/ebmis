@@ -129,16 +129,26 @@ class ImportOldUsers extends Command
         // Generate email from username
         $email = strtolower($oldUser->username) . '@ebims.local';
         
-        // Check if user already exists
-        $existingUser = User::where('email', $email)->first();
+        // Check if user already exists in the NEW database (using default connection which is ebims1)
+        // Use connection() to explicitly use the default connection
+        $existingUserCheck = DB::connection(config('database.default'))
+            ->table('users')
+            ->where('email', $email)
+            ->first();
         
-        if ($existingUser) {
+        $existingUser = null;
+        if ($existingUserCheck && !$dryRun) {
+            // Convert to User model instance
+            $existingUser = User::find($existingUserCheck->id);
+        }
+        
+        if ($existingUserCheck) {
             if ($skipExisting) {
                 $this->skipped++;
                 return;
             } else {
                 // Update existing user
-                if (!$dryRun) {
+                if (!$dryRun && $existingUser) {
                     $existingUser->update([
                         'name' => trim($oldUser->fname . ' ' . $oldUser->lname),
                         'branch_id' => $oldUser->branch_id > 0 ? $oldUser->branch_id : null,
