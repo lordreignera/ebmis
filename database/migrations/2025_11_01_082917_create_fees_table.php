@@ -25,7 +25,7 @@ return new class extends Migration
             $table->text('payment_raw')->nullable();
             $table->string('pay_ref', 100)->nullable();
             $table->integer('status')->default(0);
-            $table->timestamps();
+            $table->timestamp('datecreated')->nullable();
             
             $table->foreign('member_id')->references('id')->on('members');
             // Note: loan_id foreign key will be added later after personal_loans table is created

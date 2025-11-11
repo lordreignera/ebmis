@@ -13,35 +13,41 @@ class CountriesSeeder extends Seeder
      */
     public function run(): void
     {
+        // Check if countries table already has data (from imported SQL)
+        if (Country::count() > 0) {
+            $this->command->info('Countries already seeded from SQL import. Skipping...');
+            return;
+        }
+
         $countries = [
-            ['name' => 'Uganda', 'code' => 'UG', 'is_active' => true],
-            ['name' => 'Kenya', 'code' => 'KE', 'is_active' => true],
-            ['name' => 'Tanzania', 'code' => 'TZ', 'is_active' => true],
-            ['name' => 'Rwanda', 'code' => 'RW', 'is_active' => true],
-            ['name' => 'Burundi', 'code' => 'BI', 'is_active' => true],
-            ['name' => 'South Sudan', 'code' => 'SS', 'is_active' => true],
-            ['name' => 'Democratic Republic of Congo', 'code' => 'CD', 'is_active' => true],
-            ['name' => 'Ethiopia', 'code' => 'ET', 'is_active' => true],
-            ['name' => 'Somalia', 'code' => 'SO', 'is_active' => true],
-            ['name' => 'Sudan', 'code' => 'SD', 'is_active' => true],
-            ['name' => 'United States', 'code' => 'US', 'is_active' => true],
-            ['name' => 'United Kingdom', 'code' => 'GB', 'is_active' => true],
-            ['name' => 'Canada', 'code' => 'CA', 'is_active' => true],
-            ['name' => 'Germany', 'code' => 'DE', 'is_active' => true],
-            ['name' => 'France', 'code' => 'FR', 'is_active' => true],
-            ['name' => 'Netherlands', 'code' => 'NL', 'is_active' => true],
-            ['name' => 'Sweden', 'code' => 'SE', 'is_active' => true],
-            ['name' => 'Norway', 'code' => 'NO', 'is_active' => true],
-            ['name' => 'Denmark', 'code' => 'DK', 'is_active' => true],
-            ['name' => 'Australia', 'code' => 'AU', 'is_active' => true],
-            ['name' => 'South Africa', 'code' => 'ZA', 'is_active' => true],
-            ['name' => 'Nigeria', 'code' => 'NG', 'is_active' => true],
-            ['name' => 'Ghana', 'code' => 'GH', 'is_active' => true],
-            ['name' => 'India', 'code' => 'IN', 'is_active' => true],
-            ['name' => 'China', 'code' => 'CN', 'is_active' => true],
-            ['name' => 'Japan', 'code' => 'JP', 'is_active' => true],
-            ['name' => 'Brazil', 'code' => 'BR', 'is_active' => true],
-            ['name' => 'Other', 'code' => 'XX', 'is_active' => true],
+            ['name' => 'Uganda', 'code' => 'UG'],
+            ['name' => 'Kenya', 'code' => 'KE'],
+            ['name' => 'Tanzania', 'code' => 'TZ'],
+            ['name' => 'Rwanda', 'code' => 'RW'],
+            ['name' => 'Burundi', 'code' => 'BI'],
+            ['name' => 'South Sudan', 'code' => 'SS'],
+            ['name' => 'Democratic Republic of Congo', 'code' => 'CD'],
+            ['name' => 'Ethiopia', 'code' => 'ET'],
+            ['name' => 'Somalia', 'code' => 'SO'],
+            ['name' => 'Sudan', 'code' => 'SD'],
+            ['name' => 'United States', 'code' => 'US'],
+            ['name' => 'United Kingdom', 'code' => 'GB'],
+            ['name' => 'Canada', 'code' => 'CA'],
+            ['name' => 'Germany', 'code' => 'DE'],
+            ['name' => 'France', 'code' => 'FR'],
+            ['name' => 'Netherlands', 'code' => 'NL'],
+            ['name' => 'Sweden', 'code' => 'SE'],
+            ['name' => 'Norway', 'code' => 'NO'],
+            ['name' => 'Denmark', 'code' => 'DK'],
+            ['name' => 'Australia', 'code' => 'AU'],
+            ['name' => 'South Africa', 'code' => 'ZA'],
+            ['name' => 'Nigeria', 'code' => 'NG'],
+            ['name' => 'Ghana', 'code' => 'GH'],
+            ['name' => 'India', 'code' => 'IN'],
+            ['name' => 'China', 'code' => 'CN'],
+            ['name' => 'Japan', 'code' => 'JP'],
+            ['name' => 'Brazil', 'code' => 'BR'],
+            ['name' => 'Other', 'code' => 'XX'],
         ];
 
         foreach ($countries as $country) {
