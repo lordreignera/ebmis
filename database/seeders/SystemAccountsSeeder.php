@@ -14,6 +14,12 @@ class SystemAccountsSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if system accounts already exist (from SQL import)
+        if (SystemAccount::count() > 0) {
+            $this->command->info('⚠️  System accounts already exist. Skipping seeder.');
+            return;
+        }
+
         // Clear existing accounts
         SystemAccount::truncate();
 

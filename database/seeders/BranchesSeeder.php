@@ -13,6 +13,12 @@ class BranchesSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if branches already exist (from SQL import)
+        if (DB::table('branches')->count() > 0) {
+            $this->command->info('⚠️  Branches already exist. Skipping seeder.');
+            return;
+        }
+
         $branches = [
             [
                 'id' => 1,

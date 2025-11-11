@@ -13,6 +13,12 @@ class SavingsProductsSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if savings products already exist (from SQL import)
+        if (SavingsProduct::count() > 0) {
+            $this->command->info('⚠️  Savings products already exist. Skipping seeder.');
+            return;
+        }
+
         // Clear existing savings products
         SavingsProduct::truncate();
 

@@ -16,6 +16,12 @@ class TesoRegionLocationsSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if Teso region data already exists (from SQL import)
+        if (UgandaVillage::count() > 0 || UgandaParish::where('name', 'like', '%Soroti%')->count() > 0) {
+            $this->command->info('⚠️  Teso region locations already exist. Skipping seeder.');
+            return;
+        }
+
         $this->command->info('Seeding comprehensive Teso Region location data...');
 
         // Teso Region Districts with complete hierarchy

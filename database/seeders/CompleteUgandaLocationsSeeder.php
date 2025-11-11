@@ -15,6 +15,12 @@ class CompleteUgandaLocationsSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if locations already exist (from SQL import)
+        if (UgandaDistrict::count() > 0) {
+            $this->command->info('⚠️  Uganda locations already exist. Skipping seeder.');
+            return;
+        }
+
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         UgandaParish::truncate();
         UgandaSubcounty::truncate();

@@ -13,6 +13,12 @@ class MemberTypesSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if member types already exist (from SQL import)
+        if (DB::table('member_types')->count() > 0) {
+            $this->command->info('⚠️  Member types already exist. Skipping seeder.');
+            return;
+        }
+
         $memberTypes = [
             [
                 'id' => 1,

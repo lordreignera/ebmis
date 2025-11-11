@@ -14,6 +14,12 @@ class FeeTypesSeeder extends Seeder
      */
     public function run(): void
     {
+        // Skip if fee types already exist (from SQL import)
+        if (FeeType::count() > 0) {
+            $this->command->info('⚠️  Fee types already exist. Skipping seeder.');
+            return;
+        }
+
         // Clear existing fee types
         FeeType::truncate();
 
