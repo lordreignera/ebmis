@@ -72,7 +72,7 @@ class RolesSeeder extends Seeder
         Role::firstOrCreate(['name' => 'Cashier']);
 
         // ===============================================================
-        // 5. UPDATE EXISTING SUPER ADMIN USER
+        // 5. UPDATE EXISTING SUPER ADMIN USER (IF EXISTS)
         // ===============================================================
         $superAdminUser = User::where('email', 'superadmin@ebims.com')->first();
         
@@ -91,10 +91,9 @@ class RolesSeeder extends Seeder
             
             $this->command->info('✅ Super Admin updated with role and permissions');
         } else {
-            $this->command->error('❌ Super Admin user not found! Expected: superadmin@ebims.com');
+            $this->command->warn('⚠️  Super Admin user not yet created. Will be created by SuperAdminSeeder.');
         }
 
         $this->command->info('✅ All roles created successfully!');
-        $this->command->info('🔑 Login: superadmin@ebims.com / superadmin123');
     }
 }
