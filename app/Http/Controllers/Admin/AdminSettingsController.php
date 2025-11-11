@@ -56,13 +56,13 @@ class AdminSettingsController extends Controller
      */
     public function loanProducts()
     {
-        $products = Product::orderBy('product_name')->get();
+        $products = Product::orderBy('name')->get();
         return view('admin.settings.loan-products', compact('products'));
     }
 
     public function savingsProducts()
     {
-        $savingsProducts = SavingsProduct::orderBy('product_name')->get();
+        $savingsProducts = SavingsProduct::orderBy('name')->get();
         return view('admin.settings.savings-products', compact('savingsProducts'));
     }
 

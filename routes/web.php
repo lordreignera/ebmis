@@ -163,6 +163,8 @@ Route::middleware([
     Route::post('/disbursements/{disbursement}/complete', [\App\Http\Controllers\Admin\DisbursementController::class, 'complete'])->name('disbursements.complete');
     Route::post('/disbursements/{disbursement}/cancel', [\App\Http\Controllers\Admin\DisbursementController::class, 'cancel'])->name('disbursements.cancel');
     Route::post('/disbursements/{disbursement}/retry', [\App\Http\Controllers\Admin\DisbursementController::class, 'retry'])->name('disbursements.retry');
+    Route::get('/disbursements/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'showApprove'])->name('disbursements.approve.show');
+    Route::post('/disbursements/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'approve'])->name('disbursements.approve');
     
     // NEW: Enhanced Disbursement Routes for UI
     Route::prefix('loans/disbursements')->name('loans.disbursements.')->group(function () {
@@ -352,6 +354,27 @@ Route::middleware([
         Route::get('/savings-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'savingsProducts'])->name('savings-products');
         Route::get('/fees-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'feesProducts'])->name('fees-products');
         Route::get('/product-categories', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'productCategories'])->name('product-categories');
+    });
+    
+    // Product CRUD Routes (outside settings prefix)
+    Route::resource('products', \App\Http\Controllers\Admin\LoanProductController::class)->except(['index'])->names([
+        'create' => 'loan-products.create',
+        'store' => 'loan-products.store',
+        'show' => 'loan-products.show',
+        'edit' => 'loan-products.edit',
+        'update' => 'loan-products.update',
+        'destroy' => 'loan-products.destroy',
+    ]);
+    
+    // Savings Product CRUD Routes
+    Route::resource('savings-products', \App\Http\Controllers\Admin\SavingsProductController::class)->except(['index']);
+    
+    // Product Status Toggle
+    Route::post('/products/{product}/toggle-status', [\App\Http\Controllers\Admin\LoanProductController::class, 'toggleStatus'])->name('loan-products.toggle-status');
+    Route::post('/savings-products/{savingsProduct}/toggle-status', [\App\Http\Controllers\Admin\SavingsProductController::class, 'toggleStatus'])->name('savings-products.toggle-status');
+    
+    // Continue with other settings routes
+    Route::prefix('settings')->name('settings.')->group(function () {
         
         // Account Settings
         Route::get('/system-accounts', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'systemAccounts'])->name('system-accounts');

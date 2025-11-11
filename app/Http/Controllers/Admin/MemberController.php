@@ -220,7 +220,7 @@ class MemberController extends Controller
         // Get recent transactions/payments
         $recentPayments = $member->fees()
             ->with('feeType')
-            ->latest()
+            ->orderByLegacyTimestamp('desc')
             ->take(10)
             ->get();
 
@@ -402,10 +402,13 @@ class MemberController extends Controller
     {
         $pendingMembers = Member::with(['country', 'branch', 'group', 'addedBy'])
                                ->pending()
-                               ->latest()
+                               ->notDeleted()
+                               ->orderByLegacyTimestamp('desc')
                                ->paginate(20);
 
-        return view('admin.members.pending', compact('pendingMembers'));
+        $branches = Branch::active()->get();
+
+        return view('admin.members.pending', compact('pendingMembers', 'branches'));
     }
 
     /**

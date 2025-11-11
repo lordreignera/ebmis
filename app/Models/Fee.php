@@ -10,7 +10,7 @@ use App\Traits\EastAfricanTime;
 
 class Fee extends Model
 {
-    use HasFactory;
+    use HasFactory, HandlesLegacyTimestamps, EastAfricanTime;
 
     // Disable timestamps completely for old database compatibility
     public $timestamps = false;
@@ -27,7 +27,8 @@ class Fee extends Model
         'payment_description',
         'payment_raw',
         'pay_ref',
-        'status'
+        'status',
+        'datecreated'
     ];
 
     protected $casts = [
