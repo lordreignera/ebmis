@@ -39,7 +39,11 @@ class SuperAdminSeeder extends Seeder
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(['name' => $permission]);
         }
-        $role->syncPermissions(Permission::all());
+        
+        // Only sync permissions if role doesn't have any yet (avoid duplicates)
+        if ($role->permissions->count() === 0) {
+            $role->syncPermissions(Permission::all());
+        }
 
         // Create superadmin user - check which schema is in use
         $user = null;
@@ -80,7 +84,12 @@ class SuperAdminSeeder extends Seeder
         
         // Also create backward compatible 'superadmin' role
         $legacyRole = Role::firstOrCreate(['name' => 'superadmin']);
-        $legacyRole->syncPermissions(Permission::all());
+        
+        // Only sync permissions if role doesn't have any yet (avoid duplicates)
+        if ($legacyRole->permissions->count() === 0) {
+            $legacyRole->syncPermissions(Permission::all());
+        }
+        
         if (!$user->hasRole('superadmin')) {
             $user->assignRole('superadmin');
         }
