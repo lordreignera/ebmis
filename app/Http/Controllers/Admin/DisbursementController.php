@@ -1482,8 +1482,6 @@ class DisbursementController extends Controller
                         'payment_status' => 'Paid - Deducted from Disbursement',
                         'payment_description' => 'Automatically deducted during loan disbursement on ' . now()->format('Y-m-d H:i:s'),
                         'status' => 1, // Paid (via deduction)
-                        'created_at' => now(),
-                        'updated_at' => now(),
                     ]);
                 }
             }

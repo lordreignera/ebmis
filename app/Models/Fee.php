@@ -10,9 +10,9 @@ use App\Traits\EastAfricanTime;
 
 class Fee extends Model
 {
-    use HasFactory, HandlesLegacyTimestamps, EastAfricanTime;
+    use HasFactory;
 
-    // Disable timestamps for old database compatibility
+    // Disable timestamps completely for old database compatibility
     public $timestamps = false;
 
     protected $fillable = [
