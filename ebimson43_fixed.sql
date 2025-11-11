@@ -8,6 +8,7 @@
 -- PHP Version: 8.2.18
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET FOREIGN_KEY_CHECKS=0;
 START TRANSACTION;
 SET time_zone = "+00:00";
 
@@ -13199,6 +13200,8 @@ CREATE TABLE IF NOT EXISTS `user_legacy_mapping` (
   KEY `user_legacy_mapping_new_user_id_foreign` (`new_user_id`),
   KEY `user_legacy_mapping_old_username_index` (`old_username`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET FOREIGN_KEY_CHECKS=1;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
