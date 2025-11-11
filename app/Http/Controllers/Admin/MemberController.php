@@ -67,8 +67,8 @@ class MemberController extends Controller
         // Exclude soft deleted
         $query->notDeleted();
 
-        // Use datecreated for ordering (compatible with old data) with fallback to created_at
-        $members = $query->orderByLegacyTimestamp()->paginate(20);
+        // Use datecreated for ordering (compatible with old data)
+        $members = $query->orderBy('datecreated', 'desc')->paginate(20);
 
         $branches = Branch::active()->get();
         $groups = Group::verified()->get();
@@ -210,7 +210,7 @@ class MemberController extends Controller
             'guarantees.loan',
             'fees.feeType',
             'fees' => function($query) {
-                $query->orderByLegacyTimestamp();
+                $query->orderBy('datecreated', 'desc');
             }
         ]);
 
@@ -220,7 +220,7 @@ class MemberController extends Controller
         // Get recent transactions/payments
         $recentPayments = $member->fees()
             ->with('feeType')
-            ->orderByLegacyTimestamp('desc')
+            ->orderBy('datecreated', 'desc')
             ->take(10)
             ->get();
 
@@ -234,9 +234,10 @@ class MemberController extends Controller
     {
         $countries = Country::active()->get();
         $branches = Branch::active()->get();
+        $memberTypes = MemberType::active()->get();
         $groups = Group::verified()->get();
 
-        return view('admin.members.edit', compact('member', 'countries', 'branches', 'groups'));
+        return view('admin.members.edit', compact('member', 'countries', 'branches', 'memberTypes', 'groups'));
     }
 
     /**
@@ -262,7 +263,7 @@ class MemberController extends Controller
             'dob' => 'nullable|date|before:today',
             'fixed_line' => 'nullable|string|max:191',
             'mobile_pin' => 'nullable|string|max:10',
-            'member_type' => 'required|integer|in:1,2',
+            'member_type' => 'required|exists:member_types,id',
             'group_id' => 'nullable|exists:groups,id',
             'branch_id' => 'required|exists:branches,id',
             'pp_file' => 'nullable|file|mimes:jpeg,png,jpg|max:2048',
@@ -403,7 +404,7 @@ class MemberController extends Controller
         $pendingMembers = Member::with(['country', 'branch', 'group', 'addedBy'])
                                ->pending()
                                ->notDeleted()
-                               ->orderByLegacyTimestamp('desc')
+                               ->orderBy('datecreated', 'desc')
                                ->paginate(20);
 
         $branches = Branch::active()->get();

@@ -286,7 +286,7 @@ class MobileMoneyService
             $statusEndpoint = 'https://emuria.net/flexipay/checkFromMMStatusProd.php';
             
             $requestData = [
-                'transactionId' => $transactionReference
+                'reference' => $transactionReference  // FIXED: FlexiPay expects 'reference' not 'transactionId'
             ];
             
             $response = Http::timeout($this->timeout)

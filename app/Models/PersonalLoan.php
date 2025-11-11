@@ -133,6 +133,14 @@ class PersonalLoan extends Model
     }
 
     /**
+     * Get the user who rejected this loan
+     */
+    public function rejectedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'rejected_by');
+    }
+
+    /**
      * Get the user assigned to this loan
      */
     public function assignedTo()

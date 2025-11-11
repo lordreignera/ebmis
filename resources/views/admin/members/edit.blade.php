@@ -116,10 +116,12 @@
                             <div class="form-group">
                                 <label for="member_type" class="required">Member Type</label>
                                 <select class="form-control @error('member_type') is-invalid @enderror" id="member_type" name="member_type" required>
-                                    <option value="">Select Type</option>
-                                    <option value="individual" {{ old('member_type', $member->member_type) == 'individual' ? 'selected' : '' }}>Individual</option>
-                                    <option value="group" {{ old('member_type', $member->member_type) == 'group' ? 'selected' : '' }}>Group Member</option>
-                                    <option value="corporate" {{ old('member_type', $member->member_type) == 'corporate' ? 'selected' : '' }}>Corporate</option>
+                                    <option value="">Select Member Type</option>
+                                    @foreach($memberTypes as $type)
+                                        <option value="{{ $type->id }}" {{ old('member_type', $member->member_type) == $type->id ? 'selected' : '' }}>
+                                            {{ $type->name }}
+                                        </option>
+                                    @endforeach
                                 </select>
                                 @error('member_type')
                                     <div class="invalid-feedback">{{ $message }}</div>

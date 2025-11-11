@@ -3,6 +3,13 @@
 @section('title', 'Loan Details - ' . $loan->code)
 
 @section('content')
+@php
+    // Get member from loan based on loan type
+    $member = $loanType === 'group' 
+        ? ($loan->group->members()->first() ?? null) 
+        : ($loan->member ?? null);
+@endphp
+
 <div class="container-fluid">
     <!-- Success/Error Messages -->
     @if(session('success'))
@@ -84,6 +91,48 @@
             </div>
         </div>
     </div>
+
+    <!-- Rejection Information Card (if loan is rejected) -->
+    @if($loan->status == 4)
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card" style="border-left: 4px solid #dc3545; background: linear-gradient(135deg, #fff5f5 0%, #ffe5e5 100%);">
+                <div class="card-body">
+                    <div class="d-flex align-items-start">
+                        <div class="flex-shrink-0 me-3">
+                            <div class="avatar-md" style="width: 60px; height: 60px; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
+                                <i class="mdi mdi-close-circle-outline" style="font-size: 2rem; color: white;"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h4 class="mb-2" style="color: #dc3545; font-weight: 600;">
+                                <i class="mdi mdi-alert-circle-outline me-2"></i>Loan Application Rejected
+                            </h4>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="mb-2"><strong>Rejected By:</strong> 
+                                        <span class="text-muted">{{ $loan->rejectedBy->name ?? 'System' }}</span>
+                                    </p>
+                                    <p class="mb-2"><strong>Rejection Date:</strong> 
+                                        <span class="text-muted">{{ $loan->date_rejected ? \Carbon\Carbon::parse($loan->date_rejected)->format('M d, Y \a\t h:i A') : 'N/A' }}</span>
+                                    </p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-2"><strong>Rejection Reason:</strong></p>
+                                    <div style="background: white; padding: 15px; border-radius: 10px; border: 2px solid #ffc107;">
+                                        <p class="mb-0" style="color: #495057; font-size: 0.95rem;">
+                                            {{ $loan->Rcomments ?? 'No reason provided' }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <!-- Tabs Card -->
     <div class="row">
@@ -789,29 +838,69 @@
 
 <!-- Approve Loan Modal -->
 <div class="modal fade" id="approveLoanModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Approve Loan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
+                <div>
+                    <h5 class="modal-title mb-1" style="font-weight: 600; font-size: 1.4rem;">
+                        <i class="mdi mdi-check-circle-outline me-2"></i>Approve Loan Application
+                    </h5>
+                    <p class="mb-0" style="font-size: 0.9rem; opacity: 0.9;">Forward this loan for disbursement</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" style="opacity: 1;"></button>
             </div>
             <form action="{{ route('admin.loans.approve', $loan->id) }}" method="POST">
                 @csrf
                 <input type="hidden" name="loan_type" value="{{ $loanType }}">
-                <div class="modal-body">
-                    <div class="alert alert-info">
-                        <i class="mdi mdi-information me-1"></i>
-                        You are about to approve loan <strong>{{ $loan->code }}</strong>. This will forward it to disbursement.
+                <div class="modal-body" style="padding: 30px;">
+                    <div class="alert" style="background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 2px solid #28a745; border-radius: 12px; padding: 20px;">
+                        <div class="d-flex align-items-start">
+                            <i class="mdi mdi-information-outline" style="font-size: 2rem; color: #28a745; margin-right: 15px;"></i>
+                            <div>
+                                <h6 style="color: #155724; font-weight: 600; margin-bottom: 8px;">
+                                    <i class="mdi mdi-check-decagram me-1"></i>Loan Approval Confirmation
+                                </h6>
+                                <p style="color: #155724; margin-bottom: 0; font-size: 0.95rem;">
+                                    You are about to approve loan <strong style="color: #28a745;">{{ $loan->code }}</strong>. 
+                                    This will forward the application to the disbursement queue.
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Comments</label>
-                        <textarea class="form-control" name="comments" rows="3"></textarea>
+                    
+                    <div class="mb-3 mt-4">
+                        <label class="form-label" style="font-weight: 600; color: #2c3e50; margin-bottom: 10px; display: flex; align-items: center;">
+                            <i class="mdi mdi-comment-text-outline me-2" style="font-size: 1.3rem; color: #28a745;"></i>
+                            Approval Comments <span class="text-muted ms-1">(Optional)</span>
+                        </label>
+                        <textarea class="form-control" name="comments" rows="4"
+                                  placeholder="Add any notes about this approval (e.g., Verified documents, Credit check passed, Collateral confirmed...)"
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s; resize: vertical;"
+                                  onfocus="this.style.borderColor='#28a745'; this.style.boxShadow='0 0 0 0.2rem rgba(40, 167, 69, 0.1)'"
+                                  onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
+                        <div class="d-flex align-items-center mt-2" style="color: #6c757d; font-size: 0.875rem;">
+                            <i class="mdi mdi-information-outline me-1"></i>
+                            <small>Your comments will be recorded in the loan approval history.</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light" style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; margin-top: 20px;">
+                        <div class="d-flex align-items-center">
+                            <i class="mdi mdi-alert-circle-outline me-2" style="font-size: 1.5rem; color: #17a2b8;"></i>
+                            <div style="font-size: 0.9rem; color: #495057;">
+                                <strong>Next Step:</strong> After approval, this loan will appear in the disbursement queue for the super administrator to process.
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="mdi mdi-check me-1"></i> Forward to Disbursement
+                <div class="modal-footer" style="background-color: #f8f9fa; border: none; border-radius: 0 0 15px 15px; padding: 20px 30px; gap: 10px;">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);">
+                        <i class="mdi mdi-check-circle me-1"></i>Approve & Forward
                     </button>
                 </div>
             </form>
@@ -821,29 +910,69 @@
 
 <!-- Reject Loan Modal -->
 <div class="modal fade" id="rejectLoanModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Reject Loan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
+                <div>
+                    <h5 class="modal-title mb-1" style="font-weight: 600; font-size: 1.4rem;">
+                        <i class="mdi mdi-close-circle-outline me-2"></i>Reject Loan Application
+                    </h5>
+                    <p class="mb-0" style="font-size: 0.9rem; opacity: 0.9;">Provide a clear reason for loan rejection</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" style="opacity: 1;"></button>
             </div>
             <form action="{{ route('admin.loans.reject', $loan->id) }}" method="POST">
                 @csrf
                 <input type="hidden" name="loan_type" value="{{ $loanType }}">
-                <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <i class="mdi mdi-alert me-1"></i>
-                        You are about to reject loan <strong>{{ $loan->code }}</strong>. This action cannot be undone.
+                <div class="modal-body" style="padding: 30px;">
+                    <div class="alert" style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); border: 2px solid #ffc107; border-radius: 12px; padding: 20px;">
+                        <div class="d-flex align-items-start">
+                            <i class="mdi mdi-alert-outline" style="font-size: 2rem; color: #ff6b6b; margin-right: 15px;"></i>
+                            <div>
+                                <h6 style="color: #856404; font-weight: 600; margin-bottom: 8px;">
+                                    <i class="mdi mdi-information-outline me-1"></i>Critical Action - Cannot Be Undone
+                                </h6>
+                                <p style="color: #856404; margin-bottom: 0; font-size: 0.95rem;">
+                                    You are about to reject loan <strong style="color: #dc3545;">{{ $loan->code }}</strong>. 
+                                    This decision is permanent and the applicant will be notified.
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Reason for Rejection <span class="text-danger">*</span></label>
-                        <textarea class="form-control" name="comments" rows="3" required></textarea>
+                    
+                    <div class="mb-3 mt-4">
+                        <label class="form-label" style="font-weight: 600; color: #2c3e50; margin-bottom: 10px; display: flex; align-items: center;">
+                            <i class="mdi mdi-comment-alert-outline me-2" style="font-size: 1.3rem; color: #dc3545;"></i>
+                            Reason for Rejection <span class="text-danger ms-1">*</span>
+                        </label>
+                        <textarea class="form-control" name="comments" rows="5" required
+                                  placeholder="Explain why this loan is being rejected (e.g., Insufficient collateral, Credit history issues, Documentation incomplete...)"
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s; resize: vertical;"
+                                  onfocus="this.style.borderColor='#dc3545'; this.style.boxShadow='0 0 0 0.2rem rgba(220, 53, 69, 0.1)'"
+                                  onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
+                        <div class="d-flex align-items-center mt-2" style="color: #6c757d; font-size: 0.875rem;">
+                            <i class="mdi mdi-information-outline me-1"></i>
+                            <small>This reason will be recorded in the loan history and may be shared with the applicant.</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light" style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; margin-top: 20px;">
+                        <div class="d-flex align-items-center">
+                            <i class="mdi mdi-lightbulb-on-outline me-2" style="font-size: 1.5rem; color: #17a2b8;"></i>
+                            <div style="font-size: 0.9rem; color: #495057;">
+                                <strong>Tip:</strong> Be specific and professional. Clear feedback helps applicants improve future applications.
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">
-                        <i class="mdi mdi-close me-1"></i> Reject Loan
+                <div class="modal-footer" style="background-color: #f8f9fa; border: none; border-radius: 0 0 15px 15px; padding: 20px 30px; gap: 10px;">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
+                        <i class="mdi mdi-arrow-left me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-danger" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);">
+                        <i class="mdi mdi-close-circle me-1"></i>Reject Loan
                     </button>
                 </div>
             </form>
@@ -1042,6 +1171,27 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('singleFeeName').textContent = feeName;
             document.getElementById('singleFeeAmount').textContent = feeAmount.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
             document.getElementById('singleFeeIdInput').value = feeId;
+            document.getElementById('singleFeeTypeIdInput').value = feeId; // Fee type ID is same as charge ID
+            
+            // Store amount in hidden field for mobile money
+            if (!document.getElementById('loanFeeAmountInput')) {
+                const amountInput = document.createElement('input');
+                amountInput.type = 'hidden';
+                amountInput.name = 'amount';
+                amountInput.id = 'loanFeeAmountInput';
+                document.getElementById('paySingleFeeForm').appendChild(amountInput);
+            }
+            document.getElementById('loanFeeAmountInput').value = feeAmount;
+            
+            // Store description for mobile money
+            if (!document.getElementById('loanFeeDescriptionInput')) {
+                const descInput = document.createElement('input');
+                descInput.type = 'hidden';
+                descInput.name = 'description';
+                descInput.id = 'loanFeeDescriptionInput';
+                document.getElementById('paySingleFeeForm').appendChild(descInput);
+            }
+            document.getElementById('loanFeeDescriptionInput').value = 'Upfront payment for ' + feeName;
         });
     });
     
@@ -1071,10 +1221,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h5 class="modal-title"><i class="mdi mdi-cash me-2"></i>Pay Loan Charge</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{{ route('admin.loans.pay-single-fee', $loan->id) }}" method="POST">
+            <form action="{{ route('admin.loans.pay-single-fee', $loan->id) }}" method="POST" id="paySingleFeeForm">
                 @csrf
                 <input type="hidden" name="loan_type" value="{{ $loanType }}">
+                <input type="hidden" name="loan_id" value="{{ $loan->id }}">
+                <input type="hidden" name="member_id" value="{{ $member->id ?? '' }}">
                 <input type="hidden" name="fee_id" id="singleFeeIdInput">
+                <input type="hidden" name="fees_type_id" id="singleFeeTypeIdInput">
+                <input type="hidden" name="member_phone" value="{{ $member->contact ?? '' }}">
+                <input type="hidden" name="member_name" value="{{ $member ? $member->fname . ' ' . $member->lname : '' }}">
                 <div class="modal-body" style="background-color: white;">
                     <div class="alert alert-info">
                         <i class="mdi mdi-information me-1"></i>
@@ -1093,13 +1248,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     <div class="mb-3">
                         <label class="form-label">Payment Method <span class="text-danger">*</span></label>
-                        <select class="form-select" name="payment_method" required>
+                        <select class="form-select" name="payment_method" id="loanFeePaymentMethod" required>
                             <option value="">Select Payment Method</option>
-                            <option value="1">Cash</option>
-                            <option value="2">Bank Transfer</option>
-                            <option value="3">Mobile Money</option>
-                            <option value="4">Card Payment</option>
+                            <option value="1">Mobile Money</option>
+                            <option value="2">Cash</option>
+                            <option value="3">Bank Transfer</option>
                         </select>
+                    </div>
+
+                    <!-- Mobile Money Section (Hidden by default) -->
+                    <div id="loanFeeMobileMoneySection" style="display: none;" class="mb-3">
+                        @if($member)
+                        <div class="alert alert-info">
+                            <i class="mdi mdi-cellphone me-1"></i>
+                            Payment request will be sent to: <strong>{{ $member->contact }}</strong>
+                        </div>
+                        <input type="hidden" name="mm_phone" value="{{ $member->contact }}">
+                        @else
+                        <div class="alert alert-warning">
+                            <i class="mdi mdi-alert me-1"></i>
+                            Member information not available for mobile money payment.
+                        </div>
+                        @endif
+                    </div>
+
+                    <!-- Processing Alert (Hidden by default) -->
+                    <div id="loanFeeMmProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="loanFeeMmStatusText">Sending payment request...</span>
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -1115,8 +1295,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="modal-footer" style="background-color: white;">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning">
-                        <i class="mdi mdi-cash-check me-1"></i> Record Payment
+                    <button type="submit" class="btn btn-warning" id="loanFeeSubmitBtn">
+                        <i class="mdi mdi-cash-check me-1"></i> <span id="loanFeeSubmitText">Record Payment</span>
                     </button>
                 </div>
             </form>
@@ -1125,3 +1305,151 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 @endsection
+
+@push('scripts')
+<script>
+// Show/Hide Mobile Money section based on payment method for loan fees
+document.getElementById('loanFeePaymentMethod').addEventListener('change', function() {
+    const paymentType = this.value;
+    const mobileMoneySection = document.getElementById('loanFeeMobileMoneySection');
+    const submitText = document.getElementById('loanFeeSubmitText');
+    
+    if (paymentType === '1') { // Mobile Money
+        mobileMoneySection.style.display = 'block';
+        submitText.textContent = 'Send Payment Request';
+    } else {
+        mobileMoneySection.style.display = 'none';
+        submitText.textContent = 'Record Payment';
+    }
+});
+
+// Handle Loan Fee Payment Form Submission with Mobile Money
+document.getElementById('paySingleFeeForm').addEventListener('submit', function(e) {
+    const paymentType = document.getElementById('loanFeePaymentMethod').value;
+    
+    // If Mobile Money is selected, process via AJAX
+    if (paymentType === '1') {
+        e.preventDefault();
+        processLoanFeeMobileMoneyPayment();
+    }
+    // Otherwise, let form submit normally for Cash/Bank
+});
+
+function processLoanFeeMobileMoneyPayment() {
+    const form = document.getElementById('paySingleFeeForm');
+    const submitBtn = document.getElementById('loanFeeSubmitBtn');
+    const processingAlert = document.getElementById('loanFeeMmProcessingAlert');
+    const statusText = document.getElementById('loanFeeMmStatusText');
+    
+    // Disable form and show processing
+    submitBtn.disabled = true;
+    processingAlert.style.display = 'block';
+    statusText.textContent = 'Sending payment request to member\'s phone...';
+    
+    // Gather form data
+    const formData = new FormData(form);
+    formData.append('is_mobile_money', '1');
+    
+    // Send AJAX request
+    fetch('{{ route("admin.fees.store-mobile-money") }}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Payment request sent successfully
+            statusText.textContent = 'Payment request sent! Checking status...';
+            
+            // Start polling for payment status
+            pollLoanFeePaymentStatus(data.transaction_reference, data.fee_id);
+        } else {
+            // Request failed
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to send payment request');
+            submitBtn.disabled = false;
+            
+            setTimeout(() => {
+                processingAlert.style.display = 'none';
+                processingAlert.className = 'alert alert-warning';
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+        
+        setTimeout(() => {
+            processingAlert.style.display = 'none';
+            processingAlert.className = 'alert alert-warning';
+        }, 5000);
+    });
+}
+
+function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
+    const maxAttempts = 60; // Poll for up to 60 seconds
+    const processingAlert = document.getElementById('loanFeeMmProcessingAlert');
+    const statusText = document.getElementById('loanFeeMmStatusText');
+    
+    if (attempts >= maxAttempts) {
+        processingAlert.className = 'alert alert-warning';
+        statusText.textContent = 'Payment status check timed out. Please check transaction status manually.';
+        
+        setTimeout(() => {
+            location.reload();
+        }, 3000);
+        return;
+    }
+    
+    // Check transaction status
+    fetch(`/admin/fees/check-mm-status/${transactionRef}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            // Payment successful
+            processingAlert.className = 'alert alert-success';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
+            
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+            
+        } else if (data.status === 'failed') {
+            // Payment failed
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Payment failed: ' + (data.message || 'Transaction declined');
+            
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
+            
+        } else {
+            // Still pending, continue polling
+            statusText.textContent = `Waiting for member to authorize payment... (${attempts + 1}s)`;
+            setTimeout(() => {
+                pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1);
+            }, 1000);
+        }
+    })
+    .catch(error => {
+        console.error('Status check error:', error);
+        // Continue polling even on error
+        setTimeout(() => {
+            pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1);
+        }, 1000);
+    });
+}
+</script>
+@endpush

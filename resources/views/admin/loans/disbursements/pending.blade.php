@@ -311,17 +311,47 @@
                         </div>
                     </div>
                     @else
-                    <div class="text-center py-4">
-                        <div class="avatar-md mx-auto mb-4">
-                            <div class="avatar-title bg-primary-subtle text-primary rounded-circle fs-4">
-                                <i class="bx bx-search-alt-2"></i>
+                    <div class="text-center py-5">
+                        <div class="avatar-md mx-auto mb-4" style="width: 80px; height: 80px;">
+                            <div class="avatar-title rounded-circle fs-1" style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); color: #856404;">
+                                <i class="mdi mdi-alert-circle-outline"></i>
                             </div>
                         </div>
-                        <h5 class="mt-2">No pending disbursements found!</h5>
-                        <p class="text-muted">There are no loans pending disbursement at this time.</p>
-                        <a href="{{ route('admin.loans.index') }}" class="btn btn-primary">
-                            <i class="mdi mdi-arrow-left me-1"></i> Back to Loans
-                        </a>
+                        <h5 class="mt-2 mb-3">No Loans Ready for Disbursement</h5>
+                        <p class="text-muted mb-4" style="max-width: 600px; margin: 0 auto;">
+                            @if($stats['total_pending'] > 0)
+                                There are <strong>{{ $stats['total_pending'] }}</strong> approved loans, but they cannot be disbursed because 
+                                <strong>mandatory upfront fees have not been paid</strong>.
+                            @else
+                                There are currently no approved loans pending disbursement.
+                            @endif
+                        </p>
+                        
+                        @if($stats['total_pending'] > 0)
+                        <div class="alert alert-warning mx-auto" style="max-width: 700px; text-align: left; border-left: 4px solid #ffc107;">
+                            <h6 class="alert-heading mb-2">
+                                <i class="mdi mdi-information-outline me-2"></i>Important Information
+                            </h6>
+                            <ul class="mb-2" style="padding-left: 20px;">
+                                <li>Approved loans with <strong>charge_type = 2</strong> require all upfront fees to be paid before disbursement</li>
+                                <li>These {{ $stats['total_pending'] }} loans were approved before the fee validation system was implemented</li>
+                                <li>To make them available for disbursement, the borrowers must pay all mandatory fees</li>
+                            </ul>
+                            <hr style="margin: 15px 0;">
+                            <p class="mb-0">
+                                <strong>Going forward:</strong> New loan approvals will automatically validate that all mandatory fees are paid before allowing approval.
+                            </p>
+                        </div>
+                        @endif
+                        
+                        <div class="mt-4">
+                            <a href="{{ route('admin.loans.approvals') }}" class="btn btn-primary me-2">
+                                <i class="mdi mdi-clipboard-check-outline me-1"></i> Go to Loan Approvals
+                            </a>
+                            <a href="{{ route('admin.loans.index') }}" class="btn btn-secondary">
+                                <i class="mdi mdi-arrow-left me-1"></i> Back to All Loans
+                            </a>
+                        </div>
                     </div>
                     @endif
                 </div>

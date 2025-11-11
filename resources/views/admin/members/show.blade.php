@@ -433,14 +433,43 @@
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <span class="badge {{ $fee->status == 1 ? 'bg-success' : 'bg-warning' }}">
-                                                        {{ $fee->status == 1 ? 'Paid' : 'Pending' }}
-                                                    </span>
+                                                    @if($fee->status == 1)
+                                                        <span class="badge bg-success">Paid</span>
+                                                    @elseif($fee->status == 2)
+                                                        <span class="badge bg-danger">Failed</span>
+                                                    @else
+                                                        <span class="badge bg-warning">Pending</span>
+                                                    @endif
                                                 </td>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary receipt-btn" data-fee-id="{{ $fee->id }}">
-                                                        <i class="mdi mdi-receipt"></i> Receipt
-                                                    </button>
+                                                    @if($fee->status == 1)
+                                                        <button class="btn btn-sm btn-outline-primary receipt-btn" data-fee-id="{{ $fee->id }}">
+                                                            <i class="mdi mdi-receipt"></i> Receipt
+                                                        </button>
+                                                    @elseif(($fee->status == 2 || $fee->status == 0) && $fee->payment_type == 1)
+                                                        <!-- Show retry for both Failed (2) and Pending (0) mobile money payments -->
+                                                        <button class="btn btn-sm btn-warning retry-payment-btn" 
+                                                                data-fee-id="{{ $fee->id }}"
+                                                                data-member-phone="{{ $member->contact }}"
+                                                                data-member-name="{{ $member->fname }} {{ $member->lname }}"
+                                                                data-amount="{{ $fee->amount }}"
+                                                                data-fee-type="{{ $fee->feeType->name ?? 'Fee' }}">
+                                                            <i class="mdi mdi-refresh"></i> Retry Payment
+                                                        </button>
+                                                        <!-- Add Check Status button for pending mobile money payments -->
+                                                        @if($fee->status == 0 && !empty($fee->pay_ref))
+                                                        <button class="btn btn-sm btn-info check-status-btn ms-1" 
+                                                                data-transaction-ref="{{ $fee->pay_ref }}"
+                                                                data-fee-id="{{ $fee->id }}">
+                                                            <i class="mdi mdi-cash-check"></i> Check Status Now
+                                                        </button>
+                                                        @endif
+                                                    @elseif($fee->status == 0)
+                                                        <!-- For pending non-mobile money payments, show a status check button -->
+                                                        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                                                            <i class="mdi mdi-refresh"></i> Check Status
+                                                        </button>
+                                                    @endif
                                                 </td>
                                             </tr>
                                         @empty
@@ -536,9 +565,9 @@
                                     <h6><i class="mdi mdi-piggy-bank text-info"></i> Savings Accounts</h6>
                                 </div>
                                 <div class="col-md-6 text-end">
-                                    <a href="{{ route('admin.savings.create', ['member_id' => $member->id]) }}" class="btn btn-info btn-sm">
+                                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#addSavingsModal">
                                         <i class="mdi mdi-plus"></i> Add Savings
-                                    </a>
+                                    </button>
                                 </div>
                             </div>
                             
@@ -645,9 +674,9 @@
                             @endif
                         </div>
                         <div class="col-md-2 mb-2">
-                            <a href="{{ route('admin.savings.create', ['member_id' => $member->id]) }}" class="btn btn-success w-100">
+                            <button type="button" class="btn btn-success w-100" data-bs-toggle="modal" data-bs-target="#addSavingsModal">
                                 <i class="mdi mdi-piggy-bank"></i> Add Savings
-                            </a>
+                            </button>
                         </div>
                         <div class="col-md-2 mb-2">
                             <button type="button" class="btn btn-info w-100" data-bs-toggle="modal" data-bs-target="#addFeeModal">
@@ -678,24 +707,43 @@
 
 <!-- Approval Modal -->
 <div class="modal fade" id="approvalModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Approve Member</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
+                <div>
+                    <h5 class="modal-title mb-1" style="font-weight: 600; font-size: 1.4rem;">
+                        <i class="mdi mdi-check-circle me-2"></i>Approve Member
+                    </h5>
+                    <p class="mb-0" style="font-size: 0.9rem; opacity: 0.9;">Confirm member approval and add notes</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" style="opacity: 1;"></button>
             </div>
             <form id="approvalForm" method="POST">
                 @csrf
-                <div class="modal-body">
+                <div class="modal-body" style="padding: 30px;">
+                    <div class="alert alert-success" style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 10px;">
+                        <i class="mdi mdi-information-outline me-2"></i>
+                        <strong>Approval Confirmation:</strong> This member will be activated and can access all services.
+                    </div>
+                    
                     <div class="mb-3">
-                        <label for="approval_notes" class="form-label">Approval Notes (Optional)</label>
-                        <textarea name="approval_notes" id="approval_notes" class="form-control" rows="3"
-                                  placeholder="Enter approval notes..."></textarea>
+                        <label for="approval_notes" class="form-label" style="font-weight: 600; color: #2c3e50; margin-bottom: 10px;">
+                            <i class="mdi mdi-note-text-outline me-1"></i>Approval Notes (Optional)
+                        </label>
+                        <textarea name="approval_notes" id="approval_notes" class="form-control" rows="4"
+                                  placeholder="Add any notes about this approval (e.g., Documents verified, requirements met...)"
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s;"
+                                  onfocus="this.style.borderColor='#28a745'; this.style.boxShadow='0 0 0 0.2rem rgba(40, 167, 69, 0.1)'"
+                                  onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">Approve Member</button>
+                <div class="modal-footer" style="background-color: #f8f9fa; border: none; border-radius: 0 0 15px 15px; padding: 20px 30px; gap: 10px;">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success" style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);">
+                        <i class="mdi mdi-check-circle me-1"></i>Approve Member
+                    </button>
                 </div>
             </form>
         </div>
@@ -704,24 +752,47 @@
 
 <!-- Rejection Modal -->
 <div class="modal fade" id="rejectionModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Reject Member</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
+                <div>
+                    <h5 class="modal-title mb-1" style="font-weight: 600; font-size: 1.4rem;">
+                        <i class="mdi mdi-close-circle me-2"></i>Reject Member
+                    </h5>
+                    <p class="mb-0" style="font-size: 0.9rem; opacity: 0.9;">Provide a reason for rejecting this application</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" style="opacity: 1;"></button>
             </div>
             <form id="rejectionForm" method="POST">
                 @csrf
-                <div class="modal-body">
+                <div class="modal-body" style="padding: 30px;">
+                    <div class="alert alert-danger" style="background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 10px;">
+                        <i class="mdi mdi-alert-outline me-2"></i>
+                        <strong>Important:</strong> This member will be rejected and must provide a clear reason.
+                    </div>
+                    
                     <div class="mb-3">
-                        <label for="rejection_reason" class="form-label">Rejection Reason <span class="text-danger">*</span></label>
-                        <textarea name="rejection_reason" id="rejection_reason" class="form-control" rows="3"
-                                  placeholder="Enter reason for rejection..." required></textarea>
+                        <label for="rejection_reason" class="form-label" style="font-weight: 600; color: #2c3e50; margin-bottom: 10px;">
+                            <i class="mdi mdi-comment-alert-outline me-1"></i>Rejection Reason <span class="text-danger">*</span>
+                        </label>
+                        <textarea name="rejection_reason" id="rejection_reason" class="form-control" rows="4"
+                                  placeholder="Explain why this member is being rejected (e.g., Incomplete documents, Invalid information...)"
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s;"
+                                  onfocus="this.style.borderColor='#dc3545'; this.style.boxShadow='0 0 0 0.2rem rgba(220, 53, 69, 0.1)'"
+                                  onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"
+                                  required></textarea>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information-outline"></i> This reason will be saved and can be reviewed later.
+                        </small>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Reject Member</button>
+                <div class="modal-footer" style="background-color: #f8f9fa; border: none; border-radius: 0 0 15px 15px; padding: 20px 30px; gap: 10px;">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-danger" style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);">
+                        <i class="mdi mdi-close-circle me-1"></i>Reject Member
+                    </button>
                 </div>
             </form>
         </div>
@@ -736,9 +807,11 @@
                 <h5 class="modal-title" style="color: #000;">Add Fee Payment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{{ route('admin.fees.store') }}" method="POST">
+            <form action="{{ route('admin.fees.store') }}" method="POST" id="feePaymentForm">
                 @csrf
                 <input type="hidden" name="member_id" value="{{ $member->id }}">
+                <input type="hidden" name="member_phone" id="member_phone" value="{{ $member->contact }}">
+                <input type="hidden" name="member_name" id="member_name" value="{{ $member->fname }} {{ $member->lname }}">
                 <div class="modal-body" style="background-color: white;">
                     <div class="mb-3">
                         <label for="fee_type_id" class="form-label" style="color: #000;">Fee Type <span class="text-danger">*</span></label>
@@ -753,7 +826,7 @@
                     </div>
                     <div class="mb-3">
                         <label for="amount" class="form-label" style="color: #000;">Amount (UGX) <span class="text-danger">*</span></label>
-                        <input type="number" name="amount" id="amount" class="form-control" min="1" required>
+                        <input type="number" name="amount" id="fee_amount" class="form-control" min="1" required>
                     </div>
                     <div class="mb-3">
                         <label for="payment_type" class="form-label" style="color: #000;">Payment Method <span class="text-danger">*</span></label>
@@ -764,15 +837,44 @@
                             <option value="3">Bank Transfer</option>
                         </select>
                     </div>
+                    
+                    <!-- Mobile Money Payment Section (Hidden by default) -->
+                    <div id="mobileMoneySection" style="display: none;">
+                        <div class="alert alert-info mb-3">
+                            <i class="mdi mdi-information"></i>
+                            <strong>Mobile Money Payment</strong><br>
+                            A payment request will be sent to: <strong>{{ $member->contact }}</strong><br>
+                            <small>The member will receive a prompt on their phone to authorize the payment.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="mm_phone" class="form-label">Phone Number</label>
+                            <input type="tel" name="mm_phone" id="mm_phone" class="form-control" 
+                                   value="{{ $member->contact }}" readonly style="background-color: #e9ecef;">
+                            <small class="text-muted">Member's registered phone number</small>
+                        </div>
+                    </div>
+                    
                     <div class="mb-3">
                         <label for="description" class="form-label" style="color: #000;">Description</label>
-                        <textarea name="description" id="description" class="form-control" rows="3" 
+                        <textarea name="description" id="fee_description" class="form-control" rows="3" 
                                   placeholder="Additional notes about this payment"></textarea>
+                    </div>
+                    
+                    <!-- Processing Status Alert (Hidden by default) -->
+                    <div id="mmProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="mmStatusText">Processing mobile money payment...</span>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Payment</button>
+                    <button type="submit" class="btn btn-primary" id="feeSubmitBtn">
+                        <span id="feeSubmitText">Add Payment</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -925,5 +1027,521 @@ function downloadReceipt() {
     </div>
 </div>
 
+<!-- Add Savings Account Modal -->
+<div class="modal fade" id="addSavingsModal" tabindex="-1" aria-labelledby="addSavingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: white;">
+            <form action="{{ route('admin.savings.store') }}" method="POST" id="addSavingsForm">
+                @csrf
+                <input type="hidden" name="member_id" value="{{ $member->id }}">
+                <input type="hidden" name="branch_id" value="{{ $member->branch_id }}">
+                
+                <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                    <h5 class="modal-title" id="addSavingsModalLabel" style="color: #000;">Add Savings Account</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                
+                <div class="modal-body" style="background-color: white;">
+                    <!-- Savings Product -->
+                    <div class="mb-3">
+                        <label for="product_id" class="form-label">
+                            Savings Product <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="product_id" name="product_id" required>
+                            <option value="">Select Savings Product</option>
+                            @php
+                                $savingsProducts = \App\Models\SavingsProduct::where('isactive', 1)->get();
+                            @endphp
+                            @forelse($savingsProducts as $product)
+                                <option value="{{ $product->id }}" 
+                                        data-interest="{{ $product->interest }}"
+                                        data-min="{{ $product->min_amt ?? 0 }}"
+                                        data-max="{{ $product->max_amt ?? 0 }}">
+                                    {{ $product->name }}
+                                </option>
+                            @empty
+                                <option value="" disabled>No savings products available</option>
+                            @endforelse
+                        </select>
+                        @if($savingsProducts->isEmpty())
+                            <small class="text-warning d-block mt-1">
+                                <i class="mdi mdi-alert"></i> No savings products configured. 
+                                <a href="{{ route('admin.settings.savings-products') }}" target="_blank">Add one now</a>
+                            </small>
+                        @endif
+                    </div>
+
+                    <!-- Initial Deposit -->
+                    <div class="mb-3">
+                        <label for="initial_deposit" class="form-label">
+                            Initial Deposit (UGX)
+                        </label>
+                        <input type="number" class="form-control" id="initial_deposit" name="initial_deposit" 
+                               step="0.01" min="0" placeholder="0.00">
+                    </div>
+
+                    <!-- Interest Rate (Auto-filled, read-only) -->
+                    <div class="mb-3">
+                        <label for="interest" class="form-label">
+                            Interest Rate (%) <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" class="form-control" id="interest" name="interest" 
+                               step="0.01" min="0" max="100" placeholder="0.00" 
+                               readonly style="background-color: #e9ecef;">
+                    </div>
+
+                    <!-- Description/Notes -->
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" 
+                                  rows="3" placeholder="Additional notes about this savings account"></textarea>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Savings Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@endpush
+
+@push('scripts')
+<script>
+// Show/Hide Mobile Money section based on payment method
+document.getElementById('payment_type').addEventListener('change', function() {
+    const paymentType = this.value;
+    const mobileMoneySection = document.getElementById('mobileMoneySection');
+    const submitBtn = document.getElementById('feeSubmitBtn');
+    const submitText = document.getElementById('feeSubmitText');
+    
+    if (paymentType === '1') { // Mobile Money
+        mobileMoneySection.style.display = 'block';
+        submitText.textContent = 'Send Payment Request';
+    } else {
+        mobileMoneySection.style.display = 'none';
+        submitText.textContent = 'Add Payment';
+    }
+});
+
+// Handle Fee Payment Form Submission with Mobile Money
+document.getElementById('feePaymentForm').addEventListener('submit', function(e) {
+    const paymentType = document.getElementById('payment_type').value;
+    
+    // If Mobile Money is selected, process via AJAX
+    if (paymentType === '1') {
+        e.preventDefault();
+        processMobileMoneyPayment();
+    }
+    // Otherwise, let form submit normally for Cash/Bank
+});
+
+function processMobileMoneyPayment() {
+    const form = document.getElementById('feePaymentForm');
+    const submitBtn = document.getElementById('feeSubmitBtn');
+    const processingAlert = document.getElementById('mmProcessingAlert');
+    const statusText = document.getElementById('mmStatusText');
+    
+    // Disable form and show processing
+    submitBtn.disabled = true;
+    processingAlert.style.display = 'block';
+    statusText.textContent = 'Sending payment request to member\'s phone...';
+    
+    // Gather form data
+    const formData = new FormData(form);
+    formData.append('is_mobile_money', '1');
+    
+    // Map fee_type_id to fees_type_id for mobile money endpoint
+    const feeTypeId = document.getElementById('fee_type_id').value;
+    if (feeTypeId) {
+        formData.append('fees_type_id', feeTypeId);
+    }
+    
+    // Send AJAX request
+    fetch('{{ route("admin.fees.store-mobile-money") }}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Payment request sent successfully
+            statusText.textContent = 'Payment request sent! Checking status...';
+            
+            // Start polling for payment status
+            pollPaymentStatus(data.transaction_reference, data.fee_id);
+        } else {
+            // Request failed
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to send payment request');
+            submitBtn.disabled = false;
+            
+            setTimeout(() => {
+                processingAlert.style.display = 'none';
+                processingAlert.className = 'alert alert-warning';
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+        
+        setTimeout(() => {
+            processingAlert.style.display = 'none';
+            processingAlert.className = 'alert alert-warning';
+        }, 5000);
+    });
+}
+
+function cancelPaymentCheck() {
+    // Clear any pending timeout
+    if (window.paymentCheckTimeout) {
+        clearTimeout(window.paymentCheckTimeout);
+    }
+    
+    const processingAlert = document.getElementById('mmProcessingAlert');
+    const statusText = document.getElementById('mmStatusText');
+    
+    processingAlert.className = 'alert alert-info';
+    statusText.innerHTML = `
+        <i class="mdi mdi-information"></i> Payment check stopped. The transaction may still be processing.<br>
+        <button type="button" class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+            <i class="mdi mdi-refresh"></i> Refresh to Check Status
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm mt-2 ms-2" onclick="document.getElementById('mmProcessingAlert').style.display='none'">
+            <i class="mdi mdi-close"></i> Close
+        </button>
+    `;
+}
+
+function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
+    const maxAttempts = 60; // Poll for up to 60 seconds (60 attempts x 1 second)
+    const processingAlert = document.getElementById('mmProcessingAlert');
+    const statusText = document.getElementById('mmStatusText');
+    
+    if (attempts >= maxAttempts) {
+        // Perform a FINAL status check before showing timeout
+        statusText.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Performing final status check...';
+        
+        fetch(`/admin/fees/check-mm-status/${transactionRef}`, {
+            method: 'GET',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'completed') {
+                // Payment was completed during polling!
+                processingAlert.className = 'alert alert-success';
+                statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
+                setTimeout(() => location.reload(), 2000);
+            } else if (data.status === 'failed') {
+                // Payment failed
+                processingAlert.className = 'alert alert-danger';
+                statusText.innerHTML = '<i class="mdi mdi-close-circle"></i> Payment failed: ' + (data.message || 'Transaction declined');
+                setTimeout(() => location.reload(), 3000);
+            } else {
+                // Still pending after 60 seconds - show timeout message
+                processingAlert.className = 'alert alert-warning';
+                statusText.innerHTML = `
+                    <i class="mdi mdi-alert"></i> Payment request timed out. The transaction may still be processing.<br>
+                    <button type="button" class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+                        <i class="mdi mdi-refresh"></i> Refresh Status
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mt-2 ms-2" onclick="document.getElementById('mmProcessingAlert').style.display='none'">
+                        <i class="mdi mdi-close"></i> Close
+                    </button>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Final status check error:', error);
+            // Show timeout message on error
+            processingAlert.className = 'alert alert-warning';
+            statusText.innerHTML = `
+                <i class="mdi mdi-alert"></i> Unable to verify payment status. Please refresh to check.<br>
+                <button type="button" class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+                    <i class="mdi mdi-refresh"></i> Refresh Status
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 ms-2" onclick="document.getElementById('mmProcessingAlert').style.display='none'">
+                    <i class="mdi mdi-close"></i> Close
+                </button>
+            `;
+        });
+        
+        return; // Stop the polling loop
+    }
+    
+    // Check transaction status
+    fetch(`/admin/fees/check-mm-status/${transactionRef}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            // Payment successful
+            processingAlert.className = 'alert alert-success';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
+            
+            setTimeout(() => {
+                location.reload(); // Reload to show updated payment
+            }, 2000);
+            
+        } else if (data.status === 'failed') {
+            // Payment failed
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Payment failed: ' + (data.message || 'Transaction declined');
+            
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
+            
+        } else {
+            // Still pending, continue polling
+            statusText.innerHTML = `
+                <i class="mdi mdi-loading mdi-spin"></i> Waiting for member to authorize payment... (${attempts + 1}s)
+                <br>
+                <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="cancelPaymentCheck()">
+                    <i class="mdi mdi-close"></i> Stop Checking
+                </button>
+            `;
+            
+            // Store timeout ID so we can cancel it
+            window.paymentCheckTimeout = setTimeout(() => {
+                pollPaymentStatus(transactionRef, feeId, attempts + 1);
+            }, 1000); // Check every second
+        }
+    })
+    .catch(error => {
+        console.error('Status check error:', error);
+        // Continue polling even on error
+        setTimeout(() => {
+            pollPaymentStatus(transactionRef, feeId, attempts + 1);
+        }, 1000);
+    });
+}
+
+// Handle Retry Payment for Failed Transactions
+document.addEventListener('DOMContentLoaded', function() {
+    const retryButtons = document.querySelectorAll('.retry-payment-btn');
+    
+    retryButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const feeId = this.getAttribute('data-fee-id');
+            const memberPhone = this.getAttribute('data-member-phone');
+            const memberName = this.getAttribute('data-member-name');
+            const amount = this.getAttribute('data-amount');
+            const feeType = this.getAttribute('data-fee-type');
+            
+            if (confirm(`Retry mobile money payment for ${feeType} (UGX ${parseFloat(amount).toLocaleString()})?\n\nA new payment request will be sent to ${memberPhone}.`)) {
+                retryMobileMoneyPayment(feeId, memberPhone, memberName, amount, feeType);
+            }
+        });
+    });
+});
+
+function retryMobileMoneyPayment(feeId, memberPhone, memberName, amount, feeType) {
+    const button = document.querySelector(`.retry-payment-btn[data-fee-id="${feeId}"]`);
+    const originalText = button.innerHTML;
+    
+    // Disable button and show processing
+    button.disabled = true;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Retrying...';
+    
+    // Send retry request
+    fetch('{{ route("admin.fees.retry-mobile-money") }}', {
+        method: 'POST',
+        body: JSON.stringify({
+            fee_id: feeId,
+            member_phone: memberPhone,
+            member_name: memberName,
+            amount: amount,
+            description: feeType + ' Payment'
+        }),
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            button.className = 'btn btn-sm btn-info';
+            button.innerHTML = '<i class="mdi mdi-clock-outline"></i> Checking...';
+            
+            // Start polling for new payment status
+            pollRetryPaymentStatus(data.transaction_reference, feeId, button);
+        } else {
+            // Show error
+            alert('Error: ' + (data.message || 'Failed to retry payment'));
+            button.disabled = false;
+            button.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Retry error:', error);
+        alert('Network error. Please try again.');
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+
+function pollRetryPaymentStatus(transactionRef, feeId, button, attempts = 0) {
+    const maxAttempts = 60;
+    
+    if (attempts >= maxAttempts) {
+        button.className = 'btn btn-sm btn-warning retry-payment-btn';
+        button.innerHTML = '<i class="mdi mdi-refresh"></i> Retry Payment';
+        button.disabled = false;
+        alert('Payment check timed out. Please refresh the page to see current status.');
+        return;
+    }
+    
+    fetch(`/admin/fees/check-mm-status/${transactionRef}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            // Payment successful
+            button.className = 'btn btn-sm btn-success';
+            button.innerHTML = '<i class="mdi mdi-check"></i> Paid';
+            button.disabled = true;
+            
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
+            
+        } else if (data.status === 'failed') {
+            // Payment failed again
+            button.className = 'btn btn-sm btn-warning retry-payment-btn';
+            button.innerHTML = '<i class="mdi mdi-refresh"></i> Retry Payment';
+            button.disabled = false;
+            alert('Payment failed: ' + (data.message || 'Transaction declined'));
+            
+        } else {
+            // Still pending, continue polling
+            button.innerHTML = `<i class="mdi mdi-clock-outline"></i> Waiting (${attempts + 1}s)`;
+            setTimeout(() => {
+                pollRetryPaymentStatus(transactionRef, feeId, button, attempts + 1);
+            }, 1000);
+        }
+    })
+    .catch(error => {
+        console.error('Status check error:', error);
+        setTimeout(() => {
+            pollRetryPaymentStatus(transactionRef, feeId, button, attempts + 1);
+        }, 1000);
+    });
+}
+
+// Handle Check Status Now button clicks
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.check-status-btn')) {
+        e.preventDefault();
+        const button = e.target.closest('.check-status-btn');
+        const transactionRef = button.getAttribute('data-transaction-ref');
+        const feeId = button.getAttribute('data-fee-id');
+        
+        // Disable button and show checking
+        const originalText = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Checking...';
+        
+        // Check transaction status immediately
+        fetch(`/admin/fees/check-mm-status/${transactionRef}`, {
+            method: 'GET',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'completed') {
+                // Payment was successful!
+                button.className = 'btn btn-sm btn-success';
+                button.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment Confirmed!';
+                
+                // Show success alert
+                alert('Payment found and confirmed! The page will refresh to show updated status.');
+                
+                // Reload page after 2 seconds
+                setTimeout(() => {
+                    location.reload();
+                }, 2000);
+                
+            } else if (data.status === 'failed') {
+                // Payment failed
+                button.className = 'btn btn-sm btn-danger';
+                button.innerHTML = '<i class="mdi mdi-close-circle"></i> Payment Failed';
+                button.disabled = false;
+                
+                alert('Payment failed: ' + (data.message || 'Transaction was declined'));
+                
+                // Reload page after 3 seconds
+                setTimeout(() => {
+                    location.reload();
+                }, 3000);
+                
+            } else {
+                // Still pending
+                button.innerHTML = originalText;
+                button.disabled = false;
+                
+                alert('Payment is still pending. Please try again in a few moments or contact support if the issue persists.');
+            }
+        })
+        .catch(error => {
+            console.error('Status check error:', error);
+            button.innerHTML = originalText;
+            button.disabled = false;
+            alert('Unable to check status. Please try again or refresh the page.');
+        });
+    }
+});
+
+// Auto-fill interest rate when savings product is selected
+document.getElementById('product_id').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const interest = selectedOption.getAttribute('data-interest');
+    
+    // Set interest rate
+    document.getElementById('interest').value = interest || '';
+});
+
+// Validate form before submission
+document.getElementById('addSavingsForm').addEventListener('submit', function(e) {
+    const productId = document.getElementById('product_id').value;
+    
+    // Check if product is selected
+    if (!productId) {
+        e.preventDefault();
+        alert('Please select a savings product');
+        return false;
+    }
+});
+</script>
 @endpush
 @endsection

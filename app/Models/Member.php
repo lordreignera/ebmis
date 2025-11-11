@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use App\Traits\HandlesLegacyTimestamps;
 use App\Traits\EastAfricanTime;
+use App\Models\Fee;
 
 class Member extends Model
 {
@@ -132,7 +133,7 @@ class Member extends Model
      */
     public function fees()
     {
-        return $this->hasMany(Fee::class)->orderByLegacyTimestamp();
+        return $this->hasMany(Fee::class)->orderBy('datecreated', 'desc');
     }
 
     /**

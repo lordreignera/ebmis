@@ -5,15 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
-use App\Traits\HandlesLegacyTimestamps;
-use App\Traits\EastAfricanTime;
 
 class Fee extends Model
 {
-    use HasFactory, HandlesLegacyTimestamps, EastAfricanTime;
+    use HasFactory;
 
     // Disable timestamps completely for old database compatibility
     public $timestamps = false;
+    
+    // Specify constant for timestamp columns to prevent Laravel from using them
+    const CREATED_AT = null;
+    const UPDATED_AT = null;
 
     protected $fillable = [
         'member_id',

@@ -119,13 +119,13 @@ class DisbursementController extends Controller
         // Personal loans query - Only show loans ready for disbursement
         $personalLoansQuery = PersonalLoan::where('status', 1) // Approved loans
                     ->whereDoesntHave('disbursements', function($q) {
-                        $q->where('status', 1); // No successful disbursement yet
+                        $q->where('status', 2); // No successful disbursement yet (status 2 = Disbursed)
                     });
 
         // Group loans query
         $groupLoansQuery = GroupLoan::where('status', 1) // Approved loans
                     ->whereDoesntHave('disbursements', function($q) {
-                        $q->where('status', 1); // No successful disbursement yet
+                        $q->where('status', 2); // No successful disbursement yet (status 2 = Disbursed)
                     });
 
         // Apply filters to both queries
@@ -173,43 +173,47 @@ class DisbursementController extends Controller
         // Merge and sort
         $allLoans = $personalLoans->merge($groupLoans)->sortByDesc('datecreated');
 
-        // Filter loans - Only include those ready for disbursement
+        // Filter loans - Only include those ready for disbursement (STRICT VALIDATION)
         $readyLoans = $allLoans->filter(function($loan) {
-            // If charge_type = 1, charges are deducted - always ready
+            // If charge_type = 1, charges are deducted from disbursement - always ready
             if ($loan->charge_type == 1) {
                 return true;
             }
             
-            // If charge_type = 2, check if all upfront charges are paid
+            // If charge_type = 2, ALL upfront charges MUST be paid before disbursement
             if ($loan->charge_type == 2) {
+                if (!$loan->product) {
+                    return false; // No product = can't verify fees
+                }
+                
                 $memberId = $loan->loan_type === 'personal' ? $loan->member_id : null;
                 
-                // Get product charges
+                // Get product charges (mandatory upfront fees)
                 $productCharges = $loan->product->charges()->where('isactive', 1)->get();
                 
-                // Check if all charges are paid
+                // Check if ALL charges are paid
                 foreach ($productCharges as $charge) {
-                    $paidFee = Fee::where('loan_id', $loan->id)
+                    $paidFee = \App\Models\Fee::where('loan_id', $loan->id)
                                   ->where('fees_type_id', $charge->id)
                                   ->where('status', 1)
                                   ->first();
                     
-                    // For registration fees, check member level
+                    // For registration fees, also check member-level payment
                     $isRegFee = stripos($charge->name, 'registration') !== false;
                     if ($isRegFee && !$paidFee && $memberId) {
-                        $paidFee = Fee::where('member_id', $memberId)
+                        $paidFee = \App\Models\Fee::where('member_id', $memberId)
                                       ->where('fees_type_id', $charge->id)
                                       ->where('status', 1)
                                       ->first();
                     }
                     
-                    // If any charge is unpaid, loan is not ready
+                    // If ANY mandatory fee is unpaid, loan cannot be disbursed
                     if (!$paidFee) {
                         return false;
                     }
                 }
                 
-                return true; // All charges are paid
+                return true; // All mandatory fees are paid - ready for disbursement
             }
             
             return true; // Default: include the loan
@@ -235,12 +239,12 @@ class DisbursementController extends Controller
         // Calculate stats for both personal and group loans
         $personalPendingLoans = PersonalLoan::where('status', 1)
                            ->whereDoesntHave('disbursements', function($q) {
-                               $q->where('status', 1);
+                               $q->where('status', 2); // Status 2 = Disbursed (successful)
                            });
         
         $groupPendingLoans = GroupLoan::where('status', 1)
                            ->whereDoesntHave('disbursements', function($q) {
-                               $q->where('status', 1);
+                               $q->where('status', 2); // Status 2 = Disbursed (successful)
                            });
         
         $stats = [
@@ -262,7 +266,7 @@ class DisbursementController extends Controller
         $loan = PersonalLoan::with(['member', 'branch', 'product'])
                    ->where('status', 1) // Approved
                    ->whereDoesntHave('disbursements', function($q) {
-                       $q->where('status', 1); // No successful disbursement
+                       $q->where('status', 2); // No successful disbursement (status 2 = Disbursed)
                    })
                    ->find($id);
         
@@ -272,7 +276,7 @@ class DisbursementController extends Controller
             $loan = GroupLoan::with(['group', 'branch', 'product'])
                        ->where('status', 1) // Approved
                        ->whereDoesntHave('disbursements', function($q) {
-                           $q->where('status', 1); // No successful disbursement
+                           $q->where('status', 2); // No successful disbursement (status 2 = Disbursed)
                        })
                        ->find($id);
             $loanType = 'group';

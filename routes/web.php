@@ -232,6 +232,9 @@ Route::middleware([
     Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->name('fees.mark-paid');
     Route::get('/fees/{fee}/receipt', [\App\Http\Controllers\Admin\FeeController::class, 'receipt'])->name('fees.receipt');
     Route::get('/fees/{fee}/receipt-modal', [\App\Http\Controllers\Admin\FeeController::class, 'getReceiptModal'])->name('fees.receipt-modal');
+    Route::post('/fees/store-mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'storeMobileMoneyPayment'])->name('fees.store-mobile-money');
+    Route::get('/fees/check-mm-status/{transactionRef}', [\App\Http\Controllers\Admin\FeeController::class, 'checkMobileMoneyStatus'])->name('fees.check-mm-status');
+    Route::post('/fees/retry-mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'retryMobileMoneyPayment'])->name('fees.retry-mobile-money');
     Route::get('/members/{member}/quick-info', [\App\Http\Controllers\Admin\MemberController::class, 'quickInfo'])->name('members.quick-info');
     Route::get('/members/{member}/loans', [\App\Http\Controllers\Admin\MemberController::class, 'getLoans'])->name('members.loans');
     Route::get('/members/{member}/recent-fees', [\App\Http\Controllers\Admin\MemberController::class, 'getRecentFees'])->name('members.recent-fees');

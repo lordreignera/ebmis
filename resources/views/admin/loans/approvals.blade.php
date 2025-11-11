@@ -98,16 +98,37 @@
                 <div class="card-header">
                     <div class="row align-items-center">
                         <div class="col">
-                            <h5 class="card-title mb-0">Loans Pending Approval</h5>
-                            <p class="text-muted small mb-0">Review and approve loan applications. Approved loans will move to disbursement list.</p>
+                            <h5 class="card-title mb-0">
+                                @if(request('show_rejected'))
+                                    Rejected Loan Applications
+                                @else
+                                    Loans Pending Approval
+                                @endif
+                            </h5>
+                            <p class="text-muted small mb-0">
+                                @if(request('show_rejected'))
+                                    View all rejected loan applications with rejection reasons.
+                                @else
+                                    Review and approve loan applications. Approved loans will move to disbursement list.
+                                @endif
+                            </p>
                         </div>
                         <div class="col-auto">
                             <div class="d-flex gap-2">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="refreshData()">
                                     <i class="mdi mdi-refresh me-1"></i> Refresh
                                 </button>
-                                <a href="{{ route('admin.disbursements.index') }}" class="btn btn-info btn-sm">
-                                    <i class="mdi mdi-cash-multiple me-1"></i> View Approved Loans
+                                @if(request('show_rejected'))
+                                    <a href="{{ route('admin.loans.approvals') }}" class="btn btn-success btn-sm">
+                                        <i class="mdi mdi-clock-alert me-1"></i> View Pending Loans
+                                    </a>
+                                @else
+                                    <a href="{{ route('admin.loans.approvals', ['show_rejected' => 1]) }}" class="btn btn-danger btn-sm">
+                                        <i class="mdi mdi-close-circle me-1"></i> View Rejected Loans
+                                    </a>
+                                @endif
+                                <a href="{{ route('admin.loans.disbursements.pending') }}" class="btn btn-info btn-sm">
+                                    <i class="mdi mdi-cash-multiple me-1"></i> View Approved Loans ({{ $stats['approved_loans'] }})
                                 </a>
                             </div>
                         </div>
@@ -220,32 +241,50 @@
                                     <td>{{ $loan->interest }}%</td>
                                     <td>{{ $loan->period ?? 'N/A' }}</td>
                                     <td>
-                                        <span class="status-badge status-pending">
-                                            <i class="mdi mdi-clock me-1"></i>Pending Approval
-                                        </span>
+                                        @if(request('show_rejected'))
+                                            <span class="status-badge status-rejected" style="background-color: #fee; color: #dc3545;">
+                                                <i class="mdi mdi-close-circle me-1"></i>Rejected
+                                            </span>
+                                        @else
+                                            <span class="status-badge status-pending">
+                                                <i class="mdi mdi-clock me-1"></i>Pending Approval
+                                            </span>
+                                        @endif
                                     </td>
                                     <td>{{ \Carbon\Carbon::parse($loan->datecreated)->format('M d, Y') }}</td>
                                     <td>
-                                        <div class="action-buttons">
-                                            <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $loan->loan_type }}" 
-                                               class="btn-modern btn-view" title="Review & View Details">
-                                                <i class="mdi mdi-eye"></i>
-                                            </a>
-                                            <button class="btn-modern btn-process" 
-                                                    onclick="approveLoan({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
-                                                    title="Approve Loan">
-                                                <i class="mdi mdi-check-circle"></i>
-                                            </button>
-                                            <button class="btn-modern btn-delete" 
-                                                    onclick="rejectLoan({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
-                                                    title="Reject Loan">
-                                                <i class="mdi mdi-close-circle"></i>
-                                            </button>
-                                            <a href="{{ route('admin.loans.edit', $loan->id) }}?type={{ $loan->loan_type }}" 
-                                               class="btn-modern btn-warning" title="Edit">
-                                                <i class="mdi mdi-pencil"></i>
-                                            </a>
-                                        </div>
+                                        @if(request('show_rejected'))
+                                            <!-- For rejected loans, only show View button -->
+                                            <div class="action-buttons">
+                                                <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $loan->loan_type }}" 
+                                                   class="btn-modern btn-view" title="View Rejection Details">
+                                                    <i class="mdi mdi-file-document-outline"></i>
+                                                    <span class="ms-1">View Details</span>
+                                                </a>
+                                            </div>
+                                        @else
+                                            <!-- For pending loans, show all action buttons -->
+                                            <div class="action-buttons">
+                                                <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $loan->loan_type }}" 
+                                                   class="btn-modern btn-view" title="Review & View Details">
+                                                    <i class="mdi mdi-eye"></i>
+                                                </a>
+                                                <button class="btn-modern btn-process" 
+                                                        onclick="approveLoan({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
+                                                        title="Approve Loan">
+                                                    <i class="mdi mdi-check-circle"></i>
+                                                </button>
+                                                <button class="btn-modern btn-delete" 
+                                                        onclick="rejectLoan({{ $loan->getAttribute('id') }}, '{{ $loan->loan_type }}', '{{ $loan->code }}')"
+                                                        title="Reject Loan">
+                                                    <i class="mdi mdi-close-circle"></i>
+                                                </button>
+                                                <a href="{{ route('admin.loans.edit', $loan->id) }}?type={{ $loan->loan_type }}" 
+                                                   class="btn-modern btn-warning" title="Edit">
+                                                    <i class="mdi mdi-pencil"></i>
+                                                </a>
+                                            </div>
+                                        @endif
                                     </td>
                                 </tr>
                                 @endforeach
@@ -309,34 +348,71 @@
 
 <!-- Approve Loan Modal -->
 <div class="modal fade" id="approveLoanModal" tabindex="-1" aria-labelledby="approveLoanModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content" style="background-color: #ffffff !important; color: #000000 !important;">
-            <div class="modal-header" style="background-color: #ffffff !important; color: #000000 !important; border-bottom: 1px solid #dee2e6;">
-                <h5 class="modal-title" id="approveLoanModalLabel" style="color: #000000 !important;">Approve Loan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
+                <div>
+                    <h5 class="modal-title mb-1" id="approveLoanModalLabel" style="font-weight: 600; font-size: 1.4rem;">
+                        <i class="mdi mdi-check-circle-outline me-2"></i>Approve Loan Application
+                    </h5>
+                    <p class="mb-0" style="font-size: 0.9rem; opacity: 0.9;">Forward this loan for disbursement</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="opacity: 1;"></button>
             </div>
             <form id="approveLoanForm">
                 @csrf
                 <input type="hidden" id="approveLoanId" name="loan_id">
                 <input type="hidden" id="approveLoanType" name="loan_type">
                 
-                <div class="modal-body" style="background-color: #ffffff !important; color: #000000 !important;">
-                    <div class="alert alert-info" style="background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460;">
-                        <i class="mdi mdi-information me-2"></i>
-                        You are about to approve loan <strong id="approveLoanCode"></strong>. This will forward it to disbursement.
+                <div class="modal-body" style="padding: 30px;">
+                    <div class="alert" style="background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 2px solid #28a745; border-radius: 12px; padding: 20px;">
+                        <div class="d-flex align-items-start">
+                            <i class="mdi mdi-information-outline" style="font-size: 2rem; color: #28a745; margin-right: 15px;"></i>
+                            <div>
+                                <h6 style="color: #155724; font-weight: 600; margin-bottom: 8px;">
+                                    <i class="mdi mdi-check-decagram me-1"></i>Loan Approval Confirmation
+                                </h6>
+                                <p style="color: #155724; margin-bottom: 0; font-size: 0.95rem;">
+                                    You are about to approve loan <strong id="approveLoanCode" style="color: #28a745;"></strong>. 
+                                    This will forward the application to the disbursement queue.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="approveComments" class="form-label" style="color: #000000 !important;">Comments</label>
-                        <textarea class="form-control" id="approveComments" name="comments" rows="3" 
-                                  placeholder="Enter approval comments (optional)" 
-                                  style="background-color: #ffffff; color: #000000; border-color: #ced4da;"></textarea>
+                    <div class="form-group mt-4">
+                        <label for="approveComments" class="form-label" style="font-weight: 600; color: #2c3e50; margin-bottom: 10px; display: flex; align-items-center;">
+                            <i class="mdi mdi-comment-text-outline me-2" style="font-size: 1.3rem; color: #28a745;"></i>
+                            Approval Comments <span class="text-muted ms-1">(Optional)</span>
+                        </label>
+                        <textarea class="form-control" id="approveComments" name="comments" rows="4" 
+                                  placeholder="Add any notes about this approval (e.g., Verified documents, Credit check passed, Collateral confirmed...)" 
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s; resize: vertical;"
+                                  onfocus="this.style.borderColor='#28a745'; this.style.boxShadow='0 0 0 0.2rem rgba(40, 167, 69, 0.1)'"
+                                  onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
+                        <div class="d-flex align-items-center mt-2" style="color: #6c757d; font-size: 0.875rem;">
+                            <i class="mdi mdi-information-outline me-1"></i>
+                            <small>Your comments will be recorded in the loan approval history.</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light" style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; margin-top: 20px;">
+                        <div class="d-flex align-items-center">
+                            <i class="mdi mdi-alert-circle-outline me-2" style="font-size: 1.5rem; color: #17a2b8;"></i>
+                            <div style="font-size: 0.9rem; color: #495057;">
+                                <strong>Next Step:</strong> After approval, this loan will appear in the disbursement queue for the super administrator to process.
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer" style="background-color: #ffffff !important; border-top: 1px solid #dee2e6;">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="mdi mdi-check me-1"></i> Forward to Disbursement
+                <div class="modal-footer" style="background-color: #f8f9fa; border: none; border-radius: 0 0 15px 15px; padding: 20px 30px; gap: 10px;">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);">
+                        <i class="mdi mdi-check-circle me-1"></i>Approve & Forward
                     </button>
                 </div>
             </form>
@@ -346,33 +422,71 @@
 
 <!-- Reject Loan Modal -->
 <div class="modal fade" id="rejectLoanModal" tabindex="-1" aria-labelledby="rejectLoanModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="rejectLoanModalLabel">Reject Loan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
+                <div>
+                    <h5 class="modal-title mb-1" id="rejectLoanModalLabel" style="font-weight: 600; font-size: 1.4rem;">
+                        <i class="mdi mdi-close-circle-outline me-2"></i>Reject Loan Application
+                    </h5>
+                    <p class="mb-0" style="font-size: 0.9rem; opacity: 0.9;">Provide a clear reason for loan rejection</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="opacity: 1;"></button>
             </div>
             <form id="rejectLoanForm">
                 @csrf
                 <input type="hidden" id="rejectLoanId" name="loan_id">
                 <input type="hidden" id="rejectLoanType" name="loan_type">
                 
-                <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <i class="mdi mdi-alert me-2"></i>
-                        You are about to reject loan <strong id="rejectLoanCode"></strong>. This action cannot be undone.
+                <div class="modal-body" style="padding: 30px;">
+                    <div class="alert" style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); border: 2px solid #ffc107; border-radius: 12px; padding: 20px;">
+                        <div class="d-flex align-items-start">
+                            <i class="mdi mdi-alert-outline" style="font-size: 2rem; color: #ff6b6b; margin-right: 15px;"></i>
+                            <div>
+                                <h6 style="color: #856404; font-weight: 600; margin-bottom: 8px;">
+                                    <i class="mdi mdi-information-outline me-1"></i>Critical Action - Cannot Be Undone
+                                </h6>
+                                <p style="color: #856404; margin-bottom: 0; font-size: 0.95rem;">
+                                    You are about to reject loan <strong id="rejectLoanCode" style="color: #dc3545;"></strong>. 
+                                    This decision is permanent and the applicant will be notified.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="rejectComments" class="form-label">Reason for Rejection <span class="text-danger">*</span></label>
-                        <textarea class="form-control" id="rejectComments" name="comments" rows="3" 
-                                  placeholder="Enter reason for rejecting this loan application..." required></textarea>
+                    <div class="form-group mt-4">
+                        <label for="rejectComments" class="form-label" style="font-weight: 600; color: #2c3e50; margin-bottom: 10px; display: flex; align-items-center;">
+                            <i class="mdi mdi-comment-alert-outline me-2" style="font-size: 1.3rem; color: #dc3545;"></i>
+                            Reason for Rejection <span class="text-danger ms-1">*</span>
+                        </label>
+                        <textarea class="form-control" id="rejectComments" name="comments" rows="5" required
+                                  placeholder="Explain why this loan is being rejected (e.g., Insufficient collateral, Credit history issues, Documentation incomplete...)" 
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s; resize: vertical;"
+                                  onfocus="this.style.borderColor='#dc3545'; this.style.boxShadow='0 0 0 0.2rem rgba(220, 53, 69, 0.1)'"
+                                  onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
+                        <div class="d-flex align-items-center mt-2" style="color: #6c757d; font-size: 0.875rem;">
+                            <i class="mdi mdi-information-outline me-1"></i>
+                            <small>This reason will be recorded in the loan history and may be shared with the applicant.</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light" style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; margin-top: 20px;">
+                        <div class="d-flex align-items-center">
+                            <i class="mdi mdi-lightbulb-on-outline me-2" style="font-size: 1.5rem; color: #17a2b8;"></i>
+                            <div style="font-size: 0.9rem; color: #495057;">
+                                <strong>Tip:</strong> Be specific and professional. Clear feedback helps applicants improve future applications.
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">
-                        <i class="mdi mdi-close-circle me-1"></i> Reject Loan
+                <div class="modal-footer" style="background-color: #f8f9fa; border: none; border-radius: 0 0 15px 15px; padding: 20px 30px; gap: 10px;">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
+                        <i class="mdi mdi-arrow-left me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-danger" 
+                            style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);">
+                        <i class="mdi mdi-close-circle me-1"></i>Reject Loan
                     </button>
                 </div>
             </form>

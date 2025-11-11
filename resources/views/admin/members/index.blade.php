@@ -182,7 +182,7 @@
                                             <td>{{ $member->branch->name ?? 'N/A' }}</td>
                                             <td>
                                                 <span class="status-badge status-individual">
-                                                    {{ $member->member_type == 1 ? 'Group' : 'Individual' }}
+                                                    {{ $member->member_type == 2 ? 'Group' : 'Individual' }}
                                                 </span>
                                             </td>
                                             <td>
@@ -324,6 +324,32 @@ function approveMember(memberId) {
 function rejectMember(memberId) {
     document.getElementById('rejectionForm').action = `/admin/members/${memberId}/reject`;
     new bootstrap.Modal(document.getElementById('rejectionModal')).show();
+}
+
+function deleteMember(memberId) {
+    if (confirm('Are you sure you want to delete this member? This action cannot be undone.')) {
+        // Create a form and submit it
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/members/${memberId}`;
+        
+        // Add CSRF token
+        const csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = '_token';
+        csrfToken.value = '{{ csrf_token() }}';
+        form.appendChild(csrfToken);
+        
+        // Add DELETE method
+        const methodField = document.createElement('input');
+        methodField.type = 'hidden';
+        methodField.name = '_method';
+        methodField.value = 'DELETE';
+        form.appendChild(methodField);
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
 }
 
 // Enhanced Table Functionality

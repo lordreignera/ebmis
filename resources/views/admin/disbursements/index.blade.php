@@ -83,6 +83,22 @@
     </div>
 </div>
 
+<!-- Info Alert for Approved Loans -->
+<div class="row">
+    <div class="col-md-12 grid-margin">
+        <div class="alert alert-info d-flex align-items-center" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border: 2px solid #2196f3; border-radius: 12px;">
+            <i class="mdi mdi-information-outline me-3" style="font-size: 2rem; color: #1976d2;"></i>
+            <div class="flex-grow-1">
+                <h5 class="mb-1" style="color: #1565c0; font-weight: 600;">Looking for Approved Loans Ready to Disburse?</h5>
+                <p class="mb-0" style="color: #424242;">This page shows <strong>disbursement records</strong> (completed transactions). To see <strong>approved loans awaiting disbursement</strong>, click the button below.</p>
+            </div>
+            <a href="{{ route('admin.loans.disbursements.pending') }}" class="btn btn-primary" style="white-space: nowrap;">
+                <i class="mdi mdi-cash-check me-1"></i> View Loans Ready to Disburse
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Quick Action Tabs -->
 <div class="row">
     <div class="col-md-12 grid-margin">

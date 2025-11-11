@@ -605,6 +605,49 @@ class LoanController extends Controller
                 return back()->with('error', $message);
             }
 
+            // VALIDATE MANDATORY FEES BEFORE APPROVAL (for charge_type = 2)
+            if ($loan->charge_type == 2) {
+                $product = \App\Models\Product::find($loan->product_type);
+                
+                if ($product) {
+                    $productCharges = $product->charges()->where('isactive', 1)->get();
+                    $unpaidFees = [];
+                    
+                    foreach ($productCharges as $charge) {
+                        $memberId = $loanType === 'personal' ? $loan->member_id : null;
+                        
+                        // Check if this fee is paid for this loan
+                        $paidFee = \App\Models\Fee::where('loan_id', $loan->id)
+                                      ->where('fees_type_id', $charge->id)
+                                      ->where('status', 1)
+                                      ->first();
+                        
+                        // For registration fees, also check member-level payment
+                        $isRegFee = stripos($charge->name, 'registration') !== false;
+                        if ($isRegFee && !$paidFee && $memberId) {
+                            $paidFee = \App\Models\Fee::where('member_id', $memberId)
+                                          ->where('fees_type_id', $charge->id)
+                                          ->where('status', 1)
+                                          ->first();
+                        }
+                        
+                        if (!$paidFee) {
+                            $unpaidFees[] = $charge->name;
+                        }
+                    }
+                    
+                    // If there are unpaid mandatory fees, reject the approval
+                    if (count($unpaidFees) > 0) {
+                        $message = 'Cannot approve loan. The following mandatory fees must be paid first: ' . implode(', ', $unpaidFees);
+                        
+                        if ($request->ajax() || $request->wantsJson()) {
+                            return response()->json(['success' => false, 'message' => $message], 400);
+                        }
+                        return back()->with('error', $message);
+                    }
+                }
+            }
+
             $loan->update([
                 'status' => 1, // Approved
                 'verified' => 1,
@@ -788,7 +831,8 @@ class LoanController extends Controller
                     'payment_status' => 'Paid',
                     'payment_description' => $paymentNotes,
                     'pay_ref' => $paymentRef,
-                    'status' => 1 // Paid
+                    'status' => 1, // Paid
+                    'datecreated' => now()
                 ]);
 
                 $totalAmount += $chargeAmount;
@@ -899,7 +943,8 @@ class LoanController extends Controller
                 'payment_status' => 'Paid',
                 'payment_description' => $paymentNotes,
                 'pay_ref' => $paymentRef,
-                'status' => 1 // Paid
+                'status' => 1, // Paid
+                'datecreated' => now()
             ]);
 
             DB::commit();
@@ -1000,7 +1045,8 @@ class LoanController extends Controller
                                 'payment_status' => 'Paid - Deducted from Disbursement',
                                 'payment_description' => 'Automatically marked as paid - charges deducted from disbursement amount',
                                 'pay_ref' => 'AUTO-' . $loan->code,
-                                'status' => 1 // Paid
+                                'status' => 1, // Paid
+                                'datecreated' => now()
                             ]);
                         }
                         $paidCount++;
@@ -1194,9 +1240,13 @@ class LoanController extends Controller
             'date_closed'
         ];
         
-        // Get ONLY pending loans (status = 0) from both personal and group loans
-        $personalLoansQuery = PersonalLoan::where('status', 0);
-        $groupLoansQuery = GroupLoan::where('status', 0);
+        // Check if showing rejected loans or pending loans
+        $showRejected = $request->has('show_rejected');
+        $status = $showRejected ? 4 : 0; // 4 = Rejected, 0 = Pending
+        
+        // Get loans based on status filter
+        $personalLoansQuery = PersonalLoan::where('status', $status);
+        $groupLoansQuery = GroupLoan::where('status', $status);
 
         if ($request->filled('branch_id')) {
             $personalLoansQuery->where('branch_id', $request->branch_id);
@@ -1204,12 +1254,12 @@ class LoanController extends Controller
         }
 
         // Get both types and merge them
-        $personalLoans = $personalLoansQuery->with(['member', 'product', 'branch', 'addedBy'])->get()->map(function($loan) {
+        $personalLoans = $personalLoansQuery->with(['member', 'product', 'branch', 'addedBy', 'rejectedBy'])->get()->map(function($loan) {
             $loan->loan_type = 'personal';
             return $loan;
         });
 
-        $groupLoans = $groupLoansQuery->with(['group', 'product', 'branch', 'addedBy'])->get()->map(function($loan) {
+        $groupLoans = $groupLoansQuery->with(['group', 'product', 'branch', 'addedBy', 'rejectedBy'])->get()->map(function($loan) {
             $loan->loan_type = 'group';
             return $loan;
         });
