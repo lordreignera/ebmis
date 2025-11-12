@@ -73,9 +73,12 @@
                                 <td class="fw-bold" style="color: #000;">Payment Method</td>
                                 <td>
                                     @if($fee->payment_type == 1)
-                                        <span class="badge bg-info">Cash</span>
+                                        <span class="badge bg-info">Mobile Money</span>
+                                        @if($fee->payment_phone)
+                                            <br><small class="text-muted">Phone: {{ $fee->payment_phone }}</small>
+                                        @endif
                                     @elseif($fee->payment_type == 2)
-                                        <span class="badge bg-warning">Mobile Money</span>
+                                        <span class="badge bg-warning">Cash</span>
                                     @elseif($fee->payment_type == 3)
                                         <span class="badge bg-primary">Bank Transfer</span>
                                     @else
@@ -83,6 +86,15 @@
                                     @endif
                                 </td>
                             </tr>
+                            @if($fee->original_amount && $fee->original_amount != $fee->amount)
+                            <tr style="background-color: #fff3cd;">
+                                <td class="fw-bold" style="color: #000;">Original Amount</td>
+                                <td style="color: #856404;">
+                                    <del>UGX {{ number_format($fee->original_amount, 2) }}</del>
+                                    <br><small class="text-muted">Amount was adjusted during payment</small>
+                                </td>
+                            </tr>
+                            @endif
                             @if($fee->loan)
                             <tr>
                                 <td class="fw-bold">Related Loan</td>

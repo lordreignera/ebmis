@@ -534,6 +534,7 @@ class FeeController extends Controller
                 'loan_id' => $validated['loan_id'] ?? null,
                 'fees_type_id' => $validated['fees_type_id'],
                 'payment_type' => 1, // Mobile Money
+                'payment_phone' => $validated['member_phone'], // Save actual phone used
                 'amount' => $validated['amount'],
                 'description' => $validated['description'],
                 'added_by' => auth()->id(),
@@ -657,6 +658,26 @@ class FeeController extends Controller
                     'message' => 'Payment completed successfully'
                 ]);
             } elseif ($statusResult['status'] === 'failed') {
+                // Check if payment is recent (within 2 minutes) - FlexiPay retries 3 times
+                $createdAt = \Carbon\Carbon::parse($fee->datecreated);
+                $ageInMinutes = $createdAt->diffInMinutes(now());
+                
+                if ($ageInMinutes < 2) {
+                    // Payment is recent - don't mark as failed yet, FlexiPay is still retrying
+                    \Log::info("Payment marked as pending - still within retry window", [
+                        'fee_id' => $fee->id,
+                        'age_minutes' => $ageInMinutes,
+                        'transaction_ref' => $transactionRef
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'status' => 'pending',
+                        'message' => 'Payment being processed - FlexiPay will retry if user cancelled'
+                    ]);
+                }
+                
+                // Payment is old enough - mark as failed
                 $fee->update([
                     'status' => 2, // Failed
                     'payment_status' => 'Failed',
@@ -724,11 +745,21 @@ class FeeController extends Controller
                 ], 400);
             }
 
+            // Store original amount if this is first retry and amount changed
+            if (empty($fee->original_amount) && $fee->amount != $validated['amount']) {
+                $originalAmount = $fee->amount;
+            } else {
+                $originalAmount = $fee->original_amount;
+            }
+
             // Reset fee to pending status
             $fee->update([
                 'status' => 0, // Pending
                 'payment_status' => 'Pending',
-                'payment_description' => 'Retry payment - ' . now()->format('Y-m-d H:i:s')
+                'payment_description' => 'Retry payment - ' . now()->format('Y-m-d H:i:s'),
+                'original_amount' => $originalAmount,
+                'amount' => $validated['amount'], // Update to new amount if changed
+                'payment_phone' => $validated['member_phone'] // Store actual phone used
             ]);
 
             // Call Mobile Money Service

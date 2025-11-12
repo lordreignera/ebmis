@@ -456,8 +456,8 @@
                                                                 data-fee-type="{{ $fee->feeType->name ?? 'Fee' }}">
                                                             <i class="mdi mdi-refresh"></i> Retry Payment
                                                         </button>
-                                                        <!-- Add Check Status button for pending mobile money payments -->
-                                                        @if($fee->status == 0 && !empty($fee->pay_ref))
+                                                        <!-- Add Check Status button for pending/failed mobile money payments -->
+                                                        @if(!empty($fee->pay_ref))
                                                         <button class="btn btn-sm btn-info check-status-btn ms-1" 
                                                                 data-transaction-ref="{{ $fee->pay_ref }}"
                                                                 data-fee-id="{{ $fee->id }}">
@@ -923,6 +923,73 @@
     </div>
 </div>
 
+<!-- Retry Payment Modal -->
+<div class="modal fade" id="retryPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #000;">
+                    <i class="mdi mdi-refresh"></i> Retry Mobile Money Payment
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="retryPaymentForm">
+                <input type="hidden" id="retryFeeId">
+                <input type="hidden" id="retryMemberPhone">
+                <input type="hidden" id="retryMemberName">
+                
+                <div class="modal-body" style="background-color: white;">
+                    <div class="alert alert-warning">
+                        <i class="mdi mdi-alert"></i> <strong>Retry Payment</strong><br>
+                        A new payment request will be sent for: <strong id="retryFeeType"></strong>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="retryPhoneNumber" class="form-label">
+                            Phone Number <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" id="retryPhoneNumber" class="form-control" 
+                               placeholder="256772123456" required>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> 
+                            <span id="retryNetworkInfo">Original: <strong id="retryOriginalPhone"></strong></span>
+                            <br>
+                            <span class="text-info">💡 Tip: Change MTN (077/078/076) to Airtel (075/070/074) if needed</span>
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="retryAmount" class="form-label">
+                            Amount (UGX) <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" id="retryAmount" class="form-control" 
+                               min="500" step="1" required>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> Minimum amount: 500 UGX
+                        </small>
+                    </div>
+                    
+                    <div id="retryProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="retryStatusText">Sending payment request...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="retrySubmitBtn">
+                        <i class="mdi mdi-refresh"></i> Retry Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 function approveMember(memberId) {
@@ -1224,9 +1291,27 @@ function cancelPaymentCheck() {
 }
 
 function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
-    const maxAttempts = 60; // Poll for up to 60 seconds (60 attempts x 1 second)
+    const maxAttempts = 120; // Poll for up to 120 seconds (allow time for 3 retry attempts)
     const processingAlert = document.getElementById('mmProcessingAlert');
     const statusText = document.getElementById('mmStatusText');
+    
+    // Wait 30 seconds before FIRST status check (give user time to enter PIN)
+    if (attempts === 0) {
+        statusText.innerHTML = `
+            <i class="mdi mdi-loading mdi-spin"></i> USSD prompt sent to phone. Waiting for user to enter PIN... (30s)
+            <br><small class="text-muted">Please check your phone and enter your Mobile Money PIN when prompted</small>
+            <br>
+            <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="cancelPaymentCheck()">
+                <i class="mdi mdi-close"></i> Stop Checking
+            </button>
+        `;
+        
+        // Wait 30 seconds before first check
+        window.paymentCheckTimeout = setTimeout(() => {
+            pollPaymentStatus(transactionRef, feeId, 1);
+        }, 30000); // Wait 30 seconds
+        return;
+    }
     
     if (attempts >= maxAttempts) {
         // Perform a FINAL status check before showing timeout
@@ -1313,8 +1398,12 @@ function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
             
         } else {
             // Still pending, continue polling
+            const elapsedSeconds = 30 + (attempts - 1) * 5; // 30s initial wait + checks every 5s
+            const retriesRemaining = Math.floor((120 - elapsedSeconds) / 30); // FlexiPay retries every ~30s
+            
             statusText.innerHTML = `
-                <i class="mdi mdi-loading mdi-spin"></i> Waiting for member to authorize payment... (${attempts + 1}s)
+                <i class="mdi mdi-loading mdi-spin"></i> Waiting for payment authorization... (${elapsedSeconds}s elapsed)
+                <br><small class="text-muted">FlexiPay will retry ${retriesRemaining} more time(s) if user cancelled. Please wait...</small>
                 <br>
                 <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="cancelPaymentCheck()">
                     <i class="mdi mdi-close"></i> Stop Checking
@@ -1324,7 +1413,7 @@ function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
             // Store timeout ID so we can cancel it
             window.paymentCheckTimeout = setTimeout(() => {
                 pollPaymentStatus(transactionRef, feeId, attempts + 1);
-            }, 1000); // Check every second
+            }, 5000); // Check every 5 seconds after initial 30s wait
         }
     })
     .catch(error => {
@@ -1348,20 +1437,118 @@ document.addEventListener('DOMContentLoaded', function() {
             const amount = this.getAttribute('data-amount');
             const feeType = this.getAttribute('data-fee-type');
             
-            if (confirm(`Retry mobile money payment for ${feeType} (UGX ${parseFloat(amount).toLocaleString()})?\n\nA new payment request will be sent to ${memberPhone}.`)) {
-                retryMobileMoneyPayment(feeId, memberPhone, memberName, amount, feeType);
-            }
+            // Show modal to edit amount before retrying
+            showRetryPaymentModal(feeId, memberPhone, memberName, amount, feeType);
         });
     });
 });
 
-function retryMobileMoneyPayment(feeId, memberPhone, memberName, amount, feeType) {
-    const button = document.querySelector(`.retry-payment-btn[data-fee-id="${feeId}"]`);
-    const originalText = button.innerHTML;
+function detectNetwork(phone) {
+    // Remove non-digits and get the phone number
+    const cleanPhone = phone.replace(/\D/g, '');
     
-    // Disable button and show processing
-    button.disabled = true;
-    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Retrying...';
+    // Get last 9 digits (Uganda format)
+    let phoneDigits = cleanPhone;
+    if (cleanPhone.startsWith('256')) {
+        phoneDigits = cleanPhone.substring(3);
+    } else if (cleanPhone.startsWith('0')) {
+        phoneDigits = cleanPhone.substring(1);
+    }
+    
+    // Get first 2 digits
+    const prefix = phoneDigits.substring(0, 2);
+    
+    // Detect network
+    if (['77', '78', '76'].includes(prefix)) {
+        return { network: 'MTN', icon: '📱', color: 'warning' };
+    } else if (['75', '70', '74'].includes(prefix)) {
+        return { network: 'Airtel', icon: '📞', color: 'danger' };
+    }
+    
+    return { network: 'Unknown', icon: '❓', color: 'secondary' };
+}
+
+function showRetryPaymentModal(feeId, memberPhone, memberName, amount, feeType) {
+    // Set modal data
+    document.getElementById('retryFeeId').value = feeId;
+    document.getElementById('retryMemberPhone').value = memberPhone;
+    document.getElementById('retryMemberName').value = memberName;
+    document.getElementById('retryAmount').value = amount;
+    document.getElementById('retryFeeType').innerHTML = feeType;
+    
+    // Set editable phone number field
+    document.getElementById('retryPhoneNumber').value = memberPhone;
+    document.getElementById('retryOriginalPhone').innerHTML = memberPhone;
+    
+    // Detect and display network
+    const networkInfo = detectNetwork(memberPhone);
+    document.getElementById('retryOriginalPhone').innerHTML = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
+    
+    // Hide processing alert
+    document.getElementById('retryProcessingAlert').style.display = 'none';
+    
+    // Add real-time network detection on phone input
+    document.getElementById('retryPhoneNumber').oninput = function(e) {
+        const newPhone = e.target.value;
+        const newNetwork = detectNetwork(newPhone);
+        
+        // Update border color based on network
+        if (newNetwork.network === 'MTN') {
+            e.target.className = 'form-control border-warning';
+        } else if (newNetwork.network === 'Airtel') {
+            e.target.className = 'form-control border-success';
+        } else {
+            e.target.className = 'form-control';
+        }
+    };
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('retryPaymentModal'));
+    modal.show();
+    
+    // Handle form submission
+    document.getElementById('retryPaymentForm').onsubmit = function(e) {
+        e.preventDefault();
+        
+        // Get updated values from modal
+        const updatedPhone = document.getElementById('retryPhoneNumber').value.trim();
+        const updatedAmount = document.getElementById('retryAmount').value;
+        
+        // Validate phone number
+        if (!updatedPhone || updatedPhone.length < 9) {
+            alert('Please enter a valid phone number');
+            return;
+        }
+        
+        // Validate minimum amount
+        if (parseFloat(updatedAmount) < 500) {
+            alert('The minimum amount should be 500 UGX');
+            return;
+        }
+        
+        // Detect network and warn if MTN
+        const networkInfo = detectNetwork(updatedPhone);
+        if (networkInfo.network === 'MTN') {
+            if (!confirm('⚠️ Warning: MTN payments are currently not sending prompts due to missing merchant credentials.\n\nConsider changing to an Airtel number (075/070/074) instead.\n\nContinue with MTN anyway?')) {
+                return;
+            }
+        }
+        
+        // Call retry function with updated phone and amount
+        retryMobileMoneyPayment(feeId, updatedPhone, memberName, updatedAmount, feeType);
+    };
+}
+
+function retryMobileMoneyPayment(feeId, memberPhone, memberName, amount, feeType) {
+    // Show processing alert in modal
+    const processingAlert = document.getElementById('retryProcessingAlert');
+    const statusText = document.getElementById('retryStatusText');
+    const submitBtn = document.getElementById('retrySubmitBtn');
+    
+    processingAlert.style.display = 'block';
+    processingAlert.className = 'alert alert-warning';
+    statusText.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Sending payment request...';
+    submitBtn.disabled = true;
     
     // Send retry request
     fetch('{{ route("admin.fees.retry-mobile-money") }}', {
@@ -1382,35 +1569,53 @@ function retryMobileMoneyPayment(feeId, memberPhone, memberName, amount, feeType
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Show success message
-            button.className = 'btn btn-sm btn-info';
-            button.innerHTML = '<i class="mdi mdi-clock-outline"></i> Checking...';
+            // Update status
+            statusText.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Waiting for member to authorize payment...';
             
             // Start polling for new payment status
-            pollRetryPaymentStatus(data.transaction_reference, feeId, button);
+            pollRetryPaymentStatus(data.transaction_reference, feeId);
         } else {
             // Show error
-            alert('Error: ' + (data.message || 'Failed to retry payment'));
-            button.disabled = false;
-            button.innerHTML = originalText;
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to retry payment');
+            submitBtn.disabled = false;
         }
     })
     .catch(error => {
         console.error('Retry error:', error);
-        alert('Network error. Please try again.');
-        button.disabled = false;
-        button.innerHTML = originalText;
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
     });
 }
 
-function pollRetryPaymentStatus(transactionRef, feeId, button, attempts = 0) {
-    const maxAttempts = 60;
+function pollRetryPaymentStatus(transactionRef, feeId, attempts = 0) {
+    const maxAttempts = 120; // Extended to 120 seconds (2 minutes for FlexiPay retries)
+    const processingAlert = document.getElementById('retryProcessingAlert');
+    const statusText = document.getElementById('retryStatusText');
+    
+    // Wait 30 seconds before FIRST status check (give user time to receive USSD and enter PIN)
+    if (attempts === 0) {
+        statusText.innerHTML = `
+            <i class="mdi mdi-loading mdi-spin"></i> USSD prompt sent to phone. Waiting for user to enter PIN... (30s)
+            <br><small class="text-muted">Please check your phone and enter your Mobile Money PIN when prompted</small>
+        `;
+        
+        // Wait 30 seconds before first check
+        setTimeout(() => {
+            pollRetryPaymentStatus(transactionRef, feeId, 1);
+        }, 30000); // Wait 30 seconds
+        return;
+    }
     
     if (attempts >= maxAttempts) {
-        button.className = 'btn btn-sm btn-warning retry-payment-btn';
-        button.innerHTML = '<i class="mdi mdi-refresh"></i> Retry Payment';
-        button.disabled = false;
-        alert('Payment check timed out. Please refresh the page to see current status.');
+        processingAlert.className = 'alert alert-warning';
+        statusText.innerHTML = `
+            <i class="mdi mdi-alert"></i> Payment check timed out. The transaction may still be processing.<br>
+            <button type="button" class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+                <i class="mdi mdi-refresh"></i> Refresh Status
+            </button>
+        `;
         return;
     }
     
@@ -1425,33 +1630,41 @@ function pollRetryPaymentStatus(transactionRef, feeId, button, attempts = 0) {
     .then(data => {
         if (data.status === 'completed') {
             // Payment successful
-            button.className = 'btn btn-sm btn-success';
-            button.innerHTML = '<i class="mdi mdi-check"></i> Paid';
-            button.disabled = true;
+            processingAlert.className = 'alert alert-success';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
             
             setTimeout(() => {
                 location.reload();
-            }, 1500);
+            }, 2000);
             
         } else if (data.status === 'failed') {
             // Payment failed again
-            button.className = 'btn btn-sm btn-warning retry-payment-btn';
-            button.innerHTML = '<i class="mdi mdi-refresh"></i> Retry Payment';
-            button.disabled = false;
-            alert('Payment failed: ' + (data.message || 'Transaction declined'));
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Payment failed: ' + (data.message || 'Transaction declined');
+            
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
             
         } else {
             // Still pending, continue polling
-            button.innerHTML = `<i class="mdi mdi-clock-outline"></i> Waiting (${attempts + 1}s)`;
+            const elapsedSeconds = 30 + (attempts - 1) * 5; // 30s initial wait + checks every 5s
+            const retriesRemaining = Math.floor((120 - elapsedSeconds) / 30); // FlexiPay retries every ~30s
+            
+            statusText.innerHTML = `
+                <i class="mdi mdi-loading mdi-spin"></i> Waiting for payment authorization... (${elapsedSeconds}s elapsed)
+                <br><small class="text-muted">FlexiPay will retry ${retriesRemaining} more time(s) if user cancelled</small>
+            `;
+            
             setTimeout(() => {
-                pollRetryPaymentStatus(transactionRef, feeId, button, attempts + 1);
-            }, 1000);
+                pollRetryPaymentStatus(transactionRef, feeId, attempts + 1);
+            }, 5000); // Check every 5 seconds after initial 30s wait
         }
     })
     .catch(error => {
         console.error('Status check error:', error);
         setTimeout(() => {
-            pollRetryPaymentStatus(transactionRef, feeId, button, attempts + 1);
+            pollRetryPaymentStatus(transactionRef, feeId, attempts + 1);
         }, 1000);
     });
 }

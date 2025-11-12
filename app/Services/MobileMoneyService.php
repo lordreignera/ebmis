@@ -216,13 +216,18 @@ class MobileMoneyService
             // Use the collection endpoint for receiving money from customers
             $collectionEndpoint = 'https://emuria.net/flexipay/marchanFromMobileProd.php';
             
-            // Prepare request data for collection
+            // Prepare request data for collection - MINIMAL PARAMETERS ONLY (like old bimsadmin system)
+            // Old system doesn't send merchant credentials - likely using IP whitelisting
             $requestData = [
-                'name' => $sanitizedName,
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount
             ];
+            
+            Log::info("FlexiPay Collection Request (Old System Format)", [
+                'request_data' => $requestData,
+                'note' => 'Using minimal parameters like bimsadmin - no merchant credentials sent'
+            ]);
             
             // Make API request
             $response = Http::timeout($this->timeout)
@@ -307,11 +312,17 @@ class MobileMoneyService
                 $statusDescription = $responseData['statusDescription'] ?? 'Unknown status';
                 
                 // Map status codes to our internal status
+                // FIXED: Use statusDescription text, not just code, as FlexiPay returns '01' for both success and failure
                 $status = 'pending';
-                if ($statusCode === '01' || $statusCode === '00') {
+                $descriptionUpper = strtoupper($statusDescription);
+                
+                if (str_contains($descriptionUpper, 'SUCCESS') || str_contains($descriptionUpper, 'COMPLETED')) {
                     $status = 'completed';
-                } elseif ($statusCode === '02' || $statusCode === '99') {
+                } elseif (str_contains($descriptionUpper, 'FAILED') || str_contains($descriptionUpper, 'DECLINED') || 
+                          str_contains($descriptionUpper, 'CANCELLED') || str_contains($descriptionUpper, 'REJECTED')) {
                     $status = 'failed';
+                } elseif (str_contains($descriptionUpper, 'PENDING') || str_contains($descriptionUpper, 'INITIATED')) {
+                    $status = 'pending';
                 }
                 
                 return [
