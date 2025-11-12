@@ -100,8 +100,8 @@
                                         <tr>
                                             <td><strong>Member Type:</strong></td>
                                             <td>
-                                                <span class="badge {{ $member->member_type == 1 ? 'bg-info' : 'bg-primary' }}">
-                                                    {{ $member->member_type == 1 ? 'Group Member' : 'Individual' }}
+                                                <span class="badge {{ $member->member_type == 2 ? 'bg-primary' : 'bg-info' }}">
+                                                    {{ $member->member_type == 2 ? 'Individual' : 'Group Member' }}
                                                 </span>
                                             </td>
                                         </tr>
