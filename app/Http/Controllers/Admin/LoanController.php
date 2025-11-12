@@ -159,9 +159,10 @@ class LoanController extends Controller
         $loanType = $request->type ?? 'personal';
         $repayPeriod = $request->period ?? 'daily';
 
-        // Get eligible members for loan application (only approved and verified members WITHOUT active loans)
+        // Get eligible members for loan application (only verified members WITHOUT active loans)
+        // Note: Using verified() instead of approved() because verified = 1 is the primary indicator
+        // of member eligibility, even if status column may still be 'pending'
         $members = Member::with(['branch', 'loans.schedules'])
-                         ->approved()
                          ->verified()
                          ->notDeleted()
                          ->whereDoesntHave('loans', function($query) {
