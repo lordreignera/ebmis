@@ -196,7 +196,7 @@
                                 </thead>
                             <tbody>
                                 @foreach($loans as $loan)
-                                <tr>
+                                <tr data-loan-id="{{ $loan->getAttribute('id') }}" data-loan-type="{{ $loan->loan_type }}">
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <div class="flex-shrink-0 me-3">
@@ -492,20 +492,69 @@ function checkDisbursementStatus(loanId) {
 function rejectDisbursement(loanId) {
     Swal.fire({
         title: 'Reject Disbursement',
-        text: 'Are you sure you want to reject this disbursement?',
+        html: `
+            <div class="text-start">
+                <p class="mb-3">Please provide a reason for rejecting this loan disbursement:</p>
+                <textarea id="rejection-reason" class="form-control" rows="4" placeholder="Enter rejection reason..."></textarea>
+            </div>
+        `,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#d33',
         cancelButtonColor: '#3085d6',
         confirmButtonText: 'Yes, reject it!',
-        cancelButtonText: 'Cancel'
+        cancelButtonText: 'Cancel',
+        preConfirm: () => {
+            const reason = document.getElementById('rejection-reason').value;
+            if (!reason || reason.trim() === '') {
+                Swal.showValidationMessage('Please provide a rejection reason');
+                return false;
+            }
+            return reason;
+        }
     }).then((result) => {
         if (result.isConfirmed) {
-            // Implement rejection logic here
-            Swal.fire('Rejected!', 'The disbursement has been rejected.', 'success');
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            // Show loading
+            Swal.fire({
+                title: 'Processing...',
+                text: 'Rejecting loan disbursement...',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // Get loan type from the row
+            const loanType = $(`tr[data-loan-id="${loanId}"]`).data('loan-type') || 'personal';
+
+            // Send rejection request
+            $.ajax({
+                url: `{{ url('/admin/loans') }}/${loanId}/reject`,
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    loan_type: loanType,
+                    comments: result.value
+                },
+                success: function(response) {
+                    Swal.fire({
+                        title: 'Rejected!',
+                        text: response.message || 'The loan disbursement has been rejected successfully.',
+                        icon: 'success',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                },
+                error: function(xhr) {
+                    let errorMessage = 'Failed to reject loan disbursement.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    Swal.fire('Error', errorMessage, 'error');
+                }
+            });
         }
     });
 }

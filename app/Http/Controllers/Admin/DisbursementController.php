@@ -310,7 +310,7 @@ class DisbursementController extends Controller
         $loan->loan_type = $loanType;
         $loan->created_at = $loan->datecreated ?? now();
         
-        // Get staff members for assignment - just get active users
+        // Get system users (staff members) for assignment
         $staff_members = User::where('status', 1)
                            ->orderBy('name')
                            ->get();
@@ -352,27 +352,44 @@ class DisbursementController extends Controller
                 ->withInput();
         }
 
-        $loan = Loan::with(['member', 'branch', 'product'])
+        // Try to find loan in PersonalLoan first, then GroupLoan
+        $loan = PersonalLoan::with(['member', 'branch', 'product'])
                    ->where('status', 1)
-                   ->findOrFail($id);
+                   ->find($id);
+        
+        $loanType = 1; // Personal loan
+        
+        if (!$loan) {
+            $loan = GroupLoan::with(['group', 'branch', 'product'])
+                       ->where('status', 1)
+                       ->find($id);
+            $loanType = 2; // Group loan
+        }
+        
+        if (!$loan) {
+            return redirect()->route('admin.loans.disbursements.pending')
+                ->with('error', 'Loan not found or not approved for disbursement.');
+        }
 
-        // Check if loan already has any disbursement records
+        // Check if loan already has a SUCCESSFUL disbursement (status = 2)
+        // Allow retry if previous disbursement failed (status = 0 or 1)
         $existingDisbursement = DB::table('disbursements')
             ->where('loan_id', $loan->id)
-            ->where('loan_type', empty($loan->group_id) ? 1 : 2)
+            ->where('loan_type', $loanType)
+            ->where('status', 2) // Only block if successfully disbursed
             ->first();
 
         if ($existingDisbursement) {
             return redirect()->route('admin.loans.disbursements.pending')
-                ->with('error', 'This loan has already been disbursed. Cannot disburse again.');
+                ->with('error', 'This loan has already been disbursed successfully. Cannot disburse again.');
         }
 
         DB::beginTransaction();
 
         try {
-            // Only validate mandatory fees if charge_type = 2 (upfront payment)
+            // Only validate mandatory fees if charge_type = 2 (upfront payment) AND it's a personal loan
             // If charge_type = 1, charges are deducted from disbursement, so no need to check
-            if ($loan->charge_type == 2) {
+            if ($loan->charge_type == 2 && $loanType == 1) {
                 $mandatoryValidation = $this->validateMandatoryFees($loan->member);
                 if (!$mandatoryValidation['valid']) {
                     DB::rollBack();
@@ -412,8 +429,10 @@ class DisbursementController extends Controller
                 $paymentMedium = $request->network === 'AIRTEL' ? 1 : 2; // 1=Airtel, 2=MTN
             }
 
-            // Determine loan type: check if group_id exists
-            $loanType = empty($loan->group_id) ? 1 : 2; // 1=personal, 2=group
+            // Get account name based on loan type
+            $accountName = $loanType == 1 
+                ? ($loan->member->fname . ' ' . $loan->member->lname)
+                : ($loan->group->group_name ?? 'Group Loan');
             
             $disbursementData = [
                 'loan_id' => $loan->id,
@@ -421,7 +440,7 @@ class DisbursementController extends Controller
                 'amount' => $disbursementAmount,
                 'comments' => $request->filled('comments') ? substr($request->comments, 0, 100) : null,
                 'payment_type' => $paymentTypeMapping[$request->payment_type],
-                'account_name' => $loan->member->fname . ' ' . $loan->member->lname,
+                'account_name' => $accountName,
                 'account_number' => $request->account_number,
                 'inv_id' => $request->investment_id,
                 'medium' => $paymentMedium,
@@ -446,10 +465,10 @@ class DisbursementController extends Controller
                 );
 
                 if ($mobileMoneyResult['success']) {
-                    if (isset($mobileMoneyResult['immediate_success']) && $mobileMoneyResult['immediate_success']) {
-                        $disbursement->update(['status' => 1]);
-                        $this->completeDisbursement($disbursement);
-                    }
+                    // If mobile money API call succeeded, complete the disbursement immediately
+                    // This updates loan status and generates schedules
+                    $disbursement->update(['status' => 1]); // Processing
+                    $this->completeDisbursement($disbursement); // Updates to status 2 and completes
                 } else {
                     DB::rollBack();
                     return redirect()->back()

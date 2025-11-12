@@ -2,6 +2,10 @@
 
 @section('title', 'Repayment Schedules - ' . $loan->loan_code)
 
+@push('styles')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+@endpush
+
 @section('content')
 <div class="container-fluid">
     <!-- Page Header -->
@@ -349,12 +353,19 @@
                                                     Repay
                                                 </button>
                                             @elseif($schedule->pending_count > 0)
-                                                {{-- Pending - Show Retry Button --}}
-                                                <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
-                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $schedule->total_balance }})"
-                                                        title="Retry Payment">
-                                                    Retry
-                                                </button>
+                                                {{-- Pending - Show Check Progress and Retry Buttons --}}
+                                                <div class="btn-group" role="group">
+                                                    <button type="button" class="btn btn-info btn-sm px-2 py-1" 
+                                                            onclick="checkScheduleProgress({{ $schedule->id }})"
+                                                            title="Check Payment Status">
+                                                        <i class="fas fa-sync"></i> Check
+                                                    </button>
+                                                    <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
+                                                            onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $schedule->total_balance }})"
+                                                            title="Retry Payment">
+                                                        <i class="fas fa-redo"></i> Retry
+                                                    </button>
+                                                </div>
                                             @else
                                                 <span class="text-muted">-</span>
                                             @endif
@@ -417,7 +428,7 @@
                 <h5 class="modal-title text-dark">Add Repayment Record</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="repaymentForm" method="POST" action="{{ route('admin.loans.repayments.store') }}">
+            <form id="repaymentForm">
                 @csrf
                 <input type="hidden" name="loan_id" value="{{ $loan->id }}">
                 <input type="hidden" name="member_id" value="{{ $loan->member_id }}">
@@ -441,11 +452,14 @@
                     
                     <div class="mb-3" id="medium_div" style="display: none;">
                         <label class="form-label text-dark">Mobile Money Network</label>
-                        <select class="form-select bg-white" id="medium" name="medium">
-                            <option value="">Select Network</option>
-                            <option value="1">Airtel Money</option>
-                            <option value="2">MTN Money</option>
-                        </select>
+                        <input type="text" class="form-control bg-white" id="detected_network" readonly>
+                        <input type="hidden" id="medium" name="medium">
+                        <small class="text-muted">Auto-detected from member's phone number</small>
+                    </div>
+                    
+                    <div class="mb-3" id="phone_div" style="display: none;">
+                        <label class="form-label text-dark">Phone Number</label>
+                        <input type="text" class="form-control bg-white" id="member_phone" readonly value="{{ $loan->member->contact ?? '' }}">
                     </div>
                     
                     <div class="mb-3">
@@ -512,7 +526,88 @@
 </div>
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+// Detect network from phone number
+function detectNetwork(phone) {
+    phone = phone.replace(/\D/g, ''); // Remove non-digits
+    
+    // Remove country code if present (256)
+    if (phone.startsWith('256')) {
+        phone = '0' + phone.substring(3);
+    }
+    
+    // Ensure it starts with 0
+    if (!phone.startsWith('0')) {
+        phone = '0' + phone;
+    }
+    
+    // Get the prefix (first 4 digits: 0772, 0776, etc.)
+    const prefix = phone.substring(0, 4);
+    
+    // MTN prefixes: 077X, 078X
+    const mtnPrefixes = ['0776', '0777', '0778', '0774', '0775'];
+    // Airtel prefixes: 070X, 075X
+    const airtelPrefixes = ['0700', '0701', '0702', '0750', '0751', '0752', '0753', '0754', '0755', '0756', '0757'];
+    
+    if (mtnPrefixes.includes(prefix)) {
+        return { name: 'MTN Money', code: 2 };
+    } else if (airtelPrefixes.includes(prefix)) {
+        return { name: 'Airtel Money', code: 1 };
+    }
+    
+    // Try 3-digit prefix check as fallback
+    const prefix3 = phone.substring(0, 3);
+    if (['077', '078'].includes(prefix3)) {
+        return { name: 'MTN Money', code: 2 };
+    } else if (['070', '075'].includes(prefix3)) {
+        return { name: 'Airtel Money', code: 1 };
+    }
+    
+    return { name: 'Unknown Network (Phone: ' + phone + ')', code: 0 };
+}
+
+// Toggle mobile money network field
+function toggleMedium() {
+    var paymentType = document.getElementById('payment_type').value;
+    var mediumDiv = document.getElementById('medium_div');
+    var phoneDiv = document.getElementById('phone_div');
+    var mediumInput = document.getElementById('medium');
+    var networkDisplay = document.getElementById('detected_network');
+    var memberPhone = document.getElementById('member_phone').value;
+    
+    if(paymentType == '2') {
+        mediumDiv.style.display = 'block';
+        phoneDiv.style.display = 'block';
+        mediumInput.required = true;
+        
+        // Auto-detect network
+        const network = detectNetwork(memberPhone);
+        networkDisplay.value = network.name;
+        mediumInput.value = network.code;
+        
+        if (network.code === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Network Detection Failed',
+                text: 'Could not detect mobile money network from phone number: ' + memberPhone,
+                confirmButtonText: 'OK'
+            });
+        }
+    } else {
+        mediumDiv.style.display = 'none';
+        phoneDiv.style.display = 'none';
+        mediumInput.required = false;
+    }
+}
+
+// Open repayment modal - Keep outside for onclick attribute
+function openRepayModal(scheduleId, dueDate, amount) {
+    $('#schedule_id').val(scheduleId);
+    $('#payment_amount').val(amount.toFixed(0));
+    $('#repaymentModal').modal('show');
+}
+
 $(document).ready(function() {
     // Schedule filtering
     $('input[name="scheduleFilter"]').change(function() {
@@ -526,48 +621,356 @@ $(document).ready(function() {
             $('.schedule-row[data-filter="' + filter + '"]').show();
         }
     });
+    
+    // Handle repayment form submission with mobile money polling
+    $('#repaymentForm').on('submit', function(e) {
+        e.preventDefault();
+        console.log('Form submitted!');
+        
+        const paymentType = $('#payment_type').val();
+        const formData = $(this).serialize();
+        
+        console.log('Payment Type:', paymentType);
+        console.log('Form Data:', formData);
+        
+        // For mobile money, show polling modal
+        if (paymentType == '2') {
+            console.log('Handling mobile money payment...');
+            handleMobileMoneyPayment(formData);
+        } else {
+            console.log('Handling cash/bank payment...');
+            // For cash/bank, submit normally
+            submitRepayment(formData);
+        }
+    });
+    
+    // Handle partial payment form submission
+    $('#partialPaymentForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        var formData = new FormData(this);
+        formData.append('loan_id', {{ $loan->id }});
+        formData.append('_token', '{{ csrf_token() }}');
+        
+        $.ajax({
+            url: '{{ route("admin.loans.repayments.partial") }}',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    $('#partialPaymentModal').modal('hide');
+                    Swal.fire('Success!', response.message, 'success').then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire('Error!', response.message, 'error');
+                }
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON?.message || 'An error occurred';
+                Swal.fire('Error!', message, 'error');
+            }
+        });
+    });
 });
 
-// Toggle mobile money network field
-function toggleMedium() {
-    var paymentType = document.getElementById('payment_type').value;
-    var mediumDiv = document.getElementById('medium_div');
-    var mediumSelect = document.getElementById('medium');
+function handleMobileMoneyPayment(formData) {
+    const memberPhone = $('#member_phone').val();
+    const amount = $('#payment_amount').val();
+    const network = $('#detected_network').val();
     
-    if(paymentType == '2') {
-        mediumDiv.style.display = 'block';
-        mediumSelect.required = true;
-    } else {
-        mediumDiv.style.display = 'none';
-        mediumSelect.required = false;
-    }
+    // Close repayment modal
+    $('#repaymentModal').modal('hide');
+    
+    // Show processing modal with countdown
+    Swal.fire({
+        title: 'Processing Mobile Money Payment',
+        html: `
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p><strong>${network}</strong></p>
+                <p>Phone: <strong>${memberPhone}</strong></p>
+                <p>Amount: <strong>UGX ${parseFloat(amount).toLocaleString()}</strong></p>
+                <hr>
+                <p class="text-info">
+                    <i class="fas fa-mobile-alt"></i> 
+                    Please check your phone and enter your Mobile Money PIN to complete the payment
+                </p>
+                <p class="text-muted">Time remaining: <span id="countdown">60</span>s</p>
+            </div>
+        `,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            // Submit the payment request
+            $.ajax({
+                url: '{{ route("admin.loans.repayments.store") }}',
+                method: 'POST',
+                data: formData,
+                success: function(response) {
+                    if (response.success) {
+                        const transactionId = response.transaction_id;
+                        
+                        // Start 60-second countdown and polling
+                        startPaymentPolling(transactionId, 60);
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Payment Initiation Failed',
+                            html: `
+                                <p>${response.message || 'Payment initiation failed'}</p>
+                                <p class="mt-3"><strong>Would you like to retry?</strong></p>
+                            `,
+                            showCancelButton: true,
+                            confirmButtonText: '<i class="fas fa-redo"></i> Retry Payment',
+                            cancelButtonText: 'Close',
+                            confirmButtonColor: '#3085d6',
+                            cancelButtonColor: '#6c757d'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                // Reopen the payment modal
+                                $('#repaymentModal').modal('show');
+                            } else {
+                                window.location.reload();
+                            }
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    const message = xhr.responseJSON?.message || 'An error occurred';
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment Error',
+                        html: `
+                            <p>${message}</p>
+                            <p class="mt-3"><strong>Would you like to retry?</strong></p>
+                        `,
+                        showCancelButton: true,
+                        confirmButtonText: '<i class="fas fa-redo"></i> Retry Payment',
+                        cancelButtonText: 'Close',
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#6c757d'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            // Reopen the payment modal
+                            $('#repaymentModal').modal('show');
+                        } else {
+                            window.location.reload();
+                        }
+                    });
+                }
+            });
+        }
+    });
 }
 
-// Open repayment modal
-function openRepayModal(scheduleId, dueDate, amount) {
-    $('#schedule_id').val(scheduleId);
-    $('#payment_amount').val(amount.toFixed(0));
-    $('#repaymentModal').modal('show');
+function startPaymentPolling(transactionId, maxSeconds) {
+    let secondsRemaining = maxSeconds;
+    const countdownElement = document.getElementById('countdown');
+    
+    // Update countdown every second
+    const countdownTimer = setInterval(() => {
+        secondsRemaining--;
+        if (countdownElement) {
+            countdownElement.textContent = secondsRemaining;
+        }
+        
+        if (secondsRemaining <= 0) {
+            clearInterval(countdownTimer);
+            clearInterval(pollingTimer);
+            handlePaymentTimeout();
+        }
+    }, 1000);
+    
+    // Poll every 3 seconds
+    const pollingTimer = setInterval(() => {
+        checkPaymentStatus(transactionId, pollingTimer, countdownTimer);
+    }, 3000);
 }
 
-// Handle partial payment form submission
-$('#partialPaymentForm').on('submit', function(e) {
-    e.preventDefault();
-    
-    var formData = new FormData(this);
-    formData.append('loan_id', {{ $loan->id }});
-    formData.append('_token', '{{ csrf_token() }}');
-    
+function checkPaymentStatus(transactionId, pollingTimer, countdownTimer) {
     $.ajax({
-        url: '{{ route("admin.loans.repayments.partial") }}',
+        url: '/admin/check-payment-status/' + transactionId,
+        method: 'GET',
+        success: function(response) {
+            if (response.status === 'SUCCESS' || response.status === 'COMPLETED') {
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Payment Successful!',
+                    html: `
+                        <p>Transaction ID: <strong>${transactionId}</strong></p>
+                        <p>The repayment has been recorded successfully.</p>
+                    `,
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else if (response.status === 'FAILED' || response.status === 'CANCELLED') {
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Payment Failed',
+                    html: `
+                        <p>${response.message || 'The mobile money payment was not completed'}</p>
+                        <p class="mt-3"><strong>Would you like to retry?</strong></p>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fas fa-redo"></i> Retry Payment',
+                    cancelButtonText: 'Close',
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#6c757d'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.reload();
+                    } else {
+                        window.location.reload();
+                    }
+                });
+            }
+            // If PENDING, continue polling
+        },
+        error: function() {
+            // Continue polling on error (network issue)
+            console.log('Polling error, retrying...');
+        }
+    });
+}
+
+function handlePaymentTimeout() {
+    Swal.fire({
+        icon: 'warning',
+        title: 'Payment Timeout',
+        html: `
+            <p>The 60-second verification period has expired.</p>
+            <p>If you completed the payment, it may still be processing.</p>
+            <p class="mt-3"><strong>What would you like to do?</strong></p>
+        `,
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: '<i class="fas fa-sync"></i> Check Progress',
+        denyButtonText: '<i class="fas fa-redo"></i> Retry Payment',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        denyButtonColor: '#f39c12',
+        cancelButtonColor: '#6c757d'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Check progress - continue polling for 30 more seconds
+            checkProgressManually();
+        } else if (result.isDenied) {
+            // Retry payment - reload page to start fresh
+            window.location.reload();
+        } else {
+            // Close - just reload
+            window.location.reload();
+        }
+    });
+}
+
+function checkProgressManually() {
+    const scheduleId = $('#schedule_id').val();
+    checkScheduleProgress(scheduleId);
+}
+
+// Check progress for a specific schedule
+function checkScheduleProgress(scheduleId) {
+    Swal.fire({
+        title: 'Checking Payment Status',
+        html: `
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Checking if payment has been processed...</p>
+                <p class="text-muted">Checking for <span id="manual_countdown">30</span> seconds...</p>
+            </div>
+        `,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            // Get the last pending transaction for this schedule
+            $.ajax({
+                url: '/admin/loans/repayments/get-pending-transaction/' + scheduleId,
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.transaction_id) {
+                        // Found pending transaction - start polling
+                        startManualPolling(response.transaction_id, 30);
+                    } else {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'No Pending Payment',
+                            text: response.message || 'No recent pending payment found for this schedule.',
+                            confirmButtonText: 'OK'
+                        }).then(() => {
+                            window.location.reload();
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Could not check payment status',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                }
+            });
+        }
+    });
+}
+
+function startManualPolling(transactionId, maxSeconds) {
+    let secondsRemaining = maxSeconds;
+    const countdownElement = document.getElementById('manual_countdown');
+    
+    // Update countdown every second
+    const countdownTimer = setInterval(() => {
+        secondsRemaining--;
+        if (countdownElement) {
+            countdownElement.textContent = secondsRemaining;
+        }
+        
+        if (secondsRemaining <= 0) {
+            clearInterval(countdownTimer);
+            clearInterval(pollingTimer);
+            
+            Swal.fire({
+                icon: 'info',
+                title: 'Still Processing',
+                text: 'Payment is still being processed. Please check again in a few moments.',
+                confirmButtonText: 'OK'
+            }).then(() => {
+                window.location.reload();
+            });
+        }
+    }, 1000);
+    
+    // Poll every 3 seconds
+    const pollingTimer = setInterval(() => {
+        checkPaymentStatus(transactionId, pollingTimer, countdownTimer);
+    }, 3000);
+}
+
+function submitRepayment(formData) {
+    $.ajax({
+        url: '{{ route("admin.loans.repayments.store") }}',
         method: 'POST',
         data: formData,
-        processData: false,
-        contentType: false,
         success: function(response) {
             if (response.success) {
-                $('#partialPaymentModal').modal('hide');
-                Swal.fire('Success!', response.message, 'success').then(() => {
+                Swal.fire('Success!', 'Repayment recorded successfully', 'success').then(() => {
                     window.location.reload();
                 });
             } else {
@@ -575,11 +978,11 @@ $('#partialPaymentForm').on('submit', function(e) {
             }
         },
         error: function(xhr) {
-            var message = xhr.responseJSON?.message || 'An error occurred';
+            const message = xhr.responseJSON?.message || 'An error occurred';
             Swal.fire('Error!', message, 'error');
         }
     });
-});
+}
 </script>
 @endpush
 @endsection

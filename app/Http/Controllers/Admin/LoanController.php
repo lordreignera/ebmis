@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Branch;
 use App\Models\LoanSchedule;
 use App\Models\Guarantor;
+use App\Models\Repayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -695,8 +696,9 @@ class LoanController extends Controller
             }
 
             // Check if loan is in correct status for rejection
-            if ($loan->status != 0) { // Assuming 0 = pending
-                $message = 'Loan is not in pending status and cannot be rejected.';
+            // Allow rejection of pending (0) or approved (1) loans only
+            if (!in_array($loan->status, [0, 1])) {
+                $message = 'Only pending or approved loans can be rejected. This loan has already been disbursed or completed.';
                 
                 if ($request->ajax() || $request->wantsJson()) {
                     return response()->json(['success' => false, 'message' => $message], 400);
@@ -1884,28 +1886,34 @@ class LoanController extends Controller
     /**
      * Get loan details for AJAX
      */
-    public function getLoanDetails(Loan $loan)
+    public function getLoanDetails($id, Request $request)
     {
-        $loan->load(['member', 'product', 'schedules' => function($query) {
-            $query->where('status', '!=', 1)->orderBy('payment_date'); // Not fully paid schedules
-        }]);
+        $loanType = $request->get('type', 'personal');
+        
+        // Determine which model to use
+        if ($loanType === 'group') {
+            $loan = GroupLoan::with(['group', 'product', 'branch'])->findOrFail($id);
+            $borrowerName = $loan->group->group_name ?? 'N/A';
+        } else {
+            $loan = PersonalLoan::with(['member', 'product', 'branch'])->findOrFail($id);
+            $borrowerName = ($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '');
+        }
 
-        $nextDue = $loan->schedules->first();
+        // Get loan schedules (unpaid)
+        $schedules = LoanSchedule::where('loan_id', $id)
+            ->where('status', 0) // Unpaid
+            ->orderBy('payment_date')
+            ->get();
 
-        return response()->json([
-            'success' => true,
-            'loan' => [
-                'id' => $loan->id,
-                'code' => $loan->code,
-                'member_name' => $loan->member->fname . ' ' . $loan->member->lname,
-                'principal' => $loan->principal,
-                'balance' => $loan->outstanding_balance ?? ($loan->principal - $loan->paid),
-                'next_due_date' => $nextDue ? $nextDue->payment_date : null,
-                'next_due_amount' => $nextDue ? $nextDue->payment : 0,
-                'status' => $loan->status,
-                'product_name' => $loan->product->name ?? 'N/A'
-            ]
-        ]);
+        $nextDue = $schedules->first();
+        
+        // Calculate total paid
+        $totalPaid = Repayment::where('loan_id', $id)
+            ->where('status', 1) // Successful payments
+            ->sum('amount');
+
+        // Return HTML view for modal
+        return view('admin.loans.partials.loan-details', compact('loan', 'borrowerName', 'schedules', 'nextDue', 'totalPaid', 'loanType'));
     }
 
     /**

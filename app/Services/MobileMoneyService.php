@@ -112,8 +112,12 @@ class MobileMoneyService
             // Detect network
             $network = $this->detectNetwork($formattedPhone);
             
+            // Sanitize recipient name for API requirements
+            $sanitizedName = $this->sanitizeName($recipientName);
+            
             Log::info("Mobile Money Send Request", [
-                'recipient' => $recipientName,
+                'recipient_original' => $recipientName,
+                'recipient_sanitized' => $sanitizedName,
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount,
@@ -122,7 +126,7 @@ class MobileMoneyService
             
             // Prepare request data using exact FlexiPay format
             $requestData = [
-                'name' => $recipientName,
+                'name' => $sanitizedName,
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount
@@ -147,8 +151,7 @@ class MobileMoneyService
                 $responseData = $response->json();
                 
                 if ($responseData && isset($responseData['statusCode'])) {
-                    $result = $this->processApiResponse($responseData, $formattedPhone, $amount);
-                    $result['type'] = 'disbursement';
+                    $result = $this->processApiResponse($responseData, $formattedPhone, $amount, 'disbursement');
                     $result['reference'] = $responseData['flexipayReferenceNumber'] ?? 'REF-' . time();
                     return $result;
                 } else {
@@ -198,8 +201,12 @@ class MobileMoneyService
             // Detect network
             $network = $this->detectNetwork($formattedPhone);
             
+            // Sanitize payer name for API requirements
+            $sanitizedName = $this->sanitizeName($payerName);
+            
             Log::info("Mobile Money Collection Request", [
-                'payer' => $payerName,
+                'payer_original' => $payerName,
+                'payer_sanitized' => $sanitizedName,
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount,
@@ -211,7 +218,7 @@ class MobileMoneyService
             
             // Prepare request data for collection
             $requestData = [
-                'name' => $payerName,
+                'name' => $sanitizedName,
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount
@@ -236,8 +243,7 @@ class MobileMoneyService
                 $responseData = $response->json();
                 
                 if ($responseData && isset($responseData['statusCode'])) {
-                    $result = $this->processApiResponse($responseData, $formattedPhone, $amount);
-                    $result['type'] = 'collection';
+                    $result = $this->processApiResponse($responseData, $formattedPhone, $amount, 'collection');
                     // Use transactionReferenceNumber (EbPxxx) as the main reference for tracking
                     $result['reference'] = $responseData['transactionReferenceNumber'] ?? ('REF-' . time());
                     $result['flexipay_ref'] = $responseData['flexipayReferenceNumber'] ?? '';
@@ -341,15 +347,48 @@ class MobileMoneyService
     /**
      * Process API response from FlexiPay
      */
-    private function processApiResponse(array $responseData, string $phone, float $amount): array
+    /**
+     * Sanitize name for FlexiPay API
+     * API requirements: max 128 characters, only alphabetic characters and spaces
+     */
+    private function sanitizeName(string $name): string
+    {
+        // Remove any non-alphabetic characters except spaces
+        $sanitized = preg_replace('/[^a-zA-Z\s]/', '', $name);
+        
+        // Remove extra spaces and trim
+        $sanitized = preg_replace('/\s+/', ' ', trim($sanitized));
+        
+        // Limit to 128 characters (FlexiPay limit)
+        if (strlen($sanitized) > 128) {
+            $sanitized = substr($sanitized, 0, 128);
+        }
+        
+        // If name is empty after sanitization, use default
+        if (empty($sanitized)) {
+            $sanitized = 'Customer';
+        }
+        
+        return $sanitized;
+    }
+    
+    private function processApiResponse(array $responseData, string $phone, float $amount, string $type = 'disbursement'): array
     {
         $statusCode = $responseData['statusCode'] ?? '';
         $statusDescription = $responseData['statusDescription'] ?? 'Unknown status';
         $requestId = $responseData['requestId'] ?? '';
         $flexipayRef = $responseData['flexipayReferenceNumber'] ?? '';
         
-        // Check if successful
-        $isSuccessful = ($statusCode === '00');
+        // For collections (repayments), treat any non-error response as successful initiation
+        // The actual payment confirmation will be checked via CheckTransactions
+        // Status codes: 00=success, 01=pending/processing, 02/03=failed
+        if ($type === 'collection') {
+            // For collections, consider 00 and 01 as successful initiation
+            $isSuccessful = in_array($statusCode, ['00', '01']) || !empty($requestId);
+        } else {
+            // For disbursements, only 00 is success
+            $isSuccessful = ($statusCode === '00');
+        }
         
         $result = [
             'success' => $isSuccessful,
@@ -360,14 +399,15 @@ class MobileMoneyService
             'transaction_reference' => $flexipayRef . '_' . $requestId,
             'phone' => $phone,
             'amount' => $amount,
-            'timestamp' => now()
+            'timestamp' => now(),
+            'type' => $type
         ];
         
         // Log transaction details
         if ($isSuccessful) {
-            Log::info("Mobile Money Disbursement Successful", $result);
+            Log::info("Mobile Money {$type} Successful/Initiated", $result);
         } else {
-            Log::warning("Mobile Money Disbursement Failed", $result);
+            Log::warning("Mobile Money {$type} Failed", $result);
         }
         
         return $result;

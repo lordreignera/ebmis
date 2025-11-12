@@ -196,6 +196,10 @@ Route::middleware([
         Route::post('/partial', [\App\Http\Controllers\Admin\RepaymentController::class, 'partialPayment'])->name('partial');
     });
     
+    // Mobile money payment status check (for 60-second polling)
+    Route::get('/check-payment-status/{transactionId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'checkPaymentStatus'])->name('check-payment-status');
+    Route::get('/loans/repayments/get-pending-transaction/{scheduleId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getPendingTransaction'])->name('loans.repayments.get-pending-transaction');
+    
     // Loan next schedule route
     Route::get('/loans/{id}/next-schedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'getNextSchedule'])->name('loans.next-schedule');
     

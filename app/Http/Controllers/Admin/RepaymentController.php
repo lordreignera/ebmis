@@ -604,8 +604,27 @@ class RepaymentController extends Controller
                         'added_by' => auth()->id(),
                         'raw_message' => serialize(['schedule_id' => $request->s_id, 'loan_id' => $request->loan_id, 'member_id' => $request->member_id]),
                     ]);
+                    
+                    DB::commit();
+                    
+                    // Return JSON for AJAX request
+                    if ($request->ajax() || $request->wantsJson()) {
+                        return response()->json([
+                            'success' => true,
+                            'message' => 'Mobile money collection initiated',
+                            'transaction_id' => $mobileMoneyResult['reference']
+                        ]);
+                    }
                 } else {
                     DB::rollBack();
+                    
+                    if ($request->ajax() || $request->wantsJson()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Mobile money collection failed: ' . $mobileMoneyResult['message']
+                        ], 400);
+                    }
+                    
                     return redirect()->back()
                         ->with('error', 'Mobile money collection failed: ' . $mobileMoneyResult['message']);
                 }
@@ -615,12 +634,10 @@ class RepaymentController extends Controller
                 $repaymentData['pay_status'] = 'SUCCESS';
                 $repaymentData['pay_message'] = 'Payment confirmed';
                 $repaymentData['txn_id'] = 'TXN-' . time();
-            }
-
-            $repayment = Repayment::create($repaymentData);
-
-            // Update loan and schedule if confirmed (not mobile money pending)
-            if ($repaymentData['status'] == 1) {
+                
+                $repayment = Repayment::create($repaymentData);
+                
+                // Update loan and schedule for confirmed payments
                 $loan->increment('paid', $request->amount);
                 $schedule->increment('paid', $request->amount);
                 
@@ -633,14 +650,19 @@ class RepaymentController extends Controller
                 if ($loan->paid >= ($loan->principal + $loan->interest)) {
                     $loan->update(['status' => 3]); // Completed
                 }
+                
+                DB::commit();
+                
+                // Return JSON for AJAX
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Repayment recorded successfully'
+                    ]);
+                }
             }
-
-            DB::commit();
 
             $message = "Repayment recorded successfully.";
-            if ($request->type == 2) {
-                $message = "Mobile money collection request sent to {$member->fname}. Payment pending confirmation.";
-            }
 
             return redirect()->route('admin.loans.repayments.schedules', $request->loan_id)
                 ->with('success', $message);
@@ -1273,5 +1295,139 @@ class RepaymentController extends Controller
         ]);
 
         return view('admin.repayments.receipt', compact('repayment'));
+    }
+
+    /**
+     * Get pending transaction for a schedule (for Check Progress button)
+     */
+    public function getPendingTransaction($scheduleId)
+    {
+        try {
+            // Find the most recent pending repayment for this schedule
+            $repayment = Repayment::where('schedule_id', $scheduleId)
+                ->where('status', 0) // Pending
+                ->orderBy('id', 'desc')
+                ->first();
+            
+            if ($repayment && $repayment->txn_id) {
+                return response()->json([
+                    'success' => true,
+                    'transaction_id' => $repayment->txn_id
+                ]);
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'No pending payment found for this schedule'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Get pending transaction error', [
+                'schedule_id' => $scheduleId,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error retrieving pending transaction'
+            ], 500);
+        }
+    }
+
+    /**
+     * Check mobile money payment status (for 60-second polling)
+     */
+    public function checkPaymentStatus($transactionId)
+    {
+        try {
+            // Check raw_payments table for transaction status
+            $rawPayment = RawPayment::where('trans_id', $transactionId)->first();
+            
+            if (!$rawPayment) {
+                return response()->json([
+                    'status' => 'UNKNOWN',
+                    'message' => 'Transaction not found'
+                ]);
+            }
+
+            // Check if payment status has been updated by CheckTransactions cron
+            // pay_status codes: '00' = pending, '01' = success, '02'/'03' = failed
+            if ($rawPayment->pay_status === '01') {
+                // Payment successful - update repayment and schedule
+                $repayment = Repayment::where('txn_id', $transactionId)->first();
+                
+                if ($repayment && $repayment->status == 0) {
+                    DB::beginTransaction();
+                    try {
+                        // Update repayment status
+                        $repayment->update([
+                            'status' => 1, // Confirmed
+                            'pay_status' => 'SUCCESS',
+                            'pay_message' => 'Payment confirmed via mobile money'
+                        ]);
+                        
+                        // Get loan and schedule
+                        $loan = Loan::find($repayment->loan_id);
+                        $schedule = LoanSchedule::find($repayment->schedule_id);
+                        
+                        if ($loan && $schedule) {
+                            // Update loan paid amount
+                            $loan->increment('paid', $repayment->amount);
+                            
+                            // Update schedule paid amount
+                            $schedule->increment('paid', $repayment->amount);
+                            
+                            // Decrement pending_count
+                            if ($schedule->pending_count > 0) {
+                                $schedule->decrement('pending_count');
+                            }
+                            
+                            // Check if schedule is fully paid
+                            if ($schedule->paid >= $schedule->payment) {
+                                $schedule->update(['status' => 1]); // Fully paid
+                            }
+                            
+                            // Check if loan is fully paid
+                            if ($loan->paid >= ($loan->principal + $loan->interest)) {
+                                $loan->update(['status' => 3]); // Completed
+                            }
+                        }
+                        
+                        DB::commit();
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+                        \Log::error('Payment status update failed', [
+                            'transaction_id' => $transactionId,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                return response()->json([
+                    'status' => 'SUCCESS',
+                    'message' => 'Payment completed successfully'
+                ]);
+            } elseif (in_array($rawPayment->pay_status, ['02', '03', 'FAILED'])) {
+                return response()->json([
+                    'status' => 'FAILED',
+                    'message' => $rawPayment->pay_message ?? 'Payment failed'
+                ]);
+            } else {
+                // Still pending
+                return response()->json([
+                    'status' => 'PENDING',
+                    'message' => 'Payment is being processed'
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Check payment status error', [
+                'transaction_id' => $transactionId,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'status' => 'ERROR',
+                'message' => 'Error checking payment status'
+            ], 500);
+        }
     }
 }
