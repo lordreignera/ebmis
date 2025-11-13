@@ -12,6 +12,8 @@ use App\Models\Branch;
 use App\Models\LoanSchedule;
 use App\Models\Guarantor;
 use App\Models\Repayment;
+use App\Models\Fee;
+use App\Models\FeeType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -959,6 +961,296 @@ class LoanController extends Controller
             DB::rollBack();
             $message = 'Failed to record payment: ' . $e->getMessage();
             return back()->with('error', $message);
+        }
+    }
+
+    /**
+     * Store loan upfront charge payment with mobile money collection
+     */
+    public function storeLoanMobileMoneyPayment(Request $request)
+    {
+        $validated = $request->validate([
+            'member_id' => 'required|exists:members,id',
+            'fees_type_id' => 'required|integer', // Product charge ID, not fee type
+            'loan_id' => 'required|exists:personal_loans,id',
+            'amount' => 'required|numeric|min:0.01',
+            'description' => 'nullable|string|max:100',
+            'member_phone' => 'required|string',
+            'member_name' => 'required|string',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $member = Member::findOrFail($validated['member_id']);
+            
+            // Get the product charge (not fee type)
+            $charge = \App\Models\ProductCharge::findOrFail($validated['fees_type_id']);
+
+            // Create fee record with pending status
+            $fee = Fee::create([
+                'member_id' => $validated['member_id'],
+                'loan_id' => $validated['loan_id'],
+                'fees_type_id' => $validated['fees_type_id'],
+                'payment_type' => 1, // Mobile Money
+                'payment_phone' => $validated['member_phone'], // Save actual phone used
+                'amount' => $validated['amount'],
+                'description' => $validated['description'] ?? 'Loan upfront charge payment',
+                'added_by' => auth()->id(),
+                'status' => 0, // Pending
+                'payment_status' => 'Pending',
+                'payment_description' => 'Awaiting mobile money payment',
+                'datecreated' => now()
+            ]);
+
+            // Generate payment reference
+            $payRef = 'LOAN-FEE-' . $fee->id . '-' . time();
+            $fee->update(['pay_ref' => $payRef]);
+
+            // Initialize Mobile Money Service
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+
+            // Collect money from member's phone
+            $result = $mobileMoneyService->collectMoney(
+                $validated['member_name'],
+                $validated['member_phone'],
+                $validated['amount'],
+                "Loan Charge: {$charge->name}"
+            );
+
+            // Store mobile money response and save the transaction reference
+            $transactionRef = $result['reference'] ?? $payRef;
+            $fee->update([
+                'payment_raw' => json_encode($result),
+                'payment_description' => $result['message'] ?? 'Mobile money request sent',
+                'pay_ref' => $transactionRef // Save the FlexiPay transaction reference
+            ]);
+
+            DB::commit();
+
+            // Return success with transaction reference for polling
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment request sent to member\'s phone',
+                'transaction_reference' => $transactionRef,
+                'fee_id' => $fee->id,
+                'status_code' => $result['status_code'] ?? 'PENDING'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            \Log::error("Mobile Money Loan Fee Payment Error", [
+                'member_id' => $validated['member_id'] ?? null,
+                'loan_id' => $validated['loan_id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initiate payment: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Check mobile money payment status for loan charges
+     */
+    public function checkLoanMmStatus($transactionRef)
+    {
+        try {
+            \Log::info("=== CHECKING LOAN MOBILE MONEY STATUS ===", [
+                'transaction_ref' => $transactionRef
+            ]);
+            
+            // Find the fee by transaction reference
+            $fee = Fee::where('pay_ref', $transactionRef)->first();
+            
+            if (!$fee) {
+                return response()->json([
+                    'success' => false,
+                    'status' => 'error',
+                    'message' => 'Payment not found'
+                ], 404);
+            }
+
+            // If already paid, return success
+            if ($fee->status == 1) {
+                return response()->json([
+                    'success' => true,
+                    'status' => 'completed',
+                    'message' => 'Payment completed successfully'
+                ]);
+            }
+
+            // Check status with FlexiPay
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef);
+
+            \Log::info("FlexiPay Status Result", [
+                'transaction_ref' => $transactionRef,
+                'status' => $statusResult['status'] ?? 'unknown',
+                'full_result' => $statusResult
+            ]);
+
+            // Update fee based on status
+            if ($statusResult['status'] === 'completed') {
+                $fee->update([
+                    'status' => 1, // Paid
+                    'payment_status' => 'Paid',
+                    'payment_description' => $statusResult['message'] ?? 'Payment completed',
+                    'payment_raw' => json_encode($statusResult)
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'status' => 'completed',
+                    'message' => 'Payment completed successfully'
+                ]);
+            } elseif ($statusResult['status'] === 'failed') {
+                // Check if payment is recent (within 2 minutes) - FlexiPay retries 3 times
+                $createdAt = \Carbon\Carbon::parse($fee->datecreated);
+                $ageInMinutes = $createdAt->diffInMinutes(now());
+                
+                if ($ageInMinutes < 2) {
+                    // Payment is recent - don't mark as failed yet, FlexiPay is still retrying
+                    \Log::info("Loan payment marked as pending - still within retry window", [
+                        'fee_id' => $fee->id,
+                        'age_minutes' => $ageInMinutes,
+                        'transaction_ref' => $transactionRef
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'status' => 'pending',
+                        'message' => 'Payment being processed - FlexiPay will retry if user cancelled'
+                    ]);
+                }
+                
+                // Payment is old enough - mark as failed
+                $fee->update([
+                    'status' => 2, // Failed
+                    'payment_status' => 'Failed',
+                    'payment_description' => $statusResult['message'] ?? 'Payment failed',
+                    'payment_raw' => json_encode($statusResult)
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'status' => 'failed',
+                    'message' => $statusResult['message'] ?? 'Payment failed'
+                ]);
+            }
+
+            // Still pending
+            return response()->json([
+                'success' => true,
+                'status' => 'pending',
+                'message' => 'Payment pending - waiting for member authorization'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Loan Mobile Money Status Check Error", [
+                'transaction_ref' => $transactionRef,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error',
+                'message' => 'Status check failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Retry a failed mobile money payment for loan charges
+     */
+    public function retryLoanMobileMoneyPayment(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'fee_id' => 'required|exists:fees,id',
+                'member_phone' => 'required|string',
+                'member_name' => 'required|string',
+                'amount' => 'required|numeric|min:0',
+                'description' => 'required|string'
+            ]);
+
+            // Find the fee
+            $fee = Fee::findOrFail($validated['fee_id']);
+
+            // Verify the fee is failed and is a mobile money payment
+            if ($fee->payment_type != 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only mobile money payments can be retried'
+                ], 400);
+            }
+
+            if ($fee->status == 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment has already been completed'
+                ], 400);
+            }
+
+            // Store original amount if this is first retry and amount changed
+            if (empty($fee->original_amount) && $fee->amount != $validated['amount']) {
+                $originalAmount = $fee->amount;
+            } else {
+                $originalAmount = $fee->original_amount;
+            }
+
+            // Reset fee to pending status
+            $fee->update([
+                'status' => 0, // Pending
+                'payment_status' => 'Pending',
+                'payment_description' => 'Retrying mobile money payment',
+                'payment_phone' => $validated['member_phone'],
+                'amount' => $validated['amount'],
+                'original_amount' => $originalAmount,
+                'datecreated' => now() // Reset timestamp for 2-minute grace period
+            ]);
+
+            // Generate new payment reference
+            $payRef = 'LOAN-RETRY-' . $fee->id . '-' . time();
+
+            // Initialize Mobile Money Service
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+
+            // Retry collection
+            $result = $mobileMoneyService->collectMoney(
+                $validated['member_name'],
+                $validated['member_phone'],
+                $validated['amount'],
+                $validated['description']
+            );
+
+            // Update with new transaction reference
+            $transactionRef = $result['reference'] ?? $payRef;
+            $fee->update([
+                'pay_ref' => $transactionRef,
+                'payment_raw' => json_encode($result),
+                'payment_description' => $result['message'] ?? 'Mobile money retry request sent'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment retry request sent to member\'s phone',
+                'transaction_reference' => $transactionRef,
+                'fee_id' => $fee->id
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Loan Mobile Money Retry Error", [
+                'fee_id' => $validated['fee_id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retry payment: ' . $e->getMessage()
+            ], 500);
         }
     }
 

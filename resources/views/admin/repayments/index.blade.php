@@ -285,29 +285,29 @@
                                 <span class="text-muted">{{ $repayment->txn_id ?? 'N/A' }}</span>
                             </td>
                             <td>
-                                @if($repayment->status == 1)
-                                    <span class="badge bg-success">Confirmed</span>
+                                @if($repayment->status == 1 || $repayment->payment_status == 'Completed')
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle me-1"></i>Completed
+                                    </span>
+                                @elseif($repayment->payment_status == 'Pending')
+                                    <span class="badge bg-warning">
+                                        <i class="fas fa-clock me-1"></i>Pending
+                                    </span>
+                                @elseif($repayment->payment_status == 'Failed')
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-times-circle me-1"></i>Failed
+                                    </span>
                                 @else
-                                    <span class="badge bg-warning">Pending</span>
+                                    <span class="badge bg-secondary">Unknown</span>
                                 @endif
                             </td>
                             <td>
-                                <div class="btn-group" role="group">
-                                    <a href="{{ route('admin.repayments.show', $repayment->id) }}" 
-                                       class="btn btn-outline-info btn-sm" title="View Details">
-                                        <i class="fas fa-eye"></i>
-                                    </a>
-                                    @if($repayment->status == 0)
-                                    <a href="{{ route('admin.repayments.edit', $repayment->id) }}" 
-                                       class="btn btn-outline-primary btn-sm" title="Edit">
-                                        <i class="fas fa-edit"></i>
-                                    </a>
-                                    @endif
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" 
-                                            onclick="printReceipt({{ $repayment->id }})" title="Print Receipt">
-                                        <i class="fas fa-receipt"></i>
-                                    </button>
-                                </div>
+                                <a href="{{ route('admin.repayments.receipt', $repayment->id) }}" 
+                                   class="btn btn-primary btn-sm" 
+                                   target="_blank"
+                                   title="View Receipt">
+                                    <i class="fas fa-receipt me-1"></i>Receipt
+                                </a>
                             </td>
                         </tr>
                         @empty
@@ -327,12 +327,76 @@
         </div>
         
         @if($repayments->hasPages())
-        <div class="card-footer bg-white">
+        <div class="card-footer bg-white py-3">
+            <!-- Modern Pagination -->
             <div class="d-flex justify-content-between align-items-center">
                 <div class="text-muted">
-                    Showing {{ $repayments->firstItem() }} to {{ $repayments->lastItem() }} of {{ $repayments->total() }} results
+                    Showing {{ $repayments->firstItem() ?? 0 }} to {{ $repayments->lastItem() ?? 0 }} of {{ $repayments->total() }} entries
                 </div>
-                {{ $repayments->appends(request()->query())->links() }}
+                <div class="d-flex align-items-center gap-2">
+                    @if ($repayments->onFirstPage())
+                        <span class="btn btn-sm btn-outline-secondary disabled">
+                            <i class="fas fa-chevron-left"></i>
+                            Previous
+                        </span>
+                    @else
+                        <a href="{{ $repayments->previousPageUrl() }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-chevron-left"></i>
+                            Previous
+                        </a>
+                    @endif
+
+                    <div class="d-flex gap-1">
+                        @php
+                            $currentPage = $repayments->currentPage();
+                            $lastPage = $repayments->lastPage();
+                            $start = max(1, $currentPage - 2);
+                            $end = min($lastPage, $currentPage + 2);
+                            
+                            // Adjust if at the beginning or end
+                            if ($currentPage <= 3) {
+                                $end = min(5, $lastPage);
+                            }
+                            if ($currentPage >= $lastPage - 2) {
+                                $start = max(1, $lastPage - 4);
+                            }
+                        @endphp
+
+                        @if($start > 1)
+                            <a href="{{ $repayments->url(1) }}" class="btn btn-sm btn-outline-primary">1</a>
+                            @if($start > 2)
+                                <span class="btn btn-sm btn-outline-secondary disabled">...</span>
+                            @endif
+                        @endif
+
+                        @for ($page = $start; $page <= $end; $page++)
+                            @if ($page == $currentPage)
+                                <span class="btn btn-sm btn-primary">{{ $page }}</span>
+                            @else
+                                <a href="{{ $repayments->url($page) }}" class="btn btn-sm btn-outline-primary">{{ $page }}</a>
+                            @endif
+                        @endfor
+
+                        @if($end < $lastPage)
+                            @if($end < $lastPage - 1)
+                                <span class="btn btn-sm btn-outline-secondary disabled">...</span>
+                            @endif
+                            <a href="{{ $repayments->url($lastPage) }}" class="btn btn-sm btn-outline-primary">{{ $lastPage }}</a>
+                        @endif
+                    </div>
+
+                    @if ($repayments->hasMorePages())
+                        <a href="{{ $repayments->nextPageUrl() }}" class="btn btn-sm btn-outline-primary">
+                            Next
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    @else
+                        <span class="btn btn-sm btn-outline-secondary disabled">
+                            Next
+                            <i class="fas fa-chevron-right"></i>
+                        </span>
+                    @endif
+                </div>
             </div>
         </div>
         @endif

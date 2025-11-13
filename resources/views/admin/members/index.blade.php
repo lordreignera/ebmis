@@ -233,13 +233,42 @@
                                 @endif
 
                                 <div class="pagination-numbers">
-                                    @foreach ($members->getUrlRange(1, $members->lastPage()) as $page => $url)
-                                        @if ($page == $members->currentPage())
+                                    @php
+                                        $currentPage = $members->currentPage();
+                                        $lastPage = $members->lastPage();
+                                        $start = max(1, $currentPage - 2);
+                                        $end = min($lastPage, $currentPage + 2);
+                                        
+                                        // Adjust if at the beginning or end
+                                        if ($currentPage <= 3) {
+                                            $end = min(5, $lastPage);
+                                        }
+                                        if ($currentPage >= $lastPage - 2) {
+                                            $start = max(1, $lastPage - 4);
+                                        }
+                                    @endphp
+
+                                    @if($start > 1)
+                                        <a href="{{ $members->url(1) }}" class="pagination-btn">1</a>
+                                        @if($start > 2)
+                                            <span class="pagination-btn" disabled>...</span>
+                                        @endif
+                                    @endif
+
+                                    @for ($page = $start; $page <= $end; $page++)
+                                        @if ($page == $currentPage)
                                             <span class="pagination-btn active">{{ $page }}</span>
                                         @else
-                                            <a href="{{ $url }}" class="pagination-btn">{{ $page }}</a>
+                                            <a href="{{ $members->url($page) }}" class="pagination-btn">{{ $page }}</a>
                                         @endif
-                                    @endforeach
+                                    @endfor
+
+                                    @if($end < $lastPage)
+                                        @if($end < $lastPage - 1)
+                                            <span class="pagination-btn" disabled>...</span>
+                                        @endif
+                                        <a href="{{ $members->url($lastPage) }}" class="pagination-btn">{{ $lastPage }}</a>
+                                    @endif
                                 </div>
 
                                 @if ($members->hasMorePages())

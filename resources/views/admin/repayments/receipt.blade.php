@@ -244,11 +244,24 @@
                     <span class="info-label">Loan Code:</span>
                     <span class="info-value">{{ $repayment->loan->code ?? 'N/A' }}</span>
                 </div>
-                @if($repayment->loan)
-                <div class="info-row">
-                    <span class="info-label">Loan Balance:</span>
-                    <span class="info-value">UGX {{ number_format($repayment->loan->outstanding_balance) }}</span>
-                </div>
+                @if($repayment->loan && $repayment->loan->status != 3)
+                    @php
+                        // Calculate remaining loan balance
+                        $totalLoanAmount = $repayment->loan->principal + $repayment->loan->interest;
+                        $totalPaid = \App\Models\Repayment::where('loan_id', $repayment->loan->id)
+                            ->where(function($query) {
+                                $query->where('status', 1)
+                                      ->orWhere('payment_status', 'Completed');
+                            })
+                            ->sum('amount');
+                        $remainingBalance = $totalLoanAmount - $totalPaid;
+                    @endphp
+                    <div class="info-row">
+                        <span class="info-label">Loan Balance:</span>
+                        <span class="info-value" style="color: {{ $remainingBalance > 0 ? '#dc3545' : '#28a745' }}; font-weight: bold;">
+                            UGX {{ number_format($remainingBalance, 0) }}
+                        </span>
+                    </div>
                 @endif
             </div>
         </div>

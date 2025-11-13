@@ -390,11 +390,21 @@ class DisbursementController extends Controller
             // Only validate mandatory fees if charge_type = 2 (upfront payment) AND it's a personal loan
             // If charge_type = 1, charges are deducted from disbursement, so no need to check
             if ($loan->charge_type == 2 && $loanType == 1) {
+                // 1. Check one-time mandatory fees (registration, etc.)
                 $mandatoryValidation = $this->validateMandatoryFees($loan->member);
                 if (!$mandatoryValidation['valid']) {
                     DB::rollBack();
                     return redirect()->back()
                         ->with('error', 'Mandatory fees required: ' . $mandatoryValidation['message'])
+                        ->withInput();
+                }
+                
+                // 2. Check that ALL upfront product charges have been paid
+                $upfrontChargesValidation = $this->validateUpfrontChargesPaid($loan);
+                if (!$upfrontChargesValidation['valid']) {
+                    DB::rollBack();
+                    return redirect()->back()
+                        ->with('error', 'Upfront charges not paid: ' . $upfrontChargesValidation['message'])
                         ->withInput();
                 }
             }
@@ -1352,7 +1362,45 @@ class DisbursementController extends Controller
 
         $unpaidMandatoryFees = [];
 
+        // Check if member has any previous loans (first loan vs subsequent loans)
+        $previousLoansCount = \App\Models\PersonalLoan::where('member_id', $member->id)
+                                ->where('status', '>=', 1) // Approved or higher
+                                ->count();
+        
+        $isFirstLoan = $previousLoansCount <= 1; // Current loan is the first
+
         foreach ($mandatoryFeeTypes as $feeType) {
+            // Check if this is a one-time registration fee
+            $isRegistrationFee = stripos($feeType->name, 'registration') !== false ||
+                               stripos($feeType->name, 'affiliation') !== false ||
+                               stripos($feeType->name, 'license') !== false;
+            
+            // Check if this is a situational fee (only applicable in specific scenarios)
+            $isSituationalFee = stripos($feeType->name, 'late') !== false ||
+                              stripos($feeType->name, 'restructuring') !== false ||
+                              stripos($feeType->name, 'penalty') !== false ||
+                              stripos($feeType->name, 'arrears') !== false;
+            
+            // Skip situational fees - these are only required when the situation occurs
+            if ($isSituationalFee) {
+                \Log::info("Skipping situational fee '{$feeType->name}' for loan disbursement", [
+                    'member_id' => $member->id,
+                    'fee_type' => $feeType->name,
+                    'reason' => 'Late fees and penalties only apply to existing loans, not new disbursements'
+                ]);
+                continue;
+            }
+            
+            // Skip one-time fees for subsequent loans (already paid in first loan)
+            if (!$isFirstLoan && $isRegistrationFee) {
+                \Log::info("Skipping one-time fee '{$feeType->name}' for subsequent loan", [
+                    'member_id' => $member->id,
+                    'fee_type' => $feeType->name,
+                    'previous_loans' => $previousLoansCount
+                ]);
+                continue; // Don't require this fee for subsequent loans
+            }
+            
             // Check if member has paid this mandatory fee
             $paidFee = Fee::where('member_id', $member->id)
                          ->where('fees_type_id', $feeType->id)
@@ -1369,6 +1417,83 @@ class DisbursementController extends Controller
                 'valid' => false,
                 'message' => implode(', ', $unpaidMandatoryFees) . 
                            '. These mandatory fees must be paid separately before any loan disbursement.'
+            ];
+        }
+
+        return ['valid' => true];
+    }
+
+    /**
+     * Validate that all upfront product charges have been paid for this specific loan
+     * Only applies when charge_type = 2 (upfront payment)
+     */
+    private function validateUpfrontChargesPaid($loan)
+    {
+        $product = $loan->product;
+        if (!$product) {
+            return ['valid' => false, 'message' => 'Product not found for this loan'];
+        }
+
+        // Get all active product charges
+        $productCharges = \App\Models\ProductCharge::where('product_id', $product->id)
+                                                   ->where('isactive', 1)
+                                                   ->get();
+
+        if ($productCharges->isEmpty()) {
+            return ['valid' => true]; // No charges to validate
+        }
+
+        $unpaidCharges = [];
+
+        foreach ($productCharges as $charge) {
+            // Calculate expected charge amount
+            $chargeAmount = 0;
+            switch ($charge->type) {
+                case 1: // Fixed
+                    $chargeAmount = floatval($charge->value ?? 0);
+                    break;
+                case 2: // Percentage
+                    $chargeAmount = ($loan->principal * floatval($charge->value ?? 0)) / 100;
+                    break;
+                case 3: // Per Day
+                    $chargeAmount = floatval($charge->value ?? 0) * intval($loan->period ?? 0);
+                    break;
+                case 4: // Per Month
+                    $months = ceil(intval($loan->period ?? 0) / 30);
+                    $chargeAmount = floatval($charge->value ?? 0) * $months;
+                    break;
+            }
+
+            // Check if this charge has been paid for this specific loan
+            $paidFee = Fee::where('loan_id', $loan->id)
+                         ->where('fees_type_id', $charge->id)
+                         ->where('status', 1) // Paid
+                         ->first();
+
+            if (!$paidFee) {
+                $unpaidCharges[] = $charge->name . ' (UGX ' . number_format($chargeAmount, 0) . ')';
+                
+                \Log::warning("Upfront charge not paid for loan", [
+                    'loan_id' => $loan->id,
+                    'charge_name' => $charge->name,
+                    'charge_id' => $charge->id,
+                    'expected_amount' => $chargeAmount
+                ]);
+            } else {
+                \Log::info("Upfront charge verified as paid", [
+                    'loan_id' => $loan->id,
+                    'charge_name' => $charge->name,
+                    'paid_amount' => $paidFee->amount,
+                    'fee_id' => $paidFee->id
+                ]);
+            }
+        }
+
+        if (!empty($unpaidCharges)) {
+            return [
+                'valid' => false,
+                'message' => implode(', ', $unpaidCharges) . 
+                           '. All upfront charges must be paid before disbursement. Please go back to the loan page and pay these charges.'
             ];
         }
 

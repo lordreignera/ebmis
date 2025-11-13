@@ -884,6 +884,12 @@ class RepaymentController extends Controller
         }
 
         // Default behavior: show personal and group loan repayments only
+        // Filter to show only successful repayments
+        $query->where(function($q) {
+            $q->where('status', 1) // Traditional successful payments
+              ->orWhere('payment_status', 'Completed'); // Mobile money completed payments
+        });
+        
         // Search functionality
         if ($request->has('search')) {
             $search = $request->search;
@@ -1427,6 +1433,442 @@ class RepaymentController extends Controller
             return response()->json([
                 'status' => 'ERROR',
                 'message' => 'Error checking payment status'
+            ], 500);
+        }
+    }
+
+    /**
+     * Store repayment with mobile money collection (Improved Flow)
+     */
+    public function storeMobileMoneyRepayment(Request $request)
+    {
+        $validated = $request->validate([
+            'loan_id' => 'required|exists:personal_loans,id',
+            's_id' => 'required|exists:loan_schedules,id',
+            'amount' => 'required|numeric|min:0.01',
+            'details' => 'required|string|max:500',
+            'member_phone' => 'required|string',
+            'member_name' => 'required|string',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $loan = Loan::findOrFail($validated['loan_id']);
+            $schedule = LoanSchedule::findOrFail($validated['s_id']);
+
+            // Create repayment record with pending status
+            $repayment = Repayment::create([
+                'type' => 2, // Mobile Money
+                'details' => $validated['details'],
+                'loan_id' => $validated['loan_id'],
+                'schedule_id' => $validated['s_id'],
+                'amount' => $validated['amount'],
+                'payment_phone' => $validated['member_phone'],
+                'payment_status' => 'Pending',
+                'date_created' => now(),
+                'added_by' => auth()->id(),
+                'platform' => 'Web',
+                'medium' => null, // Will be set after payment confirmation
+            ]);
+
+            // Generate payment reference
+            $payRef = 'REPAY-' . $repayment->id . '-' . time();
+            $repayment->update(['transaction_reference' => $payRef]);
+
+            // Initialize Mobile Money Service
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+
+            // Collect money from member's phone
+            $result = $mobileMoneyService->collectMoney(
+                $validated['member_name'],
+                $validated['member_phone'],
+                $validated['amount'],
+                "Loan Repayment: Schedule #" . $schedule->id
+            );
+
+            // Store mobile money response and save the transaction reference
+            $transactionRef = $result['reference'] ?? $payRef;
+            $repayment->update([
+                'payment_raw' => json_encode($result),
+                'transaction_reference' => $transactionRef
+            ]);
+
+            // Increment pending_count on the schedule (for UI display)
+            $schedule->increment('pending_count');
+
+            DB::commit();
+
+            // Return success with transaction reference for polling
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment request sent to member\'s phone',
+                'transaction_reference' => $transactionRef,
+                'repayment_id' => $repayment->id,
+                'status_code' => $result['status_code'] ?? 'PENDING'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            \Log::error("Mobile Money Repayment Error", [
+                'loan_id' => $validated['loan_id'] ?? null,
+                'schedule_id' => $validated['s_id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initiate payment: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Check mobile money payment status for repayments with late fee calculation
+     */
+    public function checkRepaymentMmStatus($transactionRef)
+    {
+        try {
+            \Log::info("=== CHECKING REPAYMENT MOBILE MONEY STATUS ===", [
+                'transaction_ref' => $transactionRef
+            ]);
+            
+            // Find the repayment by transaction reference
+            $repayment = Repayment::where('transaction_reference', $transactionRef)->first();
+            
+            if (!$repayment) {
+                return response()->json([
+                    'success' => false,
+                    'status' => 'error',
+                    'message' => 'Repayment not found'
+                ], 404);
+            }
+
+            // If already completed, return success
+            if ($repayment->payment_status === 'Completed') {
+                return response()->json([
+                    'success' => true,
+                    'status' => 'completed',
+                    'message' => 'Payment completed successfully'
+                ]);
+            }
+
+            // Check status with FlexiPay
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef);
+
+            \Log::info("FlexiPay Repayment Status Result", [
+                'transaction_ref' => $transactionRef,
+                'status' => $statusResult['status'] ?? 'unknown',
+                'full_result' => $statusResult
+            ]);
+
+            // Update repayment based on status
+            if ($statusResult['status'] === 'completed') {
+                DB::beginTransaction();
+                
+                try {
+                    $schedule = LoanSchedule::find($repayment->schedule_id);
+                    $loan = Loan::find($repayment->loan_id);
+                    
+                    // Update repayment status
+                    $repayment->update([
+                        'payment_status' => 'Completed',
+                        'payment_raw' => json_encode($statusResult)
+                    ]);
+
+                    // Decrement pending_count on the schedule
+                    if ($schedule->pending_count > 0) {
+                        $schedule->decrement('pending_count');
+                    }
+
+                    // Update schedule paid amount
+                    $schedule->increment('paid', $repayment->amount);
+                    
+                    // Check if schedule is fully paid
+                    if ($schedule->paid >= $schedule->payment) {
+                        $schedule->update(['status' => 1]); // Fully paid
+                    }
+
+                    // Calculate and apply late fees if payment is overdue
+                    $dueDate = \Carbon\Carbon::parse($schedule->payment_date);
+                    $paymentDate = now();
+                    
+                    if ($paymentDate->isAfter($dueDate)) {
+                        $daysLate = $dueDate->diffInDays($paymentDate);
+                        
+                        // Get late fee rate from product or use default
+                        $lateFeePerDay = $loan->product->late_fee_per_day ?? 1000; // UGX per day
+                        $lateFeeAmount = $daysLate * $lateFeePerDay;
+                        
+                        // Find or get late fee type
+                        $lateFeeType = \App\Models\FeeType::where('name', 'LIKE', '%late%')
+                                                         ->orWhere('name', 'LIKE', '%penalty%')
+                                                         ->first();
+                        
+                        if ($lateFeeType && $lateFeeAmount > 0) {
+                            // Create late fee record
+                            \App\Models\Fee::create([
+                                'member_id' => $repayment->member_id,
+                                'loan_id' => $loan->id,
+                                'fees_type_id' => $lateFeeType->id,
+                                'amount' => $lateFeeAmount,
+                                'description' => "Late payment fee: {$daysLate} days overdue for Schedule #{$schedule->id}",
+                                'status' => 0, // Unpaid
+                                'payment_type' => null,
+                                'added_by' => auth()->id(),
+                                'datecreated' => now()
+                            ]);
+                            
+                            // Update schedule with late fees
+                            $schedule->update([
+                                'penalty_amount' => ($schedule->penalty_amount ?? 0) + $lateFeeAmount
+                            ]);
+                            
+                            \Log::info("Late fee applied", [
+                                'repayment_id' => $repayment->id,
+                                'days_late' => $daysLate,
+                                'late_fee_amount' => $lateFeeAmount
+                            ]);
+                        }
+                    }
+                    
+                    // Check if loan is fully paid
+                    $totalPaid = Repayment::where('loan_id', $loan->id)
+                                         ->where('payment_status', 'Completed')
+                                         ->sum('amount');
+                    
+                    $totalDue = $loan->principal + $loan->interest;
+                    
+                    if ($totalPaid >= $totalDue) {
+                        $loan->update(['status' => 3]); // Completed
+                    }
+                    
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    \Log::error("Repayment status update failed", [
+                        'repayment_id' => $repayment->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'status' => 'completed',
+                    'message' => 'Payment completed successfully'
+                ]);
+                
+            } elseif ($statusResult['status'] === 'failed') {
+                // Check if payment is recent (within 2 minutes) - FlexiPay retries 3 times
+                $createdAt = \Carbon\Carbon::parse($repayment->date_created);
+                $ageInMinutes = $createdAt->diffInMinutes(now());
+                
+                if ($ageInMinutes < 2) {
+                    // Payment is recent - don't mark as failed yet
+                    \Log::info("Repayment marked as pending - still within retry window", [
+                        'repayment_id' => $repayment->id,
+                        'age_minutes' => $ageInMinutes,
+                        'transaction_ref' => $transactionRef
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'status' => 'pending',
+                        'message' => 'Payment being processed - FlexiPay will retry if user cancelled'
+                    ]);
+                }
+                
+                // Payment is old enough - mark as failed
+                $repayment->update([
+                    'payment_status' => 'Failed',
+                    'payment_raw' => json_encode($statusResult)
+                ]);
+
+                // Decrement pending_count on the schedule since payment failed
+                if ($schedule->pending_count > 0) {
+                    $schedule->decrement('pending_count');
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'status' => 'failed',
+                    'message' => $statusResult['message'] ?? 'Payment failed'
+                ]);
+            }
+
+            // Still pending
+            return response()->json([
+                'success' => true,
+                'status' => 'pending',
+                'message' => 'Payment pending - waiting for member authorization'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Repayment Mobile Money Status Check Error", [
+                'transaction_ref' => $transactionRef,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error',
+                'message' => 'Status check failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Retry a failed mobile money repayment
+     */
+    public function retryMobileMoneyRepayment(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'repayment_id' => 'required|exists:repayments,id',
+                'member_phone' => 'required|string',
+                'member_name' => 'required|string',
+                'amount' => 'required|numeric|min:0',
+                'details' => 'required|string'
+            ]);
+
+            // Find the repayment
+            $repayment = Repayment::findOrFail($validated['repayment_id']);
+
+            // Verify the repayment is failed/pending and is mobile money
+            if ($repayment->type != 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only mobile money payments can be retried'
+                ], 400);
+            }
+
+            if ($repayment->payment_status === 'Completed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment has already been completed'
+                ], 400);
+            }
+
+            // Store original amount if this is first retry and amount changed
+            if (empty($repayment->original_amount) && $repayment->amount != $validated['amount']) {
+                $originalAmount = $repayment->amount;
+            } else {
+                $originalAmount = $repayment->original_amount;
+            }
+
+            // Reset repayment to pending status
+            $repayment->update([
+                'payment_status' => 'Pending',
+                'details' => $validated['details'],
+                'payment_phone' => $validated['member_phone'],
+                'amount' => $validated['amount'],
+                'original_amount' => $originalAmount,
+                'date_created' => now() // Reset timestamp for 2-minute grace period
+            ]);
+
+            // Generate new payment reference
+            $payRef = 'REPAY-RETRY-' . $repayment->id . '-' . time();
+
+            // Initialize Mobile Money Service
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+
+            // Retry collection
+            $result = $mobileMoneyService->collectMoney(
+                $validated['member_name'],
+                $validated['member_phone'],
+                $validated['amount'],
+                $validated['details']
+            );
+
+            // Update with new transaction reference
+            $transactionRef = $result['reference'] ?? $payRef;
+            $repayment->update([
+                'transaction_reference' => $transactionRef,
+                'payment_raw' => json_encode($result)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment retry request sent to member\'s phone',
+                'transaction_reference' => $transactionRef,
+                'repayment_id' => $repayment->id
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Repayment Mobile Money Retry Error", [
+                'repayment_id' => $validated['repayment_id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retry payment: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get repayment details for retry modal
+     */
+    public function getRepayment($id)
+    {
+        try {
+            $repayment = Repayment::with(['loan', 'schedule'])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'repayment' => [
+                    'id' => $repayment->id,
+                    'amount' => $repayment->amount,
+                    'payment_phone' => $repayment->payment_phone,
+                    'details' => $repayment->details,
+                    'payment_status' => $repayment->payment_status,
+                    'type' => $repayment->type,
+                    'original_amount' => $repayment->original_amount,
+                    'transaction_reference' => $repayment->transaction_reference
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Get Repayment Error", [
+                'id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load repayment details'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get pending mobile money repayments for a schedule
+     */
+    public function getSchedulePendingRepayments($scheduleId)
+    {
+        try {
+            $pendingRepayments = Repayment::where('schedule_id', $scheduleId)
+                ->where('payment_status', 'Pending')
+                ->where('type', 2) // Mobile Money type
+                ->orderBy('date_created', 'desc')
+                ->get(['id', 'amount', 'payment_phone', 'transaction_reference', 'date_created']);
+
+            return response()->json([
+                'success' => true,
+                'pending_repayments' => $pendingRepayments
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Get Schedule Pending Repayments Error", [
+                'schedule_id' => $scheduleId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load pending repayments'
             ], 500);
         }
     }

@@ -658,13 +658,65 @@
                                                 @elseif($chargePaidFee)
                                                     <span class="badge bg-success"><i class="mdi mdi-check"></i> Paid</span>
                                                 @else
-                                                    <span class="badge bg-danger"><i class="mdi mdi-close"></i> Unpaid</span>
+                                                    @php
+                                                        // Check if there's a pending mobile money payment
+                                                        $pendingFee = \App\Models\Fee::where('loan_id', $loan->id)
+                                                                       ->where('fees_type_id', $charge->id)
+                                                                       ->where('status', 0) // Pending
+                                                                       ->where('payment_type', 1) // Mobile Money
+                                                                       ->first();
+                                                        
+                                                        $failedFee = \App\Models\Fee::where('loan_id', $loan->id)
+                                                                       ->where('fees_type_id', $charge->id)
+                                                                       ->where('status', 2) // Failed
+                                                                       ->where('payment_type', 1) // Mobile Money
+                                                                       ->first();
+                                                    @endphp
+                                                    
+                                                    @if($pendingFee)
+                                                        <span class="badge bg-warning text-dark"><i class="mdi mdi-timer-sand"></i> Processing</span>
+                                                    @elseif($failedFee)
+                                                        <span class="badge bg-danger"><i class="mdi mdi-close-circle"></i> Failed</span>
+                                                    @else
+                                                        <span class="badge bg-danger"><i class="mdi mdi-close"></i> Unpaid</span>
+                                                    @endif
                                                 @endif
                                             </td>
                                             <td class="text-center">
                                                 @if($loan->charge_type == 1)
                                                     {{-- For deducted charges, no action needed --}}
                                                     <small class="text-muted">Auto-deducted</small>
+                                                @elseif($chargePaidFee)
+                                                    <small class="text-success">✓ Paid</small>
+                                                @elseif($failedFee && $loan->status == 0)
+                                                    {{-- Show retry button for failed payments --}}
+                                                    <button class="btn btn-sm btn-danger retry-loan-fee-btn" 
+                                                            data-fee-id="{{ $failedFee->id }}"
+                                                            data-fee-name="{{ $charge->name }}"
+                                                            data-fee-amount="{{ $chargeAmount }}"
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#retryLoanFeeModal">
+                                                        <i class="mdi mdi-refresh"></i> Retry
+                                                    </button>
+                                                @elseif($pendingFee && $loan->status == 0)
+                                                    {{-- Show check status and cancel/retry buttons for pending payments --}}
+                                                    <div class="btn-group" role="group">
+                                                        <button class="btn btn-sm btn-warning check-loan-fee-status-btn" 
+                                                                data-transaction-ref="{{ $pendingFee->pay_ref }}"
+                                                                data-fee-id="{{ $pendingFee->id }}"
+                                                                data-fee-name="{{ $charge->name }}">
+                                                            <i class="mdi mdi-refresh"></i> Check Status
+                                                        </button>
+                                                        <button class="btn btn-sm btn-danger cancel-and-retry-loan-fee-btn" 
+                                                                data-fee-id="{{ $pendingFee->id }}"
+                                                                data-fee-name="{{ $charge->name }}"
+                                                                data-fee-amount="{{ $chargeAmount }}"
+                                                                data-bs-toggle="modal" 
+                                                                data-bs-target="#retryLoanFeeModal"
+                                                                title="Cancel this pending payment and retry">
+                                                            <i class="mdi mdi-close-circle"></i> Cancel & Retry
+                                                        </button>
+                                                    </div>
                                                 @elseif(!$chargePaidFee && $loan->status == 0)
                                                     <button class="btn btn-sm btn-warning pay-single-fee-btn" 
                                                             data-fee-id="{{ $charge->id }}"
@@ -674,8 +726,6 @@
                                                             data-bs-target="#paySingleFeeModal">
                                                         <i class="mdi mdi-cash"></i> Pay
                                                     </button>
-                                                @elseif($chargePaidFee)
-                                                    <small class="text-success">✓ Paid</small>
                                                 @else
                                                     -
                                                 @endif
@@ -729,6 +779,10 @@
                                             <td class="text-center">
                                                 @if($fee['paid'])
                                                     <span class="badge bg-success"><i class="mdi mdi-check"></i> Paid</span>
+                                                @elseif($fee['status'] == 0 && $fee['payment_type'] == 1)
+                                                    <span class="badge bg-warning text-dark"><i class="mdi mdi-timer-sand"></i> Processing</span>
+                                                @elseif($fee['status'] == 2 && $fee['payment_type'] == 1)
+                                                    <span class="badge bg-danger"><i class="mdi mdi-close-circle"></i> Failed</span>
                                                 @else
                                                     <span class="badge bg-danger"><i class="mdi mdi-close"></i> Not Paid</span>
                                                 @endif
@@ -1304,10 +1358,115 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
+<!-- Retry Loan Fee Payment Modal -->
+<div class="modal fade" id="retryLoanFeeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: #dc3545; color: white;">
+                <h5 class="modal-title"><i class="mdi mdi-refresh me-2"></i>Retry Loan Charge Payment</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="retryLoanFeeForm">
+                @csrf
+                <input type="hidden" name="fee_id" id="retryLoanFeeId">
+                <input type="hidden" name="member_name" value="{{ $member ? $member->fname . ' ' . $member->lname : '' }}">
+                
+                <div class="modal-body" style="background-color: white;">
+                    <div class="alert alert-warning" id="retryLoanFeeAlertMessage">
+                        <i class="mdi mdi-information me-1"></i>
+                        <span id="retryAlertText">Previous payment attempt failed or was cancelled. You can retry with updated phone number or amount.</span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Fee Name:</label>
+                        <div class="form-control-plaintext fw-bold" id="retryLoanFeeName"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Phone Number <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="member_phone" id="retryLoanFeePhone" 
+                               value="{{ $member->contact ?? '' }}" required 
+                               placeholder="256XXXXXXXXX">
+                        <small class="text-muted">Update if member wants to use a different number</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Amount (UGX) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="amount" id="retryLoanFeeAmount" 
+                               step="0.01" min="0" required>
+                        <small class="text-muted">Adjust amount if needed (e.g., partial payment)</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Description <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="description" id="retryLoanFeeDescription" required>
+                    </div>
+
+                    <!-- Processing Alert for Retry -->
+                    <div id="retryLoanFeeMmProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="retryLoanFeeMmStatusText">Sending payment request...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="background-color: white;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="retryLoanFeeSubmitBtn">
+                        <i class="mdi mdi-refresh me-1"></i> Retry Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('scripts')
 <script>
+// Auto-check pending payments on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Find all pending fees and check their status
+    const checkStatusButtons = document.querySelectorAll('.check-loan-fee-status-btn');
+    
+    if (checkStatusButtons.length > 0) {
+        console.log(`Found ${checkStatusButtons.length} pending payment(s). Auto-checking status...`);
+        
+        // Auto-check status for each pending payment after 2 seconds
+        setTimeout(() => {
+            checkStatusButtons.forEach(btn => {
+                const transactionRef = btn.dataset.transactionRef;
+                const feeId = btn.dataset.feeId;
+                
+                fetch(`/admin/loans/check-mm-status/${transactionRef}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        // Status changed - reload page to update UI
+                        console.log(`Payment status changed to ${data.status}. Reloading page...`);
+                        location.reload();
+                    } else {
+                        console.log(`Payment ${transactionRef} still pending`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Auto status check error:', error);
+                });
+            });
+        }, 2000); // Wait 2 seconds after page load
+    }
+});
+
 // Show/Hide Mobile Money section based on payment method for loan fees
 document.getElementById('loanFeePaymentMethod').addEventListener('change', function() {
     const paymentType = this.value;
@@ -1351,7 +1510,7 @@ function processLoanFeeMobileMoneyPayment() {
     formData.append('is_mobile_money', '1');
     
     // Send AJAX request
-    fetch('{{ route("admin.fees.store-mobile-money") }}', {
+    fetch('{{ route("admin.loans.store-mobile-money") }}', {
         method: 'POST',
         body: formData,
         headers: {
@@ -1362,11 +1521,15 @@ function processLoanFeeMobileMoneyPayment() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Payment request sent successfully
-            statusText.textContent = 'Payment request sent! Checking status...';
+            // Payment request sent successfully - show 30-second wait message
+            statusText.innerHTML = '<i class="mdi mdi-cellphone-check me-1"></i> USSD prompt sent to member\'s phone! Waiting 30 seconds before checking status...';
             
-            // Start polling for payment status
-            pollLoanFeePaymentStatus(data.transaction_reference, data.fee_id);
+            // Wait 30 seconds before starting to poll
+            setTimeout(() => {
+                statusText.innerHTML = '<i class="mdi mdi-refresh me-1"></i> Checking payment status...';
+                // Start polling for payment status (120 seconds max, 5-second intervals)
+                pollLoanFeePaymentStatus(data.transaction_reference, data.fee_id);
+            }, 30000); // 30 seconds
         } else {
             // Request failed
             processingAlert.className = 'alert alert-danger';
@@ -1393,13 +1556,13 @@ function processLoanFeeMobileMoneyPayment() {
 }
 
 function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
-    const maxAttempts = 60; // Poll for up to 60 seconds
+    const maxAttempts = 24; // Poll for up to 120 seconds (24 checks × 5 seconds)
     const processingAlert = document.getElementById('loanFeeMmProcessingAlert');
     const statusText = document.getElementById('loanFeeMmStatusText');
     
     if (attempts >= maxAttempts) {
         processingAlert.className = 'alert alert-warning';
-        statusText.textContent = 'Payment status check timed out. Please check transaction status manually.';
+        statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Payment status check timed out. The payment may still be processing. Page will refresh to check final status...';
         
         setTimeout(() => {
             location.reload();
@@ -1408,7 +1571,7 @@ function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
     }
     
     // Check transaction status
-    fetch(`/admin/fees/check-mm-status/${transactionRef}`, {
+    fetch(`/admin/loans/check-mm-status/${transactionRef}`, {
         method: 'GET',
         headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
@@ -1420,7 +1583,7 @@ function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
         if (data.status === 'completed') {
             // Payment successful
             processingAlert.className = 'alert alert-success';
-            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle me-1"></i> Payment received successfully! Reloading...';
             
             setTimeout(() => {
                 location.reload();
@@ -1429,27 +1592,164 @@ function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
         } else if (data.status === 'failed') {
             // Payment failed
             processingAlert.className = 'alert alert-danger';
-            statusText.textContent = 'Payment failed: ' + (data.message || 'Transaction declined');
+            statusText.innerHTML = '<i class="mdi mdi-close-circle me-1"></i> Payment failed: ' + (data.message || 'Transaction declined') + '. Reloading...';
             
             setTimeout(() => {
                 location.reload();
             }, 3000);
             
         } else {
-            // Still pending, continue polling
-            statusText.textContent = `Waiting for member to authorize payment... (${attempts + 1}s)`;
+            // Still pending, continue polling every 5 seconds
+            const elapsedSeconds = (attempts + 1) * 5;
+            statusText.innerHTML = `<i class="mdi mdi-timer-sand me-1"></i> Waiting for member to authorize payment... (${elapsedSeconds}s elapsed)`;
             setTimeout(() => {
                 pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1);
-            }, 1000);
+            }, 5000); // Check every 5 seconds
         }
     })
     .catch(error => {
         console.error('Status check error:', error);
         // Continue polling even on error
+        const elapsedSeconds = (attempts + 1) * 5;
+        statusText.innerHTML = `<i class="mdi mdi-timer-sand me-1"></i> Checking status... (${elapsedSeconds}s elapsed)`;
         setTimeout(() => {
             pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1);
-        }, 1000);
+        }, 5000);
     });
 }
+
+// Populate retry modal when retry button is clicked (handles both failed and pending/cancel)
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.retry-loan-fee-btn') || e.target.closest('.cancel-and-retry-loan-fee-btn')) {
+        const btn = e.target.closest('.retry-loan-fee-btn') || e.target.closest('.cancel-and-retry-loan-fee-btn');
+        const feeId = btn.dataset.feeId;
+        const feeName = btn.dataset.feeName;
+        const feeAmount = btn.dataset.feeAmount;
+        const isPending = btn.classList.contains('cancel-and-retry-loan-fee-btn');
+        
+        document.getElementById('retryLoanFeeId').value = feeId;
+        document.getElementById('retryLoanFeeName').textContent = feeName;
+        document.getElementById('retryLoanFeeAmount').value = feeAmount;
+        
+        // Update alert message based on payment status
+        const alertText = document.getElementById('retryAlertText');
+        if (isPending) {
+            alertText.innerHTML = '<strong>Cancelling pending payment:</strong> This payment is still pending (member didn\'t authorize it). This will cancel it and start a fresh payment request.';
+            document.getElementById('retryLoanFeeDescription').value = `Cancelled pending payment - Retry: ${feeName}`;
+        } else {
+            alertText.innerHTML = 'Previous payment attempt failed. You can retry with updated phone number or amount.';
+            document.getElementById('retryLoanFeeDescription').value = `Retry: Loan charge payment - ${feeName}`;
+        }
+    }
+});
+
+// Handle retry form submission
+document.getElementById('retryLoanFeeForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = document.getElementById('retryLoanFeeSubmitBtn');
+    const processingAlert = document.getElementById('retryLoanFeeMmProcessingAlert');
+    const statusText = document.getElementById('retryLoanFeeMmStatusText');
+    
+    // Disable submit button and show processing
+    submitBtn.disabled = true;
+    processingAlert.style.display = 'block';
+    statusText.textContent = 'Sending retry payment request...';
+    
+    // Gather form data
+    const formData = new FormData(form);
+    
+    // Send retry request
+    fetch('{{ route("admin.loans.retry-mobile-money") }}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Retry request sent successfully - show 30-second wait message
+            statusText.innerHTML = '<i class="mdi mdi-cellphone-check me-1"></i> USSD prompt sent! Waiting 30 seconds before checking status...';
+            
+            // Wait 30 seconds before starting to poll
+            setTimeout(() => {
+                statusText.innerHTML = '<i class="mdi mdi-refresh me-1"></i> Checking payment status...';
+                // Start polling (using same function, 120s max, 5s intervals)
+                pollLoanFeePaymentStatus(data.transaction_reference, data.fee_id);
+            }, 30000); // 30 seconds
+        } else {
+            // Retry failed
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to retry payment');
+            submitBtn.disabled = false;
+            
+            setTimeout(() => {
+                processingAlert.style.display = 'none';
+                processingAlert.className = 'alert alert-warning';
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Retry error:', error);
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+        
+        setTimeout(() => {
+            processingAlert.style.display = 'none';
+            processingAlert.className = 'alert alert-warning';
+        }, 5000);
+    });
+});
+
+// Handle "Check Status" button for pending payments
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.check-loan-fee-status-btn')) {
+        const btn = e.target.closest('.check-loan-fee-status-btn');
+        const transactionRef = btn.dataset.transactionRef;
+        const feeId = btn.dataset.feeId;
+        const feeName = btn.dataset.feeName;
+        
+        // Disable button and show loading
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Checking...';
+        
+        // Check status immediately
+        fetch(`/admin/loans/check-mm-status/${transactionRef}`, {
+            method: 'GET',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'completed') {
+                // Payment successful - reload page
+                alert('Payment completed successfully!');
+                location.reload();
+            } else if (data.status === 'failed') {
+                // Payment failed - reload to show retry button
+                alert('Payment failed: ' + (data.message || 'Transaction declined') + '. You can now retry the payment.');
+                location.reload();
+            } else {
+                // Still pending
+                alert('Payment is still pending. Please wait for the member to authorize the payment, or check again in a few moments.');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="mdi mdi-refresh"></i> Check Status';
+            }
+        })
+        .catch(error => {
+            console.error('Status check error:', error);
+            alert('Error checking status. Please try again.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-refresh"></i> Check Status';
+        });
+    }
+});
 </script>
 @endpush

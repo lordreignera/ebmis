@@ -22,7 +22,11 @@ class Repayment extends Model
         'raw_message',
         'pay_status',
         'txn_id',
-        'pay_message'
+        'pay_message',
+        'payment_status',
+        'transaction_reference',
+        'payment_phone',
+        'original_amount'
     ];
 
     protected $dates = [

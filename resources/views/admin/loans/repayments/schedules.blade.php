@@ -331,16 +331,19 @@
                                                 {{-- Paid - Show Receipt Button --}}
                                                 @php
                                                     $repayment = \App\Models\Repayment::where('schedule_id', $schedule->id)
-                                                        ->where('status', 1)
+                                                        ->where(function($query) {
+                                                            $query->where('status', 1)
+                                                                  ->orWhere('payment_status', 'Completed');
+                                                        })
                                                         ->orderBy('id', 'desc')
                                                         ->first();
                                                 @endphp
                                                 @if($repayment)
                                                     <a href="{{ route('admin.repayments.receipt', $repayment->id) }}" 
-                                                       class="btn btn-info btn-sm px-2 py-1" 
+                                                       class="btn btn-primary btn-sm px-2 py-1" 
                                                        target="_blank"
                                                        title="View Receipt">
-                                                        <i class="bi bi-receipt"></i> Receipt
+                                                        <i class="fas fa-receipt"></i> Receipt
                                                     </a>
                                                 @else
                                                     <span class="text-muted">Paid</span>
@@ -432,9 +435,23 @@
                 @csrf
                 <input type="hidden" name="loan_id" value="{{ $loan->id }}">
                 <input type="hidden" name="member_id" value="{{ $loan->member_id }}">
+                <input type="hidden" name="member_name" value="{{ $loan->member->fname ?? '' }} {{ $loan->member->lname ?? '' }}">
                 <input type="hidden" id="schedule_id" name="s_id">
                 
                 <div class="modal-body bg-white">
+                    <!-- Mobile Money Processing Alert (Hidden by default) -->
+                    <div id="repaymentMmProcessingAlert" class="alert alert-info" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="repaymentMmStatusText">Processing payment...</span>
+                        </div>
+                        <div class="mt-2">
+                            <small id="repaymentMmCountdown" class="text-muted"></small>
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label text-dark">Payment Amount</label>
                         <input type="text" class="form-control bg-white" id="payment_amount" name="amount" required>
@@ -459,7 +476,7 @@
                     
                     <div class="mb-3" id="phone_div" style="display: none;">
                         <label class="form-label text-dark">Phone Number</label>
-                        <input type="text" class="form-control bg-white" id="member_phone" readonly value="{{ $loan->member->contact ?? '' }}">
+                        <input type="text" class="form-control bg-white" id="member_phone" name="member_phone" readonly value="{{ $loan->member->contact ?? '' }}">
                     </div>
                     
                     <div class="mb-3">
@@ -473,7 +490,8 @@
                     </div>
                 </div>
                 
-                <div class="modal-footer bg-white border-0">
+                <div class="modal-footer bg-white border-0" id="repaymentModalFooter">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add Record</button>
                 </div>
             </form>
@@ -681,252 +699,486 @@ function handleMobileMoneyPayment(formData) {
     const amount = $('#payment_amount').val();
     const network = $('#detected_network').val();
     
-    // Close repayment modal
-    $('#repaymentModal').modal('hide');
+    // Validate phone number
+    if (!memberPhone) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Missing Phone Number',
+            text: 'Member phone number is required for mobile money payments.',
+            confirmButtonText: 'OK'
+        }).then(() => {
+            $('#repaymentModal').modal('show');
+        });
+        return;
+    }
     
-    // Show processing modal with countdown
-    Swal.fire({
-        title: 'Processing Mobile Money Payment',
-        html: `
-            <div class="text-center">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p><strong>${network}</strong></p>
-                <p>Phone: <strong>${memberPhone}</strong></p>
-                <p>Amount: <strong>UGX ${parseFloat(amount).toLocaleString()}</strong></p>
-                <hr>
-                <p class="text-info">
-                    <i class="fas fa-mobile-alt"></i> 
-                    Please check your phone and enter your Mobile Money PIN to complete the payment
-                </p>
-                <p class="text-muted">Time remaining: <span id="countdown">60</span>s</p>
-            </div>
-        `,
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        didOpen: () => {
-            // Submit the payment request
-            $.ajax({
-                url: '{{ route("admin.loans.repayments.store") }}',
-                method: 'POST',
-                data: formData,
-                success: function(response) {
-                    if (response.success) {
-                        const transactionId = response.transaction_id;
-                        
-                        // Start 60-second countdown and polling
-                        startPaymentPolling(transactionId, 60);
-                    } else {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Initiation Failed',
-                            html: `
-                                <p>${response.message || 'Payment initiation failed'}</p>
-                                <p class="mt-3"><strong>Would you like to retry?</strong></p>
-                            `,
-                            showCancelButton: true,
-                            confirmButtonText: '<i class="fas fa-redo"></i> Retry Payment',
-                            cancelButtonText: 'Close',
-                            confirmButtonColor: '#3085d6',
-                            cancelButtonColor: '#6c757d'
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                // Reopen the payment modal
-                                $('#repaymentModal').modal('show');
-                            } else {
-                                window.location.reload();
-                            }
-                        });
+    // Keep modal open and prevent dismissal
+    const modal = $('#repaymentModal');
+    modal.modal({
+        backdrop: 'static',
+        keyboard: false
+    });
+    
+    // Hide the close button and footer during processing
+    $('#repaymentModal .btn-close').hide();
+    $('#repaymentModalFooter').hide();
+    
+    // Show processing alert in modal
+    const processingAlert = $('#repaymentMmProcessingAlert');
+    const statusText = $('#repaymentMmStatusText');
+    const countdown = $('#repaymentMmCountdown');
+    
+    // Disable form inputs
+    $('#repaymentForm input, #repaymentForm select, #repaymentForm textarea').prop('disabled', true);
+    
+    // Show processing alert at the top
+    processingAlert.removeClass('alert-info alert-success alert-warning alert-danger').addClass('alert-info').show();
+    statusText.text('Sending payment request to member\'s phone...');
+    countdown.text('');
+    
+    // Submit the payment request to new mobile money endpoint
+    $.ajax({
+        url: '{{ route("admin.loans.repayments.store-mobile-money") }}',
+        method: 'POST',
+        data: formData,
+        success: function(response) {
+            if (response.success) {
+                const transactionRef = response.transaction_reference;
+                const repaymentId = response.repayment_id;
+                
+                // Update status - USSD sent
+                processingAlert.removeClass('alert-info').addClass('alert-success');
+                statusText.html('<i class="fas fa-check-circle me-1"></i> USSD prompt sent! Please check your phone and enter your PIN.');
+                
+                // Start 30-second wait countdown
+                let waitSeconds = 30;
+                countdown.html(`<strong>Waiting ${waitSeconds} seconds before checking status...</strong>`);
+                
+                const waitTimer = setInterval(() => {
+                    waitSeconds--;
+                    countdown.html(`<strong>Waiting ${waitSeconds} seconds before checking status...</strong>`);
+                    
+                    if (waitSeconds <= 0) {
+                        clearInterval(waitTimer);
+                        // After 30 seconds, start polling for 120 seconds
+                        statusText.html('<i class="fas fa-sync fa-spin me-1"></i> Checking payment status...');
+                        countdown.html('');
+                        startRepaymentPollingInModal(transactionRef, repaymentId, memberPhone, amount, network);
                     }
-                },
-                error: function(xhr) {
-                    const message = xhr.responseJSON?.message || 'An error occurred';
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment Error',
-                        html: `
-                            <p>${message}</p>
-                            <p class="mt-3"><strong>Would you like to retry?</strong></p>
-                        `,
-                        showCancelButton: true,
-                        confirmButtonText: '<i class="fas fa-redo"></i> Retry Payment',
-                        cancelButtonText: 'Close',
-                        confirmButtonColor: '#3085d6',
-                        cancelButtonColor: '#6c757d'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            // Reopen the payment modal
-                            $('#repaymentModal').modal('show');
-                        } else {
-                            window.location.reload();
-                        }
-                    });
-                }
-            });
+                }, 1000);
+            } else {
+                // Show error in modal
+                processingAlert.removeClass('alert-info').addClass('alert-danger');
+                statusText.html('<i class="fas fa-times-circle me-1"></i> ' + (response.message || 'Payment initiation failed'));
+                countdown.html('<button type="button" class="btn btn-sm btn-warning mt-2" onclick="retryFromModal()"><i class="fas fa-redo me-1"></i> Retry Payment</button>');
+                
+                // Re-enable form and show close options
+                $('#repaymentForm input, #repaymentForm select, #repaymentForm textarea').prop('disabled', false);
+                $('#repaymentModalFooter').show();
+                $('#repaymentModal .btn-close').show();
+                $('#repaymentModal').modal({backdrop: true, keyboard: true});
+            }
+        },
+        error: function(xhr) {
+            const message = xhr.responseJSON?.message || 'An error occurred';
+            
+            // Show error in modal
+            processingAlert.removeClass('alert-info').addClass('alert-danger');
+            statusText.html('<i class="fas fa-times-circle me-1"></i> ' + message);
+            countdown.html('<button type="button" class="btn btn-sm btn-warning mt-2" onclick="retryFromModal()"><i class="fas fa-redo me-1"></i> Retry Payment</button>');
+            
+            // Re-enable form and show close options
+            $('#repaymentForm input, #repaymentForm select, #repaymentForm textarea').prop('disabled', false);
+            $('#repaymentModalFooter').show();
+            $('#repaymentModal .btn-close').show();
+            $('#repaymentModal').modal({backdrop: true, keyboard: true});
         }
     });
 }
 
-function startPaymentPolling(transactionId, maxSeconds) {
-    let secondsRemaining = maxSeconds;
-    const countdownElement = document.getElementById('countdown');
+function retryFromModal() {
+    // Reset and show form again
+    const processingAlert = $('#repaymentMmProcessingAlert');
+    processingAlert.hide();
+    $('#repaymentForm input, #repaymentForm select, #repaymentForm textarea').prop('disabled', false);
+    $('#repaymentModalFooter').show();
+    $('#repaymentModal .btn-close').show();
     
-    // Update countdown every second
+    // Re-enable modal dismissal
+    $('#repaymentModal').modal({
+        backdrop: true,
+        keyboard: true
+    });
+}
+
+function startRepaymentPollingInModal(transactionRef, repaymentId, memberPhone, amount, network) {
+    let pollAttempts = 0;
+    const maxPolls = 24; // 24 × 5 seconds = 120 seconds
+    
+    const processingAlert = $('#repaymentMmProcessingAlert');
+    const statusText = $('#repaymentMmStatusText');
+    const countdown = $('#repaymentMmCountdown');
+    
+    // Countdown timer
+    let secondsRemaining = 120;
+    
     const countdownTimer = setInterval(() => {
         secondsRemaining--;
-        if (countdownElement) {
-            countdownElement.textContent = secondsRemaining;
-        }
+        countdown.html(`<strong>Time remaining: ${secondsRemaining}s (Attempt ${pollAttempts + 1}/${maxPolls})</strong>`);
         
         if (secondsRemaining <= 0) {
             clearInterval(countdownTimer);
             clearInterval(pollingTimer);
-            handlePaymentTimeout();
+            handleRepaymentTimeoutInModal(repaymentId, transactionRef);
         }
     }, 1000);
     
-    // Poll every 3 seconds
+    // Poll every 5 seconds
     const pollingTimer = setInterval(() => {
-        checkPaymentStatus(transactionId, pollingTimer, countdownTimer);
-    }, 3000);
+        pollAttempts++;
+        checkRepaymentStatusInModal(transactionRef, repaymentId, pollingTimer, countdownTimer, pollAttempts, maxPolls);
+    }, 5000);
+    
+    // First immediate check
+    checkRepaymentStatusInModal(transactionRef, repaymentId, pollingTimer, countdownTimer, 1, maxPolls);
 }
 
-function checkPaymentStatus(transactionId, pollingTimer, countdownTimer) {
+function checkRepaymentStatusInModal(transactionRef, repaymentId, pollingTimer, countdownTimer, attempt, maxAttempts) {
     $.ajax({
-        url: '/admin/check-payment-status/' + transactionId,
+        url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
         method: 'GET',
         success: function(response) {
-            if (response.status === 'SUCCESS' || response.status === 'COMPLETED') {
+            if (response.status === 'completed') {
                 clearInterval(pollingTimer);
                 clearInterval(countdownTimer);
                 
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Payment Successful!',
-                    html: `
-                        <p>Transaction ID: <strong>${transactionId}</strong></p>
-                        <p>The repayment has been recorded successfully.</p>
-                    `,
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    window.location.reload();
+                const processingAlert = $('#repaymentMmProcessingAlert');
+                const statusText = $('#repaymentMmStatusText');
+                const countdown = $('#repaymentMmCountdown');
+                
+                let lateFeeMessage = '';
+                if (response.late_fee_applied) {
+                    lateFeeMessage = `<div class="alert alert-warning mt-2 mb-0"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Late Fee Applied:</strong> UGX ${parseFloat(response.late_fee_amount).toLocaleString()} (${response.late_fee_days} day(s) late)</div>`;
+                }
+                
+                processingAlert.removeClass('alert-info').addClass('alert-success');
+                statusText.html('<i class="fas fa-check-circle me-1"></i> ' + response.message);
+                countdown.html(lateFeeMessage + '<button type="button" class="btn btn-sm btn-success mt-2" onclick="window.location.reload()"><i class="fas fa-check me-1"></i> Done</button>');
+                
+            } else if (response.status === 'failed') {
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                
+                const processingAlert = $('#repaymentMmProcessingAlert');
+                const statusText = $('#repaymentMmStatusText');
+                const countdown = $('#repaymentMmCountdown');
+                
+                processingAlert.removeClass('alert-info').addClass('alert-danger');
+                statusText.html('<i class="fas fa-times-circle me-1"></i> ' + (response.message || 'Payment failed'));
+                countdown.html('<button type="button" class="btn btn-sm btn-warning mt-2" onclick="showRetryRepaymentModal(' + repaymentId + ')"><i class="fas fa-redo me-1"></i> Retry Payment</button>');
+                
+            } else if (attempt >= maxAttempts) {
+                // Max attempts reached
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                handleRepaymentTimeoutInModal(repaymentId, transactionRef);
+            }
+            // If pending, continue polling
+        },
+        error: function() {
+            console.log('Polling error, retrying...');
+            // Continue polling on network errors
+        }
+    });
+}
+
+function handleRepaymentTimeoutInModal(repaymentId, transactionRef) {
+    const processingAlert = $('#repaymentMmProcessingAlert');
+    const statusText = $('#repaymentMmStatusText');
+    const countdown = $('#repaymentMmCountdown');
+    
+    processingAlert.removeClass('alert-info').addClass('alert-warning');
+    statusText.html('<i class="fas fa-clock me-1"></i> Payment verification timeout');
+    countdown.html(`
+        <p class="mb-2">The 2-minute verification period has expired. If you completed the payment, it may still be processing.</p>
+        <button type="button" class="btn btn-sm btn-info me-2" onclick="checkRepaymentStatusManually('${transactionRef}', ${repaymentId})"><i class="fas fa-sync me-1"></i> Check Status Again</button>
+        <button type="button" class="btn btn-sm btn-warning me-2" onclick="showRetryRepaymentModal(${repaymentId})"><i class="fas fa-redo me-1"></i> Cancel & Retry</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="window.location.reload()">Close</button>
+    `);
+}
+
+function checkRepaymentStatusManually(transactionRef, repaymentId) {
+    const processingAlert = $('#repaymentMmProcessingAlert');
+    const statusText = $('#repaymentMmStatusText');
+    const countdown = $('#repaymentMmCountdown');
+    
+    processingAlert.removeClass('alert-warning').addClass('alert-info');
+    statusText.html('<i class="fas fa-sync fa-spin me-1"></i> Checking status...');
+    countdown.html('');
+    
+    $.ajax({
+        url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+        method: 'GET',
+        success: function(response) {
+            if (response.status === 'completed') {
+                let lateFeeMessage = '';
+                if (response.late_fee_applied) {
+                    lateFeeMessage = `<div class="alert alert-warning mt-2 mb-0"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Late Fee Applied:</strong> UGX ${parseFloat(response.late_fee_amount).toLocaleString()} (${response.late_fee_days} day(s) late)</div>`;
+                }
+                
+                processingAlert.removeClass('alert-info').addClass('alert-success');
+                statusText.html('<i class="fas fa-check-circle me-1"></i> ' + response.message);
+                countdown.html(lateFeeMessage + '<button type="button" class="btn btn-sm btn-success mt-2" onclick="window.location.reload()"><i class="fas fa-check me-1"></i> Done</button>');
+            } else if (response.status === 'failed') {
+                processingAlert.removeClass('alert-info').addClass('alert-danger');
+                statusText.html('<i class="fas fa-times-circle me-1"></i> ' + response.message);
+                countdown.html('<button type="button" class="btn btn-sm btn-warning mt-2" onclick="showRetryRepaymentModal(' + repaymentId + ')"><i class="fas fa-redo me-1"></i> Retry Payment</button>');
+            } else {
+                processingAlert.removeClass('alert-info').addClass('alert-warning');
+                statusText.html('<i class="fas fa-clock me-1"></i> Payment still pending');
+                countdown.html('<p class="mb-2">The payment is still being processed. Please check again in a few minutes.</p><button type="button" class="btn btn-sm btn-secondary mt-2" onclick="window.location.reload()">Close</button>');
+            }
+        },
+        error: function() {
+            processingAlert.removeClass('alert-info').addClass('alert-danger');
+            statusText.html('<i class="fas fa-times-circle me-1"></i> Could not check payment status');
+            countdown.html('<button type="button" class="btn btn-sm btn-secondary mt-2" onclick="window.location.reload()">Close</button>');
+        }
+    });
+}
+
+// Keep old functions for compatibility but redirect to modal-based ones
+function startRepaymentPolling(transactionRef, repaymentId, memberPhone, amount, network) {
+    startRepaymentPollingInModal(transactionRef, repaymentId, memberPhone, amount, network);
+}
+
+function checkRepaymentStatus(transactionRef, repaymentId, pollingTimer, countdownTimer, attempt, maxAttempts) {
+    checkRepaymentStatusInModal(transactionRef, repaymentId, pollingTimer, countdownTimer, attempt, maxAttempts);
+}
+
+function handleRepaymentTimeout(repaymentId, transactionRef) {
+    handleRepaymentTimeoutInModal(repaymentId, transactionRef);
+}
+
+/**
+ * Check progress of pending payments for a schedule
+ * Finds all pending mobile money repayments for the schedule and checks their status
+ */
+function checkScheduleProgress(scheduleId) {
+    Swal.fire({
+        title: 'Checking Payment Status',
+        html: '<i class="fas fa-spinner fa-spin"></i> Please wait...',
+        allowOutsideClick: false,
+        showConfirmButton: false
+    });
+    
+    // Get pending repayments for this schedule
+    $.ajax({
+        url: '{{ url("admin/loans/repayments/schedule-pending") }}/' + scheduleId,
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.pending_repayments.length > 0) {
+                // Check status of each pending repayment
+                const repayment = response.pending_repayments[0]; // Get the first pending one
+                const transactionRef = repayment.transaction_reference;
+                
+                $.ajax({
+                    url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+                    method: 'GET',
+                    success: function(statusResponse) {
+                        if (statusResponse.status === 'completed') {
+                            let lateFeeMessage = '';
+                            if (statusResponse.late_fee_applied) {
+                                lateFeeMessage = `<div class="alert alert-warning mt-3"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Late Fee Applied:</strong> UGX ${parseFloat(statusResponse.late_fee_amount).toLocaleString()} (${statusResponse.late_fee_days} day(s) late)</div>`;
+                            }
+                            
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Payment Completed',
+                                html: statusResponse.message + lateFeeMessage,
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                window.location.reload();
+                            });
+                        } else if (statusResponse.status === 'failed') {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Payment Failed',
+                                html: statusResponse.message + '<br><br><small>You can retry the payment using the "Retry" button</small>',
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                window.location.reload();
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'info',
+                                title: 'Still Pending',
+                                html: 'Payment is still being processed. Please check again in a few moments.',
+                                confirmButtonText: 'OK'
+                            });
+                        }
+                    },
+                    error: function() {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Could not check payment status. Please try again.',
+                            confirmButtonText: 'OK'
+                        });
+                    }
                 });
-            } else if (response.status === 'FAILED' || response.status === 'CANCELLED') {
-                clearInterval(pollingTimer);
-                clearInterval(countdownTimer);
+            } else {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'No Pending Payments',
+                    text: 'No pending mobile money payments found for this schedule.',
+                    confirmButtonText: 'OK'
+                });
+            }
+        },
+        error: function() {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Could not retrieve pending payments. Please try again.',
+                confirmButtonText: 'OK'
+            });
+        }
+    });
+}
+
+function showRetryRepaymentModal(repaymentId) {
+    // Get repayment details
+    $.ajax({
+        url: '{{ url("admin/loans/repayments/get") }}/' + repaymentId,
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                const repayment = response.repayment;
                 
                 Swal.fire({
-                    icon: 'error',
-                    title: 'Payment Failed',
+                    title: 'Retry Mobile Money Payment',
                     html: `
-                        <p>${response.message || 'The mobile money payment was not completed'}</p>
-                        <p class="mt-3"><strong>Would you like to retry?</strong></p>
+                        <form id="retryRepaymentForm">
+                            <input type="hidden" name="repayment_id" value="${repayment.id}">
+                            <input type="hidden" name="member_name" value="{{ $loan->member->fname ?? '' }} {{ $loan->member->lname ?? '' }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token() }}">
+                            
+                            <div class="mb-3 text-start">
+                                <label class="form-label">Phone Number</label>
+                                <input type="text" name="member_phone" class="form-control" 
+                                       value="${repayment.payment_phone || ''}" required>
+                            </div>
+                            
+                            <div class="mb-3 text-start">
+                                <label class="form-label">Amount (UGX)</label>
+                                <input type="number" name="amount" class="form-control" 
+                                       value="${repayment.amount}" required step="0.01">
+                            </div>
+                            
+                            <div class="mb-3 text-start">
+                                <label class="form-label">Details (Optional)</label>
+                                <textarea name="details" class="form-control" rows="2">${repayment.details || ''}</textarea>
+                            </div>
+                        </form>
                     `,
                     showCancelButton: true,
                     confirmButtonText: '<i class="fas fa-redo"></i> Retry Payment',
-                    cancelButtonText: 'Close',
+                    cancelButtonText: 'Cancel',
                     confirmButtonColor: '#3085d6',
-                    cancelButtonColor: '#6c757d'
+                    cancelButtonColor: '#6c757d',
+                    preConfirm: () => {
+                        const formData = $('#retryRepaymentForm').serialize();
+                        
+                        return $.ajax({
+                            url: '{{ route("admin.loans.repayments.retry-mobile-money") }}',
+                            method: 'POST',
+                            data: formData
+                        });
+                    },
+                    allowOutsideClick: false
                 }).then((result) => {
-                    if (result.isConfirmed) {
-                        window.location.reload();
-                    } else {
+                    if (result.isConfirmed && result.value.success) {
+                        const phone = $('input[name="member_phone"]').val();
+                        const amount = $('input[name="amount"]').val();
+                        const transactionRef = result.value.transaction_reference;
+                        const newRepaymentId = result.value.repayment_id || repaymentId;
+                        
+                        // Start the 30s + 120s flow again
+                        Swal.fire({
+                            title: 'USSD Prompt Sent!',
+                            html: `
+                                <div class="text-center">
+                                    <div class="mb-3">
+                                        <i class="fas fa-mobile-alt fa-3x text-primary"></i>
+                                    </div>
+                                    <p>Phone: <strong>${phone}</strong></p>
+                                    <p>Amount: <strong>UGX ${parseFloat(amount).toLocaleString()}</strong></p>
+                                    <hr>
+                                    <p class="text-info">
+                                        <i class="fas fa-check-circle"></i> 
+                                        Please check your phone for the USSD prompt
+                                    </p>
+                                    <p class="text-muted mt-3">
+                                        Waiting <span id="retry_wait_countdown">30</span> seconds before checking status...
+                                    </p>
+                                </div>
+                            `,
+                            allowOutsideClick: false,
+                            showConfirmButton: false,
+                            didOpen: () => {
+                                let waitSeconds = 30;
+                                const waitCountdownElement = document.getElementById('retry_wait_countdown');
+                                
+                                const waitTimer = setInterval(() => {
+                                    waitSeconds--;
+                                    if (waitCountdownElement) {
+                                        waitCountdownElement.textContent = waitSeconds;
+                                    }
+                                    
+                                    if (waitSeconds <= 0) {
+                                        clearInterval(waitTimer);
+                                        startRepaymentPolling(transactionRef, newRepaymentId, phone, amount, 'Mobile Money');
+                                    }
+                                }, 1000);
+                            }
+                        });
+                    } else if (result.isDismissed) {
                         window.location.reload();
                     }
                 });
             }
-            // If PENDING, continue polling
         },
         error: function() {
-            // Continue polling on error (network issue)
-            console.log('Polling error, retrying...');
-        }
-    });
-}
-
-function handlePaymentTimeout() {
-    Swal.fire({
-        icon: 'warning',
-        title: 'Payment Timeout',
-        html: `
-            <p>The 60-second verification period has expired.</p>
-            <p>If you completed the payment, it may still be processing.</p>
-            <p class="mt-3"><strong>What would you like to do?</strong></p>
-        `,
-        showCancelButton: true,
-        showDenyButton: true,
-        confirmButtonText: '<i class="fas fa-sync"></i> Check Progress',
-        denyButtonText: '<i class="fas fa-redo"></i> Retry Payment',
-        cancelButtonText: 'Close',
-        confirmButtonColor: '#3085d6',
-        denyButtonColor: '#f39c12',
-        cancelButtonColor: '#6c757d'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Check progress - continue polling for 30 more seconds
-            checkProgressManually();
-        } else if (result.isDenied) {
-            // Retry payment - reload page to start fresh
-            window.location.reload();
-        } else {
-            // Close - just reload
-            window.location.reload();
-        }
-    });
-}
-
-function checkProgressManually() {
-    const scheduleId = $('#schedule_id').val();
-    checkScheduleProgress(scheduleId);
-}
-
-// Check progress for a specific schedule
-function checkScheduleProgress(scheduleId) {
-    Swal.fire({
-        title: 'Checking Payment Status',
-        html: `
-            <div class="text-center">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p>Checking if payment has been processed...</p>
-                <p class="text-muted">Checking for <span id="manual_countdown">30</span> seconds...</p>
-            </div>
-        `,
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        didOpen: () => {
-            // Get the last pending transaction for this schedule
-            $.ajax({
-                url: '/admin/loans/repayments/get-pending-transaction/' + scheduleId,
-                method: 'GET',
-                success: function(response) {
-                    if (response.success && response.transaction_id) {
-                        // Found pending transaction - start polling
-                        startManualPolling(response.transaction_id, 30);
-                    } else {
-                        Swal.fire({
-                            icon: 'info',
-                            title: 'No Pending Payment',
-                            text: response.message || 'No recent pending payment found for this schedule.',
-                            confirmButtonText: 'OK'
-                        }).then(() => {
-                            window.location.reload();
-                        });
-                    }
-                },
-                error: function(xhr) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Could not check payment status',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.reload();
-                    });
-                }
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Could not load repayment details',
+                confirmButtonText: 'OK'
             });
+        }
+    });
+}
+
+// Cash/bank payment submission
+function submitRepayment(formData) {
+    $.ajax({
+        url: '{{ route("admin.loans.repayments.store") }}',
+        method: 'POST',
+        data: formData,
+        success: function(response) {
+            if (response.success) {
+                $('#repaymentModal').modal('hide');
+                Swal.fire('Success!', response.message, 'success').then(() => {
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire('Error!', response.message, 'error');
+            }
+        },
+        error: function(xhr) {
+            var message = xhr.responseJSON?.message || 'An error occurred';
+            Swal.fire('Error!', message, 'error');
         }
     });
 }
@@ -961,27 +1213,6 @@ function startManualPolling(transactionId, maxSeconds) {
     const pollingTimer = setInterval(() => {
         checkPaymentStatus(transactionId, pollingTimer, countdownTimer);
     }, 3000);
-}
-
-function submitRepayment(formData) {
-    $.ajax({
-        url: '{{ route("admin.loans.repayments.store") }}',
-        method: 'POST',
-        data: formData,
-        success: function(response) {
-            if (response.success) {
-                Swal.fire('Success!', 'Repayment recorded successfully', 'success').then(() => {
-                    window.location.reload();
-                });
-            } else {
-                Swal.fire('Error!', response.message, 'error');
-            }
-        },
-        error: function(xhr) {
-            const message = xhr.responseJSON?.message || 'An error occurred';
-            Swal.fire('Error!', message, 'error');
-        }
-    });
 }
 </script>
 @endpush

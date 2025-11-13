@@ -122,6 +122,9 @@ Route::middleware([
     Route::post('/loans/{loan}/reject', [\App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('loans.reject');
     Route::post('/loans/{loan}/pay-fees', [\App\Http\Controllers\Admin\LoanController::class, 'payFees'])->name('loans.pay-fees');
     Route::post('/loans/{loan}/pay-single-fee', [\App\Http\Controllers\Admin\LoanController::class, 'paySingleFee'])->name('loans.pay-single-fee');
+    Route::post('/loans/store-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'storeLoanMobileMoneyPayment'])->name('loans.store-mobile-money');
+    Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');
+    Route::post('/loans/retry-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'retryLoanMobileMoneyPayment'])->name('loans.retry-mobile-money');
     Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');
     
     // Enhanced Loan Services Integration
@@ -194,6 +197,11 @@ Route::middleware([
         Route::post('/quick', [\App\Http\Controllers\Admin\RepaymentController::class, 'quickRepayment'])->name('quick');
         Route::post('/store', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeRepayment'])->name('store');
         Route::post('/partial', [\App\Http\Controllers\Admin\RepaymentController::class, 'partialPayment'])->name('partial');
+        Route::post('/store-mobile-money', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeMobileMoneyRepayment'])->name('store-mobile-money');
+        Route::get('/check-mm-status/{reference}', [\App\Http\Controllers\Admin\RepaymentController::class, 'checkRepaymentMmStatus'])->name('check-mm-status');
+        Route::post('/retry-mobile-money', [\App\Http\Controllers\Admin\RepaymentController::class, 'retryMobileMoneyRepayment'])->name('retry-mobile-money');
+        Route::get('/get/{id}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getRepayment'])->name('get');
+        Route::get('/schedule-pending/{scheduleId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePendingRepayments'])->name('schedule-pending');
     });
     
     // Mobile money payment status check (for 60-second polling)

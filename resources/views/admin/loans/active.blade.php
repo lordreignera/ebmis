@@ -379,13 +379,41 @@
                                         @endif
 
                                         <div class="pagination-numbers">
-                                            @foreach ($loans->getUrlRange(1, $loans->lastPage()) as $page => $url)
-                                                @if ($page == $loans->currentPage())
+                                            @php
+                                                $currentPage = $loans->currentPage();
+                                                $lastPage = $loans->lastPage();
+                                                $start = max(1, $currentPage - 2);
+                                                $end = min($lastPage, $currentPage + 2);
+                                                
+                                                if ($currentPage <= 3) {
+                                                    $end = min(5, $lastPage);
+                                                }
+                                                if ($currentPage >= $lastPage - 2) {
+                                                    $start = max(1, $lastPage - 4);
+                                                }
+                                            @endphp
+
+                                            @if($start > 1)
+                                                <a href="{{ $loans->url(1) }}" class="pagination-btn">1</a>
+                                                @if($start > 2)
+                                                    <span class="pagination-btn" disabled>...</span>
+                                                @endif
+                                            @endif
+
+                                            @for ($page = $start; $page <= $end; $page++)
+                                                @if ($page == $currentPage)
                                                     <span class="pagination-btn active">{{ $page }}</span>
                                                 @else
-                                                    <a class="pagination-btn" href="{{ $url }}">{{ $page }}</a>
+                                                    <a href="{{ $loans->url($page) }}" class="pagination-btn">{{ $page }}</a>
                                                 @endif
-                                            @endforeach
+                                            @endfor
+
+                                            @if($end < $lastPage)
+                                                @if($end < $lastPage - 1)
+                                                    <span class="pagination-btn" disabled>...</span>
+                                                @endif
+                                                <a href="{{ $loans->url($lastPage) }}" class="pagination-btn">{{ $lastPage }}</a>
+                                            @endif
                                         </div>
 
                                         @if ($loans->hasMorePages())
