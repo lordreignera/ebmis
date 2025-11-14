@@ -66,9 +66,28 @@ class AdminSettingsController extends Controller
         return view('admin.settings.savings-products', compact('savingsProducts'));
     }
 
-    public function feesProducts()
+    public function feesProducts(Request $request)
     {
-        return view('admin.settings.fees-products');
+        $query = \App\Models\FeeType::with(['addedBy', 'systemAccount']);
+
+        // Search filter
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhereHas('systemAccount', function($sq) use ($search) {
+                      $sq->where('code', 'like', "%{$search}%")
+                         ->orWhere('name', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        // Get paginated results
+        $perPage = $request->get('per_page', 15);
+        $feeTypes = $query->orderBy('name')->paginate($perPage)->appends($request->except('page'));
+
+        $systemAccounts = \App\Models\SystemAccount::where('status', 1)->orderBy('code')->get();
+        return view('admin.settings.fees-products', compact('feeTypes', 'systemAccounts'));
     }
 
     public function productCategories()
@@ -79,9 +98,35 @@ class AdminSettingsController extends Controller
     /**
      * Account Settings
      */
-    public function systemAccounts()
+    public function systemAccounts(Request $request)
     {
-        $systemAccounts = SystemAccount::orderBy('account_name')->get();
+        $query = SystemAccount::query();
+
+        // Search filter
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                  ->orWhere('name', 'like', "%{$search}%")
+                  ->orWhere('accountType', 'like', "%{$search}%")
+                  ->orWhere('accountSubType', 'like', "%{$search}%");
+            });
+        }
+
+        // Status filter
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Currency filter
+        if ($request->filled('currency')) {
+            $query->where('currency', $request->currency);
+        }
+
+        // Get paginated results
+        $perPage = $request->get('per_page', 25);
+        $systemAccounts = $query->orderBy('name')->paginate($perPage);
+
         return view('admin.settings.system-accounts', compact('systemAccounts'));
     }
 

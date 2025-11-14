@@ -365,9 +365,21 @@ Route::middleware([
         // Settings Dashboard
         Route::get('/', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'dashboard'])->name('dashboard');
         
-        // Organization Settings
-        Route::get('/agencies', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'agencies'])->name('agencies');
-        Route::get('/branches', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'branches'])->name('branches');
+        // Agency CRUD Routes (specific routes must come before general routes)
+        Route::post('/agencies', [\App\Http\Controllers\Admin\AgencyController::class, 'store'])->name('agencies.store');
+        Route::get('/agencies/{id}', [\App\Http\Controllers\Admin\AgencyController::class, 'show'])->name('agencies.show')->where('id', '[0-9]+');
+        Route::put('/agencies/{id}', [\App\Http\Controllers\Admin\AgencyController::class, 'update'])->name('agencies.update')->where('id', '[0-9]+');
+        Route::delete('/agencies/{id}', [\App\Http\Controllers\Admin\AgencyController::class, 'destroy'])->name('agencies.destroy')->where('id', '[0-9]+');
+        
+        // Branch CRUD Routes (specific routes must come before general routes)
+        Route::post('/branches', [\App\Http\Controllers\Admin\BranchCrudController::class, 'store'])->name('branches.store');
+        Route::get('/branches/{id}', [\App\Http\Controllers\Admin\BranchCrudController::class, 'show'])->name('branches.show')->where('id', '[0-9]+');
+        Route::put('/branches/{id}', [\App\Http\Controllers\Admin\BranchCrudController::class, 'update'])->name('branches.update')->where('id', '[0-9]+');
+        Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchCrudController::class, 'destroy'])->name('branches.destroy')->where('id', '[0-9]+');
+        
+        // Organization Settings - View Routes
+        Route::get('/agencies', [\App\Http\Controllers\Admin\AgencyController::class, 'index'])->name('agencies');
+        Route::get('/branches', [\App\Http\Controllers\Admin\BranchCrudController::class, 'index'])->name('branches');
         Route::get('/company-info', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'companyInfo'])->name('company-info');
         
         // Product Settings
@@ -394,10 +406,42 @@ Route::middleware([
     Route::post('/products/{product}/toggle-status', [\App\Http\Controllers\Admin\LoanProductController::class, 'toggleStatus'])->name('loan-products.toggle-status');
     Route::post('/savings-products/{savingsProduct}/toggle-status', [\App\Http\Controllers\Admin\SavingsProductController::class, 'toggleStatus'])->name('savings-products.toggle-status');
     
+    // Product Charges CRUD
+    Route::resource('product-charges', \App\Http\Controllers\Admin\ProductChargeController::class)->only(['store', 'update', 'destroy']);
+    
     // Continue with other settings routes
     Route::prefix('settings')->name('settings.')->group(function () {
         
-        // Account Settings
+        // System Accounts CRUD - using specific route names to avoid conflicts
+        Route::post('/system-accounts', [\App\Http\Controllers\Admin\SystemAccountController::class, 'store'])->name('system-accounts.store');
+        Route::get('/system-accounts/view', [\App\Http\Controllers\Admin\SystemAccountController::class, 'show'])->name('system-accounts.show');
+        Route::post('/system-accounts/update/{system_account}', [\App\Http\Controllers\Admin\SystemAccountController::class, 'update'])->where('system_account', '[0-9]+')->name('system-accounts.update');
+        Route::post('/system-accounts/delete/{system_account}', [\App\Http\Controllers\Admin\SystemAccountController::class, 'destroy'])->where('system_account', '[0-9]+')->name('system-accounts.destroy');
+        
+        // Fee Types CRUD
+        Route::post('/fees-products', [\App\Http\Controllers\Admin\FeeTypeController::class, 'store'])->name('fees-products.store');
+        Route::get('/fees-products/view', [\App\Http\Controllers\Admin\FeeTypeController::class, 'show'])->name('fees-products.show');
+        Route::post('/fees-products/update/{fee_type}', [\App\Http\Controllers\Admin\FeeTypeController::class, 'update'])->where('fee_type', '[0-9]+')->name('fees-products.update');
+        Route::post('/fees-products/delete/{fee_type}', [\App\Http\Controllers\Admin\FeeTypeController::class, 'destroy'])->where('fee_type', '[0-9]+')->name('fees-products.destroy');
+    });
+    
+    // Fees Management Routes (outside settings prefix)
+    Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', 'ebims_module'])->group(function () {
+        Route::resource('fees', \App\Http\Controllers\Admin\FeeController::class);
+        Route::get('/fees/member/{member}/status', [\App\Http\Controllers\Admin\FeeController::class, 'getMemberFeeStatus'])->name('fees.member.status');
+        Route::get('/fees/loan/{loan}/charges', [\App\Http\Controllers\Admin\FeeController::class, 'getLoanChargeStatus'])->name('fees.loan.charges');
+        Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->name('fees.mark-paid');
+        Route::get('/fees/{fee}/receipt', [\App\Http\Controllers\Admin\FeeController::class, 'receipt'])->name('fees.receipt');
+        Route::get('/fees/{fee}/receipt-modal', [\App\Http\Controllers\Admin\FeeController::class, 'getReceiptModal'])->name('fees.receipt-modal');
+        Route::post('/fees/mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'storeMobileMoneyPayment'])->name('fees.mobile-money');
+        Route::get('/fees/mobile-money/status/{transactionRef}', [\App\Http\Controllers\Admin\FeeController::class, 'checkMobileMoneyStatus'])->name('fees.mobile-money.status');
+        Route::post('/fees/mobile-money/retry', [\App\Http\Controllers\Admin\FeeController::class, 'retryMobileMoneyPayment'])->name('fees.mobile-money.retry');
+        Route::get('/fees/types/ajax', [\App\Http\Controllers\Admin\FeeController::class, 'getFeeTypes'])->name('fees.types.ajax');
+        Route::get('/fees/members/search', [\App\Http\Controllers\Admin\FeeController::class, 'getMembers'])->name('fees.members.search');
+    });
+    
+    Route::prefix('settings')->name('settings.')->group(function () {
+        // Account Settings - List route (no parameter)
         Route::get('/system-accounts', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'systemAccounts'])->name('system-accounts');
         Route::get('/chart-accounts', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'chartAccounts'])->name('chart-accounts');
         Route::get('/account-types', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'accountTypes'])->name('account-types');

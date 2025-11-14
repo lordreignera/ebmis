@@ -9,19 +9,38 @@ class Branch extends Model
 {
     use HasFactory;
 
+    // Enable Laravel timestamps
+    public $timestamps = true;
+    
+    // Specify timestamp column names
+    const CREATED_AT = 'created_at';
+    const UPDATED_AT = 'updated_at';
+
     protected $fillable = [
         'name',
+        'code',
         'address',
         'phone',
         'email',
-        'country_id',
-        'region_id',
-        'is_active'
+        'country',
+        'description',
+        'is_active',
+        'added_by'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
+
+    /**
+     * Get the user who added this branch
+     */
+    public function addedBy()
+    {
+        return $this->belongsTo(User::class, 'added_by');
+    }
 
     /**
      * Get the country that owns the branch

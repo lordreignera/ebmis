@@ -25,29 +25,31 @@ class MemberController extends Controller
         $query = Member::with(['country', 'branch', 'group', 'addedBy']);
 
         // Search functionality
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('fname', 'like', "%{$search}%")
                   ->orWhere('lname', 'like', "%{$search}%")
+                  ->orWhere('mname', 'like', "%{$search}%")
                   ->orWhere('code', 'like', "%{$search}%")
                   ->orWhere('nin', 'like', "%{$search}%")
-                  ->orWhere('contact', 'like', "%{$search}%");
+                  ->orWhere('contact', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
         // Filter by branch
-        if ($request->has('branch_id') && $request->branch_id) {
+        if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
         }
 
         // Filter by member type
-        if ($request->has('member_type') && $request->member_type) {
+        if ($request->filled('member_type')) {
             $query->where('member_type', $request->member_type);
         }
 
         // Filter by status using scopes
-        if ($request->has('status') && $request->status) {
+        if ($request->filled('status')) {
             switch ($request->status) {
                 case 'approved':
                     $query->approved();
@@ -68,7 +70,8 @@ class MemberController extends Controller
         $query->notDeleted();
 
         // Use datecreated for ordering (compatible with old data)
-        $members = $query->orderBy('datecreated', 'desc')->paginate(20);
+        $perPage = $request->get('per_page', 20);
+        $members = $query->orderBy('datecreated', 'desc')->paginate($perPage)->appends($request->except('page'));
 
         $branches = Branch::active()->get();
         $groups = Group::verified()->get();

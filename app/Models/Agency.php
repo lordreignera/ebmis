@@ -10,15 +10,30 @@ class Agency extends Model
     use HasFactory;
 
     protected $table = 'agency'; // Use the existing singular table name
+    
+    // Enable Laravel timestamps
+    public $timestamps = true;
+    
+    // Specify timestamp column names
+    const CREATED_AT = 'created_at';
+    const UPDATED_AT = 'updated_at';
 
     protected $fillable = [
         'name',
+        'code',
+        'contact_person',
+        'phone',
+        'email',
+        'location',
+        'description',
         'added_by',
         'isactive'
     ];
 
     protected $casts = [
         'isactive' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /**

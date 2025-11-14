@@ -37,6 +37,20 @@ class RepaymentController extends Controller
         $query = Loan::where('status', 2) // Disbursed loans
                     ->with(['member', 'branch', 'product', 'repayments']);
 
+        // Filter by loan type if provided
+        if ($request->filled('type')) {
+            $loanType = $request->get('type');
+            if ($loanType === 'personal') {
+                $query->whereHas('product', function($q) {
+                    $q->where('loan_type', 1); // 1 = Individual/Personal
+                });
+            } elseif ($loanType === 'group') {
+                $query->whereHas('product', function($q) {
+                    $q->where('loan_type', 2); // 2 = Group
+                });
+            }
+        }
+
         // Apply filters
         if ($request->filled('search')) {
             $search = $request->get('search');
@@ -45,7 +59,10 @@ class RepaymentController extends Controller
                   ->orWhereHas('member', function($q) use ($search) {
                       $q->where('fname', 'like', "%{$search}%")
                         ->orWhere('lname', 'like', "%{$search}%")
-                        ->orWhere('contact', 'like', "%{$search}%");
+                        ->orWhere('mname', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%")
+                        ->orWhere('contact', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
                   });
             });
         }

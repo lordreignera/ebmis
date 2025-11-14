@@ -118,10 +118,12 @@ class Product extends Model
     public function getLoanTypeNameAttribute()
     {
         $loanTypes = [
-            1 => 'Individual',
-            2 => 'Group',
-            3 => 'Business',
-            4 => 'Agricultural'
+            1 => 'Personal Loan',
+            2 => 'Group Loan',
+            3 => 'Business Loan',
+            4 => 'School Loan',
+            5 => 'Student Loan',
+            6 => 'Staff Loan'
         ];
 
         return $loanTypes[$this->loan_type] ?? 'Unknown';
@@ -133,10 +135,10 @@ class Product extends Model
     public function getPeriodTypeNameAttribute()
     {
         $periodTypes = [
-            1 => 'Days',
-            2 => 'Weeks',
-            3 => 'Months',
-            4 => 'Years'
+            1 => 'Daily',
+            2 => 'Weekly',
+            3 => 'Monthly',
+            4 => 'Yearly'
         ];
 
         return $periodTypes[$this->period_type] ?? 'Unknown';

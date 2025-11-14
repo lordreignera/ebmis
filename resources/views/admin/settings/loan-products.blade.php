@@ -68,11 +68,17 @@
                                         </td>
                                         <td>
                                             @if($product->loan_type == 1)
-                                                <span class="badge badge-info">Individual</span>
+                                                <span class="badge badge-info">Personal Loan</span>
                                             @elseif($product->loan_type == 2)
-                                                <span class="badge badge-success">Group</span>
+                                                <span class="badge badge-success">Group Loan</span>
                                             @elseif($product->loan_type == 3)
-                                                <span class="badge badge-warning">Business</span>
+                                                <span class="badge badge-warning">Business Loan</span>
+                                            @elseif($product->loan_type == 4)
+                                                <span class="badge badge-primary">School Loan</span>
+                                            @elseif($product->loan_type == 5)
+                                                <span class="badge badge-secondary">Student Loan</span>
+                                            @elseif($product->loan_type == 6)
+                                                <span class="badge badge-dark">Staff Loan</span>
                                             @else
                                                 <span class="badge badge-secondary">{{ $product->loan_type }}</span>
                                             @endif
@@ -83,13 +89,13 @@
                                         <td>UGX {{ number_format($product->max_amt) }}</td>
                                         <td>
                                             @if($product->period_type == 1)
-                                                Days
+                                                Daily
                                             @elseif($product->period_type == 2)
-                                                Weeks
+                                                Weekly
                                             @elseif($product->period_type == 3)
-                                                Months
+                                                Monthly
                                             @elseif($product->period_type == 4)
-                                                Years
+                                                Yearly
                                             @else
                                                 {{ $product->period_type }}
                                             @endif
@@ -103,29 +109,24 @@
                                         </td>
                                         <td>
                                             <div class="btn-group" role="group">
-                                                <a href="{{ route('admin.loan-products.show', $product->id) }}" 
-                                                   class="btn btn-sm btn-outline-info" title="View">
+                                                <button type="button" 
+                                                        class="btn btn-sm btn-outline-info btn-view-product" 
+                                                        data-id="{{ $product->id }}"
+                                                        title="View">
                                                     <i class="mdi mdi-eye"></i>
-                                                </a>
+                                                </button>
                                                 <a href="{{ route('admin.loan-products.edit', $product->id) }}" 
-                                                   class="btn btn-sm btn-outline-primary" title="Edit">
+                                                   class="btn btn-sm btn-outline-primary" 
+                                                   title="Edit">
                                                     <i class="mdi mdi-pencil"></i>
                                                 </a>
-                                                @if($product->isactive == 1)
                                                 <button type="button" 
-                                                        class="btn btn-sm btn-outline-danger" 
-                                                        onclick="toggleProductStatus({{ $product->id }}, 0)"
-                                                        title="Deactivate">
-                                                    <i class="mdi mdi-close-circle"></i>
+                                                        class="btn btn-sm btn-outline-danger btn-delete-product" 
+                                                        data-id="{{ $product->id }}"
+                                                        data-name="{{ $product->name }}"
+                                                        title="Delete">
+                                                    <i class="mdi mdi-delete"></i>
                                                 </button>
-                                                @else
-                                                <button type="button" 
-                                                        class="btn btn-sm btn-outline-success" 
-                                                        onclick="toggleProductStatus({{ $product->id }}, 1)"
-                                                        title="Activate">
-                                                    <i class="mdi mdi-check-circle"></i>
-                                                </button>
-                                                @endif
                                             </div>
                                         </td>
                                     </tr>
@@ -207,8 +208,30 @@
     </div>
 </div>
 
+<!-- View Product Modal -->
+<div class="modal fade" id="viewProductModal" tabindex="-1" aria-labelledby="viewProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: #0dcaf0; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #fff;" id="viewProductModalLabel">View Product Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="viewProductContent" style="background-color: white;">
+                <div class="text-center py-4">
+                    <i class="mdi mdi-loading mdi-spin"></i> Loading...
+                </div>
+            </div>
+            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
 function toggleProductStatus(productId, newStatus) {
     const action = newStatus === 1 ? 'activate' : 'deactivate';
     const title = newStatus === 1 ? 'Activate Product?' : 'Deactivate Product?';
@@ -230,7 +253,7 @@ function toggleProductStatus(productId, newStatus) {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    'X-CSRF-TOKEN': csrfToken
                 },
                 body: JSON.stringify({})
             })
@@ -250,6 +273,120 @@ function toggleProductStatus(productId, newStatus) {
         }
     });
 }
+
+// View Product Details
+document.addEventListener('DOMContentLoaded', function() {
+    const viewButtons = document.querySelectorAll('.btn-view-product');
+    
+    viewButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const productId = this.getAttribute('data-id');
+            
+            const viewContent = document.getElementById('viewProductContent');
+            viewContent.innerHTML = '<div class="text-center py-4"><i class="mdi mdi-loading mdi-spin"></i> Loading...</div>';
+            
+            new bootstrap.Modal(document.getElementById('viewProductModal')).show();
+            
+            fetch(`/admin/products/${productId}`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.product) {
+                    const product = data.product;
+                    const loanTypes = {1: 'Personal Loan', 2: 'Group Loan', 3: 'Business Loan', 4: 'School Loan', 5: 'Student Loan', 6: 'Staff Loan'};
+                    const periodTypes = {1: 'Daily', 2: 'Weekly', 3: 'Monthly', 4: 'Yearly'};
+                    
+                    const html = `
+                        <div class="mb-3" style="background-color: #ffffff; color: #333333;">
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Product Code:</strong> ${product.code || 'N/A'}</p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Product Name:</strong> ${product.name || 'N/A'}</p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Description:</strong> ${product.description || 'N/A'}</p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Loan Type:</strong> <span class="badge badge-info">${loanTypes[product.loan_type] || product.loan_type}</span></p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Interest Rate:</strong> <span class="badge badge-primary">${product.interest}%</span></p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Maximum Amount:</strong> UGX ${parseFloat(product.max_amt).toLocaleString()}</p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Period Type:</strong> ${periodTypes[product.period_type] || product.period_type}</p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Cash Security:</strong> ${product.cash_sceurity}%</p>
+                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Status:</strong> <span class="badge ${product.isactive == 1 ? 'badge-success' : 'badge-danger'}">${product.isactive == 1 ? 'Active' : 'Inactive'}</span></p>
+                            ${data.account ? '<p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account:</strong> ' + data.account.account_name + '</p>' : ''}
+                        </div>
+                    `;
+                    viewContent.innerHTML = html;
+                } else {
+                    viewContent.innerHTML = '<div class="alert alert-danger">Failed to load product details</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                viewContent.innerHTML = '<div class="alert alert-danger">Failed to load product details: ' + error.message + '</div>';
+            });
+        });
+    });
+
+    // ============= DELETE PRODUCT =============
+    const deleteButtons = document.querySelectorAll('.btn-delete-product');
+    
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const productId = this.getAttribute('data-id');
+            const productName = this.getAttribute('data-name');
+            
+            Swal.fire({
+                title: 'Are you sure?',
+                text: `Delete product "${productName}"? This action cannot be undone!`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch(`/admin/products/${productId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Deleted!',
+                                text: data.message || 'Product deleted successfully',
+                                showConfirmButton: false,
+                                timer: 1500
+                            }).then(() => {
+                                location.reload();
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error!',
+                                text: data.message || 'Failed to delete product'
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error!',
+                            text: 'An error occurred while deleting the product'
+                        });
+                    });
+                }
+            });
+        });
+    });
+});
 </script>
 @endpush
 

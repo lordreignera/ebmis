@@ -11,6 +11,9 @@ class SystemAccount extends Model
 
     protected $table = 'system_accounts';
     
+    // Primary key column name (capitalized in legacy database)
+    protected $primaryKey = 'Id';
+    
     // Disable timestamps for old database compatibility
     public $timestamps = false;
 

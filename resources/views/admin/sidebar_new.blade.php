@@ -116,7 +116,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#school-advances" aria-expanded="false" aria-controls="school-advances">
         <span class="menu-icon">
-          <i class="mdi mdi-cash-usd"></i>
+          <i class="mdi mdi-cash-fast"></i>
         </span>
         <span class="menu-title">School Advances</span>
         <i class="menu-arrow"></i>
@@ -166,7 +166,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#payroll" aria-expanded="false" aria-controls="payroll">
         <span class="menu-icon">
-          <i class="mdi mdi-credit-card-multiple"></i>
+          <i class="mdi mdi-cash-multiple"></i>
         </span>
         <span class="menu-title">Payroll Management</span>
         <i class="menu-arrow"></i>
@@ -190,7 +190,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#school-reports" aria-expanded="false" aria-controls="school-reports">
         <span class="menu-icon">
-          <i class="mdi mdi-chart-box"></i>
+          <i class="mdi mdi-chart-bar"></i>
         </span>
         <span class="menu-title">School Reports</span>
         <i class="menu-arrow"></i>
@@ -239,7 +239,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#my-students" aria-expanded="false" aria-controls="my-students">
         <span class="menu-icon">
-          <i class="mdi mdi-account-multiple-outline"></i>
+          <i class="mdi mdi-school"></i>
         </span>
         <span class="menu-title">My Students</span>
         <i class="menu-arrow"></i>
@@ -260,7 +260,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#my-staff" aria-expanded="false" aria-controls="my-staff">
         <span class="menu-icon">
-          <i class="mdi mdi-account-tie-outline"></i>
+          <i class="mdi mdi-account-tie"></i>
         </span>
         <span class="menu-title">My Staff</span>
         <i class="menu-arrow"></i>
@@ -279,7 +279,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#fee-payments" aria-expanded="false" aria-controls="fee-payments">
         <span class="menu-icon">
-          <i class="mdi mdi-cash-register"></i>
+          <i class="mdi mdi-currency-usd"></i>
         </span>
         <span class="menu-title">Fee Payments</span>
         <i class="menu-arrow"></i>
@@ -300,7 +300,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#my-loans" aria-expanded="false" aria-controls="my-loans">
         <span class="menu-icon">
-          <i class="mdi mdi-bank-transfer"></i>
+          <i class="mdi mdi-cash-usd"></i>
         </span>
         <span class="menu-title">My Loans</span>
         <i class="menu-arrow"></i>
@@ -321,7 +321,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#student-loan-requests" aria-expanded="false" aria-controls="student-loan-requests">
         <span class="menu-icon">
-          <i class="mdi mdi-school-outline"></i>
+          <i class="mdi mdi-account-school"></i>
         </span>
         <span class="menu-title">Student Loan Requests</span>
         <i class="menu-arrow"></i>
@@ -339,7 +339,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#my-reports" aria-expanded="false" aria-controls="my-reports">
         <span class="menu-icon">
-          <i class="mdi mdi-file-chart"></i>
+          <i class="mdi mdi-chart-line"></i>
         </span>
         <span class="menu-title">My Reports</span>
         <i class="menu-arrow"></i>
@@ -404,7 +404,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#cashsecurity" aria-expanded="false" aria-controls="cashsecurity">
         <span class="menu-icon">
-          <i class="mdi mdi-wallet-travel"></i>
+          <i class="mdi mdi-shield-lock"></i>
         </span>
         <span class="menu-title">Cash Security</span>
         <i class="menu-arrow"></i>
@@ -420,7 +420,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#investments" aria-expanded="false" aria-controls="investments">
         <span class="menu-icon">
-          <i class="mdi mdi-chart-line"></i>
+          <i class="mdi mdi-trending-up"></i>
         </span>
         <span class="menu-title">Investments</span>
         <i class="menu-arrow"></i>
@@ -444,7 +444,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#loans" aria-expanded="false" aria-controls="loans">
         <span class="menu-icon">
-          <i class="mdi mdi-cash-multiple"></i>
+          <i class="mdi mdi-briefcase"></i>
         </span>
         <span class="menu-title">Loan Portfolio</span>
         <i class="menu-arrow"></i>
@@ -503,7 +503,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#reports" aria-expanded="false" aria-controls="reports">
         <span class="menu-icon">
-          <i class="mdi mdi-file-document"></i>
+          <i class="mdi mdi-file-chart-outline"></i>
         </span>
         <span class="menu-title">Reports</span>
         <i class="menu-arrow"></i>
@@ -527,7 +527,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#settings" aria-expanded="false" aria-controls="settings">
         <span class="menu-icon">
-          <i class="mdi mdi-settings"></i>
+          <i class="mdi mdi-cog"></i>
         </span>
         <span class="menu-title">Settings</span>
         <i class="menu-arrow"></i>
@@ -552,7 +552,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#inv-approvals" aria-expanded="false" aria-controls="inv-approvals">
         <span class="menu-icon">
-          <i class="mdi mdi-check-circle"></i>
+          <i class="mdi mdi-check-decagram"></i>
         </span>
         <span class="menu-title">Investment Approvals</span>
         <i class="menu-arrow"></i>
@@ -569,7 +569,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#agency" aria-expanded="false" aria-controls="agency">
         <span class="menu-icon">
-          <i class="mdi mdi-office-building"></i>
+          <i class="mdi mdi-domain"></i>
         </span>
         <span class="menu-title">Agency</span>
         <i class="menu-arrow"></i>
@@ -604,7 +604,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#access-users" aria-expanded="false" aria-controls="access-users">
         <span class="menu-icon">
-          <i class="mdi mdi-account-multiple"></i>
+          <i class="mdi mdi-account-supervisor"></i>
         </span>
         <span class="menu-title">User Management</span>
         <i class="menu-arrow"></i>
@@ -661,7 +661,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#organization-settings" aria-expanded="false" aria-controls="organization-settings">
         <span class="menu-icon">
-          <i class="mdi mdi-office-building"></i>
+          <i class="mdi mdi-city"></i>
         </span>
         <span class="menu-title">Organization</span>
         <i class="menu-arrow"></i>
@@ -678,7 +678,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#product-settings" aria-expanded="false" aria-controls="product-settings">
         <span class="menu-icon">
-          <i class="mdi mdi-package-variant"></i>
+          <i class="mdi mdi-package-variant-closed"></i>
         </span>
         <span class="menu-title">Product Settings</span>
         <i class="menu-arrow"></i>
@@ -696,7 +696,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#account-settings" aria-expanded="false" aria-controls="account-settings">
         <span class="menu-icon">
-          <i class="mdi mdi-bank"></i>
+          <i class="mdi mdi-book-open-variant"></i>
         </span>
         <span class="menu-title">Account Settings</span>
         <i class="menu-arrow"></i>
@@ -713,7 +713,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#security-settings" aria-expanded="false" aria-controls="security-settings">
         <span class="menu-icon">
-          <i class="mdi mdi-security"></i>
+          <i class="mdi mdi-lock"></i>
         </span>
         <span class="menu-title">Security & Codes</span>
         <i class="menu-arrow"></i>
@@ -730,7 +730,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#system-config" aria-expanded="false" aria-controls="system-config">
         <span class="menu-icon">
-          <i class="mdi mdi-wrench"></i>
+          <i class="mdi mdi-tune"></i>
         </span>
         <span class="menu-title">System Configuration</span>
         <i class="menu-arrow"></i>
@@ -748,7 +748,7 @@
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#maintenance-tools" aria-expanded="false" aria-controls="maintenance-tools">
         <span class="menu-icon">
-          <i class="mdi mdi-tools"></i>
+          <i class="mdi mdi-hammer-wrench"></i>
         </span>
         <span class="menu-title">Maintenance & Tools</span>
         <i class="menu-arrow"></i>
@@ -768,3 +768,32 @@
 
   </ul>
 </nav>
+
+<script>
+// Fix sidebar accordion - only one submenu open at a time
+document.addEventListener('DOMContentLoaded', function() {
+    // Get all collapse toggle links
+    const collapseToggles = document.querySelectorAll('[data-bs-toggle="collapse"]');
+    
+    collapseToggles.forEach(function(toggle) {
+        toggle.addEventListener('click', function(e) {
+            const targetId = this.getAttribute('href');
+            const targetCollapse = document.querySelector(targetId);
+            
+            // Close all other open collapses in the sidebar
+            const allCollapses = document.querySelectorAll('.sidebar .collapse.show');
+            allCollapses.forEach(function(collapse) {
+                if (collapse !== targetCollapse) {
+                    // Use Bootstrap's collapse API to hide
+                    const bsCollapse = bootstrap.Collapse.getInstance(collapse);
+                    if (bsCollapse) {
+                        bsCollapse.hide();
+                    } else {
+                        collapse.classList.remove('show');
+                    }
+                }
+            });
+        });
+    });
+});
+</script>

@@ -135,7 +135,19 @@
                         <!-- Table Header with Search and Controls -->
                         <div class="table-header">
                             <div class="table-search">
-                                <input type="text" placeholder="Search members..." id="memberSearch" value="{{ request('search') }}">
+                                <form method="GET" action="{{ route('admin.members.index') }}" id="tableSearchForm">
+                                    @if(request('status'))
+                                        <input type="hidden" name="status" value="{{ request('status') }}">
+                                    @endif
+                                    @if(request('branch_id'))
+                                        <input type="hidden" name="branch_id" value="{{ request('branch_id') }}">
+                                    @endif
+                                    @if(request('member_type'))
+                                        <input type="hidden" name="member_type" value="{{ request('member_type') }}">
+                                    @endif
+                                    <input type="text" name="search" placeholder="Search members..." id="memberSearch" value="{{ request('search') }}">
+                                    <button type="submit" style="display: none;"></button>
+                                </form>
                             </div>
                             <div class="table-actions">
                                 <a href="{{ route('admin.members.create') }}" class="export-btn">
@@ -144,7 +156,7 @@
                                 </a>
                                 <div class="table-show-entries">
                                     Show
-                                    <select id="entriesPerPage">
+                                    <select id="entriesPerPage" onchange="changePerPage(this.value)">
                                         <option value="10" {{ request('per_page') == 10 ? 'selected' : '' }}>10</option>
                                         <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
                                         <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
@@ -182,7 +194,7 @@
                                             <td>{{ $member->branch->name ?? 'N/A' }}</td>
                                             <td>
                                                 <span class="status-badge status-individual">
-                                                    {{ $member->member_type == 2 ? 'Group' : 'Individual' }}
+                                                    {{ $member->member_type == 1 ? 'Group' : 'Individual' }}
                                                 </span>
                                             </td>
                                             <td>
@@ -345,6 +357,12 @@
 
 @push('scripts')
 <script>
+function changePerPage(value) {
+    const url = new URL(window.location);
+    url.searchParams.set('per_page', value);
+    window.location.href = url.toString();
+}
+
 function approveMember(memberId) {
     document.getElementById('approvalForm').action = `/admin/members/${memberId}/approve`;
     new bootstrap.Modal(document.getElementById('approvalModal')).show();
@@ -385,6 +403,17 @@ function deleteMember(memberId) {
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize table enhancements
     initializeTableEnhancements();
+    
+    // Make table search input submit on Enter
+    const memberSearchInput = document.getElementById('memberSearch');
+    if (memberSearchInput) {
+        memberSearchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('tableSearchForm').submit();
+            }
+        });
+    }
     
     // Add row click functionality
     const tableRows = document.querySelectorAll('#membersTable tbody tr');

@@ -57,11 +57,21 @@ class LoanProductController extends Controller
     /**
      * Display the specified loan product
      */
-    public function show(Product $product)
+    public function show(Request $request, Product $product)
     {
         $product->load('addedBy');
         $account = SystemAccount::find($product->account);
         
+        // Return JSON if requested via AJAX
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'product' => $product,
+                'account' => $account
+            ]);
+        }
+        
+        // Otherwise return view if it exists
         return view('admin.products.show', compact('product', 'account'));
     }
 
@@ -70,6 +80,7 @@ class LoanProductController extends Controller
      */
     public function edit(Product $product)
     {
+        $product->load('charges');
         $accounts = SystemAccount::where('status', 1)->get();
         return view('admin.products.edit', compact('product', 'accounts'));
     }
@@ -95,10 +106,27 @@ class LoanProductController extends Controller
         try {
             $product->update($validated);
 
+            // Return JSON if requested via AJAX
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Loan product updated successfully.',
+                    'product' => $product
+                ]);
+            }
+
             return redirect()->route('admin.settings.loan-products')
                             ->with('success', 'Loan product updated successfully.');
 
         } catch (\Exception $e) {
+            // Return JSON error if requested via AJAX
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error updating loan product: ' . $e->getMessage()
+                ], 500);
+            }
+
             return redirect()->back()
                             ->withInput()
                             ->with('error', 'Error updating loan product: ' . $e->getMessage());
@@ -108,16 +136,32 @@ class LoanProductController extends Controller
     /**
      * Remove the specified loan product
      */
-    public function destroy(Product $product)
+    public function destroy(Request $request, Product $product)
     {
         try {
             // Check if product is in use (you may want to add this check)
             $product->delete();
 
+            // Return JSON if requested via AJAX
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Loan product deleted successfully.'
+                ]);
+            }
+
             return redirect()->route('admin.settings.loan-products')
                             ->with('success', 'Loan product deleted successfully.');
 
         } catch (\Exception $e) {
+            // Return JSON error if requested via AJAX
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error deleting loan product: ' . $e->getMessage()
+                ], 500);
+            }
+
             return redirect()->back()
                             ->with('error', 'Error deleting loan product: ' . $e->getMessage());
         }

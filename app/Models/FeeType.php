@@ -10,6 +10,9 @@ class FeeType extends Model
     use HasFactory;
 
     protected $table = 'fees_types';
+    
+    // Disable automatic timestamps (table uses datecreated instead)
+    public $timestamps = false;
 
     protected $fillable = [
         'name',
@@ -29,6 +32,14 @@ class FeeType extends Model
     public function addedBy()
     {
         return $this->belongsTo(User::class, 'added_by');
+    }
+
+    /**
+     * Get the system account associated with this fee type
+     */
+    public function systemAccount()
+    {
+        return $this->belongsTo(SystemAccount::class, 'account');
     }
 
     /**
