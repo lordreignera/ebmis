@@ -90,14 +90,14 @@ class AdminController extends Controller
             ->where('verified', '1')
             ->count();
 
-        // Active loans (status = 1)
+        // Active loans (status = 2 = Disbursed)
         $activePersonalLoans = DB::table($loansInfo['table'])
-            ->where('status', '1')
+            ->where('status', '2')
             ->count();
 
         // Outstanding amount - use principal for active loans
         $activePersonalLoansValue = DB::table($loansInfo['table'])
-            ->where('status', '1')
+            ->where('status', '2')
             ->selectRaw('SUM(CAST(principal as DECIMAL(15,2))) as total_principal')
             ->value('total_principal') ?? 0;
 
@@ -122,14 +122,14 @@ class AdminController extends Controller
             ->where('verified', '1')
             ->count();
 
-        // Active group loans
+        // Active group loans (status = 2 = Disbursed)
         $activeGroupLoans = DB::table('group_loans')
-            ->where('status', '1')
+            ->where('status', '2')
             ->count();
 
         // Outstanding amount for group loans - use principal for active loans
         $activeGroupLoansValue = DB::table('group_loans')
-            ->where('status', '1')
+            ->where('status', '2')
             ->selectRaw('SUM(CAST(principal as DECIMAL(15,2))) as total_principal')
             ->value('total_principal') ?? 0;
 
@@ -382,6 +382,7 @@ class AdminController extends Controller
                 'description' => "Loan application by {$loan->member_name} (UGX " . number_format($loan->amount) . ")",
                 'status' => $statusText,
                 'status_badge' => $statusBadge,
+                'loan_id' => $loan->id,
             ];
         }
 

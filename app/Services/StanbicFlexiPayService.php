@@ -28,8 +28,29 @@ class StanbicFlexiPayService
         $this->merchantCode = $this->config['merchant_code'];
         $this->clientName = $this->config['client_name'];
         $this->password = $this->config['password'];
-        $this->privateKey = $this->config['private_key'];
+        
+        // Convert \n in private key string to actual newlines
+        $privateKeyString = $this->config['private_key'];
+        $privateKeyString = str_replace('\n', "\n", $privateKeyString);
+        
+        // Load the private key resource
+        $this->privateKey = openssl_pkey_get_private($privateKeyString);
+        
+        if ($this->privateKey === false) {
+            throw new Exception('Failed to load private key: ' . openssl_error_string());
+        }
+        
         $this->timeout = $this->config['timeout'];
+    }
+
+    /**
+     * Destructor to free the private key resource
+     */
+    public function __destruct()
+    {
+        if (is_resource($this->privateKey)) {
+            openssl_free_key($this->privateKey);
+        }
     }
 
     /**

@@ -2,7 +2,7 @@
 .DS_Store
 .env
 .env.backup
-.env.production
+.env.production.example
 .phpactor.json
 .phpunit.result.cache
 /.fleet
@@ -27,3 +27,18 @@ Thumbs.db
 # Database migration and fix scripts
 /fix-scripts
 /docs
+
+# Fix and test files
+fix_*.php
+check_*.php
+test_*.php
+*_fix.php
+*_test.php
+*.sql
+!database/schema/*.sql
+
+# Documentation files (except deployment guide)
+*.md
+!README.md
+!DEPLOYMENT_GUIDE.md
+

@@ -430,47 +430,27 @@
       <!-- Cash Securities Card -->
       <div class="col-lg-6 col-xxl-3 col-md-6 grid-margin stretch-card">
         <div class="card card-bordered h-100">
-          <div class="card-inner mb-n2">
-            <div class="card-title-group">
+          <div class="card-inner">
+            <div class="card-title-group pb-3 g-2">
               <div class="card-title card-title-sm">
                 <h6 class="title">Cash Securities</h6>
-                <p>Cash Securities Payments metrics.</p>
               </div>
             </div>
-          </div>
-          <div class="nk-tb-list is-loose traffic-channel-table">
-            <div class="nk-tb-item nk-tb-head">
-              <div class="nk-tb-col nk-tb-channel"><span>Channel</span></div>
-              <div class="nk-tb-col nk-tb-prev-sessions"><span>Value</span></div>
-            </div>
-            <div class="nk-tb-item">
-              <div class="nk-tb-col nk-tb-channel">
-                <span class="tb-lead">Cash Securities Received</span>
-              </div>
-              <div class="nk-tb-col nk-tb-prev-sessions">
-                <span class="tb-sub tb-amount" style="font-size: 0.9rem">
-                  <span>UGX {{ number_format($stats['savings_value'] ?? 0) }}</span>
-                </span>
-              </div>
-            </div>
-            <div class="nk-tb-item">
-              <div class="nk-tb-col nk-tb-channel">
-                <span class="tb-lead">Cash Securities this Month</span>
-              </div>
-              <div class="nk-tb-col nk-tb-prev-sessions">
-                <span class="tb-sub tb-amount" style="font-size: 0.9rem">
-                  <span>UGX {{ number_format($stats['savings_month'] ?? 0) }}</span>
-                </span>
-              </div>
-            </div>
-            <div class="nk-tb-item">
-              <div class="nk-tb-col nk-tb-channel">
-                <span class="tb-lead">Number of Cash Securities</span>
-              </div>
-              <div class="nk-tb-col nk-tb-prev-sessions">
-                <span class="tb-sub tb-amount" style="font-size: 0.9rem">
-                  <span>{{ number_format($stats['savings_count'] ?? 0) }}</span>
-                </span>
+            <hr>
+            <div class="analytic-ov">
+              <div class="analytic-data-group analytic-ov-group g-3">
+                <div class="analytic-data analytic-au-data">
+                  <div class="title">Total Received</div>
+                  <div class="amount text-success" style="font-size: 1.1rem">UGX {{ number_format($stats['savings_value'] ?? 0) }}</div>
+                </div>
+                <div class="analytic-data analytic-au-data">
+                  <div class="title">This Month</div>
+                  <div class="amount" style="font-size: 1.1rem">UGX {{ number_format($stats['savings_month'] ?? 0) }}</div>
+                </div>
+                <div class="analytic-data analytic-au-data">
+                  <div class="title">Number of Securities</div>
+                  <div class="amount" style="font-size: 1.1rem">{{ number_format($stats['savings_count'] ?? 0) }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -480,47 +460,27 @@
       <!-- Loans Card -->
       <div class="col-lg-6 col-xxl-3 col-md-6 grid-margin stretch-card">
         <div class="card card-bordered h-100">
-          <div class="card-inner mb-n2">
-            <div class="card-title-group">
+          <div class="card-inner">
+            <div class="card-title-group pb-3 g-2">
               <div class="card-title card-title-sm">
-                <h6 class="title">Loans</h6>
-                <p>Loans Payments metrics.</p>
+                <h6 class="title">Loans Overview</h6>
               </div>
             </div>
-          </div>
-          <div class="nk-tb-list is-loose traffic-channel-table">
-            <div class="nk-tb-item nk-tb-head">
-              <div class="nk-tb-col nk-tb-channel"><span>Channel</span></div>
-              <div class="nk-tb-col nk-tb-prev-sessions"><span>Value</span></div>
-            </div>
-            <div class="nk-tb-item">
-              <div class="nk-tb-col nk-tb-channel">
-                <span class="tb-lead">All Loans Disbursed</span>
-              </div>
-              <div class="nk-tb-col nk-tb-prev-sessions">
-                <span class="tb-sub tb-amount">
-                  <span>UGX {{ number_format($stats['total_loans_value'] ?? 0) }}</span>
-                </span>
-              </div>
-            </div>
-            <div class="nk-tb-item">
-              <div class="nk-tb-col nk-tb-channel">
-                <span class="tb-lead">Loans this Month</span>
-              </div>
-              <div class="nk-tb-col nk-tb-prev-sessions">
-                <span class="tb-sub tb-amount">
-                  <span>UGX {{ number_format($stats['total_loans_month'] ?? 0) }}</span>
-                </span>
-              </div>
-            </div>
-            <div class="nk-tb-item">
-              <div class="nk-tb-col nk-tb-channel">
-                <span class="tb-lead">Total Number of Loans</span>
-              </div>
-              <div class="nk-tb-col nk-tb-prev-sessions">
-                <span class="tb-sub tb-amount">
-                  <span>{{ number_format($stats['total_loans_count'] ?? 0) }}</span>
-                </span>
+            <hr>
+            <div class="analytic-ov">
+              <div class="analytic-data-group analytic-ov-group g-3">
+                <div class="analytic-data analytic-au-data">
+                  <div class="title">All Loans Disbursed</div>
+                  <div class="amount text-primary" style="font-size: 1.1rem">UGX {{ number_format($stats['total_loans_value'] ?? 0) }}</div>
+                </div>
+                <div class="analytic-data analytic-au-data">
+                  <div class="title">This Month</div>
+                  <div class="amount" style="font-size: 1.1rem">UGX {{ number_format($stats['total_loans_month'] ?? 0) }}</div>
+                </div>
+                <div class="analytic-data analytic-au-data">
+                  <div class="title">Total Number of Loans</div>
+                  <div class="amount" style="font-size: 1.1rem">{{ number_format($stats['total_loans_count'] ?? 0) }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -604,9 +564,9 @@
               <table class="table table-hover">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Activity</th>
-                    <th>Status</th>
+                    <th style="width: 15%;">Time</th>
+                    <th style="width: 70%;">Activity</th>
+                    <th style="width: 15%;" class="text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -614,13 +574,20 @@
                   <tr>
                     <td>{{ $activity->created_at->diffForHumans() }}</td>
                     <td>{{ $activity->description }}</td>
-                    <td>
-                      <span class="badge badge-{{ $activity->status_badge }}">{{ $activity->status }}</span>
+                    <td class="text-center">
+                      @if(isset($activity->loan_id) && $activity->loan_id)
+                        <a href="{{ route('admin.loans.repayments.schedules', $activity->loan_id) }}" 
+                           class="btn btn-sm btn-primary">
+                          <i class="mdi mdi-eye"></i> View
+                        </a>
+                      @else
+                        <span class="text-muted">-</span>
+                      @endif
                     </td>
                   </tr>
                   @empty
                   <tr>
-                    <td colspan="3" class="text-center text-muted">No recent activity</td>
+                    <td colspan="3" class="text-center text-muted py-4">No recent activity</td>
                   </tr>
                   @endforelse
                 </tbody>
