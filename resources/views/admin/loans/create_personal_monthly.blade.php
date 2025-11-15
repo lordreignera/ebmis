@@ -357,23 +357,40 @@ $(document).ready(function() {
     function calculateInstallment() {
         var principal = parseFloat($('#principal').val()) || 0;
         var period = parseInt($('#period').val()) || 0;
-        var interest = parseFloat($('#interest').val()) || 0;
+        var productType = $('#product_type').val();
 
-        if (principal > 0 && period > 0 && interest > 0) {
-            // Calculate monthly installment with compound interest
-            var monthlyRate = (interest / 100) / 12; // Monthly interest rate
-            var numPayments = period;
-            
-            if (monthlyRate > 0) {
-                // PMT formula for compound interest
-                var installment = principal * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / 
-                                 (Math.pow(1 + monthlyRate, numPayments) - 1);
-            } else {
-                // Simple calculation if no interest
-                var installment = principal / period;
-            }
-            
-            $('#max_installment').val(installment.toFixed(2));
+        if (principal > 0 && period > 0 && productType) {
+            // Use AJAX to calculate installment on server side
+            // Interest rate comes from the selected product, not user input
+            $.ajax({
+                url: '{{ route("admin.loans.calculate") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    principal: principal,
+                    product_type: productType,
+                    period: period,
+                    repay_period: 'monthly'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#max_installment').val(response.installment);
+                        
+                        // Show calculation details (optional)
+                        console.log('Monthly Loan Calculation:', {
+                            principal: principal,
+                            interest: interest + '%',
+                            period: period + ' months',
+                            installment: response.installment + ' per month',
+                            total_payable: response.total_payable,
+                            total_interest: response.total_interest
+                        });
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Calculation error:', error);
+                }
+            });
         }
     }
 });

@@ -703,8 +703,7 @@
       </a>
       <div class="collapse" id="account-settings">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.system-accounts') }}">System Accounts</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.chart-accounts') }}">Chart of Accounts</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.system-accounts') }}">System/Chart Accounts</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.account-types') }}">Account Types</a></li>
         </ul>
       </div>

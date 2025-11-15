@@ -282,7 +282,7 @@
                                 </span>
                             </td>
                             <td>
-                                <span class="text-muted">{{ $repayment->txn_id ?? 'N/A' }}</span>
+                                <span class="text-muted">{{ $repayment->transaction_reference ?? $repayment->txn_id ?? 'N/A' }}</span>
                             </td>
                             <td>
                                 @if($repayment->status == 1 || $repayment->payment_status == 'Completed')

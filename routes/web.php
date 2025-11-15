@@ -128,6 +128,7 @@ Route::middleware([
     Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');
     
     // Enhanced Loan Services Integration
+    Route::post('/loans/calculate', [\App\Http\Controllers\Admin\LoanController::class, 'calculateLoan'])->name('loans.calculate');
     Route::post('/loans/generate-schedule-service', [\App\Http\Controllers\Admin\LoanController::class, 'generateScheduleWithService'])->name('loans.generate-schedule-service');
     Route::post('/loans/calculate-fees-service', [\App\Http\Controllers\Admin\LoanController::class, 'calculateFeesWithService'])->name('loans.calculate-fees-service');
     Route::post('/loans/check-eligibility-service', [\App\Http\Controllers\Admin\LoanController::class, 'checkEligibilityWithService'])->name('loans.check-eligibility-service');
@@ -203,6 +204,9 @@ Route::middleware([
         Route::get('/get/{id}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getRepayment'])->name('get');
         Route::get('/schedule-pending/{scheduleId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePendingRepayments'])->name('schedule-pending');
     });
+    
+    // Loan Reschedule Route
+    Route::post('/loans/{loan}/reschedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'rescheduleLoan'])->name('loans.reschedule');
     
     // Mobile money payment status check (for 60-second polling)
     Route::get('/check-payment-status/{transactionId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'checkPaymentStatus'])->name('check-payment-status');

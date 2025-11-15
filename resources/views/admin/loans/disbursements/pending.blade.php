@@ -388,20 +388,23 @@
     </div>
 </div>
 
-<!-- Loan Details Modal -->
+<!-- Loan Details Modal - Compact -->
 <div class="modal fade" id="loanDetailsModal" tabindex="-1" aria-labelledby="loanDetailsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="loanDetailsModalLabel">Loan Details</h5>
+            <div class="modal-header bg-light">
+                <h5 class="modal-title" id="loanDetailsModalLabel">
+                    <i class="mdi mdi-file-document-outline me-2"></i>Loan Details
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="loanDetailsContent">
                 <!-- Content will be loaded dynamically -->
                 <div class="text-center py-4">
-                    <div class="spinner-border" role="status">
+                    <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
+                    <p class="text-muted mt-2 mb-0">Loading loan details...</p>
                 </div>
             </div>
         </div>

@@ -370,15 +370,40 @@ $(document).ready(function() {
     function calculateInstallment() {
         var principal = parseFloat($('#principal').val()) || 0;
         var period = parseInt($('#period').val()) || 0;
-        var interest = parseFloat($('#interest').val()) || 0;
+        var productType = $('#product_type').val();
 
-        if (principal > 0 && period > 0 && interest > 0) {
-            // Calculate weekly installment with interest
-            var weeklyRate = (interest / 100) / 52; // Weekly interest rate
-            var totalAmount = principal + (principal * (interest / 100));
-            var installment = totalAmount / period;
-            
-            $('#max_installment').val(installment.toFixed(2));
+        if (principal > 0 && period > 0 && productType) {
+            // Use AJAX to calculate installment on server side
+            // Interest rate comes from the selected product, not user input
+            $.ajax({
+                url: '{{ route("admin.loans.calculate") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    principal: principal,
+                    product_type: productType,
+                    period: period,
+                    repay_period: 'weekly'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#max_installment').val(response.installment);
+                        
+                        // Show calculation details (optional)
+                        console.log('Weekly Loan Calculation:', {
+                            principal: principal,
+                            interest: interest + '%',
+                            period: period + ' weeks',
+                            installment: response.installment + ' per week (every Friday)',
+                            total_payable: response.total_payable,
+                            total_interest: response.total_interest
+                        });
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Calculation error:', error);
+                }
+            });
         }
     }
 });

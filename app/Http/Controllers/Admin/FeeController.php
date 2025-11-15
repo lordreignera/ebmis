@@ -544,14 +544,10 @@ class FeeController extends Controller
                 'datecreated' => now()
             ]);
 
-            // Generate payment reference
-            $payRef = 'FEE-' . $fee->id . '-' . time();
-            $fee->update(['pay_ref' => $payRef]);
-
             // Initialize Mobile Money Service
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
 
-            // Collect money from member's phone
+            // Collect money from member's phone (Stanbic will generate short request ID)
             $result = $mobileMoneyService->collectMoney(
                 $validated['member_name'],
                 $validated['member_phone'],
@@ -559,8 +555,19 @@ class FeeController extends Controller
                 "Fee Payment: {$feeType->name}"
             );
 
-            // Store mobile money response and save the transaction reference
-            $transactionRef = $result['reference'] ?? $payRef;
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+            
             $fee->update([
                 'payment_raw' => json_encode($result),
                 'payment_description' => $result['message'] ?? 'Mobile money request sent',
@@ -772,9 +779,22 @@ class FeeController extends Controller
                 $validated['description']
             );
 
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+            
             // Update fee with new transaction reference
             $fee->update([
-                'pay_ref' => $result['reference'] ?? null,
+                'pay_ref' => $transactionRef,
                 'payment_raw' => json_encode($result),
                 'payment_description' => 'Retry payment initiated - ' . now()->format('Y-m-d H:i:s')
             ]);

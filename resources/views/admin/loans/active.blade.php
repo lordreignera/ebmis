@@ -341,16 +341,23 @@
                                                             <i class="mdi mdi-dots-vertical"></i>
                                                         </button>
                                                         <ul class="dropdown-menu">
-                                                            <li><a class="dropdown-item" href="{{ route('admin.loans.show', $loan->id) }}">
+                                                            <li><a class="dropdown-item" href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => $loan->loan_type]) }}">
                                                                 <i class="mdi mdi-eye me-2"></i>View Details
                                                             </a></li>
-                                                            <li><a class="dropdown-item" href="{{ route('admin.loans.history', $loan->id) }}">
+                                                            <li><a class="dropdown-item" href="{{ route('admin.loans.repayments.schedules', $loan->id) }}">
                                                                 <i class="mdi mdi-history me-2"></i>Payment History
                                                             </a></li>
-                                                            @if($daysLate > 7)
+                                                            @if($daysLate > 0)
                                                                 <li><hr class="dropdown-divider"></li>
-                                                                <li><a class="dropdown-item text-warning" href="{{ route('admin.loans.restructure', $loan->id) }}">
-                                                                    <i class="mdi mdi-account-convert me-2"></i>Restructure
+                                                                <li><a class="dropdown-item text-primary" href="javascript:void(0)" 
+                                                                       onclick="showRescheduleModal({{ $loan->id }}, '{{ $loan->loan_code }}', '{{ $loan->borrower_name }}', {{ $daysLate }})">
+                                                                    <i class="mdi mdi-calendar-refresh me-2"></i>Reschedule Payments
+                                                                </a></li>
+                                                            @endif
+                                                            @if($daysLate > 30)
+                                                                <li><a class="dropdown-item text-warning" href="javascript:void(0)"
+                                                                       onclick="showRestructureModal({{ $loan->id }}, '{{ $loan->loan_code }}')">
+                                                                    <i class="mdi mdi-account-convert me-2"></i>Restructure Loan
                                                                 </a></li>
                                                             @endif
                                                         </ul>
@@ -436,6 +443,72 @@
                     @endif
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reschedule Modal -->
+<div class="modal fade" id="rescheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white !important;">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="mdi mdi-calendar-refresh me-2"></i>Reschedule Loan Payments</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rescheduleForm">
+                <div class="modal-body" style="background: white !important; padding: 20px;">
+                    <input type="hidden" id="reschedule_loan_id">
+                    
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information me-2"></i>
+                        <strong>Note:</strong> Rescheduling will postpone all pending payments by the specified number of days.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="color: #000;">Loan Code</label>
+                        <input type="text" class="form-control" id="reschedule_loan_code" readonly style="background-color: #f8f9fa;">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="color: #000;">Borrower</label>
+                        <input type="text" class="form-control" id="reschedule_borrower_name" readonly style="background-color: #f8f9fa;">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="color: #000;">Current Days Overdue</label>
+                        <input type="text" class="form-control text-danger fw-bold" id="reschedule_days_late" readonly style="background-color: #fff3cd;">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="color: #000;">Postpone By (Days) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="reschedule_days" min="1" max="365" required
+                               placeholder="Enter number of days to postpone">
+                        <div class="form-text">Enter number of days to add to all pending payment dates</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="color: #000;">Reason <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="reschedule_reason" rows="3" required
+                                  placeholder="Enter reason for rescheduling (e.g., Business closure, Medical emergency, etc.)"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" style="color: #000;">Apply Late Fee Waiver?</label>
+                        <select class="form-select" id="reschedule_waive_fees">
+                            <option value="0">No - Keep existing late fees</option>
+                            <option value="1">Yes - Waive all late fees</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background: white !important; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="mdi mdi-calendar-check me-1"></i>Reschedule Payments
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -622,6 +695,120 @@ $('#modal_phone').on('input', function() {
         }
     }
 });
+
+// Show reschedule modal
+function showRescheduleModal(loanId, loanCode, borrowerName, daysLate) {
+    $('#reschedule_loan_id').val(loanId);
+    $('#reschedule_loan_code').val(loanCode);
+    $('#reschedule_borrower_name').val(borrowerName);
+    $('#reschedule_days_late').val(daysLate + ' days overdue');
+    $('#reschedule_days').val(daysLate); // Suggest postponing by same number of days
+    $('#reschedule_reason').val('');
+    $('#reschedule_waive_fees').val('0');
+    $('#rescheduleModal').modal('show');
+}
+
+// Handle reschedule form submission
+$('#rescheduleForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    var loanId = $('#reschedule_loan_id').val();
+    var days = parseInt($('#reschedule_days').val());
+    var reason = $('#reschedule_reason').val();
+    var waiveFees = $('#reschedule_waive_fees').val();
+    
+    if (!days || days < 1) {
+        Swal.fire('Error!', 'Please enter valid number of days', 'error');
+        return;
+    }
+    
+    if (!reason || reason.trim().length < 10) {
+        Swal.fire('Error!', 'Please provide a detailed reason (at least 10 characters)', 'error');
+        return;
+    }
+    
+    // Confirm before rescheduling
+    Swal.fire({
+        title: 'Confirm Rescheduling',
+        html: `
+            <div class="text-start">
+                <p><strong>Loan:</strong> ${$('#reschedule_loan_code').val()}</p>
+                <p><strong>Postpone by:</strong> ${days} days</p>
+                <p><strong>Waive late fees:</strong> ${waiveFees == '1' ? 'Yes' : 'No'}</p>
+                <hr>
+                <p class="text-muted">This will update all pending payment schedules for this loan.</p>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, Reschedule',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Show loading
+            Swal.fire({
+                title: 'Processing...',
+                text: 'Rescheduling loan payments...',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            $.ajax({
+                url: '/admin/loans/' + loanId + '/reschedule',
+                method: 'POST',
+                data: {
+                    days: days,
+                    reason: reason,
+                    waive_fees: waiveFees,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    $('#rescheduleModal').modal('hide');
+                    Swal.fire({
+                        title: 'Success!',
+                        text: response.message || 'Loan payments rescheduled successfully',
+                        icon: 'success',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                },
+                error: function(xhr) {
+                    var message = xhr.responseJSON?.message || 'Failed to reschedule loan payments';
+                    Swal.fire('Error!', message, 'error');
+                }
+            });
+        }
+    });
+});
+
+// Show restructure modal (placeholder for future implementation)
+function showRestructureModal(loanId, loanCode) {
+    Swal.fire({
+        title: 'Loan Restructuring',
+        html: `
+            <div class="text-start">
+                <p><strong>Loan:</strong> ${loanCode}</p>
+                <p class="text-muted">Loan restructuring allows you to modify the loan terms including:</p>
+                <ul class="text-start">
+                    <li>Change interest rate</li>
+                    <li>Extend loan period</li>
+                    <li>Adjust installment amounts</li>
+                    <li>Consolidate with other loans</li>
+                </ul>
+                <p class="text-info"><i class="mdi mdi-information me-2"></i>This feature requires additional approval and documentation.</p>
+            </div>
+        `,
+        icon: 'info',
+        confirmButtonText: 'Contact Admin',
+        showCancelButton: true
+    });
+}
 </script>
 @endpush
 @endsection

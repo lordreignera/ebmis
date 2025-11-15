@@ -51,8 +51,8 @@
                             <div class="border-end pe-3">
                                 <h6 class="text-muted">Loan Terms</h6>
                                 <p class="mb-1"><strong>Principal:</strong> UGX {{ number_format($loan->principal_amount, 0) }}</p>
-                                <p class="mb-1"><strong>Interest Rate:</strong> {{ $loan->interest_rate }}%</p>
-                                <p class="mb-1"><strong>Term:</strong> {{ $loan->loan_term }} {{ $loan->period_type }}</p>
+                                <p class="mb-1"><strong>Interest Rate:</strong> {{ number_format($loan->interest_rate, 2) }}%</p>
+                                <p class="mb-1"><strong>Term:</strong> {{ $loan->loan_term }} {{ $loan->period_type_name ?? 'installments' }}</p>
                                 <p class="mb-0"><strong>Start Date:</strong> {{ $loan->disbursement_date ? date('M d, Y', strtotime($loan->disbursement_date)) : 'N/A' }}</p>
                             </div>
                         </div>
@@ -863,7 +863,13 @@ function checkRepaymentStatusInModal(transactionRef, repaymentId, pollingTimer, 
                 
                 processingAlert.removeClass('alert-info').addClass('alert-success');
                 statusText.html('<i class="fas fa-check-circle me-1"></i> ' + response.message);
-                countdown.html(lateFeeMessage + '<button type="button" class="btn btn-sm btn-success mt-2" onclick="window.location.reload()"><i class="fas fa-check me-1"></i> Done</button>');
+                countdown.html(lateFeeMessage);
+                
+                // Auto-close modal after 2 seconds and reload page
+                setTimeout(function() {
+                    $('#repaymentModal').modal('hide');
+                    window.location.href = '{{ route("admin.loans.repayments.schedules", ["id" => $loan->id]) }}';
+                }, 2000);
                 
             } else if (response.status === 'failed') {
                 clearInterval(pollingTimer);

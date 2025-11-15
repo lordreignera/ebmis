@@ -216,12 +216,12 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">Reference:</span>
-                    <span class="info-value">{{ $repayment->txn_id ?? 'N/A' }}</span>
+                    <span class="info-value">{{ $repayment->transaction_reference ?? $repayment->txn_id ?? 'N/A' }}</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Status:</span>
                     <span class="info-value">
-                        @if($repayment->status == 1)
+                        @if($repayment->status == 1 || $repayment->payment_status == 'Completed')
                             <span class="status-badge status-confirmed">CONFIRMED</span>
                         @else
                             <span class="status-badge status-pending">PENDING</span>

@@ -34,67 +34,75 @@ class RepaymentController extends Controller
      */
     public function activeLoans(Request $request)
     {
-        $query = Loan::where('status', 2) // Disbursed loans
-                    ->with(['member', 'branch', 'product', 'repayments']);
+        // Get active loans from both personal and group loans tables (status = 2 = Disbursed)
+        $personalLoansQuery = PersonalLoan::where('status', 2)
+            ->with(['member', 'branch', 'product', 'schedules', 'repayments']);
 
-        // Filter by loan type if provided
-        if ($request->filled('type')) {
-            $loanType = $request->get('type');
-            if ($loanType === 'personal') {
-                $query->whereHas('product', function($q) {
-                    $q->where('loan_type', 1); // 1 = Individual/Personal
-                });
-            } elseif ($loanType === 'group') {
-                $query->whereHas('product', function($q) {
-                    $q->where('loan_type', 2); // 2 = Group
-                });
-            }
-        }
+        $groupLoansQuery = GroupLoan::where('status', 2)
+            ->with(['group', 'branch', 'product', 'schedules', 'repayments']);
 
-        // Apply filters
+        // Apply search filter
         if ($request->filled('search')) {
             $search = $request->get('search');
-            $query->where(function($q) use ($search) {
+            $personalLoansQuery->where(function($q) use ($search) {
                 $q->where('code', 'like', "%{$search}%")
                   ->orWhereHas('member', function($q) use ($search) {
                       $q->where('fname', 'like', "%{$search}%")
                         ->orWhere('lname', 'like', "%{$search}%")
-                        ->orWhere('mname', 'like', "%{$search}%")
-                        ->orWhere('code', 'like', "%{$search}%")
-                        ->orWhere('contact', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
+                        ->orWhere('contact', 'like', "%{$search}%");
+                  });
+            });
+            
+            $groupLoansQuery->where(function($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                  ->orWhereHas('group', function($q) use ($search) {
+                      $q->where('group_name', 'like', "%{$search}%");
                   });
             });
         }
 
+        // Apply branch filter
         if ($request->filled('branch')) {
-            $query->where('branch_id', $request->get('branch'));
+            $personalLoansQuery->where('branch_id', $request->get('branch'));
+            $groupLoansQuery->where('branch_id', $request->get('branch'));
         }
 
+        // Apply product filter
         if ($request->filled('product')) {
-            $query->where('product_id', $request->get('product'));
+            $personalLoansQuery->where('product_type', $request->get('product'));
+            $groupLoansQuery->where('product_type', $request->get('product'));
         }
 
-        if ($request->filled('status')) {
-            // Filter by repayment status
-            $status = $request->get('status');
-            if ($status === 'overdue') {
-                $query->whereHas('schedules', function($q) {
-                    $q->where('status', 0)
-                      ->where('payment_date', '<', now());
-                });
-            } elseif ($status === 'current') {
-                $query->whereDoesntHave('schedules', function($q) {
-                    $q->where('status', 0)
-                      ->where('payment_date', '<', now());
-                });
+        // Filter by loan type
+        $loanType = $request->get('type');
+        if ($loanType === 'personal') {
+            $allLoans = $personalLoansQuery->orderBy('datecreated', 'desc')->get();
+        } elseif ($loanType === 'group') {
+            $allLoans = $groupLoansQuery->orderBy('datecreated', 'desc')->get();
+        } else {
+            // Get both and merge, then sort by date
+            $personalLoans = $personalLoansQuery->get();
+            $groupLoans = $groupLoansQuery->get();
+            $allLoans = $personalLoans->concat($groupLoans)->sortByDesc('datecreated')->values();
+        }
+
+        // Map and calculate loan details
+        $loans = $allLoans->map(function($loan) {
+            // Determine loan type and set borrower info
+            if (isset($loan->member)) {
+                $loan->loan_type = 'personal';
+                $loan->borrower_name = ($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '');
+                $loan->phone_number = $loan->member->contact ?? 'N/A';
+            } elseif (isset($loan->group)) {
+                $loan->loan_type = 'group';
+                $loan->borrower_name = $loan->group->group_name ?? 'N/A';
+                $loan->phone_number = 'Group Loan';
+            } else {
+                $loan->loan_type = 'unknown';
+                $loan->borrower_name = 'N/A';
+                $loan->phone_number = 'N/A';
             }
-        }
-
-        $loans = $query->get()->map(function($loan) {
-            // Calculate loan details
-            $loan->borrower_name = $loan->member->fname . ' ' . $loan->member->lname;
-            $loan->phone_number = $loan->member->contact;
+            
             $loan->branch_name = $loan->branch->name ?? 'N/A';
             $loan->product_name = $loan->product->name ?? 'N/A';
             $loan->loan_code = $loan->code;
@@ -102,19 +110,26 @@ class RepaymentController extends Controller
             
             // Calculate outstanding balance
             $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
-            $loan->outstanding_balance = $loan->principal + $loan->interest - $totalPaid;
             
-            // Find next due payment
-            $nextSchedule = $loan->schedules()
-                                ->where('status', 0)
-                                ->orderBy('payment_date')
-                                ->first();
+            // Calculate total interest (using the doubled interest rate formula)
+            $interestRate = $loan->interest / 100;
+            $interestRatePerInstallment = $interestRate * 2;
+            $totalInterest = $loan->principal * $interestRatePerInstallment * $loan->period;
+            $totalPayable = $loan->principal + $totalInterest;
+            
+            $loan->outstanding_balance = $totalPayable - $totalPaid;
+            
+            // Find next due payment from schedules relationship
+            $nextSchedule = $loan->schedules->where('status', 0)
+                                           ->sortBy('payment_date')
+                                           ->first();
             
             if ($nextSchedule) {
                 $loan->next_due_date = $nextSchedule->payment_date;
                 $loan->next_due_amount = $nextSchedule->payment + ($nextSchedule->penalty ?? 0);
-                $loan->days_overdue = $nextSchedule->payment_date < now() ? 
-                                     now()->diffInDays($nextSchedule->payment_date) : 0;
+                // Calculate days overdue as whole number (ceil to round up any partial days)
+                $loan->days_overdue = \Carbon\Carbon::parse($nextSchedule->payment_date)->isPast() ? 
+                                     (int) \Carbon\Carbon::parse($nextSchedule->payment_date)->diffInDays(now(), false) : 0;
             } else {
                 $loan->next_due_date = null;
                 $loan->next_due_amount = 0;
@@ -145,23 +160,31 @@ class RepaymentController extends Controller
         $branches = Branch::active()->orderBy('name')->get();
         $products = Product::loanProducts()->active()->orderBy('name')->get();
 
-        // Calculate stats
-        $allActiveLoans = Loan::where('status', 2)->with('repayments', 'schedules')->get();
+        // Calculate stats from both loan types
+        $allPersonalLoans = PersonalLoan::where('status', 2)->with('repayments', 'schedules')->get();
+        $allGroupLoans = GroupLoan::where('status', 2)->with('repayments', 'schedules')->get();
+        $allActiveLoans = $allPersonalLoans->concat($allGroupLoans);
+        
         $stats = [
             'total_active' => $allActiveLoans->count(),
             'outstanding_amount' => $allActiveLoans->sum(function($loan) {
                 $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
-                return $loan->principal + $loan->interest - $totalPaid;
+                // Calculate total payable with doubled interest rate
+                $interestRate = $loan->interest / 100;
+                $interestRatePerInstallment = $interestRate * 2;
+                $totalInterest = $loan->principal * $interestRatePerInstallment * $loan->period;
+                $totalPayable = $loan->principal + $totalInterest;
+                return $totalPayable - $totalPaid;
             }),
             'overdue_count' => $allActiveLoans->filter(function($loan) {
-                $hasOverdue = $loan->schedules()
-                                  ->where('status', 0)
-                                  ->where('payment_date', '<', now())
-                                  ->exists();
-                return $hasOverdue;
+                return $loan->schedules->where('status', 0)
+                                      ->filter(function($schedule) {
+                                          return \Carbon\Carbon::parse($schedule->payment_date)->isPast();
+                                      })
+                                      ->count() > 0;
             })->count(),
-            'collections_today' => Repayment::where('status', 1)
-                                          ->whereDate('date_created', today())
+            'collections_today' => Repayment::whereDate('date_created', today())
+                                          ->where('status', 1)
                                           ->sum('amount'),
         ];
 
@@ -173,21 +196,71 @@ class RepaymentController extends Controller
      */
     public function schedules($loanId)
     {
-        $loan = Loan::with(['member', 'branch', 'product', 'schedules.repayments', 'repayments'])
-                   ->where('status', 2) // Disbursed
-                   ->findOrFail($loanId);
+        // Try to find loan in personal_loans first, then group_loans
+        $loan = PersonalLoan::with(['member', 'branch', 'product', 'schedules.repayments', 'repayments'])
+                   ->whereIn('status', [2, 3]) // Disbursed or Completed
+                   ->find($loanId);
+        
+        $loanType = 'personal';
+        
+        if (!$loan) {
+            $loan = GroupLoan::with(['group', 'branch', 'product', 'schedules.repayments', 'repayments'])
+                       ->whereIn('status', [2, 3]) // Disbursed or Completed
+                       ->find($loanId);
+            $loanType = 'group';
+        }
+        
+        if (!$loan) {
+            abort(404, 'Loan not found');
+        }
 
-        // Calculate loan details
-        $loan->borrower_name = $loan->member->fname . ' ' . $loan->member->lname;
-        $loan->phone_number = $loan->member->contact;
+        // Calculate loan details based on loan type
+        if ($loanType === 'personal') {
+            $loan->borrower_name = $loan->member->fname . ' ' . $loan->member->lname;
+            $loan->phone_number = $loan->member->contact;
+        } else {
+            $loan->borrower_name = $loan->group->name;
+            $loan->phone_number = $loan->group->contact ?? 'N/A';
+        }
+        
         $loan->branch_name = $loan->branch->name ?? 'N/A';
         $loan->product_name = $loan->product->name ?? 'N/A';
         $loan->loan_code = $loan->code;
         $loan->principal_amount = $loan->principal;
+        $loan->loan_type = $loanType;
         
-        // Calculate payment status
-        $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
-        $totalPayable = $loan->principal + $loan->interest;
+        // Set loan details for display
+        $loan->interest_rate = $loan->interest ?? 0;
+        $loan->loan_term = $loan->period ?? 0;
+        
+        // Determine period type name
+        if ($loan->period_type == '1') {
+            $loan->period_type_name = 'weeks';
+        } else if ($loan->period_type == '2') {
+            $loan->period_type_name = 'months';
+        } else if ($loan->period_type == '3') {
+            $loan->period_type_name = 'days';
+        } else {
+            $loan->period_type_name = 'installments';
+        }
+        
+        // Get disbursement date (might be in different columns depending on table)
+        $loan->disbursement_date = $loan->disbursement_date 
+            ?? $loan->datecreated 
+            ?? $loan->created_at 
+            ?? null;
+        
+        // Calculate payment status from REPAYMENTS table (confirmed payments only)
+        $totalPaid = Repayment::where('loan_id', $loan->id)
+                             ->where('status', 1)
+                             ->sum('amount');
+        
+        // Calculate total payable from SCHEDULES (principal + interest + any late fees)
+        // This matches bimsadmin logic exactly
+        $totalPayable = $loan->schedules->sum(function($schedule) {
+            return $schedule->principal + $schedule->interest;
+        });
+        
         $loan->amount_paid = $totalPaid;
         $loan->outstanding_balance = $totalPayable - $totalPaid;
         $loan->total_payable = $totalPayable;
@@ -240,11 +313,16 @@ class RepaymentController extends Controller
             // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
             $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
             
-            // 5. Get total paid from schedule (or calculate from repayments)
-            $totalPaid = floatval($schedule->paid ?? $schedule->repayments()->where('status', 1)->sum('amount'));
+            // 5. Get total paid from repayments table (ALWAYS - don't trust schedule.paid column)
+            $totalPaid = floatval(Repayment::where('schedule_id', $schedule->id)
+                                          ->where('status', 1)
+                                          ->sum('amount'));
             
-            // 6. Get pending count
-            $pendingCount = intval($schedule->pending_count ?? $schedule->repayments()->where('status', 0)->where('pay_status', 'Pending')->count());
+            // 6. Get pending count from repayments table
+            $pendingCount = intval(Repayment::where('schedule_id', $schedule->id)
+                                            ->where('status', 0)
+                                            ->where('pay_status', 'Pending')
+                                            ->count());
             
             // 7. Allocate payments - BIMSADMIN ORDER: Late Fees → Interest → Principal
             // Late fees paid
@@ -329,7 +407,17 @@ class RepaymentController extends Controller
     public function getNextSchedule($loanId)
     {
         try {
-            $loan = Loan::findOrFail($loanId);
+            // Find loan from either table
+            $loan = PersonalLoan::find($loanId);
+            if (!$loan) {
+                $loan = GroupLoan::find($loanId);
+            }
+            if (!$loan) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Loan not found'
+                ], 404);
+            }
             
             $nextSchedule = LoanSchedule::where('loan_id', $loanId)
                                        ->where('status', 0) // Unpaid
@@ -373,7 +461,7 @@ class RepaymentController extends Controller
         $paymentMethod = $request->input('payment_method') ?: $request->input('type');
         
         $validator = Validator::make($request->all(), [
-            'loan_id' => 'required|exists:loans,id',
+            'loan_id' => 'required|integer',
             'amount' => 'required|numeric|min:1',
             'payment_method' => 'nullable',
             'type' => 'nullable',
@@ -390,7 +478,18 @@ class RepaymentController extends Controller
             ], 422);
         }
 
-        $loan = Loan::findOrFail($request->loan_id);
+        // Find loan from either personal_loans or group_loans
+        $loan = PersonalLoan::find($request->loan_id);
+        if (!$loan) {
+            $loan = GroupLoan::find($request->loan_id);
+        }
+        
+        if (!$loan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Loan not found'
+            ], 404);
+        }
 
         DB::beginTransaction();
 
@@ -541,8 +640,8 @@ class RepaymentController extends Controller
 
         // Handle bimsadmin-style form submission (POST with s_id, type, details, amount, medium)
         $validator = Validator::make($request->all(), [
-            'loan_id' => 'required|exists:personal_loans,id',
-            'member_id' => 'required|exists:members,id',
+            'loan_id' => 'required|integer',
+            'member_id' => 'nullable|exists:members,id',
             's_id' => 'required|exists:loan_schedules,id',
             'amount' => 'required|numeric|min:1',
             'type' => 'required|integer|in:1,2,3', // 1=cash, 2=mobile_money, 3=bank
@@ -557,9 +656,33 @@ class RepaymentController extends Controller
                 ->with('error', 'Please fill in all required fields correctly.');
         }
 
-        $loan = Loan::findOrFail($request->loan_id);
+        // Find loan from either personal_loans or group_loans
+        $loan = PersonalLoan::find($request->loan_id);
+        $loanType = 'personal';
+        
+        if (!$loan) {
+            $loan = GroupLoan::find($request->loan_id);
+            $loanType = 'group';
+        }
+        
+        if (!$loan) {
+            return redirect()->back()
+                ->with('error', 'Loan not found')
+                ->withInput();
+        }
+        
         $schedule = LoanSchedule::findOrFail($request->s_id);
-        $member = \App\Models\Member::findOrFail($request->member_id);
+        
+        // Get member/group for contact details
+        if ($loanType === 'personal') {
+            $member = $loan->member;
+            $phoneNumber = $member->contact;
+            $memberName = $member->fname . ' ' . $member->lname;
+        } else {
+            $member = $loan->group;
+            $phoneNumber = $member->contact ?? '';
+            $memberName = $member->name;
+        }
 
         DB::beginTransaction();
 
@@ -575,7 +698,7 @@ class RepaymentController extends Controller
                 'details' => $request->details,
                 'loan_id' => $request->loan_id,
                 'schedule_id' => $request->s_id,
-                'member_id' => $request->member_id,
+                'member_id' => $loanType === 'personal' ? $loan->member_id : null,
                 'amount' => $request->amount,
                 'date_created' => now(),
                 'added_by' => auth()->id(),
@@ -584,8 +707,7 @@ class RepaymentController extends Controller
 
             // Handle mobile money - initiate collection
             if ($request->type == 2) {
-                $memberName = $member->fname . ' ' . $member->lname;
-                $phoneNumber = $member->contact;
+                // $memberName and $phoneNumber already set above based on loan type
                 
                 $mobileMoneyResult = $this->processMobileMoneyCollection(
                     $loan,
@@ -706,7 +828,7 @@ class RepaymentController extends Controller
     public function partialPayment(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'loan_id' => 'required|exists:loans,id',
+            'loan_id' => 'required|integer',
             'amount' => 'required|numeric|min:1',
             'payment_method' => 'required|in:mobile_money,cash,bank_transfer',
             'notes' => 'nullable|string|max:500',
@@ -720,7 +842,17 @@ class RepaymentController extends Controller
             ], 422);
         }
 
-        $loan = Loan::findOrFail($request->loan_id);
+        // Find loan from either table
+        $loan = PersonalLoan::find($request->loan_id);
+        if (!$loan) {
+            $loan = GroupLoan::find($request->loan_id);
+        }
+        if (!$loan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Loan not found'
+            ], 404);
+        }
 
         DB::beginTransaction();
 
@@ -777,7 +909,17 @@ class RepaymentController extends Controller
     protected function processMobileMoneyCollection($loan, $amount, $phoneNumber, $network)
     {
         try {
-            $memberName = $loan->member->fname . ' ' . $loan->member->lname;
+            // Handle both PersonalLoan and GroupLoan
+            if ($loan instanceof PersonalLoan) {
+                $memberName = $loan->member->fname . ' ' . $loan->member->lname;
+            } elseif ($loan instanceof GroupLoan) {
+                $memberName = $loan->group->name ?? 'Group Loan';
+            } else {
+                // Fallback for old Loan model (if still used anywhere)
+                $memberName = isset($loan->member) 
+                    ? $loan->member->fname . ' ' . $loan->member->lname 
+                    : 'Borrower';
+            }
             
             // Use MobileMoneyService for collection (reverse of disbursement)
             $result = $this->mobileMoneyService->collectMoney(
@@ -787,10 +929,23 @@ class RepaymentController extends Controller
                 "Loan repayment for {$loan->code}"
             );
 
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+
             return [
-                'success' => $result['success'],
+                'success' => true,
                 'message' => $result['message'] ?? 'Mobile money collection processed',
-                'reference' => $result['reference'] ?? 'REF-' . time()
+                'reference' => $transactionRef
             ];
 
         } catch (\Exception $e) {
@@ -1317,6 +1472,28 @@ class RepaymentController extends Controller
             'addedBy'
         ]);
 
+        // Calculate loan summary
+        if ($repayment->loan) {
+            // Calculate total paid (all completed repayments for this loan)
+            $totalPaid = Repayment::where('loan_id', $repayment->loan_id)
+                ->where(function($q) {
+                    $q->where('status', 1)
+                      ->orWhere('payment_status', 'Completed');
+                })
+                ->sum('amount');
+            
+            // Calculate total due
+            $totalDue = $repayment->loan->principal + $repayment->loan->interest;
+            
+            // Calculate outstanding balance
+            $outstandingBalance = $totalDue - $totalPaid;
+            
+            // Add to loan object for view
+            $repayment->loan->paid = $totalPaid;
+            $repayment->loan->outstanding_balance = max(0, $outstandingBalance); // Don't show negative
+            $repayment->loan->total_due = $totalDue;
+        }
+
         return view('admin.repayments.receipt', compact('repayment'));
     }
 
@@ -1489,14 +1666,10 @@ class RepaymentController extends Controller
                 'medium' => null, // Will be set after payment confirmation
             ]);
 
-            // Generate payment reference
-            $payRef = 'REPAY-' . $repayment->id . '-' . time();
-            $repayment->update(['transaction_reference' => $payRef]);
-
             // Initialize Mobile Money Service
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
 
-            // Collect money from member's phone
+            // Collect money from member's phone (Stanbic will generate short request ID)
             $result = $mobileMoneyService->collectMoney(
                 $validated['member_name'],
                 $validated['member_phone'],
@@ -1504,8 +1677,19 @@ class RepaymentController extends Controller
                 "Loan Repayment: Schedule #" . $schedule->id
             );
 
-            // Store mobile money response and save the transaction reference
-            $transactionRef = $result['reference'] ?? $payRef;
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+            
             $repayment->update([
                 'payment_raw' => json_encode($result),
                 'transaction_reference' => $transactionRef
@@ -1591,6 +1775,7 @@ class RepaymentController extends Controller
                     // Update repayment status
                     $repayment->update([
                         'payment_status' => 'Completed',
+                        'status' => 1, // Mark as confirmed/completed
                         'payment_raw' => json_encode($statusResult)
                     ]);
 
@@ -1602,9 +1787,13 @@ class RepaymentController extends Controller
                     // Update schedule paid amount
                     $schedule->increment('paid', $repayment->amount);
                     
-                    // Check if schedule is fully paid
-                    if ($schedule->paid >= $schedule->payment) {
-                        $schedule->update(['status' => 1]); // Fully paid
+                    // Check if schedule is fully paid (with 1 UGX rounding tolerance)
+                    $difference = abs($schedule->payment - $schedule->paid);
+                    if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
+                        $schedule->update([
+                            'status' => 1, // Fully paid
+                            'paid' => $schedule->payment // Ensure exact match to prevent rounding issues
+                        ]);
                     }
 
                     // Calculate and apply late fees if payment is overdue
@@ -1784,13 +1973,10 @@ class RepaymentController extends Controller
                 'date_created' => now() // Reset timestamp for 2-minute grace period
             ]);
 
-            // Generate new payment reference
-            $payRef = 'REPAY-RETRY-' . $repayment->id . '-' . time();
-
             // Initialize Mobile Money Service
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
 
-            // Retry collection
+            // Retry collection (Stanbic will generate new short request ID)
             $result = $mobileMoneyService->collectMoney(
                 $validated['member_name'],
                 $validated['member_phone'],
@@ -1798,8 +1984,19 @@ class RepaymentController extends Controller
                 $validated['details']
             );
 
-            // Update with new transaction reference
-            $transactionRef = $result['reference'] ?? $payRef;
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+            
             $repayment->update([
                 'transaction_reference' => $transactionRef,
                 'payment_raw' => json_encode($result)
@@ -1886,6 +2083,151 @@ class RepaymentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load pending repayments'
+            ], 500);
+        }
+    }
+
+    /**
+     * Reschedule loan payments by postponing all unpaid schedules
+     */
+    public function rescheduleLoan(Request $request, $loanId)
+    {
+        try {
+            // Validate input
+            $validator = Validator::make($request->all(), [
+                'days' => 'required|integer|min:1|max:365',
+                'reason' => 'required|string|min:10|max:1000',
+                'waive_fees' => 'required|in:0,1'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validator->errors()->first()
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            // Find the loan from either personal_loans or group_loans
+            $loan = PersonalLoan::find($loanId);
+            $loanType = 'personal';
+            
+            if (!$loan) {
+                $loan = GroupLoan::find($loanId);
+                $loanType = 'group';
+            }
+
+            if (!$loan) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Loan not found'
+                ], 404);
+            }
+
+            // Check if loan is active (status 2 = Disbursed)
+            if ($loan->status != 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only active/disbursed loans can be rescheduled'
+                ], 400);
+            }
+
+            $daysToPostpone = (int) $request->input('days');
+            $reason = $request->input('reason');
+            $waiveFees = $request->input('waive_fees') == '1';
+
+            // Get all unpaid schedules for this loan
+            $unpaidSchedules = LoanSchedule::where('loan_id', $loanId)
+                ->where('status', 0) // Unpaid
+                ->orderBy('payment_date', 'asc')
+                ->get();
+
+            if ($unpaidSchedules->isEmpty()) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No unpaid schedules found for this loan'
+                ], 400);
+            }
+
+            $updatedSchedules = 0;
+            
+            // Update all unpaid schedules by adding the specified days
+            foreach ($unpaidSchedules as $schedule) {
+                $currentDate = Carbon::parse($schedule->payment_date);
+                $newDate = $currentDate->addDays($daysToPostpone);
+                
+                $schedule->payment_date = $newDate->format('Y-m-d');
+                
+                // Optionally waive late fees
+                if ($waiveFees && isset($schedule->late_fee)) {
+                    $schedule->late_fee = 0;
+                }
+                
+                $schedule->save();
+                $updatedSchedules++;
+            }
+
+            // Log the reschedule action in a notes/audit field if available
+            $logMessage = sprintf(
+                "[%s] Loan rescheduled: %d schedules postponed by %d days. Reason: %s. Late fees waived: %s. By: %s",
+                now()->format('Y-m-d H:i:s'),
+                $updatedSchedules,
+                $daysToPostpone,
+                $reason,
+                $waiveFees ? 'Yes' : 'No',
+                auth()->user()->name ?? 'System'
+            );
+
+            // Add to loan notes if column exists
+            if (\Schema::hasColumn($loanType === 'personal' ? 'personal_loans' : 'group_loans', 'notes')) {
+                $existingNotes = $loan->notes ?? '';
+                $loan->notes = $existingNotes . "\n" . $logMessage;
+                $loan->save();
+            }
+
+            // Also log to Laravel log for audit trail
+            Log::info("Loan Rescheduled", [
+                'loan_id' => $loanId,
+                'loan_type' => $loanType,
+                'loan_code' => $loan->code,
+                'days_postponed' => $daysToPostpone,
+                'schedules_updated' => $updatedSchedules,
+                'reason' => $reason,
+                'waive_fees' => $waiveFees,
+                'user_id' => auth()->id(),
+                'user_name' => auth()->user()->name ?? 'Unknown'
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => sprintf(
+                    'Successfully rescheduled %d payment(s) by %d days',
+                    $updatedSchedules,
+                    $daysToPostpone
+                ),
+                'data' => [
+                    'schedules_updated' => $updatedSchedules,
+                    'days_postponed' => $daysToPostpone,
+                    'fees_waived' => $waiveFees
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error("Loan Reschedule Error", [
+                'loan_id' => $loanId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reschedule loan: ' . $e->getMessage()
             ], 500);
         }
     }

@@ -310,8 +310,8 @@ class DisbursementController extends Controller
         $loan->loan_type = $loanType;
         $loan->created_at = $loan->datecreated ?? now();
         
-        // Get system users (staff members) for assignment
-        $staff_members = User::where('status', 1)
+        // Get system users (staff members) for assignment - status is 'active' not 1
+        $staff_members = User::where('status', 'active')
                            ->orderBy('name')
                            ->get();
         
@@ -640,7 +640,7 @@ class DisbursementController extends Controller
                     ->get();
 
         $investments = Investment::where('status', 1)->get();
-        $users = \App\Models\User::where('status', 1)->get(); // Staff for assignment
+        $users = \App\Models\User::where('status', 'active')->get(); // Staff for assignment - status is 'active' not 1
 
         // Pre-select loan if passed
         $selectedLoan = null;
@@ -695,13 +695,30 @@ class DisbursementController extends Controller
 
             // Check if already has successful disbursement
             $existingDisbursement = Disbursement::where('loan_id', $loan->id)
-                                               ->where('status', 1)
+                                               ->whereIn('status', [1, 2]) // Approved or Disbursed
                                                ->first();
             
             if ($existingDisbursement) {
+                // Check if there's a pending/successful transaction
+                $existingTxn = DisbursementTransaction::where('disbursement_id', $existingDisbursement->id)
+                                                      ->first();
+                
+                $statusMessage = 'Loan has already been disbursed.';
+                
+                if ($existingTxn) {
+                    $txnStatus = match($existingTxn->status) {
+                        '00' => 'Transaction is PENDING - waiting for customer to approve on their phone',
+                        '01' => 'Transaction SUCCESSFUL - money already sent',
+                        '02', '57' => 'Previous transaction FAILED - contact admin to retry',
+                        default => 'Transaction status: ' . $existingTxn->status
+                    };
+                    
+                    $statusMessage .= ' ' . $txnStatus . ' (Ref: ' . $existingTxn->txn_reference . ')';
+                }
+                
                 return redirect()->back()
                                 ->withInput()
-                                ->with('error', 'Loan has already been disbursed.');
+                                ->with('error', $statusMessage);
             }
 
             // CRITICAL: Validate all mandatory fees are paid (CANNOT BE AUTO-DEDUCTED)
@@ -813,7 +830,7 @@ class DisbursementController extends Controller
     }
 
     /**
-     * Process mobile money disbursement via FlexiPay
+     * Process mobile money disbursement via Stanbic FlexiPay
      */
     private function processMobileMoneyDisbursement(Disbursement $disbursement, $phoneNumber, $paymentMedium)
     {
@@ -821,86 +838,148 @@ class DisbursementController extends Controller
             // Normalize phone number
             $normalizedPhone = $this->normalizePhoneNumber($phoneNumber);
             
-            // Detect network
-            $network = $this->detectNetwork($normalizedPhone);
-            
-            // Override with selected payment medium if provided
+            // Determine network
+            $network = null;
             if ($paymentMedium == 1) {
                 $network = 'AIRTEL';
             } elseif ($paymentMedium == 2) {
                 $network = 'MTN';
             }
 
-            if (!$network) {
+            // Get member name for disbursement
+            $memberName = $disbursement->loan && $disbursement->loan->member ? 
+                         $disbursement->loan->member->fname . ' ' . $disbursement->loan->member->lname : 
+                         'Beneficiary';
+
+            // Check if this disbursement already has a pending/successful transaction
+            $existingTxn = DisbursementTransaction::where('disbursement_id', $disbursement->id)
+                                                  ->whereIn('status', ['00', '01']) // Pending or Successful
+                                                  ->first();
+            
+            if ($existingTxn) {
+                Log::warning('Disbursement already has pending/successful transaction', [
+                    'disbursement_id' => $disbursement->id,
+                    'existing_txn_id' => $existingTxn->id,
+                    'existing_status' => $existingTxn->status
+                ]);
+                
+                $statusMessage = match($existingTxn->status) {
+                    '00' => 'TRANSACTION PENDING: A disbursement request is already sent and waiting for customer approval on their phone. Ref: ' . $existingTxn->txn_reference,
+                    '01' => 'TRANSACTION SUCCESSFUL: Money has already been sent to ' . $existingTxn->phone . '. Ref: ' . $existingTxn->txn_reference,
+                    default => 'Transaction already in progress. Ref: ' . $existingTxn->txn_reference
+                };
+                
                 return [
                     'success' => false,
-                    'message' => 'Unable to detect mobile network for phone number: ' . $phoneNumber
+                    'message' => $statusMessage,
+                    'transaction_id' => $existingTxn->txn_reference,
+                    'status' => $existingTxn->status
                 ];
             }
 
-            // Prepare FlexiPay request
-            $flexiPayData = [
-                'msisdn' => $normalizedPhone,
-                'amount' => $disbursement->amount,
-                'reference' => $disbursement->code,
-                'narrative' => 'Loan Disbursement ' . $disbursement->loan->code,
+            // Generate unique request ID before API call to enable idempotent retries
+            $requestId = 'EbP' . time() . substr(microtime(false), 2, 6) . mt_rand(100, 999);
+            
+            Log::info('Processing disbursement via MobileMoneyService', [
+                'disbursement_id' => $disbursement->id,
+                'phone' => $normalizedPhone,
                 'network' => $network,
-            ];
+                'amount' => $disbursement->amount,
+                'beneficiary' => $memberName,
+                'request_id' => $requestId
+            ]);
 
-            // Call FlexiPay API
-            $response = Http::timeout(30)->post(config('services.flexipay.base_url') . 'marchanToMobilePayprod.php', $flexiPayData);
+            // Create transaction record BEFORE API call to track request and prevent duplicates
+            $disbursementTxn = DisbursementTransaction::create([
+                'disbursement_id' => $disbursement->id,
+                'loan_id' => $disbursement->loan_id,
+                'txn_reference' => $requestId,
+                'network' => $network,
+                'phone' => $normalizedPhone,
+                'amount' => $disbursement->amount,
+                'status' => '00', // Pending
+                'message' => 'Initiated',
+            ]);
 
-            if ($response->successful()) {
-                $responseData = $response->json();
+            // Use MobileMoneyService for disbursement (will use Stanbic FlexiPay)
+            $result = $this->mobileMoneyService->disburse(
+                $normalizedPhone,
+                $disbursement->amount,
+                $network,
+                $memberName,
+                $requestId  // Pass request ID for idempotent retries
+            );
 
+            Log::info('MobileMoneyService disbursement result', [
+                'result' => $result
+            ]);
+
+            if ($result['success']) {
                 // Create raw payment record
                 RawPayment::create([
-                    'txn_id' => $responseData['transactionId'] ?? 'TXN-' . time(),
+                    'txn_id' => $result['reference'] ?? $requestId,
                     'amount' => $disbursement->amount,
                     'phone_number' => $normalizedPhone,
-                    'status' => $responseData['status'] ?? '00',
+                    'status' => $result['status_code'] ?? '00',
                     'type' => 'disbursement',
                     'loan_id' => $disbursement->loan_id,
                     'disbursement_id' => $disbursement->id,
                 ]);
 
-                // Create disbursement transaction record
-                DisbursementTransaction::create([
-                    'disbursement_id' => $disbursement->id,
-                    'txn_reference' => $responseData['transactionId'] ?? 'TXN-' . time(),
-                    'network' => $network,
-                    'phone' => $normalizedPhone,
-                    'status' => $responseData['status'] ?? '00',
-                    'response_data' => json_encode($responseData),
+                // Update disbursement transaction record with response
+                $disbursementTxn->update([
+                    'status' => $result['status_code'] ?? '00',
+                    'message' => $result['message'] ?? 'Success',
+                    'response_data' => json_encode($result),
                 ]);
 
                 // Check if immediately successful
-                $immediateSuccess = isset($responseData['status']) && $responseData['status'] === '01';
+                $immediateSuccess = isset($result['status_code']) && $result['status_code'] === '00';
 
                 return [
                     'success' => true,
                     'message' => $immediateSuccess ? 
-                        'Disbursement completed successfully via ' . $network : 
-                        'Disbursement initiated via ' . $network . '. Transaction pending confirmation.',
+                        'Disbursement initiated successfully via ' . ($result['network'] ?? $network) . '. Transaction processing.' : 
+                        'Disbursement initiated via ' . ($result['network'] ?? $network) . '. Transaction pending confirmation.',
                     'immediate_success' => $immediateSuccess,
-                    'transaction_id' => $responseData['transactionId'] ?? null,
+                    'transaction_id' => $result['reference'] ?? null,
+                    'provider' => $result['provider'] ?? 'stanbic'
                 ];
 
             } else {
-                Log::error('FlexiPay API error: ' . $response->body());
+                // Update transaction record with failure
+                if (isset($disbursementTxn)) {
+                    $disbursementTxn->update([
+                        'status' => '02', // Failed
+                        'message' => $result['message'] ?? 'Failed',
+                    ]);
+                }
+                
+                Log::error('Mobile money disbursement failed', [
+                    'error' => $result['message'] ?? 'Unknown error',
+                    'result' => $result
+                ]);
                 
                 return [
                     'success' => false,
-                    'message' => 'Failed to initiate mobile money disbursement. Please try again.'
+                    'message' => '❌ TRANSACTION FAILED: ' . ($result['message'] ?? 'Failed to initiate mobile money disbursement. Please try again.')
                 ];
             }
 
         } catch (\Exception $e) {
+            // Update transaction record with error if exists
+            if (isset($disbursementTxn)) {
+                $disbursementTxn->update([
+                    'status' => '02', // Failed
+                    'message' => 'Exception: ' . substr($e->getMessage(), 0, 70),
+                ]);
+            }
+            
             Log::error('Mobile money disbursement error: ' . $e->getMessage());
             
             return [
                 'success' => false,
-                'message' => 'Error processing mobile money disbursement: ' . $e->getMessage()
+                'message' => '❌ TRANSACTION ERROR: ' . $e->getMessage()
             ];
         }
     }
@@ -1002,41 +1081,40 @@ class DisbursementController extends Controller
             return;
         }
 
-        // Generate new schedules
-        $principal = $loan->principal;
-        $interest = $loan->interest / 100; // Convert to decimal
-        $period = $loan->period;
+        // Generate new schedules using BIMSADMIN flat interest calculation
+        $principal = floatval($loan->principal);
+        $interestRate = floatval($loan->interest) / 100; // Convert to decimal (e.g., 0.7% = 0.007)
+        $period = intval($loan->period);
         $periodType = $loan->period_type ?? 3; // Default to daily
         
         $disbursementDate = \Carbon\Carbon::parse($disbursement->disbursement_date);
-        $installment = $loan->installment ?? 0;
-
-        // Calculate per-period interest based on period type
-        $interestPerPeriod = 0;
-        if ($periodType == 1) {
-            // Weekly
-            $interestPerPeriod = ($interest * 7) / 365;
-        } elseif ($periodType == 2) {
-            // Monthly
-            $interestPerPeriod = $interest / 12;
-        } else {
-            // Daily
-            $interestPerPeriod = $interest / 365;
-        }
-
+        
+        // Calculate principal per installment (flat/equal installments)
+        $principalPerInstallment = $principal / $period;
         $balance = $principal;
 
+        // BIMSADMIN DAILY LOAN LOGIC:
+        // For each installment, interest = (principal per installment) × (interest rate) × (remaining periods including current)
+        // Example: 10,000 loan, 2 periods, 0.7% interest
+        // Installment 1: Interest = 5,000 × 0.007 × 2 = 70
+        // Installment 2: Interest = 5,000 × 0.007 × 1 = 35
+        
         for ($i = 1; $i <= $period; $i++) {
-            $interestAmount = $balance * $interestPerPeriod;
-            $principalAmount = $installment - $interestAmount;
+            $remainingPeriods = $period - $i + 1; // How many periods left INCLUDING current one
             
-            // Ensure balance doesn't go negative
-            if ($principalAmount > $balance) {
-                $principalAmount = $balance;
-                $installment = $principalAmount + $interestAmount;
-            }
+            // BIMSADMIN formula: Interest = (Principal per installment) × (Interest rate) × (Remaining periods)
+            $interestAmount = $principalPerInstallment * $interestRate * $remainingPeriods;
+            
+            $principalAmount = $principalPerInstallment;
+            $installmentPayment = $principalAmount + $interestAmount;
             
             $balance -= $principalAmount;
+            
+            // Ensure balance doesn't go negative due to rounding
+            if ($balance < 0) {
+                $principalAmount += $balance;
+                $balance = 0;
+            }
             
             // Calculate payment date
             $paymentDate = $this->calculatePaymentDate($disbursementDate, $i, $periodType);
@@ -1046,7 +1124,7 @@ class DisbursementController extends Controller
                 'payment_date' => $paymentDate->format('Y-m-d'),
                 'principal' => round($principalAmount, 2),
                 'interest' => round($interestAmount, 2),
-                'payment' => round($installment, 2),
+                'payment' => round($installmentPayment, 2),
                 'balance' => round($balance, 2),
                 'status' => 0, // 0=pending, 1=paid
                 'date_created' => now(),
@@ -1093,15 +1171,17 @@ class DisbursementController extends Controller
             case 2: // Monthly
                 return $startDate->copy()->addMonths($periodNumber);
                 
-            case 3: // Daily - skip Sundays
-                $date = $startDate->copy()->addDays(7); // Start from next week
+            case 3: // Daily - each day after disbursement, skip Sundays
+                $date = $startDate->copy();
                 $daysAdded = 0;
                 
-                for ($i = 0; $i < $periodNumber - 1; $i++) {
+                // Add days for each period, skipping Sundays
+                while ($daysAdded < $periodNumber) {
                     $date->addDay();
+                    
                     // Skip Sundays
-                    if ($date->isSunday()) {
-                        $date->addDay();
+                    if (!$date->isSunday()) {
+                        $daysAdded++;
                     }
                 }
                 
@@ -1354,14 +1434,9 @@ class DisbursementController extends Controller
      */
     private function validateMandatoryFees(Member $member)
     {
-        // Get all fee types that are mandatory (required_disbursement = 0)
-        // These are one-time fees like registration that CANNOT be auto-deducted
-        $mandatoryFeeTypes = FeeType::active()
-                                   ->where('required_disbursement', 0)
-                                   ->get();
-
-        $unpaidMandatoryFees = [];
-
+        // ONLY REGISTRATION FEE IS MANDATORY - paid once per member lifetime
+        // All other fees (License, Affiliation, test fees, etc.) are optional
+        
         // Check if member has any previous loans (first loan vs subsequent loans)
         $previousLoansCount = \App\Models\PersonalLoan::where('member_id', $member->id)
                                 ->where('status', '>=', 1) // Approved or higher
@@ -1369,56 +1444,49 @@ class DisbursementController extends Controller
         
         $isFirstLoan = $previousLoansCount <= 1; // Current loan is the first
 
-        foreach ($mandatoryFeeTypes as $feeType) {
-            // Check if this is a one-time registration fee
-            $isRegistrationFee = stripos($feeType->name, 'registration') !== false ||
-                               stripos($feeType->name, 'affiliation') !== false ||
-                               stripos($feeType->name, 'license') !== false;
-            
-            // Check if this is a situational fee (only applicable in specific scenarios)
-            $isSituationalFee = stripos($feeType->name, 'late') !== false ||
-                              stripos($feeType->name, 'restructuring') !== false ||
-                              stripos($feeType->name, 'penalty') !== false ||
-                              stripos($feeType->name, 'arrears') !== false;
-            
-            // Skip situational fees - these are only required when the situation occurs
-            if ($isSituationalFee) {
-                \Log::info("Skipping situational fee '{$feeType->name}' for loan disbursement", [
-                    'member_id' => $member->id,
-                    'fee_type' => $feeType->name,
-                    'reason' => 'Late fees and penalties only apply to existing loans, not new disbursements'
-                ]);
-                continue;
-            }
-            
-            // Skip one-time fees for subsequent loans (already paid in first loan)
-            if (!$isFirstLoan && $isRegistrationFee) {
-                \Log::info("Skipping one-time fee '{$feeType->name}' for subsequent loan", [
-                    'member_id' => $member->id,
-                    'fee_type' => $feeType->name,
-                    'previous_loans' => $previousLoansCount
-                ]);
-                continue; // Don't require this fee for subsequent loans
-            }
-            
-            // Check if member has paid this mandatory fee
-            $paidFee = Fee::where('member_id', $member->id)
-                         ->where('fees_type_id', $feeType->id)
-                         ->where('status', 1) // Paid
-                         ->first();
-
-            if (!$paidFee) {
-                $unpaidMandatoryFees[] = $feeType->name;
-            }
+        // For subsequent loans, skip registration fee check (already paid once)
+        if (!$isFirstLoan) {
+            \Log::info("Skipping registration fee check for subsequent loan", [
+                'member_id' => $member->id,
+                'previous_loans' => $previousLoansCount
+            ]);
+            return ['valid' => true];
         }
 
-        if (!empty($unpaidMandatoryFees)) {
+        // For first loan, check if registration fee has been paid
+        $registrationFee = FeeType::active()
+                                  ->where('required_disbursement', 0)
+                                  ->where(function($query) {
+                                      $query->where('name', 'like', '%registration%')
+                                            ->orWhere('name', 'like', '%Registration%');
+                                  })
+                                  ->first();
+
+        if (!$registrationFee) {
+            \Log::warning("Registration fee type not found in system", [
+                'member_id' => $member->id
+            ]);
+            return ['valid' => true]; // No registration fee defined, allow disbursement
+        }
+
+        // Check if member has paid registration fee
+        $paidRegistrationFee = Fee::where('member_id', $member->id)
+                                  ->where('fees_type_id', $registrationFee->id)
+                                  ->where('status', 1) // Paid
+                                  ->first();
+
+        if (!$paidRegistrationFee) {
             return [
                 'valid' => false,
-                'message' => implode(', ', $unpaidMandatoryFees) . 
-                           '. These mandatory fees must be paid separately before any loan disbursement.'
+                'message' => 'Registration fee must be paid before first loan disbursement.'
             ];
         }
+
+        \Log::info("Registration fee validated successfully", [
+            'member_id' => $member->id,
+            'fee_id' => $registrationFee->id,
+            'amount_paid' => $paidRegistrationFee->amount
+        ]);
 
         return ['valid' => true];
     }

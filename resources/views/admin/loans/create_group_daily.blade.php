@@ -289,7 +289,7 @@ $(document).ready(function() {
 
     function calculateInstallment() {
         var period = parseInt($('#period').val()) || 0;
-        var interest = parseFloat($('#interest').val()) || 0;
+        var productType = $('#product_type').val();
         var isEqualSharing = $('#equal_sharing').val() === 'yes';
         var amount = 0;
 
@@ -301,12 +301,38 @@ $(document).ready(function() {
             amount = parseFloat($('#principal').val()) || 0;
         }
 
-        if (amount > 0 && period > 0 && interest > 0) {
-            // Calculate daily installment with interest
-            var totalWithInterest = amount + (amount * (interest / 100));
-            var installment = totalWithInterest / period;
-            
-            $('#max_installment').val(installment.toFixed(2));
+        if (amount > 0 && period > 0 && productType) {
+            // Use AJAX to calculate installment on server side
+            // Interest rate comes from the selected product, not user input
+            $.ajax({
+                url: '{{ route("admin.loans.calculate") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    principal: amount,
+                    product_type: productType,
+                    period: period,
+                    repay_period: 'daily'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#max_installment').val(response.installment);
+                        
+                        // Show calculation details (optional)
+                        console.log('Group Daily Loan Calculation:', {
+                            principal: amount,
+                            interest: interest + '%',
+                            period: period + ' days',
+                            installment: response.installment + ' per day',
+                            total_payable: response.total_payable,
+                            total_interest: response.total_interest
+                        });
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Calculation error:', error);
+                }
+            });
         }
     }
 

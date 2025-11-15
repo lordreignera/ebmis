@@ -279,6 +279,11 @@ class LoanController extends Controller
         try {
             DB::beginTransaction();
 
+            // CRITICAL: Override interest rate with product's interest rate
+            // This ensures that the product's rate is always used, regardless of user input
+            $product = Product::findOrFail($validated['product_type']);
+            $validated['interest'] = $product->interest;
+
             if ($loanType === 'personal') {
                 // CRITICAL: Validate that the member is approved before allowing loan creation
                 $member = Member::find($validated['member_id']);
@@ -523,6 +528,11 @@ class LoanController extends Controller
             'repay_address' => 'nullable|string|max:1000',
             'comments' => 'nullable|string',
         ]);
+
+        // CRITICAL: Override interest rate with product's interest rate
+        // This ensures that the product's rate is always used, regardless of user input
+        $product = Product::findOrFail($validated['product_type']);
+        $validated['interest'] = $product->interest;
 
         // CRITICAL: Validate that the member is approved before allowing loan updates
         $member = Member::find($validated['member_id']);
@@ -1003,14 +1013,10 @@ class LoanController extends Controller
                 'datecreated' => now()
             ]);
 
-            // Generate payment reference
-            $payRef = 'LOAN-FEE-' . $fee->id . '-' . time();
-            $fee->update(['pay_ref' => $payRef]);
-
             // Initialize Mobile Money Service
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
 
-            // Collect money from member's phone
+            // Collect money from member's phone (Stanbic will generate short request ID)
             $result = $mobileMoneyService->collectMoney(
                 $validated['member_name'],
                 $validated['member_phone'],
@@ -1018,8 +1024,19 @@ class LoanController extends Controller
                 "Loan Charge: {$charge->name}"
             );
 
-            // Store mobile money response and save the transaction reference
-            $transactionRef = $result['reference'] ?? $payRef;
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+            
             $fee->update([
                 'payment_raw' => json_encode($result),
                 'payment_description' => $result['message'] ?? 'Mobile money request sent',
@@ -1212,13 +1229,10 @@ class LoanController extends Controller
                 'datecreated' => now() // Reset timestamp for 2-minute grace period
             ]);
 
-            // Generate new payment reference
-            $payRef = 'LOAN-RETRY-' . $fee->id . '-' . time();
-
             // Initialize Mobile Money Service
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
 
-            // Retry collection
+            // Retry collection (Stanbic will generate new short request ID)
             $result = $mobileMoneyService->collectMoney(
                 $validated['member_name'],
                 $validated['member_phone'],
@@ -1226,8 +1240,19 @@ class LoanController extends Controller
                 $validated['description']
             );
 
-            // Update with new transaction reference
-            $transactionRef = $result['reference'] ?? $payRef;
+            // Check if payment initiation was successful
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Payment gateway error');
+            }
+
+            // Use Stanbic-generated reference (14 chars: EbP##########)
+            // This is the same format used for all payment types
+            $transactionRef = $result['reference'] ?? null;
+            
+            if (!$transactionRef) {
+                throw new \Exception('Payment initiated but no transaction reference received');
+            }
+            
             $fee->update([
                 'pay_ref' => $transactionRef,
                 'payment_raw' => json_encode($result),
@@ -1419,18 +1444,49 @@ class LoanController extends Controller
     public function calculateLoan(Request $request)
     {
         $principal = $request->principal;
-        $interest = $request->interest / 100;
         $period = $request->period;
+        $repayPeriod = $request->repay_period ?? 'daily'; // daily, weekly, monthly
+        $productId = $request->product_type;
         
-        $monthlyInterestRate = $interest / 12;
-        $installment = ($principal * $monthlyInterestRate * pow(1 + $monthlyInterestRate, $period)) / 
-                      (pow(1 + $monthlyInterestRate, $period) - 1);
+        // CRITICAL: Get interest rate from the product, not from user input
+        // This ensures the product's interest rate is always used
+        if (!$productId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product type is required'
+            ], 400);
+        }
+        
+        $product = Product::find($productId);
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
+        
+        // Use the product's interest rate (already stored as percentage in DB)
+        $interest = $product->interest / 100;
+        
+        // Flat interest calculation matching old bimsadmin system
+        // The old system DOUBLES the interest rate per installment
+        // Example: 0.7% interest means 1.4% per installment (0.7% × 2)
+        // For 2 periods: 10,000 × 0.014 × 2 = 280 total interest
+        // Installment: (10,000 + 280) / 2 = 5,140
+        
+        $interestRatePerInstallment = $interest * 2; // Double the interest rate
+        $totalInterest = $principal * $interestRatePerInstallment * $period;
+        $totalPayable = $principal + $totalInterest;
+        $installment = $totalPayable / $period;
         
         return response()->json([
             'success' => true,
             'installment' => round($installment, 2),
-            'total_payable' => round($installment * $period, 2),
-            'total_interest' => round(($installment * $period) - $principal, 2)
+            'total_payable' => round($totalPayable, 2),
+            'total_interest' => round($totalInterest, 2),
+            'period' => $period,
+            'repay_period' => $repayPeriod,
+            'product_interest' => $product->interest // Return actual interest rate used
         ]);
     }
 

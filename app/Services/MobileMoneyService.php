@@ -9,18 +9,28 @@ class MobileMoneyService
 {
     private string $flexipayEndpoint;
     private int $timeout;
+    private ?StanbicFlexiPayService $stanbicService = null;
+    private string $provider;
     
-    public function __construct()
+    public function __construct(StanbicFlexiPayService $stanbicService = null)
     {
         $this->flexipayEndpoint = 'https://emuria.net/flexipay/marchanToMobilePayprod.php';
         $this->timeout = 30;
+        $this->stanbicService = $stanbicService ?? new StanbicFlexiPayService();
+        $this->provider = env('MOBILE_MONEY_PROVIDER', 'stanbic'); // 'stanbic' or 'emuria'
     }
     
     /**
      * Disburse money via mobile money
      */
-    public function disburse(string $phone, float $amount, ?string $network = null): array
+    public function disburse(string $phone, float $amount, ?string $network = null, ?string $beneficiaryName = null, ?string $requestId = null): array
     {
+        // Use Stanbic FlexiPay if configured
+        if ($this->provider === 'stanbic' && config('stanbic_flexipay.enabled')) {
+            return $this->disburseViaStanbic($phone, $amount, $network, $beneficiaryName, $requestId);
+        }
+        
+        // Fallback to Emuria FlexiPay
         try {
             // Format phone number
             $formattedPhone = $this->formatPhoneNumber($phone);
@@ -30,7 +40,7 @@ class MobileMoneyService
                 $network = $this->detectNetwork($formattedPhone);
             }
             
-            Log::info("Mobile Money Disbursement Request", [
+            Log::info("Mobile Money Disbursement Request (Emuria)", [
                 'original_phone' => $phone,
                 'formatted_phone' => $formattedPhone,
                 'network' => $network,
@@ -39,7 +49,7 @@ class MobileMoneyService
             
             // Prepare request data using exact same format as bimsadmin legacy system
             $requestData = [
-                'name' => 'Name',  // Static name as used in bimsadmin
+                'name' => $beneficiaryName ?? 'Name',
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount
@@ -48,13 +58,13 @@ class MobileMoneyService
             // Make API request
             $response = Http::timeout($this->timeout)
                           ->asForm()
-                          ->withoutVerifying() // Disable SSL verification for this endpoint
+                          ->withoutVerifying()
                           ->post($this->flexipayEndpoint, $requestData);
             
             $responseBody = $response->body();
             $httpCode = $response->status();
             
-            Log::info("FlexiPay API Response", [
+            Log::info("FlexiPay API Response (Emuria)", [
                 'http_code' => $httpCode,
                 'response_body' => $responseBody,
                 'request_data' => $requestData
@@ -96,6 +106,84 @@ class MobileMoneyService
                 'status_code' => 'EXCEPTION',
                 'message' => 'Disbursement failed: ' . $e->getMessage(),
                 'error_details' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * Disburse money via Stanbic FlexiPay
+     */
+    private function disburseViaStanbic(string $phone, float $amount, ?string $network = null, ?string $beneficiaryName = null, ?string $requestId = null): array
+    {
+        try {
+            // Format phone number
+            $formattedPhone = $this->stanbicService->formatPhoneNumber($phone);
+            
+            // Detect network if not provided
+            if (!$network) {
+                $network = $this->stanbicService->detectNetwork($formattedPhone);
+            }
+            
+            if (!$network) {
+                return [
+                    'success' => false,
+                    'status_code' => 'INVALID_NETWORK',
+                    'message' => 'Could not detect mobile network from phone number'
+                ];
+            }
+            
+            // Validate amount
+            $validation = $this->stanbicService->validateAmount($amount, $network);
+            if (!$validation['valid']) {
+                return [
+                    'success' => false,
+                    'status_code' => 'INVALID_AMOUNT',
+                    'message' => $validation['message']
+                ];
+            }
+            
+            // Call Stanbic API with custom request ID for idempotent retries
+            $result = $this->stanbicService->disburseMoney(
+                $formattedPhone,
+                $amount,
+                $network,
+                $beneficiaryName ?? 'Beneficiary',
+                'Loan disbursement',
+                $requestId  // Pass request ID for idempotency
+            );
+            
+            if ($result['success']) {
+                return [
+                    'success' => true,
+                    'status_code' => '00',
+                    'message' => 'Disbursement initiated successfully',
+                    'reference' => $result['request_id'],
+                    'phone' => $formattedPhone,
+                    'amount' => $amount,
+                    'network' => $network,
+                    'provider' => 'stanbic'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'status_code' => 'ERROR',
+                    'message' => $result['error'] ?? 'Disbursement failed',
+                    'provider' => 'stanbic'
+                ];
+            }
+            
+        } catch (\Exception $e) {
+            Log::error("Stanbic Disbursement Error", [
+                'phone' => $phone,
+                'amount' => $amount,
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'status_code' => 'EXCEPTION',
+                'message' => 'Disbursement failed: ' . $e->getMessage(),
+                'provider' => 'stanbic'
             ];
         }
     }
@@ -194,6 +282,12 @@ class MobileMoneyService
      */
     public function collectMoney(string $payerName, string $phone, float $amount, ?string $description = null): array
     {
+        // Use Stanbic FlexiPay if configured
+        if ($this->provider === 'stanbic' && config('stanbic_flexipay.enabled')) {
+            return $this->collectViaStanbic($phone, $amount, $description);
+        }
+        
+        // Fallback to Emuria FlexiPay
         try {
             // Format phone number
             $formattedPhone = $this->formatPhoneNumber($phone);
@@ -204,7 +298,7 @@ class MobileMoneyService
             // Sanitize payer name for API requirements
             $sanitizedName = $this->sanitizeName($payerName);
             
-            Log::info("Mobile Money Collection Request", [
+            Log::info("Mobile Money Collection Request (Emuria)", [
                 'payer_original' => $payerName,
                 'payer_sanitized' => $sanitizedName,
                 'phone' => $formattedPhone,
@@ -216,17 +310,15 @@ class MobileMoneyService
             // Use the collection endpoint for receiving money from customers
             $collectionEndpoint = 'https://emuria.net/flexipay/marchanFromMobileProd.php';
             
-            // Prepare request data for collection - MINIMAL PARAMETERS ONLY (like old bimsadmin system)
-            // Old system doesn't send merchant credentials - likely using IP whitelisting
+            // Prepare request data for collection
             $requestData = [
                 'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount
             ];
             
-            Log::info("FlexiPay Collection Request (Old System Format)", [
-                'request_data' => $requestData,
-                'note' => 'Using minimal parameters like bimsadmin - no merchant credentials sent'
+            Log::info("FlexiPay Collection Request (Emuria)", [
+                'request_data' => $requestData
             ]);
             
             // Make API request
@@ -238,7 +330,7 @@ class MobileMoneyService
             $responseBody = $response->body();
             $httpCode = $response->status();
             
-            Log::info("FlexiPay Collection Response", [
+            Log::info("FlexiPay Collection Response (Emuria)", [
                 'http_code' => $httpCode,
                 'response_body' => $responseBody,
                 'request_data' => $requestData
@@ -249,7 +341,6 @@ class MobileMoneyService
                 
                 if ($responseData && isset($responseData['statusCode'])) {
                     $result = $this->processApiResponse($responseData, $formattedPhone, $amount, 'collection');
-                    // Use transactionReferenceNumber (EbPxxx) as the main reference for tracking
                     $result['reference'] = $responseData['transactionReferenceNumber'] ?? ('REF-' . time());
                     $result['flexipay_ref'] = $responseData['flexipayReferenceNumber'] ?? '';
                     return $result;
@@ -273,7 +364,7 @@ class MobileMoneyService
             }
             
         } catch (\Exception $e) {
-            Log::error("Mobile Money Collection Error", [
+            Log::error("Mobile Money Collection Error (Emuria)", [
                 'phone' => $phone,
                 'amount' => $amount,
                 'error' => $e->getMessage()
@@ -283,6 +374,83 @@ class MobileMoneyService
                 'success' => false,
                 'status_code' => 'EXCEPTION',
                 'message' => 'Collect money failed: ' . $e->getMessage(),
+                'type' => 'collection'
+            ];
+        }
+    }
+    
+    /**
+     * Collect money via Stanbic FlexiPay
+     */
+    private function collectViaStanbic(string $phone, float $amount, ?string $description = null): array
+    {
+        try {
+            // Format phone number
+            $formattedPhone = $this->stanbicService->formatPhoneNumber($phone);
+            
+            // Detect network
+            $network = $this->stanbicService->detectNetwork($formattedPhone);
+            
+            if (!$network) {
+                return [
+                    'success' => false,
+                    'status_code' => 'INVALID_NETWORK',
+                    'message' => 'Could not detect mobile network from phone number'
+                ];
+            }
+            
+            // Validate amount
+            $validation = $this->stanbicService->validateAmount($amount, $network);
+            if (!$validation['valid']) {
+                return [
+                    'success' => false,
+                    'status_code' => 'INVALID_AMOUNT',
+                    'message' => $validation['message']
+                ];
+            }
+            
+            // Call Stanbic API
+            $result = $this->stanbicService->collectMoney(
+                $formattedPhone,
+                $amount,
+                $network,
+                $description ?? 'Payment collection'
+            );
+            
+            if ($result['success']) {
+                return [
+                    'success' => true,
+                    'status_code' => '00',
+                    'message' => 'Collection initiated successfully',
+                    'reference' => $result['request_id'],
+                    'phone' => $formattedPhone,
+                    'amount' => $amount,
+                    'network' => $network,
+                    'provider' => 'stanbic',
+                    'type' => 'collection'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'status_code' => 'ERROR',
+                    'message' => $result['error'] ?? 'Collection failed',
+                    'provider' => 'stanbic',
+                    'type' => 'collection'
+                ];
+            }
+            
+        } catch (\Exception $e) {
+            Log::error("Stanbic Collection Error", [
+                'phone' => $phone,
+                'amount' => $amount,
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'status_code' => 'EXCEPTION',
+                'message' => 'Collection failed: ' . $e->getMessage(),
+                'provider' => 'stanbic',
                 'type' => 'collection'
             ];
         }
