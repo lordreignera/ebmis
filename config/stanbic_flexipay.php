@@ -37,9 +37,15 @@ return [
     ],
 
     // API Settings
-    'timeout' => env('STANBIC_TIMEOUT', 60),
+    'timeout' => env('STANBIC_TIMEOUT', 30), // Reduced to 30 seconds for initial request
     'enabled' => env('STANBIC_ENABLED', true),
     'test_mode' => env('STANBIC_TEST_MODE', false),
+    
+    // Transaction Polling Settings
+    'polling' => [
+        'max_duration' => 300, // Poll for up to 5 minutes (300 seconds)
+        'interval' => 5, // Check every 5 seconds
+    ],
 
     // OAuth Token Caching
     'token_cache' => [

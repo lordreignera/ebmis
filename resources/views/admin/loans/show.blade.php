@@ -1500,8 +1500,14 @@ function processLoanFeeMobileMoneyPayment() {
     const processingAlert = document.getElementById('loanFeeMmProcessingAlert');
     const statusText = document.getElementById('loanFeeMmStatusText');
     
+    // Prevent duplicate submissions
+    if (submitBtn.disabled) {
+        return;
+    }
+    
     // Disable form and show processing
     submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Sending...';
     processingAlert.style.display = 'block';
     statusText.textContent = 'Sending payment request to member\'s phone...';
     
@@ -1556,13 +1562,13 @@ function processLoanFeeMobileMoneyPayment() {
 }
 
 function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
-    const maxAttempts = 24; // Poll for up to 120 seconds (24 checks × 5 seconds)
+    const maxAttempts = 60; // Poll for up to 5 minutes (60 checks × 5 seconds = 300 seconds)
     const processingAlert = document.getElementById('loanFeeMmProcessingAlert');
     const statusText = document.getElementById('loanFeeMmStatusText');
     
     if (attempts >= maxAttempts) {
         processingAlert.className = 'alert alert-warning';
-        statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Payment status check timed out. The payment may still be processing. Page will refresh to check final status...';
+        statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Payment status check timed out after 5 minutes. The payment may still be processing. Page will refresh to check final status...';
         
         setTimeout(() => {
             location.reload();
