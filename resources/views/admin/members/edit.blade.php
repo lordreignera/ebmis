@@ -460,9 +460,17 @@ $(document).ready(function() {
     // Phone number formatting
     $('input[name="contact"], input[name="alt_contact"]').on('input', function() {
         let value = $(this).val().replace(/\D/g, '');
+        
+        // Remove leading zero
+        if (value.startsWith('0')) {
+            value = value.substring(1);
+        }
+        
+        // Only add 256 if not already present
         if (value.length > 0 && !value.startsWith('256')) {
             value = '256' + value;
         }
+        
         $(this).val(value);
     });
 });

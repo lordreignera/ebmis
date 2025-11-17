@@ -144,7 +144,7 @@ class DisbursementController extends Controller
             $groupLoansQuery->where(function($q) use ($search) {
                 $q->where('code', 'like', "%{$search}%")
                   ->orWhereHas('group', function($q) use ($search) {
-                      $q->where('group_name', 'like', "%{$search}%");
+                      $q->where('name', 'like', "%{$search}%");
                   });
             });
         }
@@ -295,7 +295,7 @@ class DisbursementController extends Controller
             $loan->borrower_name = $loan->member->fname . ' ' . $loan->member->lname;
             $loan->phone_number = $loan->member->contact;
         } else {
-            $loan->borrower_name = $loan->group->group_name ?? 'Group Loan';
+            $loan->borrower_name = $loan->group->name ?? 'Group Loan';
             $loan->phone_number = $loan->group->contact ?? '';
         }
         
@@ -442,7 +442,7 @@ class DisbursementController extends Controller
             // Get account name based on loan type
             $accountName = $loanType == 1 
                 ? ($loan->member->fname . ' ' . $loan->member->lname)
-                : ($loan->group->group_name ?? 'Group Loan');
+                : ($loan->group->name ?? 'Group Loan');
             
             $disbursementData = [
                 'loan_id' => $loan->id,
@@ -1956,7 +1956,7 @@ class DisbursementController extends Controller
             $groupLoansQuery->where(function($q) use ($search) {
                 $q->where('code', 'like', "%{$search}%")
                   ->orWhereHas('group', function($q) use ($search) {
-                      $q->where('group_name', 'like', "%{$search}%");
+                      $q->where('name', 'like', "%{$search}%");
                   });
             });
         }
@@ -1984,7 +1984,7 @@ class DisbursementController extends Controller
                 'Type' => ucfirst($loan->loan_type),
                 'Borrower' => $loan->loan_type === 'personal' ? 
                     ($loan->member->fname ?? 'N/A') . ' ' . ($loan->member->lname ?? '') :
-                    ($loan->group->group_name ?? 'N/A'),
+                    ($loan->group->name ?? 'N/A'),
                 'Product' => $loan->product->name ?? 'N/A',
                 'Principal Amount' => $loan->principal,
                 'Branch' => $loan->branch->name ?? 'N/A',

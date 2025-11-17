@@ -56,7 +56,7 @@ class RepaymentController extends Controller
             $groupLoansQuery->where(function($q) use ($search) {
                 $q->where('code', 'like', "%{$search}%")
                   ->orWhereHas('group', function($q) use ($search) {
-                      $q->where('group_name', 'like', "%{$search}%");
+                      $q->where('name', 'like', "%{$search}%");
                   });
             });
         }
@@ -95,7 +95,7 @@ class RepaymentController extends Controller
                 $loan->phone_number = $loan->member->contact ?? 'N/A';
             } elseif (isset($loan->group)) {
                 $loan->loan_type = 'group';
-                $loan->borrower_name = $loan->group->group_name ?? 'N/A';
+                $loan->borrower_name = $loan->group->name ?? 'N/A';
                 $loan->phone_number = 'Group Loan';
             } else {
                 $loan->loan_type = 'unknown';
