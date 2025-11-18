@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
+use App\Models\PersonalLoan;
+use App\Models\GroupLoan;
 
 class AdminController extends Controller
 {
@@ -200,16 +202,27 @@ class AdminController extends Controller
             ->count();
 
         // === PENDING APPROVALS ===
-        $pendingSignature = DB::table($loansInfo['table'])
+        // Status: 0=Pending (needs approval), 1=Approved (ready for disbursement), 2=Disbursed
+        $pendingSignature = 0; // Not tracked in current schema
+        
+        // Pending Approval: status=0 (awaiting approval)
+        $pendingApproval = DB::table($loansInfo['table'])
             ->where('status', '0')
             ->count();
 
-        $pendingApproval = DB::table($loansInfo['table'])
-            ->where('status', '2')
+        // Pending Disbursement: status=1 AND not yet disbursed
+        // Check personal_loans that are approved (status=1) but haven't been disbursed yet
+        $pendingDisbursement = PersonalLoan::where('status', 1)
+            ->whereDoesntHave('disbursements', function($q) {
+                $q->where('status', 2); // No successful disbursement
+            })
             ->count();
-
-        $pendingDisbursement = DB::table($loansInfo['table'])
-            ->where('status', '3')
+        
+        // Add group loans that are approved but not disbursed
+        $pendingDisbursement += GroupLoan::where('status', 1)
+            ->whereDoesntHave('disbursements', function($q) {
+                $q->where('status', 2);
+            })
             ->count();
 
         // === COMPILE ALL STATS ===
@@ -357,30 +370,28 @@ class AdminController extends Controller
             ->get();
 
         foreach ($recentLoans as $loan) {
+            // Correct status mapping: 0=Pending, 1=Approved for Disbursement, 2=Disbursed, 3=Completed
             $statusText = match($loan->status) {
-                '0' => 'Pending Signature',
-                '1' => 'Active',
-                '2' => 'Pending Approval',
-                '3' => 'Pending Disbursement',
-                '4' => 'Disbursed',
-                '5' => 'Closed',
+                '0' => 'Pending Approval',
+                '1' => 'Approved for Disbursement',
+                '2' => 'Disbursed',
+                '3' => 'Completed',
                 default => 'Unknown'
             };
 
             $statusBadge = match($loan->status) {
                 '0' => 'warning',
-                '1' => 'success',
-                '2' => 'info',
-                '3' => 'primary',
-                '4' => 'success',
-                '5' => 'secondary',
+                '1' => 'primary',
+                '2' => 'success',
+                '3' => 'secondary',
                 default => 'dark'
             };
 
             $activities[] = (object)[
                 'created_at' => Carbon::parse($loan->created_at),
-                'description' => "Loan application by {$loan->member_name} (UGX " . number_format($loan->amount) . ")",
-                'status' => $statusText,
+                'description' => "Loan application by {$loan->member_name} (UGX " . number_format($loan->amount) . ") - {$statusText}",
+                'status' => $loan->status, // Add raw status for routing
+                'status_text' => $statusText,
                 'status_badge' => $statusBadge,
                 'loan_id' => $loan->id,
             ];
