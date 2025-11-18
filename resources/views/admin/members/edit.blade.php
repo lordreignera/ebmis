@@ -94,7 +94,7 @@
                             <div class="form-group">
                                 <label for="dob" class="required">Date of Birth</label>
                                 <input type="date" class="form-control @error('dob') is-invalid @enderror" 
-                                       id="dob" name="dob" value="{{ old('dob', $member->dob) }}" required>
+                                       id="dob" name="dob" value="{{ old('dob', $member->dob ? $member->dob->format('Y-m-d') : '') }}" required>
                                 @error('dob')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror

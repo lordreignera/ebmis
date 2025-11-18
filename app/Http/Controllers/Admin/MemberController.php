@@ -262,8 +262,8 @@ class MemberController extends Controller
             'subcounty' => 'nullable|string|max:191',
             'county' => 'nullable|string|max:191',
             'country_id' => 'required|exists:countries,id',
-            'gender' => 'nullable|in:Male,Female,Other',
-            'dob' => 'nullable|date|before:today',
+            'gender' => 'required|in:Male,Female,Other',
+            'dob' => 'required|date|before:today',
             'fixed_line' => 'nullable|string|max:191',
             'mobile_pin' => 'nullable|string|max:10',
             'member_type' => 'required|exists:member_types,id',
@@ -275,21 +275,29 @@ class MemberController extends Controller
             'verified' => 'boolean',
         ]);
 
-        // Handle file uploads
+        // Handle file uploads - Only update if new file is uploaded
         if ($request->hasFile('pp_file')) {
-            // Delete old file
-            if ($member->pp_file) {
-                Storage::disk('public')->delete($member->pp_file);
-            }
+            // Keep old file as backup (don't delete)
+            // You can uncomment below to delete old file if needed
+            // if ($member->pp_file) {
+            //     Storage::disk('public')->delete($member->pp_file);
+            // }
             $validated['pp_file'] = $request->file('pp_file')->store('member-photos', 'public');
+        } else {
+            // Preserve existing file path
+            $validated['pp_file'] = $member->pp_file;
         }
 
         if ($request->hasFile('id_file')) {
-            // Delete old file
-            if ($member->id_file) {
-                Storage::disk('public')->delete($member->id_file);
-            }
+            // Keep old file as backup (don't delete)
+            // You can uncomment below to delete old file if needed
+            // if ($member->id_file) {
+            //     Storage::disk('public')->delete($member->id_file);
+            // }
             $validated['id_file'] = $request->file('id_file')->store('member-ids', 'public');
+        } else {
+            // Preserve existing file path
+            $validated['id_file'] = $member->id_file;
         }
 
         $member->update($validated);
