@@ -217,9 +217,9 @@
                                     <label for="account_number" class="form-label">
                                         <i class="mdi mdi-phone me-1"></i>Account Number/Phone Number <span class="text-danger">*</span>
                                     </label>
-                                    <input type="text" class="form-control" id="account_number" name="account_number" 
-                                           value="{{ $loan->phone_number }}" required placeholder="256XXXXXXXXX">
-                                    <div class="form-text">Phone number for mobile money, account number for bank transfer</div>
+                                    <input type="text" class="form-control bg-light" id="account_number" name="account_number" 
+                                           value="{{ $loan->phone_number }}" required placeholder="256XXXXXXXXX" readonly>
+                                    <div class="form-text">Using member's registered phone number (cannot be changed during disbursement)</div>
                                     <div id="network_detected" class="form-text text-success mt-1" style="display: none;">
                                         <i class="mdi mdi-check-circle me-1"></i>
                                         <strong>Network Detected: <span id="detected_network_name"></span></strong>
@@ -359,6 +359,7 @@ $(document).ready(function() {
             $('#network_div').show();
             $('#network').prop('required', true);
             $('#account_number').attr('placeholder', '256XXXXXXXXX (e.g., 256782743720)');
+            $('#account_number').prop('readonly', true).addClass('bg-light');
             $('#mobile_money_warning').show();
             
             // Auto-fill phone number if available and detect network
@@ -372,19 +373,19 @@ $(document).ready(function() {
             $('#network').prop('required', false);
             $('#mobile_money_warning').hide();
             $('#network_detected').hide();
+            $('#account_number').prop('readonly', true).addClass('bg-light');
             
             if (paymentType === 'bank_transfer') {
-                $('#account_number').attr('placeholder', 'Enter bank account number');
-                $('#account_number').val('');
+                $('#account_number').attr('placeholder', 'Member phone: {{ $loan->phone_number }}');
+                $('#account_number').val('{{ $loan->phone_number }}');
             } else if (paymentType === 'cash') {
-                $('#account_number').attr('placeholder', 'Cash disbursement - no account needed');
+                $('#account_number').attr('placeholder', 'Cash disbursement');
                 $('#account_number').val('CASH_DISBURSEMENT');
             } else if (paymentType === 'cheque') {
-                $('#account_number').attr('placeholder', 'Enter cheque number or reference');
-                $('#account_number').val('');
+                $('#account_number').attr('placeholder', 'Member phone: {{ $loan->phone_number }}');
+                $('#account_number').val('{{ $loan->phone_number }}');
             } else {
-                $('#account_number').attr('placeholder', 'Enter account details');
-                $('#account_number').val('');
+                $('#account_number').val('{{ $loan->phone_number }}');
             }
         }
     });
