@@ -229,18 +229,20 @@ class Member extends Model
 
     /**
      * Scope for individual members
+     * member_type = 1 (matches member_types table)
      */
     public function scopeIndividual($query)
     {
-        return $query->where('member_type', 2);
+        return $query->where('member_type', 1); // Individual = ID 1 per member_types table
     }
 
     /**
      * Scope for group members
+     * member_type = 2 (matches member_types table)
      */
     public function scopeGroupMember($query)
     {
-        return $query->where('member_type', 1);
+        return $query->where('member_type', 2); // Group = ID 2 per member_types table
     }
 
     /**

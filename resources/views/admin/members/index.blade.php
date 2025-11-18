@@ -194,7 +194,7 @@
                                             <td>{{ $member->branch->name ?? 'N/A' }}</td>
                                             <td>
                                                 <span class="status-badge status-individual">
-                                                    {{ $member->member_type == 1 ? 'Group' : 'Individual' }}
+                                                    {{ $member->member_type == 1 ? 'Individual' : 'Group' }}
                                                 </span>
                                             </td>
                                             <td>

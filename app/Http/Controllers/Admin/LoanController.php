@@ -2242,7 +2242,7 @@ class LoanController extends Controller
         // Determine which model to use
         if ($loanType === 'group') {
             $loan = GroupLoan::with(['group', 'product', 'branch'])->findOrFail($id);
-            $borrowerName = $loan->group->group_name ?? 'N/A';
+            $borrowerName = $loan->group->name ?? 'N/A';
         } else {
             $loan = PersonalLoan::with(['member', 'product', 'branch'])->findOrFail($id);
             $borrowerName = ($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '');

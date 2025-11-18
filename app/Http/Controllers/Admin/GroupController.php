@@ -31,9 +31,9 @@ class GroupController extends Controller
             });
         }
 
-        // Filter by status
-        if ($request->has('status') && $request->status !== '') {
-            $query->where('status', $request->status);
+        // Filter by verified status
+        if ($request->has('verified') && $request->verified !== '') {
+            $query->where('verified', $request->verified);
         }
 
         // Filter by branch
@@ -50,7 +50,7 @@ class GroupController extends Controller
         // Calculate statistics
         $stats = [
             'total_groups' => Group::count(),
-            'active_groups' => Group::where('status', 'active')->count(),
+            'verified_groups' => Group::where('verified', 1)->count(),
             'total_members' => Member::whereNotNull('group_id')->count(),
             'average_group_size' => Group::withCount('members')->get()->avg('members_count') ?? 0
         ];
@@ -145,7 +145,7 @@ class GroupController extends Controller
         $group->load([
             'branch',
             'addedBy',
-            'members.member',
+            'members',
             'loans.member',
             'savings.member'
         ]);
@@ -154,9 +154,9 @@ class GroupController extends Controller
         $stats = [
             'total_members' => $group->members()->count(),
             'total_loans' => $group->loans()->count(),
-            'active_loans' => $group->loans()->where('status', 2)->count(),
-            'total_disbursed' => $group->loans()->where('status', 2)->sum('principal'),
-            'total_savings' => $group->savings()->sum('balance'),
+            'active_loans' => $group->loans()->where('personal_loans.status', 2)->count(),
+            'total_disbursed' => $group->loans()->where('personal_loans.status', 2)->sum('principal'),
+            'total_savings' => $group->savings()->sum('value'),
             // 'meetings_held' => $group->meetings()->count(),
             // 'last_meeting' => $group->meetings()->latest()->first(),
         ];
@@ -275,6 +275,22 @@ class GroupController extends Controller
         // Use the enhanced business logic from Group model
         $result = $group->removeMember($member);
 
+        // Handle AJAX requests
+        if (request()->ajax()) {
+            if ($result['success']) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message']
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message']
+                ], 400);
+            }
+        }
+
+        // Handle regular requests
         if ($result['success']) {
             return redirect()->back()->with('success', $result['message']);
         } else {
@@ -361,12 +377,12 @@ class GroupController extends Controller
     {
         $search = $request->get('search', '');
         
-        // Get approved members who are not in any group or are in this group
+        // Get approved members who are not in any group
         $availableMembers = Member::approved()
                                  ->notDeleted()
                                  ->where(function($query) use ($group) {
                                      $query->whereNull('group_id')
-                                           ->orWhere('group_id', $group->id);
+                                           ->orWhere('group_id', 0);
                                  })
                                  ->when($search, function($query) use ($search) {
                                      $query->where(function($q) use ($search) {
@@ -381,25 +397,20 @@ class GroupController extends Controller
                                  ->limit(50)
                                  ->get();
 
-        return response()->json([
-            'members' => $availableMembers->map(function($member) {
-                return [
-                    'id' => $member->id,
-                    'name' => $member->fname . ' ' . $member->lname,
-                    'code' => $member->code,
-                    'contact' => $member->contact,
-                    'branch' => $member->branch->name ?? 'Unknown',
-                    'status' => $member->status,
-                    'in_group' => $member->group_id ? true : false
-                ];
-            }),
-            'group_capacity' => [
-                'current' => $group->total_members,
-                'max' => Group::MAX_MEMBERS,
-                'remaining' => $group->getRemainingSlots(),
-                'can_add' => $group->canAcceptNewMembers()
-            ]
-        ]);
+        return response()->json($availableMembers->map(function($member) {
+            return [
+                'id' => $member->id,
+                'fname' => $member->fname,
+                'lname' => $member->lname,
+                'pm_code' => $member->code,
+                'code' => $member->code,
+                'contact' => $member->contact,
+                'branch' => $member->branch->name ?? 'Unknown',
+                'status' => $member->status,
+                'verified' => $member->verified,
+                'in_group' => $member->group_id ? true : false
+            ];
+        }));
     }
 
     /**

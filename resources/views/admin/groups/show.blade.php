@@ -2,6 +2,59 @@
 
 @section('title', 'Group Details - ' . $group->name)
 
+@push('styles')
+<style>
+    /* Select2 dropdown styling - force white background on all elements */
+    .select2-container--default .select2-results,
+    .select2-results,
+    .select2-results__options {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+    
+    .select2-container--default .select2-results__option,
+    .select2-results__option,
+    li.select2-results__option {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        padding: 8px 12px !important;
+    }
+    
+    .select2-container--default .select2-results__option--highlighted[aria-selected],
+    .select2-results__option--highlighted {
+        background-color: #007bff !important;
+        color: #ffffff !important;
+    }
+    
+    .select2-container--default .select2-results__option[aria-selected=true] {
+        background-color: #e9ecef !important;
+        color: #000000 !important;
+    }
+    
+    .select2-dropdown,
+    .select2-container--default .select2-dropdown {
+        background-color: #ffffff !important;
+        border: 1px solid #ced4da !important;
+    }
+    
+    .select2-search--dropdown,
+    .select2-search--dropdown .select2-search__field {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border: 1px solid #ced4da !important;
+    }
+    
+    /* Force override any dark theme */
+    .select2-container--default * {
+        color: #000000 !important;
+    }
+    
+    .select2-results > .select2-results__options {
+        background: #ffffff !important;
+    }
+</style>
+@endpush
+
 @section('content')
 <div class="row">
     <div class="col-md-12 grid-margin">
@@ -403,32 +456,32 @@
 
 <!-- Add Member Modal -->
 <div class="modal fade" id="addMemberModal" tabindex="-1" role="dialog" aria-labelledby="addMemberModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addMemberModalLabel">Add Member to Group</h5>
+    <div class="modal-dialog" role="document">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" id="addMemberModalLabel" style="color: #000;">Add Member to Group</h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <form id="addMemberForm">
                 @csrf
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="member_id">Select Member</label>
-                        <select name="member_id" id="member_id" class="form-control select2" required>
+                <div class="modal-body" style="background-color: white;">
+                    <div class="mb-3">
+                        <label for="member_id" class="form-label" style="color: #000;">Select Member</label>
+                        <select name="member_id" id="member_id" class="form-select select2" required>
                             <option value="">Choose a member...</option>
                         </select>
                         <small class="form-text text-muted">Only approved members without a group can be selected</small>
                     </div>
-                    <div id="memberPreview" class="card mt-3" style="display: none;">
+                    <div id="memberPreview" class="card mt-3" style="display: none; background-color: #f8f9fa;">
                         <div class="card-body">
-                            <h6 class="card-title">Member Details</h6>
-                            <div id="memberDetails"></div>
+                            <h6 class="card-title" style="color: #000;">Member Details</h6>
+                            <div id="memberDetails" style="color: #495057;"></div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">
                         <i class="mdi mdi-plus"></i> Add Member
@@ -442,9 +495,9 @@
 <!-- Remove Member Modal -->
 <div class="modal fade" id="removeMemberModal" tabindex="-1" role="dialog" aria-labelledby="removeMemberModalLabel" aria-hidden="true">
     <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="removeMemberModalLabel">Remove Member from Group</h5>
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" id="removeMemberModalLabel" style="color: #000;">Remove Member</h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
@@ -453,15 +506,15 @@
                 @csrf
                 @method('DELETE')
                 <input type="hidden" id="removeMemberId" name="member_id">
-                <div class="modal-body">
-                    <div class="alert alert-warning">
+                <div class="modal-body" style="background-color: white;">
+                    <div class="alert alert-warning" style="background-color: #fff3cd; border-color: #ffc107; color: #856404;">
                         <i class="mdi mdi-alert-circle-outline"></i>
                         <strong>Are you sure?</strong>
                         <p class="mb-0">You are about to remove <strong id="removeMemberName"></strong> from this group. This action cannot be undone.</p>
                     </div>
                     <div id="removeWarnings"></div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">
                         <i class="mdi mdi-delete"></i> Remove Member
@@ -477,28 +530,58 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
+    // Manual trigger for Add Member button (Bootstrap 4 & 5 compatibility)
+    $('button[data-target="#addMemberModal"]').on('click', function(e) {
+        e.preventDefault();
+        $('#addMemberModal').modal('show');
+    });
+
     // Initialize Select2 for member selection
     $('#member_id').select2({
         placeholder: 'Search for a member...',
         allowClear: true,
         dropdownParent: $('#addMemberModal'),
+        width: '100%',
         ajax: {
             url: '{{ route("admin.groups.available-members", $group->id) }}',
             dataType: 'json',
             delay: 250,
-            processResults: function (data) {
+            data: function (params) {
+                console.log('Select2 sending request with search:', params.term || '(empty)');
                 return {
-                    results: data.map(function(member) {
+                    search: params.term || '', // Send search term to controller
+                    page: params.page || 1
+                };
+            },
+            processResults: function (data, params) {
+                console.log('Select2 received data:', data);
+                console.log('Type of data:', typeof data);
+                console.log('Is array?', Array.isArray(data));
+                
+                // Handle both array and object responses
+                var members = Array.isArray(data) ? data : (data.members || []);
+                console.log('Number of members:', members.length);
+                
+                return {
+                    results: members.map(function(member) {
                         return {
                             id: member.id,
                             text: member.fname + ' ' + member.lname + ' (' + member.pm_code + ')',
                             member: member
                         };
-                    })
+                    }),
+                    pagination: {
+                        more: (params.page * 50) < (members.length || 0)
+                    }
                 };
             },
-            cache: true
-        }
+            cache: false,
+            error: function(xhr, status, error) {
+                console.error('Select2 AJAX Error:', status, error);
+                console.error('Response:', xhr.responseText);
+            }
+        },
+        minimumInputLength: 0 // Show results even without typing
     });
 
     // Show member preview when selected
@@ -554,24 +637,34 @@ $(document).ready(function() {
     $('#removeMemberForm').on('submit', function(e) {
         e.preventDefault();
         
-        var formData = $(this).serialize();
+        var memberId = $('#removeMemberId').val();
         var submitBtn = $(this).find('button[type="submit"]');
+        
+        console.log('Removing member ID:', memberId);
         
         submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin"></i> Removing...');
         
         $.ajax({
-            url: '{{ route("admin.groups.remove-member", $group->id) }}',
-            method: 'POST',
-            data: formData,
+            url: '/admin/groups/{{ $group->id }}/remove-member/' + memberId,
+            method: 'DELETE',
+            data: {
+                _token: '{{ csrf_token() }}',
+                member_id: memberId
+            },
             success: function(response) {
+                console.log('Member removed successfully');
                 $('#removeMemberModal').modal('hide');
-                location.reload(); // Refresh the page to show updated data
+                showAlert('success', 'Member removed successfully');
+                setTimeout(function() {
+                    location.reload();
+                }, 1000);
             },
             error: function(xhr) {
-                var message = xhr.responseJSON.message || 'An error occurred';
-                showAlert('danger', message);
-            },
-            complete: function() {
+                console.error('Error removing member:', xhr);
+                console.error('Status:', xhr.status);
+                console.error('Response:', xhr.responseText);
+                var message = xhr.responseJSON?.message || xhr.responseText || 'An error occurred';
+                showAlert('danger', 'Error: ' + message);
                 submitBtn.prop('disabled', false).html('<i class="mdi mdi-delete"></i> Remove Member');
             }
         });
@@ -584,6 +677,12 @@ $(document).ready(function() {
         $('#memberPreview').hide();
         $('.is-invalid').removeClass('is-invalid');
         $('.invalid-feedback').remove();
+    });
+
+    // Ensure cancel buttons work properly
+    $('button[data-dismiss="modal"]').on('click', function(e) {
+        e.preventDefault();
+        $(this).closest('.modal').modal('hide');
     });
 });
 
@@ -608,18 +707,19 @@ function showMemberPreview(member) {
     $('#memberPreview').show();
 }
 
-// Confirm remove member
-function confirmRemoveMember(memberId, memberName) {
+// Confirm remove member (global function)
+window.confirmRemoveMember = function(memberId, memberName) {
+    console.log('confirmRemoveMember called with:', memberId, memberName);
     $('#removeMemberId').val(memberId);
     $('#removeMemberName').text(memberName);
     
     // Check if removing this member will affect loan eligibility
     var currentCount = {{ $group->members->count() }};
-    var minRequired = {{ \App\Models\Group::MIN_MEMBERS_FOR_LOAN }};
+    var minRequired = {{ \App\Models\Group::MIN_MEMBERS_FOR_LOAN ?? 3 }};
     
     if (currentCount - 1 < minRequired) {
         $('#removeWarnings').html(`
-            <div class="alert alert-info">
+            <div class="alert alert-info" style="background-color: #d1ecf1; color: #0c5460;">
                 <i class="mdi mdi-information-outline"></i>
                 <strong>Note:</strong> Removing this member will make the group ineligible for group loans 
                 (minimum ${minRequired} members required).
@@ -630,12 +730,12 @@ function confirmRemoveMember(memberId, memberName) {
     }
     
     $('#removeMemberModal').modal('show');
-}
+};
 
 // Check loan eligibility
 function checkLoanEligibility() {
     $.ajax({
-        url: '{{ route("admin.groups.check-eligibility", $group->id) }}',
+        url: '{{ route("admin.groups.loan-eligibility", $group->id) }}',
         method: 'GET',
         success: function(response) {
             var statusClass = response.eligible ? 'success' : 'warning';

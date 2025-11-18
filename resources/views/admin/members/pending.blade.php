@@ -85,8 +85,8 @@
                                             </td>
                                             <td>{{ $member->branch->name ?? 'N/A' }}</td>
                                             <td>
-                                                <span class="badge {{ $member->member_type == 1 ? 'bg-info' : 'bg-primary' }}">
-                                                    {{ $member->member_type == 1 ? 'Group' : 'Individual' }}
+                                                <span class="badge {{ $member->member_type == 1 ? 'bg-primary' : 'bg-info' }}">
+                                                    {{ $member->member_type == 1 ? 'Individual' : 'Group' }}
                                                 </span>
                                             </td>
                                             <td>

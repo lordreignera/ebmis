@@ -40,8 +40,8 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h4 class="card-title mb-2">Active Groups</h4>
-                        <h2 class="text-success mb-2">{{ number_format($stats['active_groups']) }}</h2>
+                        <h4 class="card-title mb-2">Verified Groups</h4>
+                        <h2 class="text-success mb-2">{{ number_format($stats['verified_groups']) }}</h2>
                     </div>
                     <div class="icon-container">
                         <i class="mdi mdi-check-circle icon-lg text-success"></i>
@@ -97,12 +97,10 @@
                                value="{{ request('search') }}">
                     </div>
                     <div class="col-md-2">
-                        <select name="status" class="form-control">
-                            <option value="">All Status</option>
-                            <option value="active" {{ request('status') == 'active' ? 'selected' : '' }}>Active</option>
-                            <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
-                            <option value="suspended" {{ request('status') == 'suspended' ? 'selected' : '' }}>Suspended</option>
-                            <option value="inactive" {{ request('status') == 'inactive' ? 'selected' : '' }}>Inactive</option>
+                        <select name="verified" class="form-control">
+                            <option value="">All Groups</option>
+                            <option value="1" {{ request('verified') == '1' ? 'selected' : '' }}>Verified</option>
+                            <option value="0" {{ request('verified') == '0' ? 'selected' : '' }}>Unverified</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -236,7 +234,7 @@
                                         </span>
                                         <br><small class="text-muted">
                                             <i class="mdi mdi-calendar me-1"></i>
-                                            {{ \Carbon\Carbon::parse($group->inception_date)->format('M d, Y') }}
+                                            {{ $group->inception_date ? \Carbon\Carbon::parse($group->inception_date)->format('M d, Y') : 'N/A' }}
                                         </small>
                                     </div>
                                 </td>
@@ -265,11 +263,18 @@
                                 </td>
                                 <td>
                                     <div class="d-flex flex-column">
-                                        <span class="fw-medium">{{ $group->created_at->format('M d, Y') }}</span>
-                                        <small class="text-muted">
-                                            <i class="mdi mdi-clock me-1"></i>
-                                            {{ $group->created_at->diffForHumans() }}
-                                        </small>
+                                        @php
+                                            $dateCreated = $group->created_at ?? $group->datecreated;
+                                        @endphp
+                                        @if($dateCreated)
+                                            <span class="fw-medium">{{ $dateCreated->format('M d, Y') }}</span>
+                                            <small class="text-muted">
+                                                <i class="mdi mdi-clock me-1"></i>
+                                                {{ $dateCreated->diffForHumans() }}
+                                            </small>
+                                        @else
+                                            <span class="text-muted">N/A</span>
+                                        @endif
                                     </div>
                                 </td>
                                 <td>
@@ -336,15 +341,74 @@
                     </table>
                 </div>
                 
-                <!-- Pagination -->
-                <div class="d-flex justify-content-between align-items-center mt-3">
-                    <div>
-                        <span class="text-muted">
-                            Showing {{ $groups->firstItem() }} to {{ $groups->lastItem() }} of {{ $groups->total() }} results
-                        </span>
+                <!-- Modern Pagination -->
+                <div class="modern-pagination">
+                    <div class="pagination-info">
+                        Showing {{ $groups->firstItem() ?? 0 }} to {{ $groups->lastItem() ?? 0 }} of {{ $groups->total() }} entries
                     </div>
-                    <div>
-                        {{ $groups->appends(request()->query())->links() }}
+                    <div class="pagination-controls">
+                        @if ($groups->onFirstPage())
+                            <span class="pagination-btn" disabled>
+                                <i class="mdi mdi-chevron-left"></i>
+                                Previous
+                            </span>
+                        @else
+                            <a href="{{ $groups->previousPageUrl() }}" class="pagination-btn">
+                                <i class="mdi mdi-chevron-left"></i>
+                                Previous
+                            </a>
+                        @endif
+
+                        <div class="pagination-numbers">
+                            @php
+                                $currentPage = $groups->currentPage();
+                                $lastPage = $groups->lastPage();
+                                $start = max(1, $currentPage - 2);
+                                $end = min($lastPage, $currentPage + 2);
+                                
+                                // Adjust if at the beginning or end
+                                if ($currentPage <= 3) {
+                                    $end = min(5, $lastPage);
+                                }
+                                if ($currentPage >= $lastPage - 2) {
+                                    $start = max(1, $lastPage - 4);
+                                }
+                            @endphp
+
+                            @if($start > 1)
+                                <a href="{{ $groups->url(1) }}" class="pagination-btn">1</a>
+                                @if($start > 2)
+                                    <span class="pagination-btn" disabled>...</span>
+                                @endif
+                            @endif
+
+                            @for ($page = $start; $page <= $end; $page++)
+                                @if ($page == $currentPage)
+                                    <span class="pagination-btn active">{{ $page }}</span>
+                                @else
+                                    <a href="{{ $groups->url($page) }}" class="pagination-btn">{{ $page }}</a>
+                                @endif
+                            @endfor
+
+                            @if($end < $lastPage)
+                                @if($end < $lastPage - 1)
+                                    <span class="pagination-btn" disabled>...</span>
+                                @endif
+                                <a href="{{ $groups->url($lastPage) }}" class="pagination-btn">{{ $lastPage }}</a>
+                            @endif
+                        </div>
+
+                        @if ($groups->hasMorePages())
+                            <a href="{{ $groups->nextPageUrl() }}" class="pagination-btn">
+                                Next
+                                <i class="mdi mdi-chevron-right"></i>
+                            </a>
+                        @else
+                            <span class="pagination-btn" disabled>
+                                Next
+                                <i class="mdi mdi-chevron-right"></i>
+                            </span>
+                        @endif
                     </div>
                 </div>
                 @else

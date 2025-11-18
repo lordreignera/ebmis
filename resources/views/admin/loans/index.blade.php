@@ -301,7 +301,7 @@
                                                 };
                                                 $statusText = match($loan->status) {
                                                     0 => 'Pending',
-                                                    1 => 'Approved',
+                                                    1 => 'Approved for Disbursement',
                                                     2 => 'Disbursed',
                                                     3 => 'Completed',
                                                     default => 'Unknown'

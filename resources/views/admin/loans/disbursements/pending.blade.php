@@ -247,8 +247,8 @@
                                         @endif
                                     </td>
                                     <td>
-                                        <span class="status-badge status-verified">
-                                            <i class="mdi mdi-check-circle me-1"></i>Approved
+                                        <span class="status-badge status-approved">
+                                            <i class="mdi mdi-check-circle me-1"></i>Approved for Disbursement
                                         </span>
                                     </td>
                                     <td>

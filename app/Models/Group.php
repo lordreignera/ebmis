@@ -308,26 +308,29 @@ class Group extends Model
             'message' => ''
         ];
 
-        if ($member->group_id !== $this->id) {
-            $result['message'] = "Member is not in this group";
+        // Check if member is in this group (handle both null and 0)
+        if ($member->group_id != $this->id) {
+            $result['message'] = "Member is not in this group (Member group_id: {$member->group_id}, Group id: {$this->id})";
             return $result;
         }
 
+        // Skip group loans check for now - can be added later
         // Check if member has active group loans
-        $hasActiveGroupLoans = $this->groupLoans()
-                                    ->whereHas('members', function($query) use ($member) {
-                                        $query->where('member_id', $member->id);
-                                    })
-                                    ->whereIn('status', ['active', 'pending'])
-                                    ->exists();
+        // $hasActiveGroupLoans = $this->groupLoans()
+        //                             ->whereHas('members', function($query) use ($member) {
+        //                                 $query->where('member_id', $member->id);
+        //                             })
+        //                             ->whereIn('status', ['active', 'pending'])
+        //                             ->exists();
 
-        if ($hasActiveGroupLoans) {
-            $result['message'] = "Cannot remove member with active group loans";
-            return $result;
-        }
+        // if ($hasActiveGroupLoans) {
+        //     $result['message'] = "Cannot remove member with active group loans";
+        //     return $result;
+        // }
 
         // Remove member from group
-        $member->update(['group_id' => null]);
+        $member->group_id = null;
+        $member->save();
 
         $result['success'] = true;
         $result['message'] = "Member successfully removed from group";

@@ -375,8 +375,8 @@
       <div class="collapse" id="members">
         <ul class="nav flex-column sub-menu">
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.create') }}">Add Client</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=2">Individual Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=1">Group Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=1">Individual Clients</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=2">Group Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=3">Corporate Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.pending') }}">Client Approvals</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.create') }}">Send Bulk SMS</a></li>
