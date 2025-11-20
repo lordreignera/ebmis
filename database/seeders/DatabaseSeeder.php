@@ -26,7 +26,8 @@ class DatabaseSeeder extends Seeder
             SuperAdminSeeder::class,                // Super admin user (needs roles & permissions)
             BranchesSeeder::class,                  // Initial branches (needs countries)
             SavingsProductsSeeder::class,           // Savings products
-            SystemAccountsSeeder::class,          // System accounts (needs users)
+            SystemAccountsSeeder::class,            // System accounts (needs users)
+            SchoolLoanProductsSeeder::class,        // School, Student, Staff loan products
         ]);
     }
 }

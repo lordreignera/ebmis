@@ -54,10 +54,80 @@ class AdminSettingsController extends Controller
     /**
      * Product Settings
      */
-    public function loanProducts()
+    public function loanProducts(Request $request)
     {
-        $products = Product::orderBy('name')->get();
+        // Build query
+        $query = Product::query();
+        
+        // Apply search filter
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('code', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+        
+        // Apply loan type filter
+        if ($request->filled('loan_type')) {
+            $query->where('loan_type', $request->loan_type);
+        }
+        
+        // Apply period type filter
+        if ($request->filled('period_type')) {
+            $query->where('period_type', $request->period_type);
+        }
+        
+        // Apply status filter
+        if ($request->filled('status')) {
+            $query->where('isactive', $request->status);
+        }
+        
+        // Get paginated results
+        $products = $query->orderBy('datecreated', 'desc')->paginate(15)->withQueryString();
+        
         return view('admin.settings.loan-products', compact('products'));
+    }
+
+    public function schoolLoanProducts(Request $request)
+    {
+        // Build query - only show school (4), student (5), and staff (6) loan products
+        $query = Product::whereIn('loan_type', [4, 5, 6]);
+        
+        // Apply search filter
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('code', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+        
+        // Apply loan type filter
+        if ($request->filled('loan_type')) {
+            $query->where('loan_type', $request->loan_type);
+        }
+        
+        // Apply period type filter
+        if ($request->filled('period_type')) {
+            $query->where('period_type', $request->period_type);
+        }
+        
+        // Apply status filter
+        if ($request->filled('status')) {
+            $query->where('isactive', $request->status);
+        }
+        
+        // Get paginated results
+        $products = $query->orderBy('loan_type')
+                          ->orderBy('period_type')
+                          ->orderBy('name')
+                          ->paginate(15)
+                          ->withQueryString();
+                          
+        return view('admin.settings.school-loan-products', compact('products'));
     }
 
     public function savingsProducts()

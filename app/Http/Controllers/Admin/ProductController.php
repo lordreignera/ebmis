@@ -58,7 +58,8 @@ class ProductController extends Controller
     public function create()
     {
         $branches = Branch::active()->get();
-        return view('admin.products.create', compact('branches'));
+        $accounts = \App\Models\SystemAccount::orderBy('code')->get();
+        return view('admin.products.create', compact('branches', 'accounts'));
     }
 
     /**
@@ -68,26 +69,25 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50|unique:products,code',
-            'type' => 'required|string|in:loan,saving',
+            'account' => 'required|integer',
+            'loan_type' => 'required|integer',
+            'type' => 'required|integer',
+            'period_type' => 'required|integer',
             'description' => 'nullable|string',
-            'branch_id' => 'required|exists:branches,id',
-            'min_amount' => 'required|numeric|min:0',
-            'max_amount' => 'required|numeric|min:0',
-            'min_period' => 'required|integer|min:1',
-            'max_period' => 'required|integer|min:1',
-            'default_interest' => 'required|numeric|min:0|max:100',
-            'charges' => 'nullable|string',
-            'icon' => 'nullable|file|mimes:png,jpg,jpeg|max:2048',
-            'status' => 'required|integer|in:0,1',
-            
-            // Product settings
-            'settings' => 'array',
-            'settings.*.name' => 'required|string',
-            'settings.*.value' => 'required|string',
+            'max_amt' => 'nullable|numeric|min:0',
+            'interest' => 'nullable|numeric|min:0',
+            'cash_sceurity' => 'nullable|numeric|min:0',
+            'code' => 'nullable|string|max:50',
+            'isactive' => 'nullable|integer|in:0,1',
         ]);
 
         try {
+            // Auto-generate product code if not provided
+            // Format: BLN + timestamp (e.g., BLN1760086658)
+            if (empty($validated['code'])) {
+                $validated['code'] = 'BLN' . time();
+            }
+            
             // Handle icon upload
             if ($request->hasFile('icon')) {
                 $validated['icon'] = $request->file('icon')->store('product-icons', 'public');

@@ -393,6 +393,7 @@ Route::middleware([
         
         // Product Settings
         Route::get('/loan-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'loanProducts'])->name('loan-products');
+        Route::get('/school-loan-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'schoolLoanProducts'])->name('school-loan-products');
         Route::get('/savings-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'savingsProducts'])->name('savings-products');
         Route::get('/fees-products', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'feesProducts'])->name('fees-products');
         Route::get('/product-categories', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'productCategories'])->name('product-categories');

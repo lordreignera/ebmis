@@ -686,6 +686,7 @@
       <div class="collapse" id="product-settings">
         <ul class="nav flex-column sub-menu">
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.loan-products') }}">Loan Products</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.school-loan-products') }}">School Loan Products</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.savings-products') }}">Savings Products</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.fees-products') }}">Fees & Products</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.product-categories') }}">Product Categories</a></li>

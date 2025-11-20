@@ -41,7 +41,58 @@
             <div class="col-lg-12 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body">
-                        <h4 class="card-title">Active Loan Products ({{ $products->count() }})</h4>
+                        <h4 class="card-title">Active Loan Products ({{ $products->total() }})</h4>
+                        
+                        <!-- Search and Filters -->
+                        <form method="GET" action="{{ route('admin.settings.loan-products') }}" class="mb-4">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <input type="text" 
+                                           name="search" 
+                                           class="form-control" 
+                                           placeholder="Search products..." 
+                                           value="{{ request('search') }}">
+                                </div>
+                                <div class="col-md-2">
+                                    <select name="loan_type" class="form-select">
+                                        <option value="">All Loan Types</option>
+                                        <option value="1" {{ request('loan_type') == '1' ? 'selected' : '' }}>Personal</option>
+                                        <option value="2" {{ request('loan_type') == '2' ? 'selected' : '' }}>Group</option>
+                                        <option value="3" {{ request('loan_type') == '3' ? 'selected' : '' }}>Business</option>
+                                        <option value="4" {{ request('loan_type') == '4' ? 'selected' : '' }}>School</option>
+                                        <option value="5" {{ request('loan_type') == '5' ? 'selected' : '' }}>Student</option>
+                                        <option value="6" {{ request('loan_type') == '6' ? 'selected' : '' }}>Staff</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <select name="period_type" class="form-select">
+                                        <option value="">All Periods</option>
+                                        <option value="1" {{ request('period_type') == '1' ? 'selected' : '' }}>Daily</option>
+                                        <option value="2" {{ request('period_type') == '2' ? 'selected' : '' }}>Weekly</option>
+                                        <option value="3" {{ request('period_type') == '3' ? 'selected' : '' }}>Monthly</option>
+                                        <option value="4" {{ request('period_type') == '4' ? 'selected' : '' }}>Yearly</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <select name="status" class="form-select">
+                                        <option value="">All Status</option>
+                                        <option value="1" {{ request('status') == '1' ? 'selected' : '' }}>Active</option>
+                                        <option value="0" {{ request('status') == '0' ? 'selected' : '' }}>Inactive</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="btn-group" role="group">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="mdi mdi-filter"></i> Filter
+                                        </button>
+                                        <a href="{{ route('admin.settings.loan-products') }}" class="btn btn-secondary">
+                                            <i class="mdi mdi-refresh"></i> Reset
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                        
                         <div class="table-responsive">
                             <table class="table table-hover">
                                 <thead>
@@ -143,6 +194,77 @@
                                     @endforelse
                                 </tbody>
                             </table>
+                        </div>
+                        
+                        <!-- Modern Pagination -->
+                        <div class="modern-pagination">
+                            <div class="pagination-info">
+                                Showing {{ $products->firstItem() ?? 0 }} to {{ $products->lastItem() ?? 0 }} of {{ $products->total() }} entries
+                            </div>
+                            <div class="pagination-controls">
+                                @if ($products->onFirstPage())
+                                    <span class="pagination-btn" disabled>
+                                        <i class="mdi mdi-chevron-left"></i>
+                                        Previous
+                                    </span>
+                                @else
+                                    <a href="{{ $products->appends(request()->except('page'))->previousPageUrl() }}" class="pagination-btn">
+                                        <i class="mdi mdi-chevron-left"></i>
+                                        Previous
+                                    </a>
+                                @endif
+
+                                <div class="pagination-numbers">
+                                    @php
+                                        $currentPage = $products->currentPage();
+                                        $lastPage = $products->lastPage();
+                                        $start = max(1, $currentPage - 2);
+                                        $end = min($lastPage, $currentPage + 2);
+                                        
+                                        // Adjust if at the beginning or end
+                                        if ($currentPage <= 3) {
+                                            $end = min(5, $lastPage);
+                                        }
+                                        if ($currentPage >= $lastPage - 2) {
+                                            $start = max(1, $lastPage - 4);
+                                        }
+                                    @endphp
+
+                                    @if($start > 1)
+                                        <a href="{{ $products->url(1) }}" class="pagination-btn">1</a>
+                                        @if($start > 2)
+                                            <span class="pagination-btn" disabled>...</span>
+                                        @endif
+                                    @endif
+
+                                    @for ($page = $start; $page <= $end; $page++)
+                                        @if ($page == $currentPage)
+                                            <span class="pagination-btn active">{{ $page }}</span>
+                                        @else
+                                            <a href="{{ $products->url($page) }}" class="pagination-btn">{{ $page }}</a>
+                                        @endif
+                                    @endfor
+
+                                    @if($end < $lastPage)
+                                        @if($end < $lastPage - 1)
+                                            <span class="pagination-btn" disabled>...</span>
+                                        @endif
+                                        <a href="{{ $products->url($lastPage) }}" class="pagination-btn">{{ $lastPage }}</a>
+                                    @endif
+                                </div>
+
+                                @if ($products->hasMorePages())
+                                    <a href="{{ $products->appends(request()->except('page'))->nextPageUrl() }}" class="pagination-btn">
+                                        Next
+                                        <i class="mdi mdi-chevron-right"></i>
+                                    </a>
+                                @else
+                                    <span class="pagination-btn" disabled>
+                                        Next
+                                        <i class="mdi mdi-chevron-right"></i>
+                                    </span>
+                                @endif
+                            </div>
                         </div>
                     </div>
                 </div>

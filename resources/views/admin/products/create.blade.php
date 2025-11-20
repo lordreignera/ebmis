@@ -83,7 +83,10 @@
                                                         id="account" name="account" required>
                                                     <option value="">Select Fees Account</option>
                                                     @foreach($accounts as $acc)
-                                                        <option value="{{ $acc->id }}" {{ old('account') == $acc->id ? 'selected' : '' }}>
+                                                        @php
+                                                            $accId = $acc->Id ?? $acc->id;
+                                                        @endphp
+                                                        <option value="{{ $accId }}" {{ old('account') == $accId ? 'selected' : '' }}>
                                                             {{ $acc->code }} - {{ $acc->name }}
                                                         </option>
                                                     @endforeach

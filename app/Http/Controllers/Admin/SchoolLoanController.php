@@ -73,16 +73,25 @@ class SchoolLoanController extends Controller
         }
         
         // Filter products based on loan type and period
-        // For school loans, we use Individual loan products (loan_type = 1)
-        $productsQuery = Product::loanProducts()->active()->where('loan_type', 1);
+        // Map loan type to product loan_type values
+        $loanTypeMap = [
+            'school' => 4,   // School loans
+            'student' => 5,  // Student loans
+            'staff' => 6     // Staff loans
+        ];
+        
+        $productLoanType = $loanTypeMap[$loanType] ?? 4;
+        // Removed loanProducts() scope to allow products with any 'type' value
+        // We filter by loan_type instead which is more specific for school/student/staff loans
+        $productsQuery = Product::active()->where('loan_type', $productLoanType);
         
         if ($repayPeriod) {
-            // Map repay period to period_type based on actual database values:
-            // period_type: 1=Weekly, 2=Monthly, 3=Daily
+            // Map repay period to period_type based on database values:
+            // period_type: 1=Days, 2=Weeks, 3=Months, 4=Years
             $periodTypeMap = [
-                'daily' => 3,
-                'weekly' => 1,
-                'monthly' => 2
+                'daily' => 1,    // Days
+                'weekly' => 2,   // Weeks  
+                'monthly' => 3   // Months
             ];
             
             if (isset($periodTypeMap[$repayPeriod])) {
