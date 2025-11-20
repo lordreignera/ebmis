@@ -35,11 +35,24 @@ class RepaymentController extends Controller
     public function activeLoans(Request $request)
     {
         // Get active loans from both personal and group loans tables (status = 2 = Disbursed)
+        // Optimize by only loading necessary relationships
         $personalLoansQuery = PersonalLoan::where('status', 2)
-            ->with(['member', 'branch', 'product', 'schedules', 'repayments']);
+            ->with([
+                'member:id,fname,lname,contact', 
+                'branch:id,name', 
+                'product:id,name',
+                'schedules',
+                'repayments'
+            ]);
 
         $groupLoansQuery = GroupLoan::where('status', 2)
-            ->with(['group', 'branch', 'product', 'schedules', 'repayments']);
+            ->with([
+                'group:id,name', 
+                'branch:id,name', 
+                'product:id,name',
+                'schedules',
+                'repayments'
+            ]);
 
         // Apply search filter
         if ($request->filled('search')) {
@@ -75,47 +88,73 @@ class RepaymentController extends Controller
 
         // Filter by loan type
         $loanType = $request->get('type');
+        
+        // When searching, limit results for performance
+        $isSearching = $request->filled('search');
+        $maxSearchResults = 50; // Limit search results to first 50 matches
+        
         if ($loanType === 'personal') {
-            $allLoans = $personalLoansQuery->orderBy('datecreated', 'desc')->get();
+            if ($isSearching) {
+                $allLoans = $personalLoansQuery->orderBy('datecreated', 'desc')->limit($maxSearchResults)->get();
+            } else {
+                $allLoans = $personalLoansQuery->orderBy('datecreated', 'desc')->get();
+            }
         } elseif ($loanType === 'group') {
-            $allLoans = $groupLoansQuery->orderBy('datecreated', 'desc')->get();
+            if ($isSearching) {
+                $allLoans = $groupLoansQuery->orderBy('datecreated', 'desc')->limit($maxSearchResults)->get();
+            } else {
+                $allLoans = $groupLoansQuery->orderBy('datecreated', 'desc')->get();
+            }
         } else {
             // Get both and merge, then sort by date
-            $personalLoans = $personalLoansQuery->get();
-            $groupLoans = $groupLoansQuery->get();
+            if ($isSearching) {
+                $personalLoans = $personalLoansQuery->limit($maxSearchResults)->get();
+                $groupLoans = $groupLoansQuery->limit($maxSearchResults)->get();
+            } else {
+                $personalLoans = $personalLoansQuery->get();
+                $groupLoans = $groupLoansQuery->get();
+            }
             $allLoans = $personalLoans->concat($groupLoans)->sortByDesc('datecreated')->values();
         }
 
         // Map and calculate loan details
         $loans = $allLoans->map(function($loan) {
-            // Determine loan type and set borrower info
-            if (isset($loan->member)) {
-                $loan->loan_type = 'personal';
-                $loan->borrower_name = ($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '');
-                $loan->phone_number = $loan->member->contact ?? 'N/A';
-            } elseif (isset($loan->group)) {
-                $loan->loan_type = 'group';
-                $loan->borrower_name = $loan->group->name ?? 'N/A';
-                $loan->phone_number = 'Group Loan';
-            } else {
-                $loan->loan_type = 'unknown';
-                $loan->borrower_name = 'N/A';
-                $loan->phone_number = 'N/A';
-            }
+            try {
+                // Determine loan type and set borrower info
+                if (isset($loan->member)) {
+                    $loan->loan_type = 'personal';
+                    $loan->borrower_name = trim(($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? ''));
+                    $loan->phone_number = $loan->member->contact ?? 'N/A';
+                } elseif (isset($loan->group)) {
+                    $loan->loan_type = 'group';
+                    $loan->borrower_name = $loan->group->name ?? 'N/A';
+                    $loan->phone_number = 'Group Loan';
+                } else {
+                    $loan->loan_type = 'unknown';
+                    $loan->borrower_name = 'N/A';
+                    $loan->phone_number = 'N/A';
+                }
             
             $loan->branch_name = $loan->branch->name ?? 'N/A';
             $loan->product_name = $loan->product->name ?? 'N/A';
             $loan->loan_code = $loan->code;
             $loan->principal_amount = $loan->principal;
             
-            // Calculate outstanding balance
+            // Calculate outstanding balance using actual schedule data
             $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
             
-            // Calculate total interest (using the doubled interest rate formula)
-            $interestRate = $loan->interest / 100;
-            $interestRatePerInstallment = $interestRate * 2;
-            $totalInterest = $loan->principal * $interestRatePerInstallment * $loan->period;
-            $totalPayable = $loan->principal + $totalInterest;
+            // Calculate total payable from schedules (most accurate)
+            $totalPayable = $loan->schedules->sum(function($schedule) {
+                return $schedule->principal + $schedule->interest;
+            });
+            
+            // If no schedules, fall back to formula calculation
+            if ($totalPayable == 0) {
+                $interestRate = $loan->interest / 100;
+                $interestRatePerInstallment = $interestRate * 2;
+                $totalInterest = $loan->principal * $interestRatePerInstallment * $loan->period;
+                $totalPayable = $loan->principal + $totalInterest;
+            }
             
             $loan->outstanding_balance = $totalPayable - $totalPaid;
             
@@ -127,21 +166,39 @@ class RepaymentController extends Controller
             if ($nextSchedule) {
                 $loan->next_due_date = $nextSchedule->payment_date;
                 $loan->next_due_amount = $nextSchedule->payment + ($nextSchedule->penalty ?? 0);
-                // Calculate days overdue as whole number (ceil to round up any partial days)
-                $loan->days_overdue = \Carbon\Carbon::parse($nextSchedule->payment_date)->isPast() ? 
-                                     (int) \Carbon\Carbon::parse($nextSchedule->payment_date)->diffInDays(now(), false) : 0;
+                
+                // Calculate days overdue - handle date parsing errors
+                try {
+                    $paymentDate = \Carbon\Carbon::createFromFormat('d-m-Y', $nextSchedule->payment_date);
+                    if (!$paymentDate) {
+                        $paymentDate = \Carbon\Carbon::parse($nextSchedule->payment_date);
+                    }
+                    $loan->days_overdue = $paymentDate->isPast() ? 
+                                         (int) $paymentDate->diffInDays(now(), false) : 0;
+                } catch (\Exception $e) {
+                    $loan->days_overdue = 0;
+                }
             } else {
                 $loan->next_due_date = null;
                 $loan->next_due_amount = 0;
                 $loan->days_overdue = 0;
             }
             
-            return $loan;
+                return $loan;
+            } catch (\Exception $e) {
+                // Log error but don't break - return loan with default values
+                \Log::error("Error processing loan {$loan->id}: " . $e->getMessage());
+                $loan->outstanding_balance = 0;
+                $loan->next_due_date = null;
+                $loan->next_due_amount = 0;
+                $loan->days_overdue = 0;
+                return $loan;
+            }
         });
 
         // Filter loans with outstanding balance
         $loans = $loans->filter(function($loan) {
-            return $loan->outstanding_balance > 0;
+            return isset($loan->outstanding_balance) && $loan->outstanding_balance > 0;
         });
 
         // Paginate manually
@@ -388,9 +445,11 @@ class RepaymentController extends Controller
                             ->sortBy('payment_date')
                             ->first();
 
-        // Calculate overdue stats
-        $overdueSchedules = $schedules->where('payment_status', 'pending')
-                                    ->where('payment_date', '<', now());
+        // Calculate overdue stats - filter unpaid schedules with past payment dates
+        $today = now()->format('Y-m-d');
+        $overdueSchedules = $schedules->filter(function($schedule) use ($today) {
+            return $schedule->status == 0 && $schedule->payment_date < $today;
+        });
         $overdueCount = $overdueSchedules->count();
         $overdueAmount = $overdueSchedules->sum(function($schedule) {
             return $schedule->due_amount + $schedule->penalty_amount;
@@ -2093,12 +2152,21 @@ class RepaymentController extends Controller
     public function rescheduleLoan(Request $request, $loanId)
     {
         try {
+            // Check if auto-calculate days
+            $action = $request->input('action', 'custom_days');
+            $days = $request->input('days');
+            
             // Validate input
-            $validator = Validator::make($request->all(), [
-                'days' => 'required|integer|min:1|max:365',
+            $validationRules = [
                 'reason' => 'required|string|min:10|max:1000',
                 'waive_fees' => 'required|in:0,1'
-            ]);
+            ];
+            
+            if ($action === 'custom_days') {
+                $validationRules['days'] = 'required|integer|min:1|max:365';
+            }
+            
+            $validator = Validator::make($request->all(), $validationRules);
 
             if ($validator->fails()) {
                 return response()->json([
@@ -2133,7 +2201,6 @@ class RepaymentController extends Controller
                 ], 400);
             }
 
-            $daysToPostpone = (int) $request->input('days');
             $reason = $request->input('reason');
             $waiveFees = $request->input('waive_fees') == '1';
 
@@ -2152,21 +2219,98 @@ class RepaymentController extends Controller
             }
 
             $updatedSchedules = 0;
+            $daysToPostpone = 0;
             
-            // Update all unpaid schedules by adding the specified days
-            foreach ($unpaidSchedules as $schedule) {
-                $currentDate = Carbon::parse($schedule->payment_date);
-                $newDate = $currentDate->addDays($daysToPostpone);
+            // Determine rescheduling strategy
+            if ($action === 'start_today' || $days === 'auto') {
+                // Calculate days to shift so first unpaid schedule starts today
+                $today = Carbon::today();
+                $firstSchedule = $unpaidSchedules->first();
                 
-                $schedule->payment_date = $newDate->format('Y-m-d');
-                
-                // Optionally waive late fees
-                if ($waiveFees && isset($schedule->late_fee)) {
-                    $schedule->late_fee = 0;
+                // Parse date - handle both d-m-Y and Y-m-d formats
+                try {
+                    $firstScheduleDate = \Carbon\Carbon::createFromFormat('d-m-Y', $firstSchedule->payment_date);
+                } catch (\Exception $e) {
+                    try {
+                        $firstScheduleDate = \Carbon\Carbon::createFromFormat('Y-m-d', $firstSchedule->payment_date);
+                    } catch (\Exception $e2) {
+                        $firstScheduleDate = \Carbon\Carbon::parse($firstSchedule->payment_date);
+                    }
                 }
                 
-                $schedule->save();
-                $updatedSchedules++;
+                // Calculate the shift needed
+                $daysToShift = $firstScheduleDate->diffInDays($today, false);
+                
+                // If first schedule is in the past, shift forward to today
+                if ($daysToShift < 0) {
+                    $daysToShift = abs($daysToShift);
+                } else {
+                    // First schedule is today or future, no shift needed
+                    $daysToShift = 0;
+                }
+                
+                $daysToPostpone = $daysToShift;
+                
+                // Shift all unpaid schedules by the same number of days
+                foreach ($unpaidSchedules as $schedule) {
+                    // Parse date - handle both d-m-Y and Y-m-d formats
+                    try {
+                        $currentDate = \Carbon\Carbon::createFromFormat('d-m-Y', $schedule->payment_date);
+                    } catch (\Exception $e) {
+                        try {
+                            $currentDate = \Carbon\Carbon::createFromFormat('Y-m-d', $schedule->payment_date);
+                        } catch (\Exception $e2) {
+                            $currentDate = \Carbon\Carbon::parse($schedule->payment_date);
+                        }
+                    }
+                    $newDate = $currentDate->addDays($daysToShift);
+                    
+                    $schedule->payment_date = $newDate->format('d-m-Y');
+                    
+                    // Optionally waive late fees by clearing date_cleared
+                    // This resets the arrears calculation to use current date instead of old cleared date
+                    if ($waiveFees) {
+                        $schedule->date_cleared = null;
+                        if (isset($schedule->late_fee)) {
+                            $schedule->late_fee = 0;
+                        }
+                    }
+                    
+                    $schedule->save();
+                    $updatedSchedules++;
+                }
+            } else {
+                // Custom days postponement
+                $daysToPostpone = (int) $days;
+                
+                // Update all unpaid schedules by adding the specified days
+                foreach ($unpaidSchedules as $schedule) {
+                    // Parse date - handle both d-m-Y and Y-m-d formats
+                    try {
+                        $currentDate = \Carbon\Carbon::createFromFormat('d-m-Y', $schedule->payment_date);
+                    } catch (\Exception $e) {
+                        try {
+                            $currentDate = \Carbon\Carbon::createFromFormat('Y-m-d', $schedule->payment_date);
+                        } catch (\Exception $e2) {
+                            $currentDate = \Carbon\Carbon::parse($schedule->payment_date);
+                        }
+                    }
+                    $newDate = $currentDate->addDays($daysToPostpone);
+                    
+                    $schedule->payment_date = $newDate->format('d-m-Y');
+                    
+                    // Optionally waive late fees by clearing date_cleared
+                    // This resets the arrears calculation to use current date instead of old cleared date
+                    if ($waiveFees) {
+                        $schedule->date_cleared = null;
+                        if (isset($schedule->late_fee)) {
+                            $schedule->late_fee = 0;
+                        }
+                    }
+                    
+                    $schedule->save();
+                    $updatedSchedules++;
+                }
             }
 
             // Log the reschedule action in a notes/audit field if available

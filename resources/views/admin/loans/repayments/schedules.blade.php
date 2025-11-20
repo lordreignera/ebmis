@@ -207,6 +207,11 @@
                             <h5 class="card-title mb-0">Repayment Schedules ({{ count($schedules) }} installments)</h5>
                         </div>
                         <div class="col-auto">
+                            @if($overdueCount > 0)
+                                <button type="button" class="btn btn-warning btn-sm me-2" onclick="openRescheduleModal()" title="Reschedule overdue payments due to system upgrade">
+                                    <i class="mdi mdi-calendar-refresh"></i> Reschedule Overdue
+                                </button>
+                            @endif
                             <div class="btn-group" role="group">
                                 <input type="radio" class="btn-check" name="scheduleFilter" id="all" value="all" checked>
                                 <label class="btn btn-outline-primary btn-sm" for="all">All</label>
@@ -537,6 +542,67 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Process Partial Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- Reschedule Modal --}}
+<div class="modal fade" id="rescheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title"><i class="mdi mdi-calendar-refresh"></i> Reschedule Overdue Payments</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rescheduleForm">
+                <div class="modal-body bg-white">
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i>
+                        <strong>System Upgrade Reschedule</strong><br>
+                        <small>This will shift all overdue unpaid schedules forward to remove late fees caused by the system upgrade period.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Action <span class="text-danger">*</span></label>
+                        <select class="form-select" id="rescheduleAction" required>
+                            <option value="">Select Rescheduling Option</option>
+                            <option value="start_today">Start repayments from today</option>
+                            <option value="custom_days">Postpone by custom days</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="customDaysDiv" style="display: none;">
+                        <label class="form-label">Number of Days to Postpone <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="postponeDays" name="days" min="1" max="365" value="7">
+                        <div class="form-text">Enter the number of days to shift all schedules forward (e.g., 7 for one week)</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Waive Late Fees? <span class="text-danger">*</span></label>
+                        <select class="form-select" name="waive_fees" required>
+                            <option value="1" selected>Yes - Waive all late fees</option>
+                            <option value="0">No - Keep late fees</option>
+                        </select>
+                        <div class="form-text">Recommended: Waive late fees if delay was due to system upgrade</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Rescheduling <span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="reason" rows="3" required>System upgrade maintenance period - rescheduling to remove unwarranted late fees</textarea>
+                        <div class="form-text">Provide a reason for audit purposes (minimum 10 characters)</div>
+                    </div>
+
+                    <div class="alert alert-warning mb-0">
+                        <i class="mdi mdi-alert"></i> <strong>This will update {{ $overdueCount }} overdue schedule(s)</strong>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="rescheduleSubmitBtn">
+                        <i class="mdi mdi-calendar-refresh"></i> Reschedule Payments
+                    </button>
                 </div>
             </form>
         </div>
@@ -1220,6 +1286,124 @@ function startManualPolling(transactionId, maxSeconds) {
         checkPaymentStatus(transactionId, pollingTimer, countdownTimer);
     }, 3000);
 }
+
+// Reschedule Functions
+function openRescheduleModal() {
+    const modal = new bootstrap.Modal(document.getElementById('rescheduleModal'));
+    modal.show();
+}
+
+// Show/hide custom days input based on action selection
+document.getElementById('rescheduleAction').addEventListener('change', function() {
+    const customDaysDiv = document.getElementById('customDaysDiv');
+    const postponeDaysInput = document.getElementById('postponeDays');
+    
+    if (this.value === 'custom_days') {
+        customDaysDiv.style.display = 'block';
+        postponeDaysInput.required = true;
+    } else if (this.value === 'start_today') {
+        customDaysDiv.style.display = 'none';
+        postponeDaysInput.required = false;
+        // Calculate days from first overdue to today
+        // This will be handled in the backend
+    } else {
+        customDaysDiv.style.display = 'none';
+        postponeDaysInput.required = false;
+    }
+});
+
+// Handle reschedule form submission
+document.getElementById('rescheduleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const action = document.getElementById('rescheduleAction').value;
+    
+    if (!action) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Action Required',
+            text: 'Please select a rescheduling option'
+        });
+        return;
+    }
+    
+    const formData = new FormData(this);
+    const submitBtn = document.getElementById('rescheduleSubmitBtn');
+    const originalBtnText = submitBtn.innerHTML;
+    
+    // Calculate days based on action
+    if (action === 'start_today') {
+        // Backend will calculate days to shift to start from today
+        formData.set('days', 'auto');
+        formData.set('action', 'start_today');
+    } else {
+        formData.set('action', 'custom_days');
+    }
+    
+    // Confirm action
+    Swal.fire({
+        title: 'Confirm Reschedule',
+        html: `
+            <p>This will reschedule all <strong>{{ $overdueCount }} overdue payment(s)</strong> for this loan.</p>
+            ${action === 'start_today' ? '<p>Schedules will be adjusted to start from <strong>today</strong>.</p>' : ''}
+            <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ffc107',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, Reschedule',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Rescheduling...';
+            
+            fetch('{{ route("admin.loans.reschedule", $loan->id) }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+                
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success!',
+                        html: data.message,
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        // Close modal and reload page
+                        bootstrap.Modal.getInstance(document.getElementById('rescheduleModal')).hide();
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: data.message || 'Failed to reschedule loan'
+                    });
+                }
+            })
+            .catch(error => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'An error occurred while rescheduling: ' + error.message
+                });
+            });
+        }
+    });
+});
 </script>
 @endpush
 @endsection

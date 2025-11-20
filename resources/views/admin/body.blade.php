@@ -135,6 +135,16 @@
     color: #364a63;
   }
   
+  /* Clickable pending actions hover effect */
+  a .analytic-au-data:hover {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding-left: 0.5rem;
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    padding-right: 0.5rem;
+  }
+  
   /* Table styling for Cash Securities and Loans cards */
   .nk-tb-list {
     width: 100%;
@@ -520,30 +530,37 @@
             <hr>
             <div class="analytic-ov">
               <div class="analytic-data-group analytic-ov-group g-3">
-                <div class="analytic-data analytic-au-data">
+                <div class="analytic-data analytic-au-data" style="opacity: 0.5;">
                   <div class="title">
-                    <i class="mdi mdi-pen text-warning"></i> Pending Signature
+                    <i class="mdi mdi-pen text-muted"></i> Pending Signature
                   </div>
-                  <div class="amount text-warning" style="font-size: 1.2rem">{{ number_format($stats['pending_signature'] ?? 0) }}</div>
+                  <div class="amount text-muted" style="font-size: 1.2rem">{{ number_format($stats['pending_signature'] ?? 0) }}</div>
+                  <small class="text-muted d-block" style="font-size: 0.75rem;">Not tracked</small>
                 </div>
-                <div class="analytic-data analytic-au-data">
-                  <div class="title">
-                    <i class="mdi mdi-check-circle text-info"></i> Pending Approval
+                <a href="{{ route('admin.loans.index', ['status' => '0', 'verified' => '0']) }}" class="text-decoration-none">
+                  <div class="analytic-data analytic-au-data" style="cursor: pointer; transition: background 0.2s;">
+                    <div class="title">
+                      <i class="mdi mdi-check-circle text-info"></i> Pending Approval
+                    </div>
+                    <div class="amount text-info" style="font-size: 1.2rem">{{ number_format($stats['pending_approval'] ?? 0) }}</div>
                   </div>
-                  <div class="amount text-info" style="font-size: 1.2rem">{{ number_format($stats['pending_approval'] ?? 0) }}</div>
-                </div>
-                <div class="analytic-data analytic-au-data">
-                  <div class="title">
-                    <i class="mdi mdi-bank-transfer text-primary"></i> Pending Disbursement
+                </a>
+                <a href="{{ route('admin.loans.disbursements.pending') }}" class="text-decoration-none">
+                  <div class="analytic-data analytic-au-data" style="cursor: pointer; transition: background 0.2s;">
+                    <div class="title">
+                      <i class="mdi mdi-bank-transfer text-primary"></i> Pending Disbursement
+                    </div>
+                    <div class="amount text-primary" style="font-size: 1.2rem">{{ number_format($stats['pending_disbursement'] ?? 0) }}</div>
                   </div>
-                  <div class="amount text-primary" style="font-size: 1.2rem">{{ number_format($stats['pending_disbursement'] ?? 0) }}</div>
-                </div>
-                <div class="analytic-data analytic-au-data">
-                  <div class="title">
-                    <i class="mdi mdi-account-clock text-secondary"></i> Pending Members
+                </a>
+                <a href="{{ route('admin.members.pending') }}" class="text-decoration-none">
+                  <div class="analytic-data analytic-au-data" style="cursor: pointer; transition: background 0.2s;">
+                    <div class="title">
+                      <i class="mdi mdi-account-clock text-secondary"></i> Pending Members
+                    </div>
+                    <div class="amount text-secondary" style="font-size: 1.2rem">{{ number_format($stats['pending_members'] ?? 0) }}</div>
                   </div>
-                  <div class="amount text-secondary" style="font-size: 1.2rem">{{ number_format($stats['pending_members'] ?? 0) }}</div>
-                </div>
+                </a>
               </div>
             </div>
           </div>
@@ -576,8 +593,17 @@
                     <td>{{ $activity->description }}</td>
                     <td class="text-center">
                       @if(isset($activity->loan_id) && $activity->loan_id)
-                        <a href="{{ route('admin.loans.repayments.schedules', $activity->loan_id) }}" 
-                           class="btn btn-sm btn-primary">
+                        @php
+                          // Route based on loan status: 0=Pending Approval, 1=Pending Disbursement, 2=Disbursed (Schedules), 3=Completed
+                          $viewUrl = match($activity->status ?? '2') {
+                            '0' => route('admin.loans.show', $activity->loan_id), // Pending approval - loan details
+                            '1' => route('admin.loans.disbursements.approve', $activity->loan_id), // Approved - disbursement page
+                            '2' => route('admin.loans.repayments.schedules', $activity->loan_id), // Disbursed - repayment schedules
+                            '3' => route('admin.loans.repayments.schedules', $activity->loan_id), // Completed - repayment schedules
+                            default => route('admin.loans.show', $activity->loan_id)
+                          };
+                        @endphp
+                        <a href="{{ $viewUrl }}" class="btn btn-sm btn-primary">
                           <i class="mdi mdi-eye"></i> View
                         </a>
                       @else

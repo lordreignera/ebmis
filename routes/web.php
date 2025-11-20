@@ -9,6 +9,11 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+// CSRF Token Refresh API (for keeping sessions alive)
+Route::get('/api/csrf-token', function () {
+    return response()->json(['token' => csrf_token()]);
+})->middleware('web');
+
 // School Registration Routes (Public)
 Route::get('/school/register', [SchoolRegistrationController::class, 'show'])->name('school.register');
 Route::post('/school/register', [SchoolRegistrationController::class, 'store'])->name('school.register.store');

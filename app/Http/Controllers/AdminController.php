@@ -41,7 +41,7 @@ class AdminController extends Controller
     public function home()
     {
         // Get current date
-        $today = Carbon::today();
+        $today = Carbon::today()->format('Y-m-d'); // Format as string for comparison
         $currentMonth = Carbon::now()->month;
         $currentYear = Carbon::now()->year;
         
@@ -155,14 +155,15 @@ class AdminController extends Controller
             ->count();
 
         // === REPAYMENTS DUE TODAY ===
+        // payment_date is stored as string (VARCHAR), so we compare directly
         $repaymentsDueToday = DB::table('loan_schedules')
             ->where('status', '0')
-            ->whereDate('payment_date', $today)
+            ->where('payment_date', $today)
             ->sum('payment');
 
         $repaymentsDueTodayCount = DB::table('loan_schedules')
             ->where('status', '0')
-            ->whereDate('payment_date', $today)
+            ->where('payment_date', $today)
             ->count();
 
         // === CASH SECURITIES (SAVINGS) ===

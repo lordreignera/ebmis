@@ -591,6 +591,34 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
+    // Quick search functionality - redirect to search URL
+    $('#quickSearch').on('keyup', function(e) {
+        var value = $(this).val().trim();
+        
+        // Build URL with search parameter
+        var url = new URL(window.location.href);
+        
+        if (value.length > 0) {
+            url.searchParams.set('search', value);
+            url.searchParams.delete('page'); // Reset to page 1 when searching
+        } else {
+            url.searchParams.delete('search');
+        }
+        
+        // Debounce the search (wait 500ms after user stops typing)
+        clearTimeout(window.searchTimeout);
+        window.searchTimeout = setTimeout(function() {
+            window.location.href = url.toString();
+        }, 500);
+    });
+    
+    // Set search box value from URL parameter
+    var urlParams = new URLSearchParams(window.location.search);
+    var searchValue = urlParams.get('search');
+    if (searchValue) {
+        $('#quickSearch').val(searchValue);
+    }
+
     // Auto-refresh data every 5 minutes
     setInterval(function() {
         if (!$('.modal').hasClass('show')) {

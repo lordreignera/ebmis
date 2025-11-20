@@ -510,6 +510,145 @@
     @include('admin.java')
     <!-- End custom js for this page -->
     
+    <!-- CSRF Token Auto-Refresh & Session Management -->
+    <script>
+        // Auto-logout after 5 minutes of inactivity
+        let inactivityTimer;
+        const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimer);
+            
+            inactivityTimer = setTimeout(function() {
+                // Show warning before logout
+                if (confirm('You have been inactive for 5 minutes. Click OK to stay logged in, or Cancel to logout.')) {
+                    // User wants to stay - refresh the session
+                    fetch('/api/csrf-token', {
+                        method: 'GET',
+                        credentials: 'same-origin'
+                    }).then(() => {
+                        resetInactivityTimer(); // Reset timer again
+                    });
+                } else {
+                    // Auto-logout
+                    performLogout();
+                }
+            }, INACTIVITY_TIMEOUT);
+        }
+
+        function performLogout() {
+            // Force logout
+            fetch('{{ route("logout") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                credentials: 'same-origin'
+            })
+            .then(() => {
+                window.location.href = '{{ route("login") }}';
+            })
+            .catch(() => {
+                window.location.href = '{{ route("login") }}';
+            });
+        }
+
+        // Track user activity
+        const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        activityEvents.forEach(function(eventName) {
+            document.addEventListener(eventName, resetInactivityTimer, true);
+        });
+
+        // Start the inactivity timer when page loads
+        resetInactivityTimer();
+
+        // Refresh CSRF token every 4 minutes (before 5 min timeout)
+        setInterval(function() {
+            fetch('/api/csrf-token', {
+                method: 'GET',
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.token) {
+                    // Update all CSRF token meta tags
+                    document.querySelector('meta[name="csrf-token"]').setAttribute('content', data.token);
+                    
+                    // Update all CSRF input fields
+                    document.querySelectorAll('input[name="_token"]').forEach(input => {
+                        input.value = data.token;
+                    });
+                    
+                    console.log('CSRF token refreshed');
+                }
+            })
+            .catch(error => {
+                console.warn('Failed to refresh CSRF token:', error);
+            });
+        }, 240000); // 4 minutes
+
+        // Handle 419 Page Expired errors globally
+        window.addEventListener('beforeunload', function() {
+            // Store the intended action before page unload
+            if (event.target.activeElement.form) {
+                sessionStorage.setItem('lastFormAction', event.target.activeElement.form.action);
+            }
+        });
+
+        // Intercept all form submissions to handle expired tokens
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle logout forms specifically
+            document.querySelectorAll('form[action*="logout"]').forEach(function(form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    // Force logout even if token is expired
+                    fetch('{{ route("logout") }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        },
+                        credentials: 'same-origin'
+                    })
+                    .then(response => {
+                        // Redirect to login regardless of response
+                        window.location.href = '{{ route("login") }}';
+                    })
+                    .catch(error => {
+                        // Even on error, redirect to login
+                        window.location.href = '{{ route("login") }}';
+                    });
+                });
+            });
+
+            // Global AJAX error handler for 419 errors
+            if (typeof $ !== 'undefined') {
+                $(document).ajaxError(function(event, jqxhr, settings, thrownError) {
+                    if (jqxhr.status === 419) {
+                        // Token expired - show alert and reload
+                        alert('Your session has expired. The page will reload to refresh your session.');
+                        window.location.reload();
+                    }
+                });
+            }
+
+            // Fetch interceptor for non-jQuery requests
+            const originalFetch = window.fetch;
+            window.fetch = function() {
+                return originalFetch.apply(this, arguments)
+                    .then(response => {
+                        if (response.status === 419) {
+                            alert('Your session has expired. The page will reload to refresh your session.');
+                            window.location.reload();
+                        }
+                        return response;
+                    });
+            };
+        });
+    </script>
+    
     <!-- Custom page scripts -->
     @stack('scripts')
 </body>
