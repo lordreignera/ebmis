@@ -35,12 +35,11 @@ class SchoolLoanController extends Controller
         // Get eligible entities based on loan type
         if ($loanType === 'school') {
             // Get approved schools WITHOUT active loans
+            // A school is eligible if they don't have any approved (status=1) or disbursed (status=2) loans
+            // This is similar to how personal loans filter verified members without active loans
             $members = School::where('status', 'approved')
                             ->whereDoesntHave('schoolLoans', function($query) {
-                                $query->whereIn('status', [1, 2]) // Approved or Disbursed
-                                      ->whereHas('schedules', function($subQuery) {
-                                          $subQuery->where('status', 0); // Unpaid schedules
-                                      });
+                                $query->whereIn('status', [1, 2]); // Approved or Disbursed (active loans)
                             })
                             ->orderBy('school_name')
                             ->get();
@@ -49,10 +48,7 @@ class SchoolLoanController extends Controller
             $members = Student::where('status', 'active')
                              ->with('school')
                              ->whereDoesntHave('studentLoans', function($query) {
-                                 $query->whereIn('status', [1, 2]) // Approved or Disbursed
-                                       ->whereHas('schedules', function($subQuery) {
-                                           $subQuery->where('status', 0); // Unpaid schedules
-                                       });
+                                 $query->whereIn('status', [1, 2]); // Approved or Disbursed (active loans)
                              })
                              ->orderBy('first_name')
                              ->orderBy('last_name')
@@ -62,10 +58,7 @@ class SchoolLoanController extends Controller
             $members = Staff::where('status', 'active')
                            ->with('school')
                            ->whereDoesntHave('staffLoans', function($query) {
-                               $query->whereIn('status', [1, 2]) // Approved or Disbursed
-                                     ->whereHas('schedules', function($subQuery) {
-                                         $subQuery->where('status', 0); // Unpaid schedules
-                                     });
+                               $query->whereIn('status', [1, 2]); // Approved or Disbursed (active loans)
                            })
                            ->orderBy('first_name')
                            ->orderBy('last_name')

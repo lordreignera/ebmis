@@ -56,19 +56,19 @@
                                 <div class="form-group mb-3">
                                     <label class="form-label">Select School/Institution <span class="text-danger">*</span></label>
                                     <select class="form-select" name="member_id" id="member_id" required>
-                                        <option value="">Select verified school...</option>
-                                        @foreach($members as $member)
-                                            <option value="{{ $member->id }}" 
-                                                data-branch="{{ $member->branch_id }}"
-                                                data-branch-name="{{ $member->branch->name ?? 'Unknown Branch' }}"
-                                                {{ $selectedMember && $selectedMember->id == $member->id ? 'selected' : '' }}>
-                                                {{ $member->fname }} {{ $member->lname }} 
-                                                @if($member->branch) - {{ $member->branch->name }} @endif
-                                                ({{ $member->code }})
+                                        <option value="">Search for verified schools...</option>
+                                        @foreach($members as $school)
+                                            <option value="{{ $school->id }}" 
+                                                data-school-name="{{ $school->school_name }}"
+                                                data-school-code="{{ $school->school_code }}"
+                                                data-school-contact="{{ $school->physical_address }}"
+                                                {{ $selectedMember && $selectedMember->id == $school->id ? 'selected' : '' }}>
+                                                {{ $school->school_name }} ({{ $school->school_code }})
+                                                @if($school->district) - {{ $school->district }} @endif
                                             </option>
                                         @endforeach
                                     </select>
-                                    <small class="text-muted">Only verified and approved schools are shown</small>
+                                    <small class="text-muted">Only approved schools without active loans are shown</small>
                                 </div>
                             </div>
 
@@ -213,24 +213,30 @@ $(document).ready(function() {
         calculateInstallment();
     });
 
-    // Auto-select branch when school changes
+    // Auto-fill school details when school changes
     $('#member_id').change(function() {
         var selectedOption = $(this).find('option:selected');
-        var branchId = selectedOption.data('branch');
-        var branchName = selectedOption.data('branch-name');
+        var schoolName = selectedOption.data('school-name');
+        var schoolContact = selectedOption.data('school-contact');
         
-        if (branchId) {
-            $('select[name="branch_id"]').val(branchId);
-            
-            // Show a subtle confirmation that branch was auto-selected
-            if (branchName) {
-                var $branchSelect = $('select[name="branch_id"]');
-                var originalBorder = $branchSelect.css('border');
-                $branchSelect.css('border', '2px solid #28a745');
-                setTimeout(function() {
-                    $branchSelect.css('border', originalBorder);
-                }, 1500);
-            }
+        // Auto-fill school name field
+        if (schoolName) {
+            $('input[name="business_name"]').val(schoolName);
+        }
+        
+        // Auto-fill school contact field
+        if (schoolContact) {
+            $('input[name="business_contact"]').val(schoolContact);
+        }
+        
+        // Show confirmation
+        if (schoolName) {
+            var $nameInput = $('input[name="business_name"]');
+            var originalBorder = $nameInput.css('border');
+            $nameInput.css('border', '2px solid #28a745');
+            setTimeout(function() {
+                $nameInput.css('border', originalBorder);
+            }, 1500);
         }
     });
 

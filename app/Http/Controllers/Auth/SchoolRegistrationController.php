@@ -557,8 +557,18 @@ class SchoolRegistrationController extends Controller
 
         // Check if assessment is already complete
         if ($school->assessment_complete) {
-            return back()->with('error', 'Assessment for this school is already complete. You can login with your credentials.')
-                        ->withInput();
+            $message = 'Your assessment has already been completed and submitted successfully. ';
+            
+            // Add status-specific message
+            if ($school->status === 'approved') {
+                $message .= 'Your school has been approved! You can now login with your credentials.';
+            } elseif ($school->status === 'rejected') {
+                $message .= 'Please contact the admin on +256708356505 for more information.';
+            } else {
+                $message .= 'Please wait for your school to be approved by the admin. For inquiries, contact us on +256708356505.';
+            }
+            
+            return back()->with('warning', $message)->withInput();
         }
 
         // Set up session for assessment continuation

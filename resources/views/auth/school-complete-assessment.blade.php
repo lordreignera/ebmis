@@ -171,11 +171,19 @@
             border: none;
             padding: 15px 20px;
             margin-bottom: 20px;
+            font-size: 15px;
+            line-height: 1.6;
         }
 
         .alert-danger {
             background: #ffebee;
             color: #c62828;
+        }
+
+        .alert-warning {
+            background: #fff3e0;
+            color: #ef6c00;
+            border-left: 4px solid #ff9800;
         }
 
         .alert-info {
@@ -185,6 +193,22 @@
 
         .alert i {
             margin-right: 10px;
+            font-size: 18px;
+        }
+
+        .alert strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+
+        .contact-info {
+            display: inline-block;
+            background: rgba(0,0,0,0.05);
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-weight: 600;
+            margin-top: 8px;
         }
 
         @media (max-width: 768px) {
@@ -221,11 +245,21 @@
 
         <!-- Form Section -->
         <div class="form-section">
-            <!-- Display Error Messages -->
+            <!-- Display Messages -->
             @if (session('error'))
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-circle"></i>
                     {{ session('error') }}
+                </div>
+            @endif
+
+            @if (session('warning'))
+                <div class="alert alert-warning">
+                    <i class="fas fa-check-circle"></i>
+                    <div>
+                        <strong>Assessment Already Completed!</strong>
+                        {{ session('warning') }}
+                    </div>
                 </div>
             @endif
 
