@@ -771,27 +771,135 @@
 <script>
 // Fix sidebar accordion - only one submenu open at a time
 document.addEventListener('DOMContentLoaded', function() {
-    // Get all collapse toggle links
-    const collapseToggles = document.querySelectorAll('[data-bs-toggle="collapse"]');
+    // Function to manage sidebar menus
+    function manageSidebarMenus() {
+        const currentPath = window.location.pathname;
+        const currentParams = new URLSearchParams(window.location.search);
+        const currentType = currentParams.get('type');
+        const currentPeriod = currentParams.get('period');
+        
+        // STEP 1: Close ALL menus first
+        const allCollapseMenus = document.querySelectorAll('.sidebar .collapse');
+        allCollapseMenus.forEach(function(collapse) {
+            collapse.classList.remove('show');
+            const collapseId = collapse.getAttribute('id');
+            const toggle = document.querySelector(`[data-bs-toggle="collapse"][href="#${collapseId}"]`);
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'false');
+                toggle.classList.add('collapsed');
+            }
+        });
+        
+        // STEP 2: Find and open ONLY the correct menu
+        const allMenuSections = document.querySelectorAll('.sidebar > .nav > .nav-item.menu-items > .collapse');
+        let menuToOpen = null;
+        
+        allMenuSections.forEach(function(collapse) {
+            if (menuToOpen) return; // Already found the menu to open
+            
+            const submenuLinks = collapse.querySelectorAll('.sub-menu a');
+            
+            for (let i = 0; i < submenuLinks.length; i++) {
+                const link = submenuLinks[i];
+                const linkHref = link.getAttribute('href');
+                
+                if (linkHref) {
+                    try {
+                        const linkUrl = new URL(linkHref, window.location.origin);
+                        const linkPath = linkUrl.pathname;
+                        const linkParams = new URLSearchParams(linkUrl.search);
+                        const linkType = linkParams.get('type');
+                        const linkPeriod = linkParams.get('period');
+                        
+                        // Check for exact match
+                        if (linkPath === currentPath) {
+                            // If both have type/period params, they must match exactly
+                            if (currentType && linkType) {
+                                if (currentType === linkType) {
+                                    // Type matches, check period if present
+                                    if (currentPeriod && linkPeriod) {
+                                        if (currentPeriod === linkPeriod) {
+                                            menuToOpen = collapse;
+                                            break;
+                                        }
+                                    } else if (!currentPeriod && !linkPeriod) {
+                                        menuToOpen = collapse;
+                                        break;
+                                    } else if (!currentPeriod || !linkPeriod) {
+                                        menuToOpen = collapse;
+                                        break;
+                                    }
+                                }
+                            } else if (!currentType && !linkType) {
+                                // No type parameter - simple path match
+                                menuToOpen = collapse;
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // Invalid URL, skip
+                    }
+                }
+            }
+        });
+        
+        // STEP 3: Open the found menu
+        if (menuToOpen) {
+            menuToOpen.classList.add('show');
+            const collapseId = menuToOpen.getAttribute('id');
+            const toggle = document.querySelector(`[data-bs-toggle="collapse"][href="#${collapseId}"]`);
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'true');
+                toggle.classList.remove('collapsed');
+            }
+        }
+    }
     
-    collapseToggles.forEach(function(toggle) {
+    // Run immediately
+    manageSidebarMenus();
+    
+    // Run again after a short delay to override any Bootstrap auto-open behavior
+    setTimeout(manageSidebarMenus, 100);
+    setTimeout(manageSidebarMenus, 500);
+    
+    // Get only the MAIN menu collapse toggles (not submenu items)
+    const mainMenuToggles = document.querySelectorAll('.sidebar > .nav > .nav-item.menu-items > [data-bs-toggle="collapse"]');
+    
+    mainMenuToggles.forEach(function(toggle) {
         toggle.addEventListener('click', function(e) {
             const targetId = this.getAttribute('href');
             const targetCollapse = document.querySelector(targetId);
             
-            // Close all other open collapses in the sidebar
-            const allCollapses = document.querySelectorAll('.sidebar .collapse.show');
+            if (!targetCollapse) return;
+            
+            // Get the current state before Bootstrap processes the click
+            const isCurrentlyExpanded = targetCollapse.classList.contains('show');
+            
+            // Close ALL other open collapses in the sidebar FIRST (but not the one being clicked)
+            const allCollapses = document.querySelectorAll('.sidebar > .nav > .nav-item.menu-items > .collapse');
             allCollapses.forEach(function(collapse) {
-                if (collapse !== targetCollapse) {
-                    // Use Bootstrap's collapse API to hide
-                    const bsCollapse = bootstrap.Collapse.getInstance(collapse);
-                    if (bsCollapse) {
-                        bsCollapse.hide();
-                    } else {
-                        collapse.classList.remove('show');
+                if (collapse !== targetCollapse && collapse.classList.contains('show')) {
+                    // Remove the 'show' class
+                    collapse.classList.remove('show');
+                    
+                    // Find the toggle link for this collapse and update its state
+                    const collapseId = collapse.getAttribute('id');
+                    const collapseToggle = document.querySelector(`.sidebar [data-bs-toggle="collapse"][href="#${collapseId}"]`);
+                    if (collapseToggle) {
+                        collapseToggle.setAttribute('aria-expanded', 'false');
+                        collapseToggle.classList.add('collapsed');
                     }
                 }
             });
+        });
+    });
+    
+    // Prevent submenu links from triggering collapse on parent menu
+    const submenuLinks = document.querySelectorAll('.sidebar .sub-menu .nav-link');
+    submenuLinks.forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            // Stop propagation to prevent parent collapse handlers
+            e.stopPropagation();
         });
     });
 });
