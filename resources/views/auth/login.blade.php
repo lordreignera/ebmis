@@ -378,6 +378,16 @@
                     <button type="button" class="btn btn-school-join w-100" data-bs-toggle="modal" data-bs-target="#schoolBenefitsModal">
                         🏫 Join us as a School
                     </button>
+                    
+                    <!-- Complete Assessment Link -->
+                    <div class="mt-3">
+                        <a href="{{ route('school.complete-assessment') }}" class="btn btn-outline-warning w-100 btn-complete-assessment">
+                            <i class="fas fa-clipboard-check me-2"></i>Complete School Assessment
+                        </a>
+                        <small class="text-muted d-block mt-2">
+                            Already registered but didn't finish? Continue your assessment here
+                        </small>
+                    </div>
                 </div>
             </form>
         </div>
@@ -527,6 +537,31 @@
             color: white;
             transform: translateY(-2px);
             box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-complete-assessment {
+            background: transparent;
+            border: 2px solid #ffc107;
+            color: #ff8f00;
+            padding: 12px 25px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-complete-assessment:hover {
+            background: #ffc107;
+            color: #fff;
+            border-color: #ffc107;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 193, 7, 0.3);
+        }
+        
+        .btn-complete-assessment i {
+            font-size: 1.1rem;
         }
         
         .bg-gradient {

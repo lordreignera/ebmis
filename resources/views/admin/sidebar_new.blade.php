@@ -73,8 +73,8 @@
           
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">School Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=school">School Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=school">School Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=school">Pending Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=school">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=school">Active School Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=school">School Loan Repayments</a></li>
           
@@ -101,8 +101,8 @@
           
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Student Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=student">Student Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=student">Student Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=student">Pending Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=student">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=student">Active Student Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=student">Student Loan Repayments</a></li>
           
@@ -125,8 +125,8 @@
         <ul class="nav flex-column sub-menu">
           <li class="nav-item"><a class="nav-link" href="#">Create School Advance</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Advance Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Advance Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Advance Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Advances Pending Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Advances Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Advance Repayments</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Active Advances</a></li>
           <li class="nav-item"><a class="nav-link" href="#">Cleared Advances</a></li>
@@ -151,8 +151,8 @@
           
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Staff Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=staff">Staff Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=staff">Staff Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=staff">Pending Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=staff">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=staff">Active Staff Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=staff">Staff Loan Repayments</a></li>
           
@@ -378,7 +378,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=1">Individual Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=2">Group Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=3">Corporate Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.pending') }}">Client Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.pending') }}">Clients Pending Approvals</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.create') }}">Send Bulk SMS</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.index') }}">View Bulk SMS Records</a></li>
         </ul>
@@ -468,16 +468,16 @@
           <!-- Personal Loan Management -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Personal Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Personal Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Personal Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Pending Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayments</a></li>
           
           <!-- Group Loan Management -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Group Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=group">Group Loan Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Group Loan Disbursements</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=group">Pending Approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=group">Active Group Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayments</a></li>
           

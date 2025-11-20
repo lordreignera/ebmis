@@ -30,9 +30,11 @@ return [
     | to expire immediately when the browser is closed then you may
     | indicate that via the expire_on_close configuration option.
     |
+    | Note: Set to 20 minutes for assessment forms with auto-refresh
+    |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 5),
+    'lifetime' => (int) env('SESSION_LIFETIME', 20),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

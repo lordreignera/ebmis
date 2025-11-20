@@ -174,6 +174,17 @@
                                                                 <i class="mdi mdi-pencil"></i>
                                                             </a>
 
+                                                            <!-- Complete Assessment Button (for incomplete assessments) -->
+                                                            @if(!$school->assessment_complete)
+                                                                <button type="button" 
+                                                                        class="btn btn-sm btn-warning" 
+                                                                        title="Send Assessment Link"
+                                                                        data-bs-toggle="tooltip"
+                                                                        onclick="copyAssessmentLink('{{ $school->email }}', '{{ route('school.complete-assessment') }}')">
+                                                                    <i class="mdi mdi-clipboard-check"></i>
+                                                                </button>
+                                                            @endif
+
                                                             @if($school->status == 'pending')
                                                                 <!-- Approve Button -->
                                                                 <form action="{{ route('admin.schools.approve', $school) }}" method="POST" class="d-inline approve-form">
@@ -304,5 +315,19 @@
             }
         });
     });
+
+    // Copy assessment link
+    function copyAssessmentLink(email, baseUrl) {
+        const link = baseUrl;
+        const message = `Dear School Administrator,\n\nYour school registration has been saved but the assessment is incomplete. Please complete your assessment using this link:\n\n${link}\n\nYou will need to enter your registered email (${email}) to continue.\n\nThank you!`;
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(message).then(function() {
+            alert('Assessment link copied to clipboard!\n\nYou can send this to the school:\n\n' + message);
+        }).catch(function(err) {
+            // Fallback if clipboard API fails
+            prompt('Assessment Link (Copy this):', link);
+        });
+    }
 </script>
 @endsection

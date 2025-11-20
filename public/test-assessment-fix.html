@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Assessment 419 Fix</title>
+    <meta name="csrf-token" content="test-token">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #5568d3; }
+        #log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Assessment 419 Fix - Test Page</h1>
+    
+    <div class="test-box">
+        <h3>1. Test CSRF Token Refresh</h3>
+        <p>This will test if the CSRF token can be refreshed from the server.</p>
+        <button onclick="testCsrfRefresh()">Test CSRF Refresh</button>
+        <div id="csrf-status"></div>
+    </div>
+
+    <div class="test-box">
+        <h3>2. Test Auto-Save to LocalStorage</h3>
+        <p>This will test if form data can be saved and restored from localStorage.</p>
+        <input type="text" id="testInput" placeholder="Type something..." style="width: 100%; padding: 10px; margin: 10px 0;">
+        <br>
+        <button onclick="testAutoSave()">Save to LocalStorage</button>
+        <button onclick="testRestore()">Restore from LocalStorage</button>
+        <button onclick="testClear()">Clear LocalStorage</button>
+        <div id="storage-status"></div>
+    </div>
+
+    <div class="test-box">
+        <h3>3. Test Session Timeout Warning</h3>
+        <p>This will show the session timeout warning modal (normally shows after 118 minutes).</p>
+        <button onclick="testTimeoutWarning()">Show Timeout Warning</button>
+        <div id="timeout-status"></div>
+    </div>
+
+    <div class="test-box">
+        <h3>4. Activity Monitor</h3>
+        <p>Move your mouse, click, or press keys to test activity tracking.</p>
+        <div id="activity-log" class="info status">Waiting for activity...</div>
+    </div>
+
+    <div class="test-box">
+        <h3>Console Log</h3>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#333';
+            log.innerHTML += `<div style="color: ${color};">[${time}] ${message}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Test 1: CSRF Token Refresh
+        function testCsrfRefresh() {
+            addLog('Testing CSRF token refresh...', 'info');
+            const statusDiv = document.getElementById('csrf-status');
+            
+            fetch('/api/csrf-token', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.token) {
+                    statusDiv.innerHTML = '<div class="status success">✓ CSRF token refreshed successfully!<br>Token: ' + data.token.substring(0, 20) + '...</div>';
+                    addLog('✓ CSRF token: ' + data.token.substring(0, 20) + '...', 'success');
+                    
+                    // Update meta tag
+                    document.querySelector('meta[name="csrf-token"]').setAttribute('content', data.token);
+                    addLog('✓ Meta tag updated', 'success');
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">✗ No token in response</div>';
+                    addLog('✗ No token received', 'error');
+                }
+            })
+            .catch(error => {
+                statusDiv.innerHTML = '<div class="status error">✗ Error: ' + error.message + '</div>';
+                addLog('✗ CSRF refresh failed: ' + error.message, 'error');
+            });
+        }
+
+        // Test 2: Auto-Save
+        function testAutoSave() {
+            const input = document.getElementById('testInput');
+            const value = input.value;
+            
+            if (!value) {
+                alert('Please type something in the input field first');
+                return;
+            }
+            
+            try {
+                localStorage.setItem('test_assessment_data', JSON.stringify({ testField: value }));
+                document.getElementById('storage-status').innerHTML = '<div class="status success">✓ Data saved to localStorage!</div>';
+                addLog('✓ Saved: ' + value, 'success');
+            } catch (error) {
+                document.getElementById('storage-status').innerHTML = '<div class="status error">✗ Error: ' + error.message + '</div>';
+                addLog('✗ Save failed: ' + error.message, 'error');
+            }
+        }
+
+        function testRestore() {
+            try {
+                const data = localStorage.getItem('test_assessment_data');
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    document.getElementById('testInput').value = parsed.testField || '';
+                    document.getElementById('storage-status').innerHTML = '<div class="status success">✓ Data restored from localStorage!</div>';
+                    addLog('✓ Restored: ' + parsed.testField, 'success');
+                } else {
+                    document.getElementById('storage-status').innerHTML = '<div class="status info">No data found. Save something first.</div>';
+                    addLog('ℹ No data to restore', 'info');
+                }
+            } catch (error) {
+                document.getElementById('storage-status').innerHTML = '<div class="status error">✗ Error: ' + error.message + '</div>';
+                addLog('✗ Restore failed: ' + error.message, 'error');
+            }
+        }
+
+        function testClear() {
+            localStorage.removeItem('test_assessment_data');
+            document.getElementById('testInput').value = '';
+            document.getElementById('storage-status').innerHTML = '<div class="status success">✓ LocalStorage cleared!</div>';
+            addLog('✓ Storage cleared', 'success');
+        }
+
+        // Test 3: Session Timeout Warning
+        function testTimeoutWarning() {
+            const warning = document.createElement('div');
+            warning.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;max-width:500px;text-align:center;';
+            warning.innerHTML = `
+                <div style="color:#ff9800;font-size:48px;margin-bottom:15px;">⚠️</div>
+                <h4 style="color:#333;margin-bottom:15px;">Session Expiring Soon</h4>
+                <p style="color:#666;margin-bottom:20px;">Your session will expire in 2 minutes. Click below to stay logged in and save your progress.</p>
+                <button onclick="this.parentElement.remove();testCsrfRefresh();" style="background:#667eea;color:white;border:none;padding:12px 30px;border-radius:8px;font-size:16px;cursor:pointer;font-weight:600;">
+                    🔄 Keep Me Logged In
+                </button>
+            `;
+            document.body.appendChild(warning);
+            document.getElementById('timeout-status').innerHTML = '<div class="status success">✓ Warning modal displayed!</div>';
+            addLog('✓ Timeout warning shown', 'success');
+        }
+
+        // Test 4: Activity Monitor
+        let activityCount = 0;
+        function trackActivity(type) {
+            activityCount++;
+            const log = document.getElementById('activity-log');
+            log.innerHTML = `Activity detected: ${type} (Count: ${activityCount})<br>Last activity: ${new Date().toLocaleTimeString()}`;
+            addLog(`Activity: ${type}`, 'info');
+        }
+
+        ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+            let lastTime = 0;
+            document.addEventListener(event, () => {
+                const now = Date.now();
+                if (now - lastTime > 1000) { // Throttle to 1 per second
+                    trackActivity(event);
+                    lastTime = now;
+                }
+            });
+        });
+
+        // Initialize
+        addLog('Test page loaded', 'success');
+        addLog('All test functions ready', 'success');
+    </script>
+</body>
+</html>

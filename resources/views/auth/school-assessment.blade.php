@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>School Comprehensive Assessment - EBIMS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -2793,6 +2794,210 @@
 
         // Smooth scroll to top on page load
         window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // ============================================
+        // CSRF TOKEN AUTO-REFRESH (Prevent 419 Error)
+        // ============================================
+        // Refresh CSRF token every 5 minutes to prevent session expiration
+        function refreshCsrfToken() {
+            fetch('/api/csrf-token', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.token) {
+                    // Update the CSRF token in the meta tag
+                    document.querySelector('meta[name="csrf-token"]').setAttribute('content', data.token);
+                    
+                    // Update the CSRF token in the form
+                    const csrfInput = document.querySelector('input[name="_token"]');
+                    if (csrfInput) {
+                        csrfInput.value = data.token;
+                    }
+                    
+                    console.log('✓ CSRF token refreshed at ' + new Date().toLocaleTimeString());
+                }
+            })
+            .catch(error => {
+                console.error('Failed to refresh CSRF token:', error);
+            });
+        }
+
+        // Refresh token every 5 minutes (300000 ms)
+        setInterval(refreshCsrfToken, 300000);
+
+        // Show a visual indicator that the form is being kept alive
+        let sessionIndicator = null;
+        function showSessionIndicator() {
+            if (!sessionIndicator) {
+                sessionIndicator = document.createElement('div');
+                sessionIndicator.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#4caf50;color:white;padding:10px 20px;border-radius:25px;box-shadow:0 4px 15px rgba(0,0,0,0.2);z-index:9999;font-size:14px;display:flex;align-items:center;gap:10px;';
+                sessionIndicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Session Active - Auto-saving...</span>';
+                document.body.appendChild(sessionIndicator);
+                
+                setTimeout(() => {
+                    sessionIndicator.style.opacity = '0';
+                    sessionIndicator.style.transition = 'opacity 0.5s';
+                    setTimeout(() => {
+                        if (sessionIndicator) {
+                            sessionIndicator.remove();
+                            sessionIndicator = null;
+                        }
+                    }, 500);
+                }, 3000);
+            }
+        }
+
+        // Show indicator when token is refreshed
+        const originalRefresh = refreshCsrfToken;
+        refreshCsrfToken = function() {
+            originalRefresh();
+            showSessionIndicator();
+        };
+
+        // ============================================
+        // AUTO-SAVE FORM DATA TO LOCAL STORAGE
+        // ============================================
+        const formId = 'assessmentForm';
+        const storageKey = 'school_assessment_draft_{{ $school->id }}';
+
+        // Save form data to localStorage
+        function autoSaveFormData() {
+            const form = document.getElementById(formId);
+            if (!form) return;
+
+            const formData = new FormData(form);
+            const data = {};
+
+            for (let [key, value] of formData.entries()) {
+                if (key !== '_token') { // Don't save CSRF token
+                    data[key] = value;
+                }
+            }
+
+            localStorage.setItem(storageKey, JSON.stringify(data));
+            console.log('✓ Form data auto-saved at ' + new Date().toLocaleTimeString());
+        }
+
+        // Restore form data from localStorage
+        function restoreFormData() {
+            const savedData = localStorage.getItem(storageKey);
+            if (!savedData) return;
+
+            try {
+                const data = JSON.parse(savedData);
+                const form = document.getElementById(formId);
+                if (!form) return;
+
+                let restoredCount = 0;
+                for (let [key, value] of Object.entries(data)) {
+                    const input = form.querySelector(`[name="${key}"]`);
+                    if (input && !input.value) { // Only restore if field is empty
+                        input.value = value;
+                        restoredCount++;
+                    }
+                }
+
+                if (restoredCount > 0) {
+                    console.log(`✓ Restored ${restoredCount} fields from auto-save`);
+                    
+                    // Show notification
+                    const notification = document.createElement('div');
+                    notification.style.cssText = 'position:fixed;top:20px;right:20px;background:#2196F3;color:white;padding:15px 25px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.2);z-index:9999;font-size:14px;';
+                    notification.innerHTML = `<i class="fas fa-info-circle me-2"></i>Restored ${restoredCount} previously saved fields`;
+                    document.body.appendChild(notification);
+                    
+                    setTimeout(() => {
+                        notification.style.opacity = '0';
+                        notification.style.transition = 'opacity 0.5s';
+                        setTimeout(() => notification.remove(), 500);
+                    }, 5000);
+                }
+            } catch (error) {
+                console.error('Error restoring form data:', error);
+            }
+        }
+
+        // Auto-save every 2 minutes
+        setInterval(autoSaveFormData, 120000);
+
+        // Auto-save when user leaves any input field
+        document.addEventListener('change', function(e) {
+            if (e.target.form && e.target.form.id === formId) {
+                autoSaveFormData();
+            }
+        });
+
+        // Restore data on page load
+        window.addEventListener('load', function() {
+            restoreFormData();
+        });
+
+        // Clear auto-saved data after successful submission
+        const form = document.getElementById(formId);
+        if (form) {
+            form.addEventListener('submit', function() {
+                // Keep the data until we're sure submission was successful
+                setTimeout(() => {
+                    // This will only execute if the page doesn't redirect immediately
+                    const successMessage = document.querySelector('.alert-success');
+                    if (successMessage) {
+                        localStorage.removeItem(storageKey);
+                        console.log('✓ Auto-saved data cleared after successful submission');
+                    }
+                }, 1000);
+            });
+        }
+
+        // ============================================
+        // SESSION TIMEOUT WARNING
+        // ============================================
+        let sessionTimeout;
+        let warningShown = false;
+
+        function resetSessionTimeout() {
+            clearTimeout(sessionTimeout);
+            warningShown = false;
+            
+            // Warn user 2 minutes before session expires (18 minutes for 20-minute session)
+            sessionTimeout = setTimeout(() => {
+                if (!warningShown) {
+                    warningShown = true;
+                    
+                    const warning = document.createElement('div');
+                    warning.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;max-width:500px;text-align:center;';
+                    warning.innerHTML = `
+                        <div style="color:#ff9800;font-size:48px;margin-bottom:15px;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <h4 style="color:#333;margin-bottom:15px;">Session Expiring Soon</h4>
+                        <p style="color:#666;margin-bottom:20px;">Your session will expire in 2 minutes. Click below to stay logged in and save your progress.</p>
+                        <button onclick="this.parentElement.remove();refreshCsrfToken();resetSessionTimeout();" style="background:#667eea;color:white;border:none;padding:12px 30px;border-radius:8px;font-size:16px;cursor:pointer;font-weight:600;">
+                            <i class="fas fa-sync-alt me-2"></i>Keep Me Logged In
+                        </button>
+                    `;
+                    document.body.appendChild(warning);
+                    
+                    // Auto-refresh token
+                    refreshCsrfToken();
+                }
+            }, 1080000); // 18 minutes (2 minutes before 20-minute session timeout)
+        }
+
+        // Reset timeout on any user activity
+        ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+            document.addEventListener(event, resetSessionTimeout);
+        });
+
+        // Initialize session timeout
+        resetSessionTimeout();
+
+        console.log('✓ CSRF auto-refresh enabled');
+        console.log('✓ Auto-save enabled');
+        console.log('✓ Session timeout warning enabled');
     </script>
 </body>
 </html>

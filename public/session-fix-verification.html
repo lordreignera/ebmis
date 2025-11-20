@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Session Settings Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .info-box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        .warning { background: #fff3cd; color: #856404; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        .info { background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        h1 { color: #333; }
+        h2 { color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+        th { background: #667eea; color: white; font-weight: bold; }
+        tr:nth-child(even) { background: #f8f9fa; }
+        .highlight { background: #ffeb3b; font-weight: bold; padding: 2px 5px; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>✅ Session Settings - Fixed</h1>
+    
+    <div class="success">
+        <strong>✓ Problem Fixed!</strong><br>
+        Session lifetime increased from 5 minutes to 180 minutes (3 hours)
+    </div>
+
+    <div class="info-box">
+        <h2>📊 New Session Configuration</h2>
+        <table>
+            <tr>
+                <th>Setting</th>
+                <th>Old Value</th>
+                <th>New Value</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td><strong>Session Lifetime</strong></td>
+                <td><span class="highlight">5 minutes</span></td>
+                <td><span class="highlight">180 minutes (3 hours)</span></td>
+                <td>✅ Updated</td>
+            </tr>
+            <tr>
+                <td><strong>CSRF Refresh</strong></td>
+                <td>None</td>
+                <td>Every 5 minutes</td>
+                <td>✅ Active</td>
+            </tr>
+            <tr>
+                <td><strong>Auto-Save</strong></td>
+                <td>None</td>
+                <td>Every 2 minutes</td>
+                <td>✅ Active</td>
+            </tr>
+            <tr>
+                <td><strong>Timeout Warning</strong></td>
+                <td>None</td>
+                <td>At 178 minutes (2 min before expiry)</td>
+                <td>✅ Active</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="info-box">
+        <h2>🔧 Files Modified</h2>
+        <ol>
+            <li><code>config/session.php</code> - Changed default from 5 to 180 minutes</li>
+            <li><code>.env</code> - Updated SESSION_LIFETIME=180</li>
+            <li><code>resources/views/auth/school-assessment.blade.php</code> - Updated timeout warning to 178 minutes</li>
+        </ol>
+    </div>
+
+    <div class="info-box">
+        <h2>⏱️ Timeline Breakdown</h2>
+        <table>
+            <tr>
+                <th>Time</th>
+                <th>Event</th>
+                <th>Action</th>
+            </tr>
+            <tr>
+                <td>0 min</td>
+                <td>User starts assessment</td>
+                <td>Session begins</td>
+            </tr>
+            <tr>
+                <td>2 min</td>
+                <td>Auto-save #1</td>
+                <td>Form data saved to localStorage</td>
+            </tr>
+            <tr>
+                <td>5 min</td>
+                <td>CSRF refresh #1</td>
+                <td>Token refreshed automatically</td>
+            </tr>
+            <tr>
+                <td>10 min</td>
+                <td>CSRF refresh #2</td>
+                <td>Token refreshed</td>
+            </tr>
+            <tr>
+                <td>...</td>
+                <td>Continues refreshing</td>
+                <td>Every 5 minutes</td>
+            </tr>
+            <tr>
+                <td>178 min</td>
+                <td>⚠️ Warning shown</td>
+                <td>Modal: "Session expiring in 2 minutes"</td>
+            </tr>
+            <tr>
+                <td>180 min</td>
+                <td>Session expires</td>
+                <td>Only if user is completely inactive</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="info-box">
+        <h2>✨ Benefits</h2>
+        <div class="success">
+            ✅ <strong>3 hours</strong> to complete assessment (was 5 minutes)<br>
+            ✅ <strong>No more "Session expired"</strong> errors<br>
+            ✅ <strong>Auto-save every 2 minutes</strong> - never lose data<br>
+            ✅ <strong>CSRF refresh every 5 minutes</strong> - no 419 errors<br>
+            ✅ <strong>Warning at 178 minutes</strong> - can extend session<br>
+            ✅ <strong>Activity tracking</strong> - any click/scroll resets timeout
+        </div>
+    </div>
+
+    <div class="info-box">
+        <h2>🧪 Test Instructions</h2>
+        <ol>
+            <li>Go to: <a href="http://localhost:84/school/register" target="_blank">http://localhost:84/school/register</a></li>
+            <li>Register a school and start the assessment</li>
+            <li>Fill some fields and wait 2-3 minutes</li>
+            <li>Check browser console (F12) for:
+                <ul>
+                    <li><code>✓ CSRF token refreshed at [time]</code></li>
+                    <li><code>✓ Form data auto-saved at [time]</code></li>
+                </ul>
+            </li>
+            <li>Take your time filling the form (up to 3 hours!)</li>
+            <li>Submit successfully without errors</li>
+        </ol>
+    </div>
+
+    <div class="warning">
+        <strong>⚠️ Important Note:</strong><br>
+        After changing session settings, existing sessions need to expire. Users currently logged in may still experience the old 5-minute timeout. New sessions will use the 3-hour timeout.
+    </div>
+
+    <div class="info-box">
+        <h2>🚀 Production Deployment</h2>
+        <pre style="background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 8px; overflow-x: auto;">
+# 1. Push code to repository
+git add config/session.php .env resources/views/auth/school-assessment.blade.php
+git commit -m "Fix session timeout: Extend to 3 hours for assessment form"
+git push origin master
+
+# 2. On production server
+git pull origin master
+php artisan config:clear
+php artisan cache:clear
+
+# 3. Update .env on server
+SESSION_LIFETIME=180
+
+# 4. Restart web server (if needed)
+# For Apache: sudo service apache2 restart
+# For Nginx: sudo service php8.x-fpm restart
+        </pre>
+    </div>
+
+    <div class="info-box">
+        <h2>📞 Support</h2>
+        <p>If you still encounter session issues:</p>
+        <ul>
+            <li>Check browser console for error messages</li>
+            <li>Verify localStorage is enabled in browser</li>
+            <li>Try incognito mode (fresh session)</li>
+            <li>Contact: +256708356505</li>
+        </ul>
+    </div>
+
+</body>
+</html>

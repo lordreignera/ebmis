@@ -20,6 +20,10 @@ Route::post('/school/register', [SchoolRegistrationController::class, 'store'])-
 Route::get('/school/assessment', [SchoolRegistrationController::class, 'showAssessment'])->name('school.assessment');
 Route::post('/school/assessment', [SchoolRegistrationController::class, 'storeAssessment'])->name('school.assessment.store');
 
+// Complete Assessment Routes (Public - for schools with incomplete assessments)
+Route::get('/school/complete-assessment', [SchoolRegistrationController::class, 'showCompleteAssessment'])->name('school.complete-assessment');
+Route::post('/school/complete-assessment', [SchoolRegistrationController::class, 'continueAssessment'])->name('school.continue-assessment');
+
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),

@@ -529,4 +529,52 @@ class SchoolRegistrationController extends Controller
                         ->withInput();
         }
     }
+
+    /**
+     * Show the form to enter email for completing assessment
+     */
+    public function showCompleteAssessment()
+    {
+        return view('auth.school-complete-assessment');
+    }
+
+    /**
+     * Verify email and continue to assessment
+     */
+    public function continueAssessment(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        // Find school by email
+        $school = School::where('email', $validated['email'])->first();
+
+        if (!$school) {
+            return back()->with('error', 'No school found with this email address. Please check and try again.')
+                        ->withInput();
+        }
+
+        // Check if assessment is already complete
+        if ($school->assessment_complete) {
+            return back()->with('error', 'Assessment for this school is already complete. You can login with your credentials.')
+                        ->withInput();
+        }
+
+        // Set up session for assessment continuation
+        session([
+            'pending_school_id' => $school->id,
+            'pending_school_email' => $school->email,
+            'pending_school_password' => null, // Password already exists in database
+        ]);
+
+        \Log::info('Assessment continuation initiated', [
+            'school_id' => $school->id,
+            'email' => $school->email,
+            'school_name' => $school->school_name
+        ]);
+
+        return redirect()->route('school.assessment')
+            ->with('info', 'Welcome back! Please complete the assessment for ' . $school->school_name);
+    }
 }
