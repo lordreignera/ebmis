@@ -164,14 +164,19 @@ class LoanController extends Controller
         // Get eligible members for loan application (only verified members WITHOUT active loans)
         // Note: Using verified() instead of approved() because verified = 1 is the primary indicator
         // of member eligibility, even if status column may still be 'pending'
-        $members = Member::with(['branch', 'loans.schedules'])
+        // ACTIVE LOAN = Only disbursed loans (status = 2)
+        // Exclude members with:
+        //   - Disbursed loans (status = 2) - These are ACTIVE loans being repaid
+        // Include members with:
+        //   - Pending loans (status = 0) - Not yet approved, can apply again
+        //   - Approved loans (status = 1) - Approved but NOT disbursed yet, can still apply
+        //   - Completed loans (status = 3) - Paid off their loan, can reapply
+        //   - Rejected loans (status = 4) - Can reapply
+        $members = Member::with(['branch', 'loans'])
                          ->verified()
                          ->notDeleted()
                          ->whereDoesntHave('loans', function($query) {
-                             $query->whereIn('status', [1, 2]) // Approved or Disbursed
-                                   ->whereHas('schedules', function($subQuery) {
-                                       $subQuery->where('status', 0); // Unpaid schedules
-                                   });
+                             $query->where('status', 2); // Only exclude Disbursed (2) loans - these are ACTIVE
                          })
                          ->orderBy('fname')
                          ->orderBy('lname')

@@ -24,6 +24,33 @@ class SchoolRegistrationController extends Controller
      */
     public function store(Request $request)
     {
+        // Check for existing school with same email first
+        $existingSchool = School::where('email', $request->email)->first();
+        if ($existingSchool) {
+            $statusMessage = '';
+            if ($existingSchool->status === 'approved') {
+                $statusMessage = 'This school has already been approved. Please login with your credentials.';
+            } elseif ($existingSchool->status === 'pending') {
+                $statusMessage = 'A registration with this email is pending approval. Please wait or contact admin on +256708356505.';
+            } elseif ($existingSchool->status === 'rejected') {
+                $statusMessage = 'A previous registration with this email was rejected. Please contact admin on +256708356505 for more information.';
+            } else {
+                $statusMessage = 'This email is already registered in our system.';
+            }
+            
+            return back()
+                ->withErrors(['email' => 'Email address already exists. ' . $statusMessage])
+                ->withInput();
+        }
+
+        // Check if email exists in users table
+        $existingUser = User::where('email', $request->email)->first();
+        if ($existingUser) {
+            return back()
+                ->withErrors(['email' => 'This email is already registered in the system. Please use a different email address or contact admin on +256708356505.'])
+                ->withInput();
+        }
+
         // Validate the registration data
         $validator = Validator::make($request->all(), [
             'school_name' => 'required|string|max:255',
@@ -32,7 +59,7 @@ class SchoolRegistrationController extends Controller
             'registration_number' => 'nullable|string|max:100',
             'contact_person' => 'required|string|max:255',
             'contact_position' => 'nullable|string|max:100',
-            'email' => 'required|email|unique:schools,email|unique:users,email',
+            'email' => 'required|email', // Removed unique validation since we handle it manually above
             'phone' => 'required|string|max:50',
             'physical_address' => 'required|string',
             'district' => 'required|string|max:100',

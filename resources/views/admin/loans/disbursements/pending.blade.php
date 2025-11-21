@@ -4,6 +4,7 @@
 
 @push('styles')
 <!-- Modern table styles are included in the admin layout -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 @endpush
 
 @section('content')
@@ -257,10 +258,10 @@
                                                 <i class="mdi mdi-eye"></i>
                                             </button>
                                             @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
-                                                <a href="{{ route('admin.loans.disbursements.approve.show', $loan->getAttribute('id')) }}" class="btn-modern btn-view" title="Process Disbursement">
+                                                <a href="{{ route('admin.loans.disbursements.approve.show', $loan->getAttribute('id')) }}" class="btn-modern btn-success" title="Process Disbursement">
                                                     <i class="mdi mdi-check-circle"></i>
                                                 </a>
-                                                <button class="btn-modern btn-delete" onclick="rejectDisbursement({{ $loan->getAttribute('id') }})" title="Reject">
+                                                <button type="button" class="btn-modern btn-danger" onclick="rejectDisbursement({{ $loan->getAttribute('id') }})" title="Reject Disbursement">
                                                     <i class="mdi mdi-close-circle"></i>
                                                 </button>
                                             @else
@@ -412,6 +413,7 @@
 </div>
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 $(document).ready(function() {
     // Auto-submit form on filter change
@@ -521,6 +523,14 @@ function checkDisbursementStatus(loanId) {
 }
 
 function rejectDisbursement(loanId) {
+    console.log('Reject function called for loan ID:', loanId);
+    
+    // Check if SweetAlert2 is loaded
+    if (typeof Swal === 'undefined') {
+        alert('SweetAlert2 is not loaded. Please refresh the page.');
+        return;
+    }
+    
     Swal.fire({
         title: 'Reject Disbursement',
         html: `
@@ -544,7 +554,11 @@ function rejectDisbursement(loanId) {
             return reason;
         }
     }).then((result) => {
+        console.log('SweetAlert result:', result);
+        
         if (result.isConfirmed) {
+            console.log('Rejection confirmed, processing...');
+            
             // Show loading
             Swal.fire({
                 title: 'Processing...',
@@ -558,10 +572,16 @@ function rejectDisbursement(loanId) {
 
             // Get loan type from the row
             const loanType = $(`tr[data-loan-id="${loanId}"]`).data('loan-type') || 'personal';
+            console.log('Loan Type:', loanType);
+            console.log('Rejection Reason:', result.value);
+
+            // Construct the URL
+            const url = '{{ url("/admin/loans") }}/' + loanId + '/reject';
+            console.log('AJAX URL:', url);
 
             // Send rejection request
             $.ajax({
-                url: `{{ url('/admin/loans') }}/${loanId}/reject`,
+                url: url,
                 method: 'POST',
                 data: {
                     _token: '{{ csrf_token() }}',
@@ -569,6 +589,7 @@ function rejectDisbursement(loanId) {
                     comments: result.value
                 },
                 success: function(response) {
+                    console.log('Success response:', response);
                     Swal.fire({
                         title: 'Rejected!',
                         text: response.message || 'The loan disbursement has been rejected successfully.',
@@ -579,14 +600,21 @@ function rejectDisbursement(loanId) {
                     });
                 },
                 error: function(xhr) {
+                    console.error('Error response:', xhr);
                     let errorMessage = 'Failed to reject loan disbursement.';
                     if (xhr.responseJSON && xhr.responseJSON.message) {
                         errorMessage = xhr.responseJSON.message;
+                    } else if (xhr.responseText) {
+                        console.error('Response Text:', xhr.responseText);
                     }
                     Swal.fire('Error', errorMessage, 'error');
                 }
             });
+        } else {
+            console.log('Rejection cancelled');
         }
+    }).catch((error) => {
+        console.error('SweetAlert error:', error);
     });
 }
 </script>

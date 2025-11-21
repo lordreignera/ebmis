@@ -400,8 +400,18 @@
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="email" class="form-label required">Email Address</label>
-                                        <input type="email" class="form-control" id="email" name="email" 
+                                        <input type="email" class="form-control @error('email') is-invalid @enderror" 
+                                               id="email" name="email" 
+                                               value="{{ old('email') }}"
                                                placeholder="school@example.com" required>
+                                        @error('email')
+                                            <div class="invalid-feedback">
+                                                <i class="fas fa-exclamation-circle me-1"></i>{{ $message }}
+                                            </div>
+                                        @enderror
+                                        <small class="form-text text-muted">
+                                            <i class="fas fa-info-circle me-1"></i>This email will be used for login and communication
+                                        </small>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="phone" class="form-label required">Phone Number</label>
