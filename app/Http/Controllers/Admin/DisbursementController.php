@@ -7,6 +7,7 @@ use App\Models\Disbursement;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
+use App\Models\LoanSchedule;
 use App\Models\Branch;
 use App\Models\Investment;
 use App\Models\RawPayment;
