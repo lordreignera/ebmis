@@ -117,15 +117,32 @@ class DisbursementController extends Controller
     public function pending(Request $request)
     {
         // Personal loans query - Only show loans ready for disbursement
+        // Show if: approved (status=1) AND (no disbursement OR has pending disbursement status=0)
         $personalLoansQuery = PersonalLoan::where('status', 1) // Approved loans
+                    ->where(function($q) {
+                        // Either no disbursement record at all
+                        $q->whereDoesntHave('disbursements')
+                          // OR has disbursement with status 0 (pending) or 3 (rejected - can retry)
+                          ->orWhereHas('disbursements', function($subQ) {
+                              $subQ->whereIn('status', [0, 3]);
+                          });
+                    })
                     ->whereDoesntHave('disbursements', function($q) {
-                        $q->where('status', 2); // No successful disbursement yet (status 2 = Disbursed)
+                        $q->where('status', 1); // No approved/successful disbursement yet
                     });
 
         // Group loans query
         $groupLoansQuery = GroupLoan::where('status', 1) // Approved loans
+                    ->where(function($q) {
+                        // Either no disbursement record at all
+                        $q->whereDoesntHave('disbursements')
+                          // OR has disbursement with status 0 (pending) or 3 (rejected - can retry)
+                          ->orWhereHas('disbursements', function($subQ) {
+                              $subQ->whereIn('status', [0, 3]);
+                          });
+                    })
                     ->whereDoesntHave('disbursements', function($q) {
-                        $q->where('status', 2); // No successful disbursement yet (status 2 = Disbursed)
+                        $q->where('status', 1); // No approved/successful disbursement yet
                     });
 
         // Apply filters to both queries

@@ -156,28 +156,28 @@ class RepaymentController extends Controller
             $loan->branch_name = $loan->branch->name ?? 'N/A';
             $loan->product_name = $loan->product->name ?? 'N/A';
             $loan->loan_code = $loan->code;
-            $loan->principal_amount = $loan->principal;
+            $loan->principal_amount = (float) $loan->principal;
             
             // Calculate outstanding balance using pre-calculated totals (optimized!)
-            $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
+            $totalPaid = (float) $loan->repayments->where('status', 1)->sum('amount');
             
             // Use pre-calculated total from single query
             $scheduleData = $scheduleTotals[$loan->id] ?? null;
-            $totalPayable = $scheduleData ? $scheduleData->total_payable : 0;
+            $totalPayable = $scheduleData ? (float) $scheduleData->total_payable : 0.0;
             
             // If no schedules, calculate using declining balance (NOT flat * 2!)
             if ($totalPayable == 0 && $loan->period > 0) {
-                $interestRate = $loan->interest / 100;
-                $principalPerPeriod = $loan->principal / $loan->period;
-                $remainingPrincipal = $loan->principal;
-                $totalInterest = 0;
+                $interestRate = (float) $loan->interest / 100;
+                $principalPerPeriod = (float) $loan->principal / (float) $loan->period;
+                $remainingPrincipal = (float) $loan->principal;
+                $totalInterest = 0.0;
                 
                 for ($i = 0; $i < $loan->period; $i++) {
                     $totalInterest += $remainingPrincipal * $interestRate;
                     $remainingPrincipal -= $principalPerPeriod;
                 }
                 
-                $totalPayable = $loan->principal + $totalInterest;
+                $totalPayable = (float) $loan->principal + $totalInterest;
             }
             
             $loan->outstanding_balance = $totalPayable - $totalPaid;
@@ -185,7 +185,7 @@ class RepaymentController extends Controller
             // Use pre-calculated next due date/amount from single query (optimized!)
             if ($scheduleData && $scheduleData->next_due_date) {
                 $loan->next_due_date = $scheduleData->next_due_date;
-                $loan->next_due_amount = $scheduleData->next_due_amount;
+                $loan->next_due_amount = (float) ($scheduleData->next_due_amount ?? 0);
                 
                 // Calculate days overdue - handle date parsing errors
                 try {
@@ -200,7 +200,7 @@ class RepaymentController extends Controller
                 }
             } else {
                 $loan->next_due_date = null;
-                $loan->next_due_amount = 0;
+                $loan->next_due_amount = 0.0;
                 $loan->days_overdue = 0;
             }
             
@@ -245,24 +245,36 @@ class RepaymentController extends Controller
         $stats = [
             'total_active' => $allActiveLoans->count(),
             'outstanding_amount' => $allActiveLoans->sum(function($loan) {
-                $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
-                // Calculate total payable with doubled interest rate
-                $interestRate = $loan->interest / 100;
-                $interestRatePerInstallment = $interestRate * 2;
-                $totalInterest = $loan->principal * $interestRatePerInstallment * $loan->period;
-                $totalPayable = $loan->principal + $totalInterest;
+                $totalPaid = (float) $loan->repayments->where('status', 1)->sum('amount');
+                
+                // Calculate total payable using DECLINING BALANCE (not doubled interest!)
+                $interestRate = (float) $loan->interest / 100;
+                $principalPerPeriod = (float) $loan->principal / (float) $loan->period;
+                $remainingPrincipal = (float) $loan->principal;
+                $totalInterest = 0.0;
+                
+                for ($i = 0; $i < $loan->period; $i++) {
+                    $totalInterest += $remainingPrincipal * $interestRate;
+                    $remainingPrincipal -= $principalPerPeriod;
+                }
+                
+                $totalPayable = (float) $loan->principal + $totalInterest;
                 return $totalPayable - $totalPaid;
             }),
             'overdue_count' => $allActiveLoans->filter(function($loan) {
                 return $loan->schedules->where('status', 0)
                                       ->filter(function($schedule) {
-                                          return \Carbon\Carbon::parse($schedule->payment_date)->isPast();
+                                          try {
+                                              return \Carbon\Carbon::parse($schedule->payment_date)->isPast();
+                                          } catch (\Exception $e) {
+                                              return false;
+                                          }
                                       })
                                       ->count() > 0;
             })->count(),
-            'collections_today' => Repayment::whereDate('date_created', today())
+            'collections_today' => (float) (Repayment::whereDate('date_created', today())
                                           ->where('status', 1)
-                                          ->sum('amount'),
+                                          ->sum('amount') ?? 0),
         ];
 
         return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
