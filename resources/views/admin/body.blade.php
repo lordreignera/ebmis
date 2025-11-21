@@ -594,14 +594,28 @@
                     <td class="text-center">
                       @if(isset($activity->loan_id) && $activity->loan_id)
                         @php
-                          // Route based on loan status: 0=Pending Approval, 1=Pending Disbursement, 2=Disbursed (Schedules), 3=Completed
-                          $viewUrl = match($activity->status ?? '2') {
-                            '0' => route('admin.loans.show', $activity->loan_id), // Pending approval - loan details
-                            '1' => route('admin.loans.disbursements.approve', $activity->loan_id), // Approved - disbursement page
-                            '2' => route('admin.loans.repayments.schedules', $activity->loan_id), // Disbursed - repayment schedules
-                            '3' => route('admin.loans.repayments.schedules', $activity->loan_id), // Completed - repayment schedules
-                            default => route('admin.loans.show', $activity->loan_id)
-                          };
+                          // Check if loan has been disbursed by checking disbursements table
+                          $loan = \App\Models\PersonalLoan::find($activity->loan_id) ?? \App\Models\GroupLoan::find($activity->loan_id);
+                          $hasDisbursement = false;
+                          
+                          if ($loan) {
+                            $hasDisbursement = $loan->disbursements()->where('status', 2)->exists();
+                          }
+                          
+                          // Route based on loan status and disbursement status
+                          // 0=Pending Approval, 1=Approved (Pending Disbursement), 2=Disbursed (Active/Schedules), 3=Completed
+                          if ($hasDisbursement || $activity->status == '2') {
+                            // If disbursed or status is 2, show repayment schedules
+                            $viewUrl = route('admin.loans.repayments.schedules', $activity->loan_id);
+                          } else {
+                            // Otherwise route based on status
+                            $viewUrl = match($activity->status ?? '0') {
+                              '0' => route('admin.loans.show', $activity->loan_id), // Pending approval - loan details
+                              '1' => route('admin.loans.disbursements.approve.show', $activity->loan_id), // Approved - disbursement page
+                              '3' => route('admin.loans.repayments.schedules', $activity->loan_id), // Completed - repayment schedules
+                              default => route('admin.loans.show', $activity->loan_id)
+                            };
+                          }
                         @endphp
                         <a href="{{ $viewUrl }}" class="btn btn-sm btn-primary">
                           <i class="mdi mdi-eye"></i> View

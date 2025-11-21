@@ -1473,16 +1473,34 @@ class LoanController extends Controller
         // Use the product's interest rate (already stored as percentage in DB)
         $interest = $product->interest / 100;
         
-        // Flat interest calculation matching old bimsadmin system
-        // The old system DOUBLES the interest rate per installment
-        // Example: 0.7% interest means 1.4% per installment (0.7% × 2)
-        // For 2 periods: 10,000 × 0.014 × 2 = 280 total interest
-        // Installment: (10,000 + 280) / 2 = 5,140
+        // Declining balance calculation - matches schedule generation in DisbursementController
+        // Interest is calculated on remaining principal after each payment
+        // Example: 10,000 at 0.7% for 2 periods:
+        //   Period 1: 10,000 × 0.007 = 70 interest
+        //   Period 2: 5,000 × 0.007 = 35 interest
+        //   Total interest = 105, Total payable = 10,105
+        //   Max installment = 5,070 (first period, highest amount)
         
-        $interestRatePerInstallment = $interest * 2; // Double the interest rate
-        $totalInterest = $principal * $interestRatePerInstallment * $period;
+        $remainingPrincipal = $principal;
+        $principalPerPeriod = $principal / $period;
+        $totalInterest = 0;
+        $maxInstallment = 0;
+        
+        for ($i = 1; $i <= $period; $i++) {
+            $interestForPeriod = $remainingPrincipal * $interest;
+            $totalInterest += $interestForPeriod;
+            $installmentAmount = $principalPerPeriod + $interestForPeriod;
+            
+            // Track the maximum installment (first period has highest amount in declining balance)
+            if ($installmentAmount > $maxInstallment) {
+                $maxInstallment = $installmentAmount;
+            }
+            
+            $remainingPrincipal -= $principalPerPeriod;
+        }
+        
         $totalPayable = $principal + $totalInterest;
-        $installment = $totalPayable / $period;
+        $installment = $maxInstallment; // Return the highest installment amount
         
         return response()->json([
             'success' => true,

@@ -474,12 +474,39 @@ class DisbursementController extends Controller
                     $request->network
                 );
 
+                // Check if it's a timeout error
+                $isTimeout = isset($mobileMoneyResult['message']) && 
+                            (strpos($mobileMoneyResult['message'], 'cURL error 28') !== false ||
+                             strpos($mobileMoneyResult['message'], 'timed out') !== false ||
+                             strpos($mobileMoneyResult['message'], 'Operation timed out') !== false);
+
                 if ($mobileMoneyResult['success']) {
                     // If mobile money API call succeeded, complete the disbursement immediately
                     // This updates loan status and generates schedules
                     $disbursement->update(['status' => 1]); // Processing
                     $this->completeDisbursement($disbursement); // Updates to status 2 and completes
+                } elseif ($isTimeout) {
+                    // Timeout doesn't mean failure - money likely sent successfully
+                    // Complete the disbursement but mark as "pending confirmation"
+                    $disbursement->update([
+                        'status' => 1, // Processing (will be confirmed by webhook/cron)
+                        'notes' => ($disbursement->notes ? $disbursement->notes . "\n" : '') . 
+                                  'Payment initiated but API timed out. Awaiting confirmation.'
+                    ]);
+                    $this->completeDisbursement($disbursement); // Complete anyway - money was likely sent
+                    
+                    DB::commit();
+                    
+                    Log::warning('Disbursement completed despite timeout', [
+                        'loan_id' => $loan->id,
+                        'disbursement_id' => $disbursement->id,
+                        'message' => $mobileMoneyResult['message']
+                    ]);
+                    
+                    return redirect()->route('admin.loans.active')
+                        ->with('warning', 'Loan disbursed successfully. Mobile money payment initiated but confirmation pending due to slow network response. Check disbursement transactions for confirmation.');
                 } else {
+                    // Actual failure - rollback
                     DB::rollBack();
                     return redirect()->back()
                         ->with('error', 'Mobile money disbursement failed: ' . $mobileMoneyResult['message'])
@@ -532,79 +559,153 @@ class DisbursementController extends Controller
      */
     protected function processNewMobileMoneyDisbursement($disbursement, $phoneNumber, $network)
     {
+        // Get member name from disbursement account_name field
+        $memberName = $disbursement->account_name;
+        
+        // Get loan code - fetch the actual loan
+        $loan = $disbursement->loan_type == 1 
+            ? PersonalLoan::find($disbursement->loan_id)
+            : GroupLoan::find($disbursement->loan_id);
+        
+        // Generate unique transaction reference BEFORE API call
+        $txnRef = 'TXN-' . $disbursement->loan_id . '-' . time();
+        
+        // STEP 1: Create transaction record BEFORE making API call
+        // This ensures we always have a record even if API times out
+        $transaction = DisbursementTransaction::create([
+            'loan_id' => $disbursement->loan_id,
+            'phone' => $phoneNumber,
+            'amount' => $disbursement->amount,
+            'status' => '00', // Pending
+            'txnref' => $txnRef,
+            'message' => 'Initiating disbursement...',
+            'datecreated' => now(),
+            'dump' => json_encode(['status' => 'initiating']),
+            'raw' => '',
+            'request' => json_encode([
+                'phone' => $phoneNumber,
+                'network' => $network,
+                'amount' => $disbursement->amount,
+                'member_name' => $memberName,
+            ]),
+        ]);
+        
+        Log::info('Disbursement transaction record created', [
+            'transaction_id' => $transaction->id,
+            'loan_id' => $loan->id,
+            'loan_code' => $loan->code,
+            'amount' => $disbursement->amount
+        ]);
+        
         try {
-            // Get member name from disbursement account_name field
-            $memberName = $disbursement->account_name;
-            
-            // Get loan code - fetch the actual loan
-            $loan = $disbursement->loan_type == 1 
-                ? PersonalLoan::find($disbursement->loan_id)
-                : GroupLoan::find($disbursement->loan_id);
-            
-            // Use the MobileMoneyService which handles FlexiPay integration
+            // STEP 2: Make API call to send money
             $result = $this->mobileMoneyService->sendMoney(
                 $memberName,
                 $phoneNumber,
                 $disbursement->amount,
                 "Loan disbursement for {$loan->code}"
             );
-
-            if ($result['success']) {
-                // Create raw payment record for tracking
+            
+            // STEP 3: Update transaction with actual API response
+            $transaction->update([
+                'status' => $result['status_code'] ?? $result['status'] ?? '00',
+                'txnref' => $result['reference'] ?? $txnRef,
+                'message' => $result['message'] ?? 'Disbursement processed',
+                'dump' => json_encode($result),
+                'raw' => $result['raw_response'] ?? json_encode($result),
+            ]);
+            
+            // STEP 4: Create raw payment record for tracking
+            try {
                 RawPayment::create([
-                    'trans_id' => $result['reference'] ?? 'TXN-' . time(),
+                    'trans_id' => $result['reference'] ?? $txnRef,
                     'amount' => $disbursement->amount,
                     'phone' => $phoneNumber,
-                    'status' => $result['status'] ?? '00',
+                    'status' => $result['status_code'] ?? $result['status'] ?? '00',
                     'type' => 'disbursement',
                     'message' => $result['message'] ?? 'Disbursement initiated',
                     'direction' => 'outgoing',
                     'added_by' => auth()->id(),
                     'date_created' => now(),
                 ]);
-
-                // Create disbursement transaction record
-                DisbursementTransaction::create([
-                    'loan_id' => $disbursement->loan_id,
-                    'phone' => $phoneNumber,
-                    'amount' => $disbursement->amount,
-                    'status' => $result['status'] ?? '00',
-                    'txnref' => $result['reference'] ?? 'TXN-' . time(),
-                    'message' => $result['message'] ?? 'Disbursement initiated',
-                    'datecreated' => now(),
-                    'dump' => json_encode($result),
-                    'raw' => $result['raw_response'] ?? json_encode($result),
-                    'request' => json_encode([
-                        'phone' => $phoneNumber,
-                        'network' => $network,
-                        'amount' => $disbursement->amount,
-                    ]),
+            } catch (\Exception $e) {
+                // Don't fail if raw payment creation fails
+                Log::warning('Could not create raw payment record', [
+                    'error' => $e->getMessage()
                 ]);
-
+            }
+            
+            // Consider it successful if status is 00 (success) or 01 (processing)
+            // or if the message indicates money is being processed
+            $isSuccessful = $result['success'] || 
+                           in_array($result['status_code'] ?? $result['status'] ?? '', ['00', '01']) ||
+                           stripos($result['message'] ?? '', 'processing') !== false ||
+                           stripos($result['message'] ?? '', 'received') !== false;
+            
+            if ($isSuccessful) {
+                Log::info('Mobile money disbursement successful/processing', [
+                    'loan_id' => $loan->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => $result['status_code'] ?? $result['status'] ?? '00',
+                    'message' => $result['message'] ?? ''
+                ]);
+                
                 return [
                     'success' => true,
                     'message' => $result['message'] ?? 'Mobile money disbursement initiated successfully',
-                    'immediate_success' => isset($result['status']) && $result['status'] === '01',
-                    'transaction_id' => $result['reference'] ?? null,
+                    'transaction_id' => $result['reference'] ?? $txnRef,
+                    'transaction_record_id' => $transaction->id,
                 ];
             } else {
+                Log::warning('Mobile money disbursement failed', [
+                    'loan_id' => $loan->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => $result['status_code'] ?? $result['status'] ?? '',
+                    'message' => $result['message'] ?? ''
+                ]);
+                
                 return [
                     'success' => false,
-                    'message' => $result['message'] ?? 'Mobile money transfer failed'
+                    'message' => $result['message'] ?? 'Mobile money transfer failed',
+                    'transaction_record_id' => $transaction->id,
                 ];
             }
-
+            
         } catch (\Exception $e) {
-            Log::error('New mobile money disbursement error', [
+            // STEP 5: Update transaction with error details
+            $transaction->update([
+                'status' => 'ERROR',
+                'message' => 'API Error: ' . $e->getMessage(),
+                'dump' => json_encode(['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]),
+            ]);
+            
+            Log::error('Mobile money disbursement exception', [
                 'disbursement_id' => $disbursement->id,
+                'transaction_id' => $transaction->id,
+                'loan_id' => $loan->id,
                 'phone' => $phoneNumber,
                 'network' => $network,
                 'error' => $e->getMessage()
             ]);
-
+            
+            // Check if it's a timeout error - money might have been sent
+            $isTimeout = strpos($e->getMessage(), 'timed out') !== false ||
+                        strpos($e->getMessage(), 'cURL error 28') !== false;
+            
+            if ($isTimeout) {
+                // For timeout, assume money was sent and treat as successful
+                return [
+                    'success' => true,
+                    'message' => 'Payment initiated but confirmation timed out. Transaction saved for verification.',
+                    'transaction_record_id' => $transaction->id,
+                    'is_timeout' => true,
+                ];
+            }
+            
             return [
                 'success' => false,
-                'message' => 'Mobile money service error: ' . $e->getMessage()
+                'message' => 'Mobile money service error: ' . $e->getMessage(),
+                'transaction_record_id' => $transaction->id,
             ];
         }
     }
@@ -782,10 +883,9 @@ class DisbursementController extends Controller
             }
 
             if ($result['success']) {
-                // Update disbursement status if immediately successful
+                // Complete disbursement if immediately successful
                 if (isset($result['immediate_success']) && $result['immediate_success']) {
-                    $disbursement->update(['status' => 2]); // Mark as disbursed
-                    $this->completeDisbursement($disbursement);
+                    $this->completeDisbursement($disbursement); // This updates status to 2 internally
                 }
 
                 DB::commit();
@@ -1081,7 +1181,7 @@ class DisbursementController extends Controller
             return;
         }
 
-        // Generate new schedules using BIMSADMIN flat interest calculation
+        // Generate new schedules using BIMSADMIN DECLINING BALANCE interest calculation
         $principal = floatval($loan->principal);
         $interestRate = floatval($loan->interest) / 100; // Convert to decimal (e.g., 0.7% = 0.007)
         $period = intval($loan->period);
@@ -1092,51 +1192,80 @@ class DisbursementController extends Controller
         // Calculate principal per installment (flat/equal installments)
         $principalPerInstallment = $principal / $period;
         $balance = $principal;
-
-        // BIMSADMIN DAILY LOAN LOGIC:
-        // For each installment, interest = (principal per installment) × (interest rate) × (remaining periods including current)
+        
+        // BIMSADMIN DECLINING BALANCE INTEREST LOGIC (CORRECT):
+        // Interest is calculated on the REMAINING principal balance AFTER each payment
         // Example: 10,000 loan, 2 periods, 0.7% interest
-        // Installment 1: Interest = 5,000 × 0.007 × 2 = 70
-        // Installment 2: Interest = 5,000 × 0.007 × 1 = 35
+        // Period 1: Balance = 10,000 → Interest = 10,000 × 0.007 = 70
+        // Period 2: Balance = 5,000 → Interest = 5,000 × 0.007 = 35
+        // Total Interest: 105
+        
+        $remainingPrincipal = $principal; // Tracks remaining principal balance for interest calculation
+        
+        // Calculate all installments first to get total
+        $installments = [];
+        $tempRemainingPrincipal = $remainingPrincipal;
+        $tempBalance = $principal;
+        $totalScheduledPayment = 0;
         
         for ($i = 1; $i <= $period; $i++) {
-            $remainingPeriods = $period - $i + 1; // How many periods left INCLUDING current one
-            
-            // BIMSADMIN formula: Interest = (Principal per installment) × (Interest rate) × (Remaining periods)
-            $interestAmount = $principalPerInstallment * $interestRate * $remainingPeriods;
+            // Interest calculated on REMAINING principal balance (before this installment's principal payment)
+            $interestAmount = $tempRemainingPrincipal * $interestRate;
             
             $principalAmount = $principalPerInstallment;
             $installmentPayment = $principalAmount + $interestAmount;
             
-            $balance -= $principalAmount;
-            
-            // Ensure balance doesn't go negative due to rounding
-            if ($balance < 0) {
-                $principalAmount += $balance;
-                $balance = 0;
+            // Update balance after principal payment
+            $tempBalance -= $principalAmount;
+            if ($tempBalance < 0) {
+                $principalAmount += $tempBalance;
+                $tempBalance = 0;
             }
             
-            // Calculate payment date
-            $paymentDate = $this->calculatePaymentDate($disbursementDate, $i, $periodType);
+            $installments[] = [
+                'principal' => $principalAmount,
+                'interest' => $interestAmount,
+                'payment' => $installmentPayment,
+                'balance' => $tempBalance
+            ];
+            
+            $totalScheduledPayment += $installmentPayment;
+            
+            // Reduce remaining principal for next period's interest calculation
+            $tempRemainingPrincipal -= $principalAmount;
+            if ($tempRemainingPrincipal < 0) $tempRemainingPrincipal = 0;
+        }
+        
+        // No rounding difference needed with declining balance method
+        // Interest naturally decreases as principal is paid off
+        
+        // Now insert all schedules
+        $balance = $principal;
+        for ($i = 0; $i < count($installments); $i++) {
+            $installment = $installments[$i];
+            $balance -= $installment['principal'];
+            if ($balance < 0) $balance = 0;
+            
+            $paymentDate = $this->calculatePaymentDate($disbursementDate, $i + 1, $periodType);
 
             DB::table('loan_schedules')->insert([
                 'loan_id' => $loan->id,
-                'payment_date' => $paymentDate->format('Y-m-d'),
-                'principal' => round($principalAmount, 2),
-                'interest' => round($interestAmount, 2),
-                'payment' => round($installmentPayment, 2),
+                'payment_date' => $paymentDate->format('d-m-Y'),
+                'payment' => round($installment['payment'], 2),
+                'interest' => round($installment['interest'], 2),
+                'principal' => round($installment['principal'], 2),
                 'balance' => round($balance, 2),
-                'status' => 0, // 0=pending, 1=paid
+                'paid' => 0.00,
+                'status' => 0,
+                'pending_count' => 0,
                 'date_created' => now(),
             ]);
-
-            if ($balance <= 0) break;
         }
 
         Log::info('Generated loan schedules', [
             'loan_id' => $loan->id,
             'periods' => $period,
-            'schedules_created' => min($period, ceil($principal / ($installment - ($balance * $interestPerPeriod))))
+            'schedules_created' => $period
         ]);
     }
 
@@ -2044,10 +2173,7 @@ class DisbursementController extends Controller
 
             DB::beginTransaction();
 
-            // Update disbursement status to disbursed (2)
-            $disbursement->update(['status' => 2]);
-
-            // Complete the disbursement (update loan, create schedules, etc.)
+            // Complete the disbursement (updates status to 2, updates loan, creates schedules, etc.)
             $this->completeDisbursement($disbursement);
 
             DB::commit();
@@ -2088,10 +2214,9 @@ class DisbursementController extends Controller
                 );
 
                 if ($result['success']) {
-                    // Update disbursement status if immediately successful
+                    // Complete disbursement if immediately successful
                     if (isset($result['immediate_success']) && $result['immediate_success']) {
-                        $disbursement->update(['status' => 2]);
-                        $this->completeDisbursement($disbursement);
+                        $this->completeDisbursement($disbursement); // This updates status to 2 internally
                     }
 
                     DB::commit();

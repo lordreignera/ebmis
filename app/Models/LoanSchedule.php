@@ -79,6 +79,14 @@ class LoanSchedule extends Model
     }
 
     /**
+     * Get amount attribute (alias for payment)
+     */
+    public function getAmountAttribute()
+    {
+        return $this->attributes['payment'] ?? 0;
+    }
+
+    /**
      * Get due date attribute
      */
     public function getDueDateAttribute()

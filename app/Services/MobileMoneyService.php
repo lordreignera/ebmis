@@ -15,7 +15,9 @@ class MobileMoneyService
     public function __construct(StanbicFlexiPayService $stanbicService = null)
     {
         $this->flexipayEndpoint = 'https://emuria.net/flexipay/marchanToMobilePayprod.php';
-        $this->timeout = 30;
+        // Increase timeout to 60 seconds for slow mobile money APIs
+        // Can be configured via MOBILE_MONEY_TIMEOUT env variable
+        $this->timeout = env('MOBILE_MONEY_TIMEOUT', 60);
         $this->stanbicService = $stanbicService ?? new StanbicFlexiPayService();
         $this->provider = env('MOBILE_MONEY_PROVIDER', 'stanbic'); // 'stanbic' or 'emuria'
     }
@@ -565,8 +567,12 @@ class MobileMoneyService
             // For collections, consider 00 and 01 as successful initiation
             $isSuccessful = in_array($statusCode, ['00', '01']) || !empty($requestId);
         } else {
-            // For disbursements, only 00 is success
-            $isSuccessful = ($statusCode === '00');
+            // For disbursements, consider 00 (success) and 01 (processing) as successful
+            // because the money is being sent even if status is "processing"
+            $isSuccessful = in_array($statusCode, ['00', '01']) || 
+                            !empty($requestId) || 
+                            stripos($statusDescription, 'received and is being processed') !== false ||
+                            stripos($statusDescription, 'processing') !== false;
         }
         
         $result = [

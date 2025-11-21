@@ -323,14 +323,19 @@ $(document).ready(function() {
         // Remove non-numeric characters
         var cleanPhone = phone.replace(/[^0-9]/g, '');
         
+        // Normalize phone: remove leading 0 if present and not preceded by 256
+        if (cleanPhone.startsWith('0') && !cleanPhone.startsWith('256')) {
+            cleanPhone = '256' + cleanPhone.substring(1);
+        }
+        
         // Check if phone has enough digits
         if (cleanPhone.length >= 9) {
             // Check MTN prefixes: 77, 78, 76
-            if (cleanPhone.match(/^(256)?(77|78|76)/)) {
+            if (cleanPhone.match(/^256(77|78|76)/)) {
                 return {detected: true, network: 'MTN', name: 'MTN Money'};
             }
             // Check Airtel prefixes: 70, 75, 74, 71
-            else if (cleanPhone.match(/^(256)?(70|75|74|71)/)) {
+            else if (cleanPhone.match(/^256(70|75|74|71)/)) {
                 return {detected: true, network: 'AIRTEL', name: 'Airtel Money'};
             }
         }

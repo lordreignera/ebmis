@@ -117,8 +117,26 @@ class RepaymentController extends Controller
             $allLoans = $personalLoans->concat($groupLoans)->sortByDesc('datecreated')->values();
         }
 
+        // Pre-calculate schedule totals with single query per loan type (huge performance boost!)
+        $loanIds = $allLoans->pluck('id')->toArray();
+        $scheduleTotals = [];
+        
+        if (!empty($loanIds)) {
+            // Get all schedule totals in one query
+            $scheduleTotals = DB::table('loan_schedules')
+                ->whereIn('loan_id', $loanIds)
+                ->groupBy('loan_id')
+                ->select('loan_id', 
+                    DB::raw('SUM(principal + interest) as total_payable'),
+                    DB::raw('MIN(CASE WHEN status = 0 THEN payment_date END) as next_due_date'),
+                    DB::raw('MIN(CASE WHEN status = 0 THEN payment END) as next_due_amount')
+                )
+                ->get()
+                ->keyBy('loan_id');
+        }
+        
         // Map and calculate loan details
-        $loans = $allLoans->map(function($loan) {
+        $loans = $allLoans->map(function($loan) use ($scheduleTotals) {
             try {
                 // Determine loan type and set borrower info
                 if (isset($loan->member)) {
@@ -140,38 +158,40 @@ class RepaymentController extends Controller
             $loan->loan_code = $loan->code;
             $loan->principal_amount = $loan->principal;
             
-            // Calculate outstanding balance using actual schedule data
+            // Calculate outstanding balance using pre-calculated totals (optimized!)
             $totalPaid = $loan->repayments->where('status', 1)->sum('amount');
             
-            // Calculate total payable from schedules (most accurate)
-            $totalPayable = $loan->schedules->sum(function($schedule) {
-                return $schedule->principal + $schedule->interest;
-            });
+            // Use pre-calculated total from single query
+            $scheduleData = $scheduleTotals[$loan->id] ?? null;
+            $totalPayable = $scheduleData ? $scheduleData->total_payable : 0;
             
-            // If no schedules, fall back to formula calculation
-            if ($totalPayable == 0) {
+            // If no schedules, calculate using declining balance (NOT flat * 2!)
+            if ($totalPayable == 0 && $loan->period > 0) {
                 $interestRate = $loan->interest / 100;
-                $interestRatePerInstallment = $interestRate * 2;
-                $totalInterest = $loan->principal * $interestRatePerInstallment * $loan->period;
+                $principalPerPeriod = $loan->principal / $loan->period;
+                $remainingPrincipal = $loan->principal;
+                $totalInterest = 0;
+                
+                for ($i = 0; $i < $loan->period; $i++) {
+                    $totalInterest += $remainingPrincipal * $interestRate;
+                    $remainingPrincipal -= $principalPerPeriod;
+                }
+                
                 $totalPayable = $loan->principal + $totalInterest;
             }
             
             $loan->outstanding_balance = $totalPayable - $totalPaid;
             
-            // Find next due payment from schedules relationship
-            $nextSchedule = $loan->schedules->where('status', 0)
-                                           ->sortBy('payment_date')
-                                           ->first();
-            
-            if ($nextSchedule) {
-                $loan->next_due_date = $nextSchedule->payment_date;
-                $loan->next_due_amount = $nextSchedule->payment + ($nextSchedule->penalty ?? 0);
+            // Use pre-calculated next due date/amount from single query (optimized!)
+            if ($scheduleData && $scheduleData->next_due_date) {
+                $loan->next_due_date = $scheduleData->next_due_date;
+                $loan->next_due_amount = $scheduleData->next_due_amount;
                 
                 // Calculate days overdue - handle date parsing errors
                 try {
-                    $paymentDate = \Carbon\Carbon::createFromFormat('d-m-Y', $nextSchedule->payment_date);
+                    $paymentDate = \Carbon\Carbon::createFromFormat('d-m-Y', $scheduleData->next_due_date);
                     if (!$paymentDate) {
-                        $paymentDate = \Carbon\Carbon::parse($nextSchedule->payment_date);
+                        $paymentDate = \Carbon\Carbon::parse($scheduleData->next_due_date);
                     }
                     $loan->days_overdue = $paymentDate->isPast() ? 
                                          (int) $paymentDate->diffInDays(now(), false) : 0;
@@ -332,17 +352,40 @@ class RepaymentController extends Controller
         $loan->days_overdue = $overdueSchedules->count() > 0 ? 
                              now()->diffInDays($overdueSchedules->first()->payment_date) : 0;
 
+        // Pre-load all repayment data to avoid N+1 queries
+        $scheduleIds = $loan->schedules->pluck('id')->toArray();
+        
+        // Get total paid per schedule (single query)
+        $paidPerSchedule = DB::table('repayments')
+            ->whereIn('schedule_id', $scheduleIds)
+            ->where('status', 1)
+            ->groupBy('schedule_id')
+            ->select('schedule_id', DB::raw('SUM(amount) as total_paid'))
+            ->pluck('total_paid', 'schedule_id')
+            ->toArray();
+        
+        // Get pending count per schedule (single query)
+        $pendingPerSchedule = DB::table('repayments')
+            ->whereIn('schedule_id', $scheduleIds)
+            ->where('status', 0)
+            ->where('pay_status', 'Pending')
+            ->groupBy('schedule_id')
+            ->select('schedule_id', DB::raw('COUNT(*) as pending_count'))
+            ->pluck('pending_count', 'schedule_id')
+            ->toArray();
+        
         // Get schedules with payment status - EXACT bimsadmin calculation logic
         $principal = floatval($loan->principal); // Running principal balance
         $globalprincipal = floatval($loan->principal); // Global principal for interest calculation
         
-        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal) {
+        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $pendingPerSchedule) {
             // 1. Calculate "Principal cal Interest" (reducing balance per period)
             $period = floor($loan->period / 2);
             $pricipalcalIntrest = $period > 0 ? ($loan->principal / $period) : 0;
             
-            // 2. Calculate "Interest Payable" using global principal
-            $intrestamtpayable = (($globalprincipal * $loan->interest / 100) * 1.99999999);
+            // 2. Use actual interest from schedule (already calculated correctly during disbursement)
+            // DO NOT recalculate - it uses the wrong formula with 1.99999999 multiplier
+            $intrestamtpayable = $schedule->interest;
             
             // 3. Calculate periods in arrears
             $now = $schedule->date_cleared ? strtotime($schedule->date_cleared) : time();
@@ -370,16 +413,11 @@ class RepaymentController extends Controller
             // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
             $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
             
-            // 5. Get total paid from repayments table (ALWAYS - don't trust schedule.paid column)
-            $totalPaid = floatval(Repayment::where('schedule_id', $schedule->id)
-                                          ->where('status', 1)
-                                          ->sum('amount'));
+            // 5. Get total paid from pre-loaded data (optimized - no N+1 queries)
+            $totalPaid = floatval($paidPerSchedule[$schedule->id] ?? 0);
             
-            // 6. Get pending count from repayments table
-            $pendingCount = intval(Repayment::where('schedule_id', $schedule->id)
-                                            ->where('status', 0)
-                                            ->where('pay_status', 'Pending')
-                                            ->count());
+            // 6. Get pending count from pre-loaded data (optimized - no N+1 queries)
+            $pendingCount = intval($pendingPerSchedule[$schedule->id] ?? 0);
             
             // 7. Allocate payments - BIMSADMIN ORDER: Late Fees → Interest → Principal
             // Late fees paid
@@ -647,11 +685,8 @@ class RepaymentController extends Controller
                 $loan->increment('paid', $request->amount);
                 $this->updateLoanSchedules($loan, $repayment);
                 
-                // Check if loan is fully paid
-                $totalPayable = $loan->principal + $loan->interest;
-                if ($loan->paid >= $totalPayable) {
-                    $loan->update(['status' => 3]); // Completed
-                }
+                // Check if loan is fully paid by checking ALL schedules
+                $this->checkAndCloseLoanIfComplete($loan->id);
             }
 
             DB::commit();
@@ -837,17 +872,43 @@ class RepaymentController extends Controller
                 
                 // Update loan and schedule for confirmed payments
                 $loan->increment('paid', $request->amount);
-                $schedule->increment('paid', $request->amount);
                 
-                // Check if schedule is fully paid
-                if ($schedule->paid >= $schedule->payment) {
-                    $schedule->update(['status' => 1]); // Fully paid
+                // Handle payment allocation with overpayment redistribution
+                $paymentAmount = $request->amount;
+                $schedule->increment('paid', $paymentAmount);
+                
+                // Check if there's an overpayment on this schedule
+                if ($schedule->paid > $schedule->payment) {
+                    $overpayment = $schedule->paid - $schedule->payment;
+                    
+                    // Cap the current schedule paid amount to its required payment
+                    $schedule->update([
+                        'paid' => $schedule->payment,
+                        'status' => 1
+                    ]);
+                    
+                    // Apply overpayment to next unpaid schedule
+                    $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $loan->id)
+                        ->where('status', '!=', 1)
+                        ->where('id', '>', $schedule->id)
+                        ->orderBy('id')
+                        ->first();
+                    
+                    if ($nextSchedule && $overpayment > 0) {
+                        $nextSchedule->increment('paid', $overpayment);
+                        
+                        // Check if next schedule is now fully paid
+                        if ($nextSchedule->paid >= $nextSchedule->payment) {
+                            $nextSchedule->update(['status' => 1]);
+                        }
+                    }
+                } elseif ($schedule->paid >= $schedule->payment) {
+                    // Exact or just enough payment - mark as fully paid
+                    $schedule->update(['status' => 1]);
                 }
                 
-                // Check if loan is fully paid
-                if ($loan->paid >= ($loan->principal + $loan->interest)) {
-                    $loan->update(['status' => 3]); // Completed
-                }
+                // Check if loan is fully paid by checking ALL schedules
+                $this->checkAndCloseLoanIfComplete($loan->id);
                 
                 DB::commit();
                 
@@ -1632,23 +1693,47 @@ class RepaymentController extends Controller
                             // Update loan paid amount
                             $loan->increment('paid', $repayment->amount);
                             
-                            // Update schedule paid amount
-                            $schedule->increment('paid', $repayment->amount);
+                            // Handle payment allocation with overpayment redistribution
+                            $paymentAmount = $repayment->amount;
+                            $schedule->increment('paid', $paymentAmount);
                             
                             // Decrement pending_count
                             if ($schedule->pending_count > 0) {
                                 $schedule->decrement('pending_count');
                             }
                             
-                            // Check if schedule is fully paid
-                            if ($schedule->paid >= $schedule->payment) {
-                                $schedule->update(['status' => 1]); // Fully paid
+                            // Check if there's an overpayment on this schedule
+                            if ($schedule->paid > $schedule->payment) {
+                                $overpayment = $schedule->paid - $schedule->payment;
+                                
+                                // Cap the current schedule paid amount to its required payment
+                                $schedule->update([
+                                    'paid' => $schedule->payment,
+                                    'status' => 1
+                                ]);
+                                
+                                // Apply overpayment to next unpaid schedule
+                                $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $loan->id)
+                                    ->where('status', '!=', 1)
+                                    ->where('id', '>', $schedule->id)
+                                    ->orderBy('id')
+                                    ->first();
+                                
+                                if ($nextSchedule && $overpayment > 0) {
+                                    $nextSchedule->increment('paid', $overpayment);
+                                    
+                                    // Check if next schedule is now fully paid
+                                    if ($nextSchedule->paid >= $nextSchedule->payment) {
+                                        $nextSchedule->update(['status' => 1]);
+                                    }
+                                }
+                            } elseif ($schedule->paid >= $schedule->payment) {
+                                // Exact or just enough payment - mark as fully paid
+                                $schedule->update(['status' => 1]);
                             }
                             
-                            // Check if loan is fully paid
-                            if ($loan->paid >= ($loan->principal + $loan->interest)) {
-                                $loan->update(['status' => 3]); // Completed
-                            }
+                            // Check if loan is fully paid by checking ALL schedules
+                            $this->checkAndCloseLoanIfComplete($loan->id);
                         }
                         
                         DB::commit();
@@ -2373,6 +2458,73 @@ class RepaymentController extends Controller
                 'success' => false,
                 'message' => 'Failed to reschedule loan: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Check if all loan schedules are paid and close the loan if complete
+     * NO WAIVERS - all schedules must be fully paid
+     */
+    private function checkAndCloseLoanIfComplete(int $loanId): bool
+    {
+        try {
+            // Get all schedules for this loan
+            $schedules = DB::table('loan_schedules')
+                ->where('loan_id', $loanId)
+                ->get();
+
+            $allSchedulesPaid = true;
+            $totalOutstanding = 0;
+
+            foreach ($schedules as $schedule) {
+                $balance = $schedule->payment - $schedule->paid;
+                $totalOutstanding += $balance;
+
+                // Check if schedule is fully paid (or overpaid)
+                if ($balance > 0.01) {
+                    // Still has a balance - loan cannot close
+                    $allSchedulesPaid = false;
+                } else if ($balance <= 0 && $schedule->status != 1) {
+                    // Paid in full (or overpaid), mark as paid
+                    DB::table('loan_schedules')
+                        ->where('id', $schedule->id)
+                        ->update([
+                            'status' => 1,
+                            'date_cleared' => now()
+                        ]);
+                }
+            }
+
+            // If all schedules are paid, close the loan
+            if ($allSchedulesPaid && $totalOutstanding <= 0.01) {
+                // Try PersonalLoan first
+                $loan = PersonalLoan::find($loanId);
+                if (!$loan) {
+                    // Try GroupLoan
+                    $loan = GroupLoan::find($loanId);
+                }
+
+                if ($loan && $loan->status != 3) {
+                    $loan->update([
+                        'status' => 3, // Closed/Completed
+                        'date_closed' => now()
+                    ]);
+
+                    Log::info("Loan automatically closed", [
+                        'loan_id' => $loanId,
+                        'loan_code' => $loan->code ?? 'N/A',
+                        'total_outstanding' => $totalOutstanding
+                    ]);
+
+                    return true;
+                }
+            }
+
+            return false;
+
+        } catch (\Exception $e) {
+            Log::error("Failed to check/close loan {$loanId}: " . $e->getMessage());
+            return false;
         }
     }
 }

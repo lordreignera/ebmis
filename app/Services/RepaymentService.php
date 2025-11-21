@@ -199,10 +199,6 @@ class RepaymentService
                 ];
             }
             
-            // Calculate new balance
-            $currentBalance = $schedule->balance ?: $schedule->payment;
-            $newBalance = $currentBalance - $repayment->amount;
-            
             // Update repayment status
             $repayment->update([
                 'status' => '1', // Approved
@@ -210,22 +206,49 @@ class RepaymentService
                 'pay_message' => $statusMessage
             ]);
             
-            // Update schedule
-            if ($newBalance <= 500) {
-                // Schedule is fully paid or nearly paid (auto-waive small balances)
+            // Update schedule and handle overpayment redistribution
+            $schedule->increment('paid', $repayment->amount);
+            
+            // Check if there's an overpayment on this schedule
+            if ($schedule->paid > $schedule->payment) {
+                $overpayment = $schedule->paid - $schedule->payment;
+                
+                // Cap the current schedule paid amount to its required payment
                 $schedule->update([
-                    'balance' => 0,
-                    'status' => '1', // Paid
+                    'paid' => $schedule->payment,
+                    'status' => 1,
                     'date_cleared' => now()
                 ]);
                 
-                if ($newBalance > 0 && $newBalance <= 500) {
-                    Log::info("Auto-waived small balance of {$newBalance} UGX for schedule ID: {$schedule->id}");
+                Log::info("Overpayment detected: {$overpayment} UGX for schedule ID: {$schedule->id}");
+                
+                // Apply overpayment to next unpaid schedule
+                $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $schedule->loan_id)
+                    ->where('status', '!=', 1)
+                    ->where('id', '>', $schedule->id)
+                    ->orderBy('id')
+                    ->first();
+                
+                if ($nextSchedule && $overpayment > 0) {
+                    $nextSchedule->increment('paid', $overpayment);
+                    
+                    Log::info("Redistributed overpayment: {$overpayment} UGX to schedule ID: {$nextSchedule->id}");
+                    
+                    // Check if next schedule is now fully paid
+                    if ($nextSchedule->paid >= $nextSchedule->payment) {
+                        $nextSchedule->update([
+                            'status' => 1,
+                            'date_cleared' => now()
+                        ]);
+                        
+                        Log::info("Next schedule fully paid after overpayment allocation");
+                    }
                 }
-            } else {
-                // Update balance (still has significant amount remaining)
+            } elseif ($schedule->paid >= $schedule->payment) {
+                // Exact or just enough payment - mark as fully paid
                 $schedule->update([
-                    'balance' => $newBalance
+                    'status' => 1,
+                    'date_cleared' => now()
                 ]);
             }
             
@@ -234,18 +257,21 @@ class RepaymentService
             
             DB::commit();
             
+            // Calculate outstanding balance
+            $outstandingBalance = max(0, $schedule->payment - $schedule->paid);
+            
             Log::info("Repayment approved", [
                 'repayment_id' => $repaymentId,
                 'amount' => $repayment->amount,
                 'schedule_id' => $schedule->id,
-                'new_balance' => $newBalance
+                'outstanding_balance' => $outstandingBalance
             ]);
             
             return [
                 'success' => true,
                 'message' => 'Payment confirmed successfully',
-                'new_balance' => $newBalance,
-                'schedule_paid' => $newBalance <= 500
+                'outstanding_balance' => $outstandingBalance,
+                'schedule_paid' => $schedule->status == 1
             ];
             
         } catch (\Exception $e) {
@@ -406,27 +432,50 @@ class RepaymentService
     
     /**
      * Check if all schedules are paid and close loan if complete
+     * NO WAIVERS - all schedules must be fully paid
      */
     private function checkAndCloseLoanIfComplete(int $loanId): bool
     {
         try {
-            $unpaidSchedules = LoanSchedule::where('loan_id', $loanId)
-                                         ->where('status', '0')
-                                         ->count();
+            // Get all schedules for this loan
+            $schedules = LoanSchedule::where('loan_id', $loanId)->get();
             
-            if ($unpaidSchedules == 0) {
-                // All schedules are paid - close the loan
+            $allSchedulesPaid = true;
+            $totalOutstanding = 0;
+            
+            foreach ($schedules as $schedule) {
+                $balance = $schedule->payment - $schedule->paid;
+                $totalOutstanding += $balance;
+                
+                // Check if schedule is fully paid (or overpaid)
+                if ($balance > 0.01) {
+                    // Still has a balance - loan cannot close
+                    $allSchedulesPaid = false;
+                } else if ($balance <= 0 && $schedule->status != 1) {
+                    // Paid in full (or overpaid), mark as paid
+                    $schedule->update([
+                        'status' => 1,
+                        'date_cleared' => now()
+                    ]);
+                }
+            }
+            
+            // If all schedules are paid, close the loan
+            if ($allSchedulesPaid && $totalOutstanding <= 0.01) {
                 $loan = PersonalLoan::find($loanId) ?? 
                        GroupLoan::find($loanId) ?? 
                        Loan::find($loanId);
                 
-                if ($loan) {
+                if ($loan && $loan->status != 3) {
                     $loan->update([
-                        'status' => '1', // Complete
+                        'status' => 3, // Status 3 = Closed/Completed
                         'date_closed' => now()
                     ]);
                     
-                    Log::info("Loan {$loanId} marked as complete - all schedules paid");
+                    Log::info("Loan {$loanId} marked as complete - all schedules paid", [
+                        'loan_code' => $loan->code ?? 'N/A',
+                        'total_outstanding' => $totalOutstanding
+                    ]);
                     return true;
                 }
             }
