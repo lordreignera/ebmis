@@ -277,22 +277,86 @@
 
         <!-- Payment Details -->
         <div class="payment-details">
-            <h4 style="color: #2c5aa0; margin-bottom: 15px;">Transaction Details</h4>
+            <h4 style="color: #2c5aa0; margin-bottom: 15px;">Payment Breakdown</h4>
             <table class="details-table">
                 <tr>
                     <th>Description</th>
                     <th>Amount (UGX)</th>
                 </tr>
-                <tr>
-                    <td>Loan Repayment</td>
-                    <td style="text-align: right;">{{ number_format($repayment->amount) }}</td>
-                </tr>
+                @php
+                    // Get the schedule this payment is for
+                    $schedule = null;
+                    $lateFee = 0;
+                    $scheduleAmount = 0;
+                    $daysLate = 0;
+                    
+                    if ($repayment->schedule_id) {
+                        $schedule = \App\Models\LoanSchedule::find($repayment->schedule_id);
+                        
+                        if ($schedule) {
+                            $scheduleAmount = $schedule->principal + $schedule->interest;
+                            
+                            // Calculate late fee if payment was made after due date
+                            $paymentDate = $repayment->date_created ? strtotime($repayment->date_created) : time();
+                            $dueDate = strtotime($schedule->payment_date);
+                            
+                            if ($paymentDate > $dueDate) {
+                                $datediff = $paymentDate - $dueDate;
+                                $daysLate = floor($datediff / (60 * 60 * 24));
+                                
+                                // Calculate periods overdue
+                                $periodsOverdue = 0;
+                                $periodType = $repayment->loan->period_type ?? '2';
+                                
+                                if ($periodType == '1') {
+                                    $periodsOverdue = ceil($daysLate / 7);
+                                    $periodName = 'week' . ($periodsOverdue > 1 ? 's' : '');
+                                } else if ($periodType == '2') {
+                                    $periodsOverdue = ceil($daysLate / 30);
+                                    $periodName = 'month' . ($periodsOverdue > 1 ? 's' : '');
+                                } else if ($periodType == '3') {
+                                    $periodsOverdue = $daysLate;
+                                    $periodName = 'day' . ($periodsOverdue > 1 ? 's' : '');
+                                } else {
+                                    $periodsOverdue = ceil($daysLate / 7);
+                                    $periodName = 'week' . ($periodsOverdue > 1 ? 's' : '');
+                                }
+                                
+                                // 6% late fee per period
+                                $lateFee = ($scheduleAmount * 0.06) * $periodsOverdue;
+                            }
+                        }
+                    }
+                @endphp
+                
+                @if($schedule && $scheduleAmount > 0)
+                    <tr>
+                        <td>Schedule Payment (Principal + Interest)</td>
+                        <td style="text-align: right;">{{ number_format($scheduleAmount, 2) }}</td>
+                    </tr>
+                    @if($lateFee > 0)
+                        <tr style="color: #dc3545;">
+                            <td>
+                                Late Fee ({{ $daysLate }} days late, 6% per {{ $periodName ?? 'period' }})
+                                <br><small style="color: #6c757d;">Payment made after due date: {{ $schedule->payment_date }}</small>
+                            </td>
+                            <td style="text-align: right;">{{ number_format($lateFee, 2) }}</td>
+                        </tr>
+                    @endif
+                @else
+                    <tr>
+                        <td>Loan Repayment</td>
+                        <td style="text-align: right;">{{ number_format($repayment->amount) }}</td>
+                    </tr>
+                @endif
+                
                 @if($repayment->details)
                 <tr>
                     <td colspan="2"><strong>Notes:</strong> {{ $repayment->details }}</td>
                 </tr>
                 @endif
-                <tr style="background: #f8f9fa; font-weight: bold;">
+                
+                <tr style="background: #f8f9fa; font-weight: bold; font-size: 16px;">
                     <td>Total Paid</td>
                     <td style="text-align: right;">{{ number_format($repayment->amount) }}</td>
                 </tr>

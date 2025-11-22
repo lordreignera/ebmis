@@ -124,9 +124,11 @@ class RepaymentService
             // Process mobile money payment
             $paymentResult = $this->mobileMoneyService->disburse($phone, $amount, $network);
             
-            // Update repayment with transaction details
+            // Update repayment with transaction details - set both fields for consistency
+            $transactionRef = $paymentResult['transaction_reference'] ?? '';
             $repayment->update([
-                'txn_id' => $paymentResult['transaction_reference'] ?? '',
+                'txn_id' => $transactionRef, // FlexiPay-generated reference
+                'transaction_reference' => $transactionRef, // Set both fields for consistency
                 'pay_status' => $paymentResult['status_code'] ?? 'ERROR'
             ]);
             
@@ -182,6 +184,29 @@ class RepaymentService
             }
             
             $schedule = $repayment->schedule;
+            
+            // If schedule is NULL (old system loans), auto-find next unpaid schedule
+            if (!$schedule && $repayment->loan_id) {
+                Log::info("Schedule not found for repayment {$repaymentId}, attempting auto-find for loan {$repayment->loan_id}");
+                
+                $schedule = \App\Models\LoanSchedule::where('loan_id', $repayment->loan_id)
+                    ->where('status', '!=', 1) // Not fully paid
+                    ->orderBy('id', 'asc')
+                    ->first();
+                
+                if ($schedule) {
+                    // Link the repayment to the found schedule
+                    $repayment->update(['schedule_id' => $schedule->id]);
+                    Log::info("Auto-linked repayment {$repaymentId} to schedule {$schedule->id}");
+                } else {
+                    DB::rollBack();
+                    return [
+                        'success' => false,
+                        'message' => 'No unpaid schedules found for this loan'
+                    ];
+                }
+            }
+            
             if (!$schedule) {
                 DB::rollBack();
                 return [
@@ -307,8 +332,11 @@ class RepaymentService
             $statusCode = $callbackResult['status_code'];
             $statusDesc = $callbackResult['status_description'];
             
-            // Find the repayment record
-            $repayment = Repayment::where('txn_id', $transactionRef)
+            // Find the repayment record - check both reference fields
+            $repayment = Repayment::where(function($query) use ($transactionRef) {
+                                $query->where('txn_id', $transactionRef)
+                                      ->orWhere('transaction_reference', $transactionRef);
+                            })
                                 ->where('status', '0')
                                 ->first();
             

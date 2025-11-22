@@ -647,8 +647,12 @@ class RepaymentController extends Controller
                 );
 
                 if ($mobileMoneyResult['success']) {
+                    // Use FlexiPay-generated reference
+                    $flexipayReference = $mobileMoneyResult['reference'];
+                    
                     $repaymentData['status'] = 0; // Pending mobile money confirmation
-                    $repaymentData['txn_id'] = $mobileMoneyResult['reference'];
+                    $repaymentData['txn_id'] = $flexipayReference;
+                    $repaymentData['transaction_reference'] = $flexipayReference; // Also set for consistency
                     $repaymentData['pay_status'] = 'PENDING';
                     $repaymentData['pay_message'] = 'Mobile money collection initiated - check your phone';
                     
@@ -683,11 +687,14 @@ class RepaymentController extends Controller
                     ], 400);
                 }
             } else {
-                // For cash/bank transfers/cheque, mark as confirmed
+                // For cash/bank transfers/cheque, mark as confirmed - generate FlexiPay-format reference
+                $reference = 'EbP' . str_pad(rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
+                
                 $repaymentData['status'] = 1;
                 $repaymentData['pay_status'] = 'SUCCESS';
                 $repaymentData['pay_message'] = 'Payment confirmed';
-                $repaymentData['txn_id'] = 'TXN-' . time() . '-' . $paymentTypeCode;
+                $repaymentData['txn_id'] = $reference;
+                $repaymentData['transaction_reference'] = $reference; // Set both fields for consistency
             }
 
             $repayment = Repayment::create($repaymentData);
@@ -748,7 +755,7 @@ class RepaymentController extends Controller
         $validator = Validator::make($request->all(), [
             'loan_id' => 'required|integer',
             'member_id' => 'nullable|exists:members,id',
-            's_id' => 'required|exists:loan_schedules,id',
+            's_id' => 'nullable|exists:loan_schedules,id', // Made nullable for old loans without schedules
             'amount' => 'required|numeric|min:1',
             'type' => 'required|integer|in:1,2,3', // 1=cash, 2=mobile_money, 3=bank
             'medium' => 'nullable|integer|in:1,2', // 1=Airtel, 2=MTN (only for mobile money)
@@ -777,7 +784,27 @@ class RepaymentController extends Controller
                 ->withInput();
         }
         
-        $schedule = LoanSchedule::findOrFail($request->s_id);
+        // Auto-find schedule if not provided (for old loans)
+        if (!$request->s_id) {
+            // Find first unpaid schedule
+            $schedule = LoanSchedule::where('loan_id', $request->loan_id)
+                ->where('status', 0) // Pending
+                ->orderBy('id')
+                ->first();
+            
+            if (!$schedule) {
+                return redirect()->back()
+                    ->with('error', 'No pending payment schedules found for this loan.')
+                    ->withInput();
+            }
+            
+            \Log::info('Auto-selected schedule for old loan', [
+                'loan_id' => $request->loan_id,
+                'schedule_id' => $schedule->id
+            ]);
+        } else {
+            $schedule = LoanSchedule::findOrFail($request->s_id);
+        }
         
         // Get member/group for contact details
         if ($loanType === 'personal') {
@@ -803,13 +830,22 @@ class RepaymentController extends Controller
                 'type' => $request->type, // 1=cash, 2=mobile_money, 3=bank
                 'details' => $request->details,
                 'loan_id' => $request->loan_id,
-                'schedule_id' => $request->s_id,
+                'schedule_id' => $schedule->id, // Use the schedule ID we found/validated
                 'member_id' => $loanType === 'personal' ? $loan->member_id : null,
                 'amount' => $request->amount,
                 'date_created' => now(),
                 'added_by' => auth()->id(),
                 'platform' => 'Web',
             ];
+            
+            \Log::info('Creating repayment for loan', [
+                'loan_id' => $request->loan_id,
+                'loan_code' => $loan->code,
+                'schedule_id' => $schedule->id,
+                'amount' => $request->amount,
+                'payment_type' => $request->type,
+                'is_old_loan' => !$request->s_id // True if we auto-selected schedule
+            ]);
 
             // Handle mobile money - initiate collection
             if ($request->type == 2) {
@@ -823,8 +859,12 @@ class RepaymentController extends Controller
                 );
 
                 if ($mobileMoneyResult['success']) {
+                    // Use FlexiPay-generated reference (format: EbP########## or transactionReferenceNumber)
+                    $flexipayReference = $mobileMoneyResult['reference'];
+                    
                     $repaymentData['status'] = 0; // Pending
-                    $repaymentData['txn_id'] = $mobileMoneyResult['reference'];
+                    $repaymentData['txn_id'] = $flexipayReference;
+                    $repaymentData['transaction_reference'] = $flexipayReference; // Also set this for consistency
                     $repaymentData['pay_status'] = 'PENDING';
                     $repaymentData['pay_message'] = 'Mobile money collection initiated';
                     $repaymentData['network'] = $network;
@@ -875,10 +915,14 @@ class RepaymentController extends Controller
                 }
             } else {
                 // Cash or Bank Transfer - immediately confirmed
+                // Generate proper reference matching FlexiPay format: EbP##########
+                $reference = 'EbP' . str_pad(rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
+                
                 $repaymentData['status'] = 1; // Confirmed
                 $repaymentData['pay_status'] = 'SUCCESS';
                 $repaymentData['pay_message'] = 'Payment confirmed';
-                $repaymentData['txn_id'] = 'TXN-' . time();
+                $repaymentData['txn_id'] = $reference;
+                $repaymentData['transaction_reference'] = $reference; // Also set this for consistency
                 
                 $repayment = Repayment::create($repaymentData);
                 
@@ -1794,7 +1838,7 @@ class RepaymentController extends Controller
     {
         $validated = $request->validate([
             'loan_id' => 'required|exists:personal_loans,id',
-            's_id' => 'required|exists:loan_schedules,id',
+            's_id' => 'nullable|exists:loan_schedules,id', // Made nullable for old loans
             'amount' => 'required|numeric|min:0.01',
             'details' => 'required|string|max:500',
             'member_phone' => 'required|string',
@@ -1805,7 +1849,22 @@ class RepaymentController extends Controller
             DB::beginTransaction();
 
             $loan = Loan::findOrFail($validated['loan_id']);
-            $schedule = LoanSchedule::findOrFail($validated['s_id']);
+            
+            // Auto-find schedule if not provided (for old loans)
+            if (!$validated['s_id']) {
+                $schedule = LoanSchedule::where('loan_id', $validated['loan_id'])
+                    ->where('status', 0) // Pending
+                    ->orderBy('id')
+                    ->first();
+                
+                if (!$schedule) {
+                    throw new \Exception('No pending payment schedules found for this loan.');
+                }
+                
+                $validated['s_id'] = $schedule->id;
+            } else {
+                $schedule = LoanSchedule::findOrFail($validated['s_id']);
+            }
 
             // Create repayment record with pending status
             $repayment = Repayment::create([
@@ -1848,7 +1907,8 @@ class RepaymentController extends Controller
             
             $repayment->update([
                 'payment_raw' => json_encode($result),
-                'transaction_reference' => $transactionRef
+                'txn_id' => $transactionRef, // FlexiPay-generated reference
+                'transaction_reference' => $transactionRef // Set both fields for consistency
             ]);
 
             // Increment pending_count on the schedule (for UI display)

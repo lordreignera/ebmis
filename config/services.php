@@ -51,4 +51,18 @@ return [
         ],
     ],
 
+    'stanbic' => [
+        'client_id' => env('STANBIC_CLIENT_ID'),
+        'client_secret' => env('STANBIC_CLIENT_SECRET'),
+        'merchant_code' => env('STANBIC_MERCHANT_CODE'),
+        'client_name' => env('STANBIC_CLIENT_NAME'),
+        'password' => env('STANBIC_PASSWORD'),
+        'private_key' => env('STANBIC_PRIVATE_KEY'),
+        'base_url' => env('STANBIC_BASE_URL', 'https://gateway.apps.platform.stanbicbank.co.ug'),
+        'timeout' => env('STANBIC_TIMEOUT', 60),
+        'enabled' => env('STANBIC_ENABLED', true),
+        'test_mode' => env('STANBIC_TEST_MODE', false),
+        'log_level' => env('STANBIC_LOG_LEVEL', 'info'),
+    ],
+
 ];
