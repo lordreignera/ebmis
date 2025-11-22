@@ -271,7 +271,7 @@
             <div style="font-size: 18px; color: #666; margin-bottom: 10px;">Amount Paid</div>
             <div class="amount-paid">UGX {{ number_format($repayment->amount) }}</div>
             <div style="color: #666; font-style: italic;">
-                {{ ucwords(\NumberFormatter::create('en', \NumberFormatter::SPELLOUT)->format($repayment->amount)) }} Shillings Only
+                {{ numberToWords($repayment->amount) }} Shillings Only
             </div>
         </div>
 

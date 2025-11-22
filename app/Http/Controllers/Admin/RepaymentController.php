@@ -216,9 +216,9 @@ class RepaymentController extends Controller
             }
         });
 
-        // Filter loans with outstanding balance
+        // Filter loans with outstanding balance (include overpayments as they need refunds)
         $loans = $loans->filter(function($loan) {
-            return isset($loan->outstanding_balance) && $loan->outstanding_balance > 0;
+            return isset($loan->outstanding_balance) && $loan->outstanding_balance != 0;
         });
 
         // Paginate manually
