@@ -2029,15 +2029,18 @@ class RepaymentController extends Controller
                                                          ->first();
                         
                         if ($lateFeeType && $lateFeeAmount > 0) {
+                            // Get member_id from loan
+                            $member_id = $loan->member_id;
+                            
                             // Create late fee record
                             \App\Models\Fee::create([
-                                'member_id' => $repayment->member_id,
+                                'member_id' => $member_id,
                                 'loan_id' => $loan->id,
                                 'fees_type_id' => $lateFeeType->id,
                                 'amount' => $lateFeeAmount,
                                 'description' => "Late payment fee: {$daysLate} days overdue for Schedule #{$schedule->id}",
                                 'status' => 0, // Unpaid
-                                'payment_type' => null,
+                                'payment_type' => 2, // Mobile Money
                                 'added_by' => auth()->id(),
                                 'datecreated' => now()
                             ]);
