@@ -254,7 +254,7 @@ try {
                 'days_overdue' => $waiver['days_in_upgrade'],
                 'periods_overdue' => $waiver['upgrade_periods'],
                 'period_type' => $waiver['period_type'],
-                'schedule_due_date' => $waiver['due_date'],
+                'schedule_due_date' => Carbon::parse($waiver['due_date'])->format('Y-m-d'),
                 'calculated_date' => now(),
                 'status' => 2, // Waived
                 'waiver_reason' => $waiver_reason,
