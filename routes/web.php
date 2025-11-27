@@ -205,6 +205,8 @@ Route::middleware([
     Route::get('/late-fees', [\App\Http\Controllers\Admin\LateFeeController::class, 'index'])->name('late-fees.index');
     Route::post('/late-fees/{lateFee}/waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'waive'])->name('late-fees.waive');
     Route::post('/late-fees/bulk-waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'bulkWaive'])->name('late-fees.bulk-waive');
+    Route::get('/late-fees/waive-upgrade', [\App\Http\Controllers\Admin\LateFeeController::class, 'showWaiveUpgrade'])->name('late-fees.show-waive-upgrade');
+    Route::post('/late-fees/waive-upgrade-period', [\App\Http\Controllers\Admin\LateFeeController::class, 'waiveUpgradePeriod'])->name('late-fees.waive-upgrade-period');
     
     // NEW: Enhanced Repayment Routes for UI
     Route::prefix('loans/repayments')->name('loans.repayments.')->group(function () {

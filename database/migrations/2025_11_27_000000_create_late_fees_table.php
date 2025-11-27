@@ -31,13 +31,7 @@ return new class extends Migration
             $table->string('payment_reference', 100)->nullable();
             $table->timestamps();
             
-            // Foreign keys
-            $table->foreign('loan_id')->references('id')->on('personal_loans')->onDelete('cascade');
-            $table->foreign('schedule_id')->references('id')->on('loan_schedules')->onDelete('cascade');
-            $table->foreign('member_id')->references('id')->on('members')->onDelete('cascade');
-            $table->foreign('waived_by')->references('id')->on('users')->onDelete('set null');
-            
-            // Indexes for performance
+            // Indexes for performance (foreign keys removed to avoid compatibility issues)
             $table->index('loan_id');
             $table->index('schedule_id');
             $table->index('member_id');
