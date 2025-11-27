@@ -201,6 +201,11 @@ Route::middleware([
     Route::get('/repayments/loan-details/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getLoanDetails'])->name('repayments.loan-details');
     Route::get('/repayments/{repayment}/receipt', [\App\Http\Controllers\Admin\RepaymentController::class, 'receipt'])->name('repayments.receipt');
     
+    // Late Fees Management
+    Route::get('/late-fees', [\App\Http\Controllers\Admin\LateFeeController::class, 'index'])->name('late-fees.index');
+    Route::post('/late-fees/{lateFee}/waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'waive'])->name('late-fees.waive');
+    Route::post('/late-fees/bulk-waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'bulkWaive'])->name('late-fees.bulk-waive');
+    
     // NEW: Enhanced Repayment Routes for UI
     Route::prefix('loans/repayments')->name('loans.repayments.')->group(function () {
         Route::get('/schedules/{id}', [\App\Http\Controllers\Admin\RepaymentController::class, 'schedules'])->name('schedules');

@@ -472,6 +472,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayments</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.late-fees.index') }}">Late Fees</a></li>
           
           <!-- Group Loan Management -->
           <li class="nav-item"><hr class="dropdown-divider"></li>

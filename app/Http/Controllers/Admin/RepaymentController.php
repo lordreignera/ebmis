@@ -325,12 +325,13 @@ class RepaymentController extends Controller
         $loan->interest_rate = $loan->interest ?? 0;
         $loan->loan_term = $loan->period ?? 0;
         
-        // Determine period type name
-        if ($loan->period_type == '1') {
+        // Determine period type name (use $loan->period which is the actual column)
+        $period_type = $loan->period ?? $loan->period_type ?? '1';
+        if ($period_type == '1') {
             $loan->period_type_name = 'weeks';
-        } else if ($loan->period_type == '2') {
+        } else if ($period_type == '2') {
             $loan->period_type_name = 'months';
-        } else if ($loan->period_type == '3') {
+        } else if ($period_type == '3') {
             $loan->period_type_name = 'days';
         } else {
             $loan->period_type_name = 'installments';
@@ -410,13 +411,16 @@ class RepaymentController extends Controller
             
             $dd = 0; // Periods overdue
             if ($d > 0) {
-                if ($loan->period_type == '1') {
+                // Fix: Use $loan->period (not period_type) - the actual column name
+                $period_type = $loan->period ?? $loan->period_type ?? '1';
+                
+                if ($period_type == '1') {
                     // Weekly loans: divide by 7
                     $dd = ceil($d / 7);
-                } else if ($loan->period_type == '2') {
+                } else if ($period_type == '2') {
                     // Monthly loans: divide by 30
                     $dd = ceil($d / 30);
-                } else if ($loan->period_type == '3') {
+                } else if ($period_type == '3') {
                     // Daily loans: each day is 1 period
                     $dd = $d;
                 } else {
@@ -427,6 +431,18 @@ class RepaymentController extends Controller
             
             // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
             $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+            
+            // 4a. Check if late fee has been waived
+            $waivedLateFee = DB::table('late_fees')
+                ->where('schedule_id', $schedule->id)
+                ->where('status', 2) // Waived
+                ->first();
+            
+            if ($waivedLateFee) {
+                // Late fee was waived - set to 0
+                $latepayment = 0;
+                $dd = 0; // Also set periods to 0 for display
+            }
             
             // 5. Get total paid from pre-loaded data (optimized - no N+1 queries)
             $totalPaid = floatval($paidPerSchedule[$schedule->id] ?? 0);
