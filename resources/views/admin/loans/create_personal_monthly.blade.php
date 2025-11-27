@@ -188,36 +188,6 @@
                             </div>
                         </div>
 
-                        <!-- Additional Information for Monthly Loans -->
-                        <div class="row mt-4">
-                            <div class="col-12">
-                                <h5 class="text-primary mb-3">Additional Information</h5>
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Monthly Income</label>
-                                    <input type="number" class="form-control" name="monthly_income" step="0.01">
-                                    <small class="text-muted">Estimated monthly income</small>
-                                </div>
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Purpose of Loan</label>
-                                    <select class="form-select" name="loan_purpose">
-                                        <option value="">Select purpose...</option>
-                                        <option value="business_expansion">Business Expansion</option>
-                                        <option value="working_capital">Working Capital</option>
-                                        <option value="education">Education</option>
-                                        <option value="medical">Medical</option>
-                                        <option value="agriculture">Agriculture</option>
-                                        <option value="other">Other</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="row mt-4">
                             <div class="col-12">
                                 <button type="submit" class="btn btn-primary">

@@ -441,6 +441,11 @@ Route::middleware([
     
     // Fees Management Routes (outside settings prefix)
     Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', 'ebims_module'])->group(function () {
+        // Check Current User (Diagnostic)
+        Route::get('/check-user', function () {
+            return view('admin.check-current-user');
+        })->name('check-user');
+        
         Route::resource('fees', \App\Http\Controllers\Admin\FeeController::class);
         Route::get('/fees/member/{member}/status', [\App\Http\Controllers\Admin\FeeController::class, 'getMemberFeeStatus'])->name('fees.member.status');
         Route::get('/fees/loan/{loan}/charges', [\App\Http\Controllers\Admin\FeeController::class, 'getLoanChargeStatus'])->name('fees.loan.charges');

@@ -1199,70 +1199,78 @@ class DisbursementController extends Controller
             return;
         }
 
-        // Generate new schedules using BIMSADMIN DECLINING BALANCE interest calculation
+        // Generate new schedules using OLD system calculation methods based on period_type
         $principal = floatval($loan->principal);
         $interestRate = floatval($loan->interest) / 100; // Convert to decimal (e.g., 0.7% = 0.007)
         $period = intval($loan->period);
-        $periodType = $loan->period_type ?? 3; // Default to daily
+        $periodType = $loan->period_type ?? 3; // 1=Weekly, 2=Monthly, 3=Daily
         
         $disbursementDate = \Carbon\Carbon::parse($disbursement->disbursement_date);
         
-        // Calculate principal per installment (flat/equal installments)
+        // Calculate principal per installment
         $principalPerInstallment = $principal / $period;
+        
+        // HALF-TERM INTEREST FORMULA (Universal for ALL loan types)
+        // ALL interest is paid in FIRST HALF of loan term
+        // SECOND HALF = Principal only (no interest)
+        $installments = [];
+        
+        // Calculate half-term (first half of loan)
+        $halfTerm = floor($period / 2);
+        
+        // Calculate total interest based on loan type
+        if ($periodType == 2) {
+            // MONTHLY loans: Interest rate is DOUBLED
+            $totalInterest = $principal * ($interestRate * 2);
+        } else {
+            // WEEKLY and DAILY loans: Interest rate as-is
+            $totalInterest = $principal * $interestRate;
+        }
+        
+        // Distribute interest equally over FIRST HALF of term
+        // Edge case: If halfTerm=0 (1 period loan), all interest in first payment
+        if ($halfTerm == 0) {
+            $interestPerPeriodFirstHalf = $totalInterest;
+            $halfTerm = 1; // Set to 1 so first payment gets all interest
+        } else {
+            $interestPerPeriodFirstHalf = $totalInterest / $halfTerm;
+        }
+        
+        // Generate installment schedule
         $balance = $principal;
         
-        // BIMSADMIN DECLINING BALANCE INTEREST LOGIC (CORRECT):
-        // Interest is calculated on the REMAINING principal balance AFTER each payment
-        // Example: 10,000 loan, 2 periods, 0.7% interest
-        // Period 1: Balance = 10,000 → Interest = 10,000 × 0.007 = 70
-        // Period 2: Balance = 5,000 → Interest = 5,000 × 0.007 = 35
-        // Total Interest: 105
-        
-        $remainingPrincipal = $principal; // Tracks remaining principal balance for interest calculation
-        
-        // Calculate all installments first to get total
-        $installments = [];
-        $tempRemainingPrincipal = $remainingPrincipal;
-        $tempBalance = $principal;
-        $totalScheduledPayment = 0;
-        
         for ($i = 1; $i <= $period; $i++) {
-            // Interest calculated on REMAINING principal balance (before this installment's principal payment)
-            $interestAmount = $tempRemainingPrincipal * $interestRate;
-            
             $principalAmount = $principalPerInstallment;
+            
+            // Interest only in FIRST HALF of loan term
+            if ($i <= $halfTerm) {
+                $interestAmount = $interestPerPeriodFirstHalf;
+            } else {
+                $interestAmount = 0; // SECOND HALF: No interest
+            }
+            
             $installmentPayment = $principalAmount + $interestAmount;
             
-            // Update balance after principal payment
-            $tempBalance -= $principalAmount;
-            if ($tempBalance < 0) {
-                $principalAmount += $tempBalance;
-                $tempBalance = 0;
+            // Update balance
+            $balance -= $principalAmount;
+            if ($balance < 0) {
+                $principalAmount += $balance;
+                $balance = 0;
             }
             
             $installments[] = [
                 'principal' => $principalAmount,
                 'interest' => $interestAmount,
                 'payment' => $installmentPayment,
-                'balance' => $tempBalance
+                'balance' => $balance
             ];
-            
-            $totalScheduledPayment += $installmentPayment;
-            
-            // Reduce remaining principal for next period's interest calculation
-            $tempRemainingPrincipal -= $principalAmount;
-            if ($tempRemainingPrincipal < 0) $tempRemainingPrincipal = 0;
         }
         
-        // No rounding difference needed with declining balance method
-        // Interest naturally decreases as principal is paid off
-        
-        // Now insert all schedules
+        // Insert all schedules into database
         $balance = $principal;
         for ($i = 0; $i < count($installments); $i++) {
             $installment = $installments[$i];
-            $balance -= $installment['principal'];
-            if ($balance < 0) $balance = 0;
+            $balance = $installment['balance'];
             
             $paymentDate = $this->calculatePaymentDate($disbursementDate, $i + 1, $periodType);
 

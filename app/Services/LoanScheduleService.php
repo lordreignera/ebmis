@@ -20,33 +20,57 @@ class LoanScheduleService
         $loanData = $this->extractLoanData($loan);
         
         $schedules = collect();
-        $balance = (float) $loanData['principal'];
-        $rate = (float) $loanData['interest'];
+        $principal = (float) $loanData['principal'];
+        $rate = (float) $loanData['interest'] / 100; // Convert to decimal
         $period = (int) $loanData['period'];
         $periodType = $loanData['period_type'];
         
-        // Calculate installment amount (equal principal payments)
-        $principalInstallment = $balance / $period;
+        // HALF-TERM INTEREST FORMULA (Universal for ALL loan types)
+        // ALL interest is paid in FIRST HALF of loan term
+        // SECOND HALF = Principal only (no interest)
+        
+        // Calculate principal per installment
+        $principalInstallment = $principal / $period;
+        
+        // Calculate half-term (first half of loan)
+        $halfTerm = floor($period / 2);
+        
+        // Calculate total interest based on loan type
+        if ($periodType == '2') {
+            // MONTHLY loans: Interest rate is DOUBLED
+            $totalInterest = $principal * ($rate * 2);
+        } else {
+            // WEEKLY and DAILY loans: Interest rate as-is
+            $totalInterest = $principal * $rate;
+        }
+        
+        // Distribute interest equally over FIRST HALF of term
+        // Edge case: If halfTerm=0 (1 period loan), all interest in first payment
+        if ($halfTerm == 0) {
+            $interestPerPeriodFirstHalf = $totalInterest;
+            $halfTerm = 1; // Set to 1 so first payment gets all interest
+        } else {
+            $interestPerPeriodFirstHalf = $totalInterest / $halfTerm;
+        }
         
         // Determine start date
         $startDate = $this->getStartDate($loanData);
         $currentDate = $startDate;
+        $balance = $principal;
         
         for ($count = 1; $count <= $period; $count++) {
             // Calculate next payment date based on period type
             $paymentDate = $this->calculatePaymentDate($currentDate, $periodType, $count);
             
-            // Calculate interest on remaining balance
-            if ($count == 1) {
-                // First payment - use full balance
-                $interestAmount = ($rate / 100) * $balance;
+            // Interest only in FIRST HALF of loan term
+            if ($count <= $halfTerm) {
+                $interestAmount = $interestPerPeriodFirstHalf;
             } else {
-                // Subsequent payments - use remaining balance
-                $balance = $balance - $principalInstallment;
-                $interestAmount = ($rate / 100) * $balance;
+                $interestAmount = 0; // SECOND HALF: No interest
             }
             
             $totalPayment = $principalInstallment + $interestAmount;
+            $balance -= $principalInstallment;
             
             $schedules->push([
                 'loan_id' => $loanData['id'],
@@ -55,7 +79,7 @@ class LoanScheduleService
                 'payment' => round($totalPayment, 2),
                 'interest' => round($interestAmount, 2),
                 'principal' => round($principalInstallment, 2),
-                'balance' => round($balance - ($count == 1 ? 0 : $principalInstallment), 2),
+                'balance' => round(max(0, $balance), 2),
                 'status' => 0, // 0 = unpaid, 1 = paid
                 'created_at' => now(),
                 'updated_at' => now()

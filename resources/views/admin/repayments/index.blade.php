@@ -232,6 +232,7 @@
                             <th>Amount</th>
                             <th>Method</th>
                             <th>Reference</th>
+                            <th>Processed By</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -283,6 +284,17 @@
                             </td>
                             <td>
                                 <span class="text-muted">{{ $repayment->transaction_reference ?? $repayment->txn_id ?? 'N/A' }}</span>
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar-xs bg-soft-info rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">
+                                        <i class="fas fa-user-tie text-info" style="font-size: 0.75rem;"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-semibold" style="font-size: 0.875rem;">{{ $repayment->addedBy->name ?? 'System' }}</div>
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ $repayment->addedBy->email ?? '' }}</small>
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 @if($repayment->status == 1 || $repayment->payment_status == 'Completed')

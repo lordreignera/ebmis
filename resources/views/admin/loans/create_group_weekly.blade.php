@@ -139,23 +139,6 @@
                                 </div>
                             </div>
 
-                            <!-- Meeting Day -->
-                            <div class="col-md-4">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Group Meeting/Collection Day <span class="text-danger">*</span></label>
-                                    <select class="form-select" name="collection_day" required>
-                                        <option value="">Select day...</option>
-                                        <option value="monday">Monday</option>
-                                        <option value="tuesday">Tuesday</option>
-                                        <option value="wednesday">Wednesday</option>
-                                        <option value="thursday">Thursday</option>
-                                        <option value="friday">Friday</option>
-                                        <option value="saturday">Saturday</option>
-                                        <option value="sunday">Sunday</option>
-                                    </select>
-                                </div>
-                            </div>
-
                             <!-- Meeting Time -->
                             <div class="col-md-4">
                                 <div class="form-group mb-3">

@@ -16,6 +16,7 @@ class PersonalLoan extends Model
         'product_type',
         'code',
         'interest',
+        'interest_method',
         'period',
         'principal',
         'installment',

@@ -252,117 +252,60 @@
                                 <thead>
                                     <tr>
                                         <th style="width: 5%;">#</th>
-                                        <th style="width: 12%;">Loan Code</th>
-                                        <th style="width: 15%;">Borrower</th>
-                                        <th style="width: 8%;">Phone</th>
-                                        <th style="width: 10%;">Principal</th>
-                                        <th style="width: 10%;">Outstanding</th>
-                                        <th style="width: 8%;">Next Due</th>
-                                        <th style="width: 8%;">Due Amount</th>
-                                        <th style="width: 7%;">Days Late</th>
-                                        <th style="width: 7%;">Status</th>
-                                        <th style="width: 10%;">Actions</th>
+                                        <th style="width: 20%;">Member Name</th>
+                                        <th style="width: 15%;">Branch</th>
+                                        <th style="width: 15%;">Code</th>
+                                        <th style="width: 10%;">Loan Type</th>
+                                        <th style="width: 12%;">Principal</th>
+                                        <th style="width: 13%;">Date Disbursed</th>
+                                        <th style="width: 10%;">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach($loans as $index => $loan)
                                         @php
-                                            $daysLate = $loan->days_overdue ?? 0;
+                                            // Determine loan type based on product's period_type
+                                            $periodType = $loan->product->period_type ?? 3;
+                                            $loanTypeLabel = 'Daily';
+                                            if($periodType == 1) {
+                                                $loanTypeLabel = 'Weekly';
+                                            } elseif($periodType == 2) {
+                                                $loanTypeLabel = 'Monthly';
+                                            } elseif($periodType == 3) {
+                                                $loanTypeLabel = 'Daily';
+                                            }
                                         @endphp
                                         <tr>
                                             <td>{{ $loans->firstItem() + $index }}</td>
                                             <td>
-                                                <span class="account-number">{{ $loan->loan_code }}</span>
-                                                <br><small class="text-muted">{{ $loan->product_name ?? 'N/A' }}</small>
+                                                <div class="fw-medium">{{ $loan->borrower_name }}</div>
                                             </td>
                                             <td>
-                                                <div class="fw-medium">{{ $loan->borrower_name }}</div>
                                                 <small class="text-muted">{{ $loan->branch_name ?? 'No Branch' }}</small>
                                             </td>
                                             <td>
-                                                <small>{{ $loan->phone_number }}</small>
+                                                <span class="account-number">{{ $loan->loan_code }}</span>
+                                            </td>
+                                            <td>
+                                                <span class="status-badge status-{{ $periodType == 1 ? 'verified' : ($periodType == 2 ? 'pending' : 'individual') }}">
+                                                    {{ $loanTypeLabel }}
+                                                </span>
                                             </td>
                                             <td class="text-end">
                                                 <span class="fw-semibold">{{ number_format($loan->principal_amount, 0) }}</span>
                                             </td>
-                                            <td class="text-end">
-                                                <span class="fw-semibold text-primary">{{ number_format($loan->outstanding_balance, 0) }}</span>
-                                            </td>
                                             <td class="text-center">
-                                                @if($loan->next_due_date)
-                                                    <small>{{ date('M d, Y', strtotime($loan->next_due_date)) }}</small>
+                                                @if(isset($loan->disbursement_date))
+                                                    <small>{{ date('Y-m-d H:i', strtotime($loan->disbursement_date)) }}</small>
                                                 @else
                                                     <small class="text-muted">N/A</small>
                                                 @endif
                                             </td>
-                                            <td class="text-end">
-                                                @if($loan->next_due_amount)
-                                                    <span class="fw-semibold {{ $daysLate > 0 ? 'text-danger' : 'text-success' }}">
-                                                        {{ number_format($loan->next_due_amount, 0) }}
-                                                    </span>
-                                                @else
-                                                    <small class="text-muted">N/A</small>
-                                                @endif
-                                            </td>
-                                            <td class="text-center">
-                                                @if($daysLate > 0)
-                                                    <span class="status-badge status-not-verified">{{ $daysLate }} days</span>
-                                                @elseif($daysLate > -7)
-                                                    <span class="status-badge status-pending">Due soon</span>
-                                                @else
-                                                    <span class="status-badge status-verified">Current</span>
-                                                @endif
-                                            </td>
                                             <td>
-                                                @if($loan->is_restructured)
-                                                    <span class="status-badge status-individual">Restructured</span>
-                                                @elseif($daysLate > 30)
-                                                    <span class="status-badge status-not-verified">Critical</span>
-                                                @elseif($daysLate > 0)
-                                                    <span class="status-badge status-pending">Overdue</span>
-                                                @else
-                                                    <span class="status-badge status-verified">Current</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                <div class="action-buttons">
-                                                    <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
-                                                       class="btn-modern btn-view" title="View Schedules">
-                                                        <i class="mdi mdi-calendar-clock"></i>
-                                                    </a>
-                                                    <button type="button" class="btn-modern btn-process" 
-                                                            onclick="quickRepay({{ $loan->id }}, '{{ $loan->loan_code }}', {{ $loan->next_due_amount ?? 0 }}, '{{ $loan->phone_number }}')"
-                                                            title="Quick Repayment" {{ !$loan->next_due_amount ? 'disabled' : '' }}>
-                                                        <i class="mdi mdi-cash-fast"></i>
-                                                    </button>
-                                                    <div class="dropdown">
-                                                        <button class="btn-modern btn-warning dropdown-toggle" type="button" 
-                                                                data-bs-toggle="dropdown" title="More Actions">
-                                                            <i class="mdi mdi-dots-vertical"></i>
-                                                        </button>
-                                                        <ul class="dropdown-menu">
-                                                            <li><a class="dropdown-item" href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => $loan->loan_type]) }}">
-                                                                <i class="mdi mdi-eye me-2"></i>View Details
-                                                            </a></li>
-                                                            <li><a class="dropdown-item" href="{{ route('admin.loans.repayments.schedules', $loan->id) }}">
-                                                                <i class="mdi mdi-history me-2"></i>Payment History
-                                                            </a></li>
-                                                            @if($daysLate > 0)
-                                                                <li><hr class="dropdown-divider"></li>
-                                                                <li><a class="dropdown-item text-primary" href="javascript:void(0)" 
-                                                                       onclick="showRescheduleModal({{ $loan->id }}, '{{ $loan->loan_code }}', '{{ $loan->borrower_name }}', {{ $daysLate }})">
-                                                                    <i class="mdi mdi-calendar-refresh me-2"></i>Reschedule Payments
-                                                                </a></li>
-                                                            @endif
-                                                            @if($daysLate > 30)
-                                                                <li><a class="dropdown-item text-warning" href="javascript:void(0)"
-                                                                       onclick="showRestructureModal({{ $loan->id }}, '{{ $loan->loan_code }}')">
-                                                                    <i class="mdi mdi-account-convert me-2"></i>Restructure Loan
-                                                                </a></li>
-                                                            @endif
-                                                        </ul>
-                                                    </div>
-                                                </div>
+                                                <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
+                                                   class="btn btn-sm btn-primary">
+                                                    <i class="mdi mdi-calendar-clock"></i> View Schedules
+                                                </a>
                                             </td>
                                         </tr>
                                     @endforeach

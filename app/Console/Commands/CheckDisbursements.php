@@ -299,58 +299,63 @@ class CheckDisbursements extends Command
         $periodType = $loan->period_type ?? 3; // Default to daily
         
         $disbursementDate = \Carbon\Carbon::parse($disbursementRecord->disbursement_date ?? $disbursementRecord->created_at);
-        $installment = $loan->installment ?? 0;
-
-        // Calculate per-period interest based on period type
-        $interestPerPeriod = 0;
-        if ($periodType == 1) {
-            // Weekly
-            $interestPerPeriod = ($interest * 7) / 365;
-        } elseif ($periodType == 2) {
-            // Monthly
-            $interestPerPeriod = $interest / 12;
-        } else {
-            // Daily
-            $interestPerPeriod = $interest / 365;
-        }
-
+        
         $balance = $principal;
         $schedulesCreated = 0;
+        
+        $principalPerPeriod = $principal / $period;
 
+        // HALF-TERM INTEREST FORMULA (Universal for ALL loan types)
+        // ALL interest is paid in FIRST HALF of loan term
+        // SECOND HALF = Principal only (no interest)
+        
+        // Calculate half-term
+        $halfTerm = floor($period / 2);
+        
+        // Calculate total interest based on loan type
+        if ($periodType == 2) {
+            // MONTHLY loans: Interest rate is DOUBLED
+            $totalInterest = $principal * ($interest * 2);
+        } else {
+            // WEEKLY and DAILY loans: Interest rate as-is
+            $totalInterest = $principal * $interest;
+        }
+        
+        // Distribute interest equally over FIRST HALF of term
+        // Edge case: If halfTerm=0 (1 period loan), all interest in first payment
+        if ($halfTerm == 0) {
+            $interestPerPeriodFirstHalf = $totalInterest;
+            $halfTerm = 1; // Set to 1 so first payment gets all interest
+        } else {
+            $interestPerPeriodFirstHalf = $totalInterest / $halfTerm;
+        }
+        
+        // Generate schedule
         for ($i = 1; $i <= $period; $i++) {
-            $interestAmount = $balance * $interestPerPeriod;
-            $principalAmount = $installment - $interestAmount;
+            // Interest only in FIRST HALF
+            $interestAmount = ($i <= $halfTerm) ? $interestPerPeriodFirstHalf : 0;
+            $installmentPayment = $principalPerPeriod + $interestAmount;
             
-            // Ensure balance doesn't go negative
-            if ($principalAmount > $balance) {
-                $principalAmount = $balance;
-                $installment = $principalAmount + $interestAmount;
-            }
-            
-            $balance -= $principalAmount;
-            
-            // Calculate payment date
             $paymentDate = $this->calculatePaymentDate($disbursementDate, $i, $periodType);
-
+            
             DB::table('loan_schedules')->insert([
                 'loan_id' => $loan->id,
                 'payment_date' => $paymentDate->format('Y-m-d'),
-                'principal' => round($principalAmount, 2),
+                'principal' => round($principalPerPeriod, 2),
                 'interest' => round($interestAmount, 2),
-                'payment' => round($installment, 2),
+                'payment' => round($installmentPayment, 2),
                 'balance' => round($balance, 2),
-                'status' => 0, // 0=pending, 1=paid
+                'status' => 0,
                 'paid' => 0,
                 'pending_count' => 0,
                 'date_created' => now(),
             ]);
-
+            
+            $balance -= $principalPerPeriod;
             $schedulesCreated++;
-
-            if ($balance <= 0) break;
         }
 
-        $this->info("  Created {$schedulesCreated} repayment schedules");
+        $this->info("  ✓ Created {$schedulesCreated} loan schedules");
     }
 
     /**

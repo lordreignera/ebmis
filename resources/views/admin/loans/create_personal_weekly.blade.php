@@ -192,43 +192,6 @@
                             <div class="col-12">
                                 <h5 class="text-primary mb-3">Additional Information</h5>
                             </div>
-
-                            <div class="col-md-4">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Weekly Income</label>
-                                    <input type="number" class="form-control" name="weekly_income" step="0.01">
-                                    <small class="text-muted">Estimated weekly income</small>
-                                </div>
-                            </div>
-
-                            <div class="col-md-4">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Preferred Collection Day</label>
-                                    <select class="form-select" name="collection_day">
-                                        <option value="">Select day...</option>
-                                        <option value="monday">Monday</option>
-                                        <option value="tuesday">Tuesday</option>
-                                        <option value="wednesday">Wednesday</option>
-                                        <option value="thursday">Thursday</option>
-                                        <option value="friday">Friday</option>
-                                        <option value="saturday">Saturday</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="col-md-4">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Purpose of Loan</label>
-                                    <select class="form-select" name="loan_purpose">
-                                        <option value="">Select purpose...</option>
-                                        <option value="working_capital">Working Capital</option>
-                                        <option value="stock_purchase">Stock Purchase</option>
-                                        <option value="equipment">Equipment</option>
-                                        <option value="emergency">Emergency</option>
-                                        <option value="other">Other</option>
-                                    </select>
-                                </div>
-                            </div>
                         </div>
 
                         <div class="row mt-4">

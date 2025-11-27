@@ -334,6 +334,7 @@ class LoanController extends Controller
                 $validated['datecreated'] = now(); // Use datecreated instead of created_at
                 $validated['verified'] = 0; // Not verified initially
                 $validated['sign_code'] = 0; // Not an eSign loan by default
+                $validated['interest_method'] = $request->input('interest_method', 2); // 1=FLAT, 2=DECLINING (default)
 
                 // Create the personal loan
                 $loan = PersonalLoan::create($validated);
@@ -1473,34 +1474,36 @@ class LoanController extends Controller
         // Use the product's interest rate (already stored as percentage in DB)
         $interest = $product->interest / 100;
         
-        // Declining balance calculation - matches schedule generation in DisbursementController
-        // Interest is calculated on remaining principal after each payment
-        // Example: 10,000 at 0.7% for 2 periods:
-        //   Period 1: 10,000 × 0.007 = 70 interest
-        //   Period 2: 5,000 × 0.007 = 35 interest
-        //   Total interest = 105, Total payable = 10,105
-        //   Max installment = 5,070 (first period, highest amount)
+        // HALF-TERM INTEREST FORMULA (Universal for ALL loan types)
+        // ALL interest is paid in FIRST HALF of loan term
+        // SECOND HALF = Principal only (no interest)
+        // period_type: 1=Weekly, 2=Monthly, 3=Daily
+        $periodType = $product->period_type ?? 3;
         
-        $remainingPrincipal = $principal;
         $principalPerPeriod = $principal / $period;
-        $totalInterest = 0;
-        $maxInstallment = 0;
+        $halfTerm = floor($period / 2);
         
-        for ($i = 1; $i <= $period; $i++) {
-            $interestForPeriod = $remainingPrincipal * $interest;
-            $totalInterest += $interestForPeriod;
-            $installmentAmount = $principalPerPeriod + $interestForPeriod;
-            
-            // Track the maximum installment (first period has highest amount in declining balance)
-            if ($installmentAmount > $maxInstallment) {
-                $maxInstallment = $installmentAmount;
-            }
-            
-            $remainingPrincipal -= $principalPerPeriod;
+        // Calculate total interest based on loan type
+        if ($periodType == 2) {
+            // MONTHLY loans: Interest rate is DOUBLED
+            $totalInterest = $principal * ($interest * 2);
+        } else {
+            // WEEKLY and DAILY loans: Interest rate as-is
+            $totalInterest = $principal * $interest;
+        }
+        
+        // Distribute interest over FIRST HALF of term
+        if ($halfTerm > 0) {
+            $interestPerPeriod = $totalInterest / $halfTerm;
+            // Max installment is in first half (principal + interest)
+            $maxInstallment = $principalPerPeriod + $interestPerPeriod;
+        } else {
+            // Edge case: 1 period loan - all interest in single payment
+            $maxInstallment = $principalPerPeriod + $totalInterest;
         }
         
         $totalPayable = $principal + $totalInterest;
-        $installment = $maxInstallment; // Return the highest installment amount
+        $installment = $maxInstallment; // Return the highest/equal installment amount
         
         return response()->json([
             'success' => true,

@@ -40,7 +40,7 @@ class RepaymentController extends Controller
             ->with([
                 'member:id,fname,lname,contact', 
                 'branch:id,name', 
-                'product:id,name',
+                'product:id,name,period_type',
                 'schedules',
                 'repayments'
             ]);
@@ -49,7 +49,7 @@ class RepaymentController extends Controller
             ->with([
                 'group:id,name', 
                 'branch:id,name', 
-                'product:id,name',
+                'product:id,name,period_type',
                 'schedules',
                 'repayments'
             ]);
@@ -157,6 +157,9 @@ class RepaymentController extends Controller
             $loan->product_name = $loan->product->name ?? 'N/A';
             $loan->loan_code = $loan->code;
             $loan->principal_amount = (float) $loan->principal;
+            
+            // Set disbursement date (fallback chain for migrated loans)
+            $loan->disbursement_date = $loan->date_approved ?? $loan->datecreated ?? null;
             
             // Calculate outstanding balance using pre-calculated totals (optimized!)
             $totalPaid = (float) $loan->repayments->where('status', 1)->sum('amount');
@@ -475,6 +478,14 @@ class RepaymentController extends Controller
             $schedule->total_balance = $act_bal;
             $schedule->principal_balance = $principal;
             $schedule->pending_count = $pendingCount;
+            
+            // Set payment status for filtering next due
+            $schedule->payment_status = $schedule->status == 0 ? 'pending' : 'paid';
+            $schedule->is_overdue = $d > 0 && $schedule->status == 0;
+            $schedule->due_date = $schedule->payment_date;
+            $schedule->due_amount = $schedule->principal + $intrestamtpayable;
+            $schedule->penalty_amount = $latepayment;
+            $schedule->days_overdue = $d;
             
             // 10. Update running balances for next iteration
             if ($principal > 0) {
@@ -1840,7 +1851,7 @@ class RepaymentController extends Controller
             'loan_id' => 'required|exists:personal_loans,id',
             's_id' => 'nullable|exists:loan_schedules,id', // Made nullable for old loans
             'amount' => 'required|numeric|min:0.01',
-            'details' => 'required|string|max:500',
+            'details' => 'required|string|max:1000', // Increased max, will be truncated if needed
             'member_phone' => 'required|string',
             'member_name' => 'required|string',
         ]);
@@ -1867,9 +1878,15 @@ class RepaymentController extends Controller
             }
 
             // Create repayment record with pending status
+            // Truncate details to reasonable length (keep it concise for SMS/display purposes)
+            $shortDetails = mb_substr($validated['details'], 0, 200);
+            if (mb_strlen($validated['details']) > 200) {
+                $shortDetails .= '...';
+            }
+            
             $repayment = Repayment::create([
                 'type' => 2, // Mobile Money
-                'details' => $validated['details'],
+                'details' => $shortDetails,
                 'loan_id' => $validated['loan_id'],
                 'schedule_id' => $validated['s_id'],
                 'amount' => $validated['amount'],

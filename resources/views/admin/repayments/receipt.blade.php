@@ -228,6 +228,10 @@
                         @endif
                     </span>
                 </div>
+                <div class="info-row">
+                    <span class="info-label">Processed By:</span>
+                    <span class="info-value">{{ $repayment->addedBy->name ?? 'System' }}</span>
+                </div>
             </div>
 
             <div class="info-section">

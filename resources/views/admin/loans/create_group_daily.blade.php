@@ -138,52 +138,6 @@
                                     <input type="text" class="form-control" name="max_installment" id="max_installment" readonly>
                                 </div>
                             </div>
-
-                            <!-- Collection Schedule -->
-                            <div class="col-md-12">
-                                <div class="form-group mb-3">
-                                    <label class="form-label">Collection Days <span class="text-danger">*</span></label>
-                                    <div class="row">
-                                        <div class="col-md-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="collection_days[]" value="monday" id="monday">
-                                                <label class="form-check-label" for="monday">Monday</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="collection_days[]" value="tuesday" id="tuesday">
-                                                <label class="form-check-label" for="tuesday">Tuesday</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="collection_days[]" value="wednesday" id="wednesday">
-                                                <label class="form-check-label" for="wednesday">Wednesday</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="collection_days[]" value="thursday" id="thursday">
-                                                <label class="form-check-label" for="thursday">Thursday</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="collection_days[]" value="friday" id="friday">
-                                                <label class="form-check-label" for="friday">Friday</label>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="collection_days[]" value="saturday" id="saturday">
-                                                <label class="form-check-label" for="saturday">Saturday</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <small class="text-muted">Select the days when loan collections will be made</small>
-                                </div>
-                            </div>
                         </div>
 
                         <div class="row mt-4">
@@ -335,16 +289,6 @@ $(document).ready(function() {
             });
         }
     }
-
-    // Ensure at least one collection day is selected
-    $('form').on('submit', function(e) {
-        var checkedDays = $('input[name="collection_days[]"]:checked').length;
-        if (checkedDays === 0) {
-            e.preventDefault();
-            alert('Please select at least one collection day.');
-            return false;
-        }
-    });
 });
 </script>
 @endpush
