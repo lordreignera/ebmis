@@ -2,6 +2,36 @@
 
 @section('title', 'Member Details')
 
+@push('styles')
+<style>
+/* Fix modal blinking/flickering */
+.modal.fade .modal-dialog {
+    transition: transform 0.3s ease-out;
+}
+
+.modal-backdrop.fade {
+    transition: opacity 0.15s linear;
+}
+
+/* Ensure modals don't flicker on open */
+.modal {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* Prevent multiple backdrops */
+body.modal-open {
+    overflow: hidden;
+}
+
+/* Purple badge for attachment library */
+.bg-purple {
+    background-color: #6f42c1 !important;
+    color: white;
+}
+</style>
+@endpush
+
 @section('content')
 <div class="container-fluid">
     <div class="row">
@@ -190,8 +220,590 @@
                 </div>
             </div>
 
-            <!-- System Information -->
-            <div class="card mb-4">
+            <!-- Tabbed Content -->
+            <div class="card">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#personal-info" role="tab" aria-controls="personal-info" aria-selected="true">
+                                <i class="mdi mdi-account"></i> Personal Info
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" data-bs-toggle="tab" href="#business-profile" role="tab" aria-controls="business-profile" aria-selected="false">
+                                <i class="mdi mdi-briefcase"></i> Business Profile
+                                <span class="badge bg-primary">{{ $member->businesses->count() }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" data-bs-toggle="tab" href="#assets" role="tab" aria-controls="assets" aria-selected="false">
+                                <i class="mdi mdi-home"></i> Assets
+                                <span class="badge bg-success">{{ $member->assets->count() }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" data-bs-toggle="tab" href="#liabilities" role="tab" aria-controls="liabilities" aria-selected="false">
+                                <i class="mdi mdi-credit-card"></i> Liabilities
+                                <span class="badge bg-warning text-dark">{{ $member->liabilities->count() }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" data-bs-toggle="tab" href="#documents" role="tab" aria-controls="documents" aria-selected="false">
+                                <i class="mdi mdi-file-document"></i> Documents
+                                <span class="badge bg-info">{{ $member->documents->count() }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" data-bs-toggle="tab" href="#attachment-library" role="tab" aria-controls="attachment-library" aria-selected="false">
+                                <i class="mdi mdi-folder-multiple"></i> Attachment Library
+                                <span class="badge bg-purple">{{ $member->attachmentLibrary->count() }}</span>
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="loans-tab" data-bs-toggle="tab" href="#loans" role="tab" aria-controls="loans" aria-selected="false">
+                                <i class="mdi mdi-bank"></i> Loans
+                                <span class="badge bg-danger">{{ $member->personalLoans->count() }}</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="memberTabContent">
+                        <!-- Personal Info Tab -->
+                        <div class="tab-pane fade show active" id="personal-info" role="tabpanel" aria-labelledby="personal-info-tab">
+                            @include('admin.members.tabs.personal-info')
+                        </div>
+
+                        <!-- Business Profile Tab -->
+                        <div class="tab-pane fade" id="business-profile" role="tabpanel" aria-labelledby="business-profile-tab">
+                            @include('admin.members.tabs.business-profile')
+                        </div>
+
+                        <!-- Assets Tab -->
+                        <div class="tab-pane fade" id="assets" role="tabpanel" aria-labelledby="assets-tab">
+                            @include('admin.members.tabs.assets')
+                        </div>
+
+                        <!-- Liabilities Tab -->
+                        <div class="tab-pane fade" id="liabilities" role="tabpanel" aria-labelledby="liabilities-tab">
+                            @include('admin.members.tabs.liabilities')
+                        </div>
+
+                        <!-- Documents Tab -->
+                        <div class="tab-pane fade" id="documents" role="tabpanel" aria-labelledby="documents-tab">
+                            @include('admin.members.tabs.documents')
+                        </div>
+
+                        <!-- Attachment Library Tab -->
+                        <div class="tab-pane fade" id="attachment-library" role="tabpanel" aria-labelledby="attachment-library-tab">
+                            @include('admin.members.tabs.attachment-library')
+                        </div>
+
+                        <!-- Loans Tab -->
+                        <div class="tab-pane fade" id="loans" role="tabpanel" aria-labelledby="loans-tab" tabindex="0">
+                            @include('admin.members.tabs.loans')
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- ALL ASSESSMENT MODALS - OUTSIDE TAB CONTENT -->
+            <!-- ============================================ -->
+
+            <!-- Add Business Modal -->
+            <div class="modal fade" id="addBusinessModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-scrollable" style="max-width: 800px; max-height: 90vh;">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                            <h5 class="modal-title" style="color: #000;">Add Business Profile</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <form action="{{ route('admin.members.businesses.store', $member) }}" method="POST">
+                            @csrf
+                            <div class="modal-body" style="background-color: white; max-height: 60vh; overflow-y: auto;">
+                                <h6 class="mb-2 text-primary"><i class="mdi mdi-briefcase"></i> Business Profile</h6>
+                                <p class="text-muted small mb-3">Basic information about the business</p>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Business Name <span class="text-danger">*</span></label>
+                                        <input type="text" name="name" class="form-control" placeholder="Business Name" required>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Registration Date</label>
+                                        <input type="date" name="reg_date" class="form-control" placeholder="dd-mm-yyyy">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Registration Number</label>
+                                        <input type="text" name="reg_no" class="form-control" placeholder="Reg no">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Tax Identification No (TIN)</label>
+                                        <input type="text" name="tin" class="form-control" placeholder="TIN">
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Business Type</label>
+                                        <select name="b_type" class="form-select">
+                                            <option value="">Select Type</option>
+                                            @foreach($businessTypes as $type)
+                                                <option value="{{ $type->id }}">{{ $type->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <h6 class="mb-2 text-primary mt-4"><i class="mdi mdi-map-marker"></i> Business Complete Address</h6>
+                                <p class="text-muted small mb-3">Complete address of the business.</p>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Street/Road <span class="text-danger">*</span></label>
+                                        <input type="text" name="street" class="form-control" placeholder="Street/Road">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Plot Number <span class="text-danger">*</span></label>
+                                        <input type="text" name="plot_no" class="form-control" placeholder="Plot Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">House Number</label>
+                                        <input type="text" name="house_no" class="form-control" placeholder="House Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Cell/ Village <span class="text-danger">*</span></label>
+                                        <input type="text" name="cell" class="form-control" placeholder="Cell/ Village">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Ward / Parish</label>
+                                        <input type="text" name="ward" class="form-control" placeholder="Ward / Parish">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Division / Sub-county</label>
+                                        <input type="text" name="division" class="form-control" placeholder="Division / Sub-county">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">District <span class="text-danger">*</span></label>
+                                        <input type="text" name="district" class="form-control" placeholder="District">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                                        <select name="country" class="form-select">
+                                            <option value="">Select Country</option>
+                                            <option value="Uganda" selected>Uganda</option>
+                                            <option value="Kenya">Kenya</option>
+                                            <option value="Tanzania">Tanzania</option>
+                                            <option value="Rwanda">Rwanda</option>
+                                            <option value="Burundi">Burundi</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Telephone Number <span class="text-danger">*</span></label>
+                                        <input type="tel" name="tel_no" class="form-control" placeholder="Telephone Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Mobile Number</label>
+                                        <input type="tel" name="mobile_no" class="form-control" placeholder="Mobile Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Fixed Telephone Line</label>
+                                        <input type="tel" name="fixed_line" class="form-control" placeholder="Fixed Telephone Line">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Business Email</label>
+                                        <input type="email" name="email" class="form-control" placeholder="Business Email">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="mdi mdi-check"></i> Save Business
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Business Modal -->
+            <div class="modal fade" id="editBusinessModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-scrollable" style="max-width: 800px; max-height: 90vh;">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                            <h5 class="modal-title" style="color: #000;">Edit Business Profile</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <form id="editBusinessForm" method="POST">
+                            @csrf
+                            @method('PUT')
+                            <div class="modal-body" style="background-color: white; max-height: 60vh; overflow-y: auto;">
+                                <h6 class="mb-2 text-primary"><i class="mdi mdi-briefcase"></i> Business Profile</h6>
+                                <p class="text-muted small mb-3">Basic information about the business</p>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Business Name <span class="text-danger">*</span></label>
+                                        <input type="text" name="name" id="edit_name" class="form-control" placeholder="Business Name" required>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Registration Date</label>
+                                        <input type="date" name="reg_date" id="edit_reg_date" class="form-control" placeholder="dd-mm-yyyy">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Registration Number</label>
+                                        <input type="text" name="reg_no" id="edit_reg_no" class="form-control" placeholder="Reg no">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Tax Identification No (TIN)</label>
+                                        <input type="text" name="tin" id="edit_tin" class="form-control" placeholder="TIN">
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Business Type</label>
+                                        <select name="b_type" id="edit_b_type" class="form-select">
+                                            <option value="">Select Type</option>
+                                            @foreach($businessTypes as $type)
+                                                <option value="{{ $type->id }}">{{ $type->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <h6 class="mb-2 text-primary mt-4"><i class="mdi mdi-map-marker"></i> Business Complete Address</h6>
+                                <p class="text-muted small mb-3">Complete address of the business.</p>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Street/Road <span class="text-danger">*</span></label>
+                                        <input type="text" name="street" id="edit_street" class="form-control" placeholder="Street/Road">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Plot Number <span class="text-danger">*</span></label>
+                                        <input type="text" name="plot_no" id="edit_plot_no" class="form-control" placeholder="Plot Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">House Number</label>
+                                        <input type="text" name="house_no" id="edit_house_no" class="form-control" placeholder="House Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Cell/ Village <span class="text-danger">*</span></label>
+                                        <input type="text" name="cell" id="edit_cell" class="form-control" placeholder="Cell/ Village">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Ward / Parish</label>
+                                        <input type="text" name="ward" id="edit_ward" class="form-control" placeholder="Ward / Parish">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Division / Sub-county</label>
+                                        <input type="text" name="division" id="edit_division" class="form-control" placeholder="Division / Sub-county">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">District <span class="text-danger">*</span></label>
+                                        <input type="text" name="district" id="edit_district" class="form-control" placeholder="District">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                                        <select name="country" id="edit_country" class="form-select">
+                                            <option value="">Select Country</option>
+                                            <option value="Uganda">Uganda</option>
+                                            <option value="Kenya">Kenya</option>
+                                            <option value="Tanzania">Tanzania</option>
+                                            <option value="Rwanda">Rwanda</option>
+                                            <option value="Burundi">Burundi</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Telephone Number <span class="text-danger">*</span></label>
+                                        <input type="tel" name="tel_no" id="edit_tel_no" class="form-control" placeholder="Telephone Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Mobile Number</label>
+                                        <input type="tel" name="mobile_no" id="edit_mobile_no" class="form-control" placeholder="Mobile Number">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Fixed Telephone Line</label>
+                                        <input type="tel" name="fixed_line" id="edit_fixed_line" class="form-control" placeholder="Fixed Telephone Line">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Business Email</label>
+                                        <input type="email" name="email" id="edit_email" class="form-control" placeholder="Business Email">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="mdi mdi-check"></i> Update Business
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Asset Modal -->
+            <div class="modal fade" id="addAssetModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <form action="{{ route('admin.members.assets.store', $member) }}" method="POST">
+                            @csrf
+                            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                                <h5 class="modal-title" style="color: #000;">Add Asset</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" style="background-color: white;">
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Asset Type <span class="text-danger">*</span></label>
+                                    <select name="asset_type" class="form-select" required>
+                                        <option value="">Select Asset Type</option>
+                                        @foreach($assetTypes as $type)
+                                            <option value="{{ $type->id }}">{{ $type->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Business (Optional)</label>
+                                    <select name="business_id" class="form-select">
+                                        <option value="">Personal Asset</option>
+                                        @foreach($member->businesses as $business)
+                                            <option value="{{ $business->id }}">{{ $business->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Quantity <span class="text-danger">*</span></label>
+                                    <input type="number" name="quantity" class="form-control" min="1" value="1" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Value per Unit (UGX) <span class="text-danger">*</span></label>
+                                    <input type="number" name="value" class="form-control" min="0" required>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary"><i class="mdi mdi-check"></i> Save Asset</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Asset Modal -->
+            <div class="modal fade" id="editAssetModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <form id="editAssetForm" method="POST">
+                            @csrf
+                            @method('PUT')
+                            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                                <h5 class="modal-title" style="color: #000;">Edit Asset</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" style="background-color: white;">
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Asset Type <span class="text-danger">*</span></label>
+                                    <select name="asset_type" id="edit_asset_type" class="form-select" required>
+                                        @foreach($assetTypes as $type)
+                                            <option value="{{ $type->id }}">{{ $type->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Business (Optional)</label>
+                                    <select name="business_id" id="edit_business_id" class="form-select">
+                                        <option value="">Personal Asset</option>
+                                        @foreach($member->businesses as $business)
+                                            <option value="{{ $business->id }}">{{ $business->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Quantity <span class="text-danger">*</span></label>
+                                    <input type="number" name="quantity" id="edit_quantity" class="form-control" min="1" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Value per Unit (UGX) <span class="text-danger">*</span></label>
+                                    <input type="number" name="value" id="edit_value" class="form-control" min="0" required>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-warning"><i class="mdi mdi-check"></i> Update Asset</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Liability Modal -->
+            <div class="modal fade" id="addLiabilityModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <form action="{{ route('admin.members.liabilities.store', $member) }}" method="POST">
+                            @csrf
+                            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                                <h5 class="modal-title" style="color: #000;">Add Liability</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" style="background-color: white;">
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Liability Category <span class="text-danger">*</span></label>
+                                    <select name="liability_id" class="form-select" id="liability_category" required>
+                                        <option value="">Select Category</option>
+                                        <option value="1">Personal</option>
+                                        <option value="5">Business</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3" id="business_select_wrapper" style="display: none;">
+                                    <label class="form-label" style="color: #000;">Select Business <span class="text-danger">*</span></label>
+                                    <select name="business_id" class="form-select" id="business_id_select">
+                                        <option value="">Select Business</option>
+                                        @foreach($member->businesses as $business)
+                                            <option value="{{ $business->id }}">{{ $business->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Liability Type <span class="text-danger">*</span></label>
+                                    <select name="liability_type" class="form-select" required>
+                                        <option value="">Select Type</option>
+                                        @foreach($liabilityTypes as $type)
+                                            <option value="{{ $type->id }}">{{ $type->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Value <span class="text-danger">*</span></label>
+                                    <input type="number" name="value" class="form-control" placeholder="Liability Value" min="0" required>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary"><i class="mdi mdi-check"></i> Save Liability</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Liability Modal -->
+            <div class="modal fade" id="editLiabilityModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <form id="editLiabilityForm" method="POST">
+                            @csrf
+                            @method('PUT')
+                            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                                <h5 class="modal-title" style="color: #000;">Edit Liability</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" style="background-color: white;">
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Liability Category <span class="text-danger">*</span></label>
+                                    <select name="liability_id" class="form-select" id="edit_liability_category" required>
+                                        <option value="">Select Category</option>
+                                        <option value="1">Personal</option>
+                                        <option value="5">Business</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3" id="edit_business_select_wrapper" style="display: none;">
+                                    <label class="form-label" style="color: #000;">Select Business <span class="text-danger">*</span></label>
+                                    <select name="business_id" class="form-select" id="edit_business_id_select">
+                                        <option value="">Select Business</option>
+                                        @foreach($member->businesses as $business)
+                                            <option value="{{ $business->id }}">{{ $business->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Liability Type <span class="text-danger">*</span></label>
+                                    <select name="liability_type" id="edit_liability_type" class="form-select" required>
+                                        @foreach($liabilityTypes as $type)
+                                            <option value="{{ $type->id }}">{{ $type->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Value <span class="text-danger">*</span></label>
+                                    <input type="number" name="value" id="edit_liability_value" class="form-control" placeholder="Liability Value" min="0" required>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-warning"><i class="mdi mdi-check"></i> Update Liability</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Document Modal -->
+            <div class="modal fade" id="uploadDocumentModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <form action="{{ route('admin.members.documents.store', $member) }}" method="POST" enctype="multipart/form-data">
+                            @csrf
+                            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                                <h5 class="modal-title" style="color: #000;">Upload Document</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" style="background-color: white;">
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Document Type <span class="text-danger">*</span></label>
+                                    <select name="document_type" class="form-select" required>
+                                        <option value="">Select Document Type</option>
+                                        <option value="id_card">ID Card / NIN</option>
+                                        <option value="passport">Passport</option>
+                                        <option value="bank_statement">Bank Statement</option>
+                                        <option value="payslip">Payslip</option>
+                                        <option value="utility_bill">Utility Bill</option>
+                                        <option value="business_license">Business License</option>
+                                        <option value="tax_certificate">Tax Certificate</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Document Name <span class="text-danger">*</span></label>
+                                    <input type="text" name="document_name" class="form-control" placeholder="e.g., National ID Front" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Description (Optional)</label>
+                                    <textarea name="description" class="form-control" rows="2" placeholder="Add any notes about this document"></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">File <span class="text-danger">*</span></label>
+                                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required>
+                                    <small class="text-muted">Max 10MB. Allowed: PDF, JPG, PNG, DOC, DOCX</small>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="mdi mdi-upload"></i> Upload
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View Document Modal -->
+            <div class="modal fade" id="viewDocumentModal" tabindex="-1">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                            <h5 class="modal-title" style="color: #000;" id="viewDocumentTitle">View Document</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" style="background-color: white; min-height: 500px;">
+                            <div id="documentViewerContent" class="text-center">
+                                <!-- Document content will be loaded here -->
+                            </div>
+                        </div>
+                        <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OLD CONTENT MOVED TO TABS - System Information kept below -->
+            <div class="card mb-4 mt-4">
                 <div class="card-header">
                     <h5 class="mb-0"><i class="mdi mdi-cog text-info"></i> System Information</h5>
                 </div>
@@ -244,54 +856,6 @@
                 </div>
             </div>
 
-            <!-- Documents -->
-            @if($member->pp_file || $member->id_file)
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="mdi mdi-file-document text-secondary"></i> Documents</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            @if($member->pp_file)
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">Profile Photo</h6>
-                                        </div>
-                                        <div class="card-body text-center">
-                                            <img src="{{ Storage::url($member->pp_file) }}" 
-                                                 class="img-fluid rounded" style="max-height: 200px;" alt="Profile Photo">
-                                            <br>
-                                            <a href="{{ Storage::url($member->pp_file) }}" target="_blank" class="btn btn-sm btn-primary mt-2">
-                                                <i class="mdi mdi-download"></i> Download
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endif
-                            
-                            @if($member->id_file)
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">ID Document</h6>
-                                        </div>
-                                        <div class="card-body text-center">
-                                            <img src="{{ Storage::url($member->id_file) }}" 
-                                                 class="img-fluid rounded" style="max-height: 200px;" alt="ID Document">
-                                            <br>
-                                            <a href="{{ Storage::url($member->id_file) }}" target="_blank" class="btn btn-sm btn-primary mt-2">
-                                                <i class="mdi mdi-download"></i> Download
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            @endif
-
             <!-- Loans Information -->
             @if($member->loans->count() > 0)
                 <div class="card mb-4">
@@ -301,15 +865,15 @@
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover">
-                                <thead class="table-light">
+                                <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                                     <tr>
-                                        <th>Loan Code</th>
-                                        <th>Product</th>
-                                        <th>Principal</th>
-                                        <th>Interest</th>
-                                        <th>Period</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
+                                        <th style="color: white;">LOAN CODE</th>
+                                        <th style="color: white;">PRODUCT</th>
+                                        <th style="color: white;">PRINCIPAL</th>
+                                        <th style="color: white;">INTEREST</th>
+                                        <th style="color: white;">PERIOD</th>
+                                        <th style="color: white;">STATUS</th>
+                                        <th style="color: white;">ACTIONS</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -319,38 +883,24 @@
                                             <td>{{ $loan->product->name ?? 'N/A' }}</td>
                                             <td>UGX {{ number_format($loan->principal, 2) }}</td>
                                             <td>{{ $loan->interest }}%</td>
-                                            <td>{{ $loan->period }} {{ $loan->period_type }}</td>
+                                            <td>{{ $loan->period }}</td>
                                             <td>
                                                 @php
-                                                    $statusClass = match($loan->status) {
-                                                        0 => 'bg-warning text-dark',
-                                                        1 => 'bg-info',
-                                                        2 => 'bg-success',
-                                                        3 => 'bg-primary',
-                                                        default => 'bg-secondary'
-                                                    };
-                                                    $statusText = match($loan->status) {
-                                                        0 => 'Pending',
-                                                        1 => 'Approved',
-                                                        2 => 'Disbursed',
-                                                        3 => 'Completed',
-                                                        default => 'Unknown'
-                                                    };
+                                                    $actualStatus = $loan->getActualStatus();
+                                                    $badges = [
+                                                        'pending' => '<span class="badge bg-warning">Pending</span>',
+                                                        'approved' => '<span class="badge bg-info">Approved</span>',
+                                                        'running' => '<span class="badge bg-success">Running</span>',
+                                                        'closed' => '<span class="badge bg-secondary">Closed</span>',
+                                                        'rejected' => '<span class="badge bg-danger">Rejected</span>',
+                                                    ];
                                                 @endphp
-                                                <span class="badge {{ $statusClass }}">{{ $statusText }}</span>
+                                                {!! $badges[$actualStatus] ?? '<span class="badge bg-light text-dark">Unknown</span>' !!}
                                             </td>
                                             <td>
-                                                <div class="btn-group" role="group">
-                                                    <a href="{{ route('admin.loans.show', $loan) }}" class="btn btn-sm btn-outline-primary" title="View Details">
-                                                        <i class="mdi mdi-eye"></i> View
-                                                    </a>
-                                                    @if($loan->status == 2 && $loan->outstanding_balance > 0)
-                                                        <a href="{{ route('admin.repayments.create', ['loan_id' => $loan->id]) }}" 
-                                                           class="btn btn-sm btn-outline-success" title="Record Payment">
-                                                            <i class="mdi mdi-cash"></i> Pay
-                                                        </a>
-                                                    @endif
-                                                </div>
+                                                <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" class="btn btn-sm btn-outline-primary" title="View Schedules">
+                                                    <i class="mdi mdi-eye"></i> View
+                                                </a>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -423,7 +973,7 @@
                                             <tr>
                                                 <td>{{ $fee->created_at ? $fee->created_at->format('d M Y') : ($fee->datecreated ? $fee->datecreated->format('d M Y') : 'N/A') }}</td>
                                                 <td>{{ $fee->feeType->name ?? 'N/A' }}</td>
-                                                <td><strong>UGX {{ number_format($fee->amount, 2) }}</strong></td>
+                                                <td><strong>UGX {{ number_format($fee->amount ?? 0, 2) }}</strong></td>
                                                 <td>
                                                     @php
                                                         $paymentMethods = [1 => 'Mobile Money', 2 => 'Cash', 3 => 'Bank'];
@@ -1068,6 +1618,23 @@ function downloadReceipt() {
     newWindow.print();
     newWindow.close();
 }
+
+// Initialize Bootstrap tabs explicitly
+document.addEventListener('DOMContentLoaded', function() {
+    // Get all tab triggers
+    const triggerTabList = [].slice.call(document.querySelectorAll('a[data-bs-toggle="tab"]'));
+    
+    // Initialize each tab
+    triggerTabList.forEach(function (triggerEl) {
+        const tabTrigger = new bootstrap.Tab(triggerEl);
+        
+        // Add click event listener
+        triggerEl.addEventListener('click', function (event) {
+            event.preventDefault();
+            tabTrigger.show();
+        });
+    });
+});
 </script>
 
 <!-- Receipt Modal -->
@@ -1753,6 +2320,154 @@ document.getElementById('addSavingsForm').addEventListener('submit', function(e)
         e.preventDefault();
         alert('Please select a savings product');
         return false;
+    }
+});
+
+// ============================================
+// Assessment Tab Functions - Use Bootstrap Modal Events (DOM Ready)
+// ============================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Business Profile - Populate on modal show
+    const editBusinessModal = document.getElementById('editBusinessModal');
+    if (editBusinessModal) {
+        editBusinessModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const businessData = JSON.parse(button.getAttribute('data-business-data'));
+            
+            document.getElementById('edit_name').value = businessData.name || '';
+            document.getElementById('edit_b_type').value = businessData.b_type || '';
+            document.getElementById('edit_reg_no').value = businessData.reg_no || '';
+            document.getElementById('edit_reg_date').value = businessData.reg_date || '';
+            document.getElementById('edit_tin').value = businessData.tin || '';
+            document.getElementById('edit_pdt_1').value = businessData.pdt_1 || '';
+            document.getElementById('edit_pdt_2').value = businessData.pdt_2 || '';
+            document.getElementById('edit_pdt_3').value = businessData.pdt_3 || '';
+            
+            if (businessData.address) {
+                document.getElementById('edit_street').value = businessData.address.street || '';
+                document.getElementById('edit_plot_no').value = businessData.address.plot_no || '';
+                document.getElementById('edit_house_no').value = businessData.address.house_no || '';
+                document.getElementById('edit_cell').value = businessData.address.cell || '';
+                document.getElementById('edit_ward').value = businessData.address.ward || '';
+                document.getElementById('edit_division').value = businessData.address.division || '';
+                document.getElementById('edit_district').value = businessData.address.district || '';
+                document.getElementById('edit_country').value = businessData.address.country || '';
+                document.getElementById('edit_tel_no').value = businessData.address.tel_no || '';
+                document.getElementById('edit_mobile_no').value = businessData.address.mobile_no || '';
+                document.getElementById('edit_fixed_line').value = businessData.address.fixed_line || '';
+                document.getElementById('edit_email').value = businessData.address.email || '';
+            }
+            
+            document.getElementById('editBusinessForm').action = `/admin/members/{{ $member->id }}/businesses/${businessData.id}`;
+        });
+    }
+
+    // Asset - Populate on modal show
+    const editAssetModal = document.getElementById('editAssetModal');
+    if (editAssetModal) {
+        editAssetModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const id = button.getAttribute('data-asset-id');
+            const assetType = button.getAttribute('data-asset-type');
+            const businessId = button.getAttribute('data-business-id');
+            const quantity = button.getAttribute('data-quantity');
+            const value = button.getAttribute('data-value');
+            
+            document.getElementById('editAssetForm').action = '{{ route("admin.members.assets.update", [$member, ":id"]) }}'.replace(':id', id);
+            document.getElementById('edit_asset_type').value = assetType;
+            document.getElementById('edit_business_id').value = businessId || '';
+            document.getElementById('edit_quantity').value = quantity;
+            document.getElementById('edit_value').value = value;
+        });
+    }
+
+    // Liability - Populate on modal show
+    const editLiabilityModal = document.getElementById('editLiabilityModal');
+    if (editLiabilityModal) {
+        editLiabilityModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const id = button.getAttribute('data-liability-id');
+            const liabilityType = button.getAttribute('data-liability-type');
+            const businessId = button.getAttribute('data-business-id');
+            const value = button.getAttribute('data-value');
+            
+            document.getElementById('editLiabilityForm').action = '{{ route("admin.members.liabilities.update", [$member, ":id"]) }}'.replace(':id', id);
+            document.getElementById('edit_liability_type').value = liabilityType;
+            document.getElementById('edit_liability_business_id').value = businessId || '';
+            document.getElementById('edit_liability_value').value = value;
+        });
+    }
+
+    // Document View - Populate on modal show
+    const viewDocumentModal = document.getElementById('viewDocumentModal');
+    if (viewDocumentModal) {
+        viewDocumentModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const fileUrl = button.getAttribute('data-file-url');
+            const fileType = button.getAttribute('data-file-type');
+            const documentName = button.getAttribute('data-document-name');
+            
+            document.getElementById('viewDocumentTitle').textContent = documentName;
+            const viewer = document.getElementById('documentViewerContent');
+            
+            viewer.innerHTML = '';
+            
+            if (fileType.includes('image') || fileUrl.match(/\.(jpg|jpeg|png|gif)$/i)) {
+                viewer.innerHTML = `<img src="${fileUrl}" class="img-fluid" alt="${documentName}" style="max-height: 70vh;">`;
+            } else if (fileType.includes('pdf') || fileUrl.match(/\.pdf$/i)) {
+                viewer.innerHTML = `<iframe src="${fileUrl}" style="width: 100%; height: 70vh; border: none;"></iframe>`;
+            } else {
+                viewer.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i>
+                        <p>This file type cannot be previewed in the browser.</p>
+                        <a href="${fileUrl}" class="btn btn-primary" download>
+                            <i class="mdi mdi-download"></i> Download to View
+                        </a>
+                    </div>
+                `;
+            }
+        });
+    }
+});
+
+// Liability Category Toggle - Show/Hide Business Dropdown
+document.addEventListener('DOMContentLoaded', function() {
+    // Add Liability Modal
+    const liabilityCategory = document.getElementById('liability_category');
+    const businessSelectWrapper = document.getElementById('business_select_wrapper');
+    const businessIdSelect = document.getElementById('business_id_select');
+    
+    if (liabilityCategory) {
+        liabilityCategory.addEventListener('change', function() {
+            if (this.value === '5') { // Business
+                businessSelectWrapper.style.display = 'block';
+                businessIdSelect.required = true;
+            } else { // Personal
+                businessSelectWrapper.style.display = 'none';
+                businessIdSelect.required = false;
+                businessIdSelect.value = '';
+            }
+        });
+    }
+    
+    // Edit Liability Modal
+    const editLiabilityCategory = document.getElementById('edit_liability_category');
+    const editBusinessSelectWrapper = document.getElementById('edit_business_select_wrapper');
+    const editBusinessIdSelect = document.getElementById('edit_business_id_select');
+    
+    if (editLiabilityCategory) {
+        editLiabilityCategory.addEventListener('change', function() {
+            if (this.value === '5') { // Business
+                editBusinessSelectWrapper.style.display = 'block';
+                editBusinessIdSelect.required = true;
+            } else { // Personal
+                editBusinessSelectWrapper.style.display = 'none';
+                editBusinessIdSelect.required = false;
+                editBusinessIdSelect.value = '';
+            }
+        });
     }
 });
 </script>

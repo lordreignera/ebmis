@@ -2396,4 +2396,55 @@ class LoanController extends Controller
             return redirect()->back()->with('error', 'Failed to export loans: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Print loan payment statement
+     */
+    public function printStatement($id)
+    {
+        $loan = PersonalLoan::with(['member', 'product', 'branch'])
+            ->findOrFail($id);
+        
+        $schedules = LoanSchedule::where('loan_id', $id)
+            ->orderBy('installment')
+            ->get();
+        
+        $repayments = Repayment::where('loan_id', $id)
+            ->orderBy('created_at')
+            ->get();
+        
+        return view('admin.loans.print.statement', compact('loan', 'schedules', 'repayments'));
+    }
+
+    /**
+     * Print loan repayment schedule
+     */
+    public function printSchedule($id)
+    {
+        $loan = PersonalLoan::with(['member', 'product', 'branch'])
+            ->findOrFail($id);
+        
+        $schedules = LoanSchedule::where('loan_id', $id)
+            ->orderBy('installment')
+            ->get();
+        
+        return view('admin.loans.print.schedule', compact('loan', 'schedules'));
+    }
+
+    /**
+     * Print overdue notice
+     */
+    public function printNotice($id)
+    {
+        $loan = PersonalLoan::with(['member', 'product', 'branch'])
+            ->findOrFail($id);
+        
+        $schedules = LoanSchedule::where('loan_id', $id)
+            ->where('status', 0)
+            ->where('installment_date', '<', now())
+            ->orderBy('installment')
+            ->get();
+        
+        return view('admin.loans.print.notice', compact('loan', 'schedules'));
+    }
 }

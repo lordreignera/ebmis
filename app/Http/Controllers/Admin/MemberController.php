@@ -208,13 +208,22 @@ class MemberController extends Controller
             'branch', 
             'group', 
             'addedBy',
+            'personalLoans.product',
+            'personalLoans.schedules',
             'loans.product',
+            'loans.schedules',
             'savings.product',
             'guarantees.loan',
             'fees.feeType',
             'fees' => function($query) {
                 $query->orderBy('datecreated', 'desc');
-            }
+            },
+            'businesses.businessType',
+            'businesses.address',
+            'assets.assetType',
+            'liabilities.liabilityType',
+            'documents.uploadedBy',
+            'attachmentLibrary'
         ]);
 
         // Get fee types for the add fee form
@@ -227,7 +236,19 @@ class MemberController extends Controller
             ->take(10)
             ->get();
 
-        return view('admin.members.show', compact('member', 'feeTypes', 'recentPayments'));
+        // Get types for dropdowns in assessment forms
+        $businessTypes = \App\Models\BusinessType::all();
+        $assetTypes = \App\Models\AssetType::all();
+        $liabilityTypes = \App\Models\LiabilityType::all();
+
+        return view('admin.members.show', compact(
+            'member', 
+            'feeTypes', 
+            'recentPayments',
+            'businessTypes',
+            'assetTypes',
+            'liabilityTypes'
+        ));
     }
 
     /**

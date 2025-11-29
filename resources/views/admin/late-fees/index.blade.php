@@ -294,6 +294,7 @@
 </div>
 @endsection
 
+
 @push('styles')
 <style>
     .border-left-primary {
@@ -310,4 +311,3 @@
     }
 </style>
 @endpush
-@endsection

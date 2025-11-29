@@ -34,9 +34,20 @@ class Fee extends Model
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
         'datecreated' => 'datetime',
     ];
+
+    /**
+     * Get the amount attribute with proper type handling
+     */
+    public function getAmountAttribute($value)
+    {
+        // Handle empty strings and null values
+        if (empty($value) && $value !== '0') {
+            return 0;
+        }
+        return (float) $value;
+    }
 
     /**
      * Get the member that owns the fee

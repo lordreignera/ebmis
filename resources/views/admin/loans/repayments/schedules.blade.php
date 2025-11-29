@@ -174,12 +174,12 @@
                         
                         <div class="col-md-3">
                             <div class="dropdown w-100">
-                                <button class="btn btn-light dropdown-toggle w-100" type="button" data-bs-toggle="dropdown">
+                                <button class="btn btn-light dropdown-toggle w-100" type="button" id="printReportsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                                     <i class="mdi mdi-printer me-1"></i>
                                     Print Reports
                                     <br><small>Statements & notices</small>
                                 </button>
-                                <ul class="dropdown-menu">
+                                <ul class="dropdown-menu" aria-labelledby="printReportsDropdown">
                                     <li><a class="dropdown-item" href="{{ route('admin.loans.statements.print', $loan->id) }}" target="_blank">
                                         <i class="mdi mdi-file-document-outline me-2"></i>Payment Statement
                                     </a></li>
@@ -512,13 +512,13 @@
 <!-- Partial Payment Modal -->
 <div class="modal fade" id="partialPaymentModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-white">
                 <h5 class="modal-title">Partial Payment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="partialPaymentForm">
-                <div class="modal-body">
+                <div class="modal-body bg-white">
                     <div class="alert alert-info">
                         <small>Partial payments will be applied to the oldest outstanding installment first.</small>
                     </div>
@@ -544,7 +544,7 @@
                         <textarea class="form-control" name="notes" rows="2"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer bg-white">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Process Partial Payment</button>
                 </div>
@@ -1414,6 +1414,17 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
 function printSchedules() {
     window.print();
 }
+
+// Initialize Bootstrap dropdowns
+$(document).ready(function() {
+    // Ensure Bootstrap dropdowns are initialized
+    var dropdownElementList = [].slice.call(document.querySelectorAll('[data-bs-toggle="dropdown"]'));
+    if (typeof bootstrap !== 'undefined') {
+        var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }
+});
 </script>
 
 <style type="text/css" media="print">

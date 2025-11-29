@@ -89,6 +89,32 @@ Route::middleware([
     Route::get('/members/{member}/details', [\App\Http\Controllers\Admin\MemberController::class, 'getMemberDetails'])->name('members.details');
     Route::post('/members/check-duplicate', [\App\Http\Controllers\Admin\MemberController::class, 'checkDuplicate'])->name('members.check-duplicate');
     
+    // Member Loan Assessment Routes (Business, Assets, Liabilities, Documents)
+    Route::prefix('members/{member}')->name('members.')->group(function () {
+        // Business routes
+        Route::get('/businesses', [\App\Http\Controllers\Admin\MemberBusinessController::class, 'index'])->name('businesses.index');
+        Route::get('/businesses/create', [\App\Http\Controllers\Admin\MemberBusinessController::class, 'create'])->name('businesses.create');
+        Route::post('/businesses', [\App\Http\Controllers\Admin\MemberBusinessController::class, 'store'])->name('businesses.store');
+        Route::get('/businesses/{business}/edit', [\App\Http\Controllers\Admin\MemberBusinessController::class, 'edit'])->name('businesses.edit');
+        Route::put('/businesses/{business}', [\App\Http\Controllers\Admin\MemberBusinessController::class, 'update'])->name('businesses.update');
+        Route::delete('/businesses/{business}', [\App\Http\Controllers\Admin\MemberBusinessController::class, 'destroy'])->name('businesses.destroy');
+        
+        // Assets routes
+        Route::post('/assets', [\App\Http\Controllers\Admin\MemberAssetController::class, 'store'])->name('assets.store');
+        Route::put('/assets/{asset}', [\App\Http\Controllers\Admin\MemberAssetController::class, 'update'])->name('assets.update');
+        Route::delete('/assets/{asset}', [\App\Http\Controllers\Admin\MemberAssetController::class, 'destroy'])->name('assets.destroy');
+        
+        // Liabilities routes
+        Route::post('/liabilities', [\App\Http\Controllers\Admin\MemberLiabilityController::class, 'store'])->name('liabilities.store');
+        Route::put('/liabilities/{liability}', [\App\Http\Controllers\Admin\MemberLiabilityController::class, 'update'])->name('liabilities.update');
+        Route::delete('/liabilities/{liability}', [\App\Http\Controllers\Admin\MemberLiabilityController::class, 'destroy'])->name('liabilities.destroy');
+        
+        // Documents routes
+        Route::post('/documents', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'store'])->name('documents.store');
+        Route::get('/documents/{document}/download', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'download'])->name('documents.download');
+        Route::delete('/documents/{document}', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'destroy'])->name('documents.destroy');
+    });
+    
     // Tables Demo Route
     Route::get('/tables-demo', function () {
         return view('admin.tables-demo');

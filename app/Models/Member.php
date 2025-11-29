@@ -145,6 +145,73 @@ class Member extends Model
     }
 
     /**
+     * Get all businesses for this member
+     */
+    public function businesses()
+    {
+        return $this->hasMany(Business::class);
+    }
+
+    /**
+     * Get all assets for this member
+     */
+    public function assets()
+    {
+        return $this->hasMany(Asset::class);
+    }
+
+    /**
+     * Get all liabilities for this member
+     */
+    public function liabilities()
+    {
+        return $this->hasMany(Liability::class);
+    }
+
+    /**
+     * Get all documents for this member
+     */
+    public function documents()
+    {
+        return $this->hasMany(MemberDocument::class);
+    }
+
+    /**
+     * Get attachment library (migrated from old system)
+     * Identified by document_type = 'other' which was set by migration script
+     */
+    public function attachmentLibrary()
+    {
+        return $this->hasMany(MemberDocument::class)
+            ->where('document_type', 'other')
+            ->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Get total assets value
+     */
+    public function getTotalAssetsAttribute()
+    {
+        return (int) $this->assets()->sum(\DB::raw('quantity * value'));
+    }
+
+    /**
+     * Get total liabilities value
+     */
+    public function getTotalLiabilitiesAttribute()
+    {
+        return (int) $this->liabilities()->sum('value');
+    }
+
+    /**
+     * Get net worth (assets - liabilities)
+     */
+    public function getNetWorthAttribute()
+    {
+        return (int) ($this->total_assets - $this->total_liabilities);
+    }
+
+    /**
      * Get all guarantees provided by this member
      */
     public function guarantees()
