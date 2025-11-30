@@ -471,6 +471,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Pending Approvals</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=personal">Rejected Personal Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayments</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.late-fees.index') }}">Late Fees</a></li>
           
@@ -480,6 +481,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=group">Pending Approvals</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=group">Active Group Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=group">Rejected Group Loans</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayments</a></li>
           
           <!-- Loan Portfolio Reports -->

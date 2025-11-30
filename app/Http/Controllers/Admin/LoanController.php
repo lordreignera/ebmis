@@ -2447,4 +2447,161 @@ class LoanController extends Controller
         
         return view('admin.loans.print.notice', compact('loan', 'schedules'));
     }
+
+    /**
+     * Display rejected loans
+     */
+    public function rejectedLoans(Request $request)
+    {
+        $type = $request->get('type', 'personal');
+        
+        if ($type === 'personal') {
+            $query = PersonalLoan::with(['member', 'product', 'branch', 'rejectedBy'])
+                ->where('status', 4); // Rejected status
+        } else {
+            $query = GroupLoan::with(['group', 'product', 'branch', 'rejectedBy'])
+                ->where('status', 4);
+        }
+
+        // Apply filters
+        if ($request->filled('search')) {
+            $search = $request->search;
+            if ($type === 'personal') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('code', 'LIKE', "%{$search}%")
+                      ->orWhereHas('member', function ($q2) use ($search) {
+                          $q2->where('fname', 'LIKE', "%{$search}%")
+                             ->orWhere('lname', 'LIKE', "%{$search}%");
+                      });
+                });
+            } else {
+                $query->where(function ($q) use ($search) {
+                    $q->where('code', 'LIKE', "%{$search}%")
+                      ->orWhereHas('group', function ($q2) use ($search) {
+                          $q2->where('name', 'LIKE', "%{$search}%");
+                      });
+                });
+            }
+        }
+
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+
+        if ($request->filled('start_date')) {
+            $query->whereDate('date_rejected', '>=', $request->start_date);
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('date_rejected', '<=', $request->end_date);
+        }
+
+        $loans = $query->orderBy('date_rejected', 'desc')->paginate(20);
+        
+        $branches = \App\Models\Branch::all();
+        
+        // Statistics
+        $stats = [
+            'total_rejected' => $query->count(),
+            'rejected_this_month' => $query->whereMonth('date_rejected', now()->month)
+                                          ->whereYear('date_rejected', now()->year)
+                                          ->count(),
+        ];
+
+        return view('admin.loans.rejected', compact('loans', 'branches', 'stats', 'type'));
+    }
+
+    /**
+     * Export rejected loans
+     */
+    public function exportRejectedLoans(Request $request)
+    {
+        $type = $request->get('type', 'personal');
+        
+        if ($type === 'personal') {
+            $query = PersonalLoan::with(['member', 'product', 'branch', 'rejectedBy'])
+                ->where('status', 4);
+        } else {
+            $query = GroupLoan::with(['group', 'product', 'branch', 'rejectedBy'])
+                ->where('status', 4);
+        }
+
+        // Apply same filters as index
+        if ($request->filled('search')) {
+            $search = $request->search;
+            if ($type === 'personal') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('code', 'LIKE', "%{$search}%")
+                      ->orWhereHas('member', function ($q2) use ($search) {
+                          $q2->where('fname', 'LIKE', "%{$search}%")
+                             ->orWhere('lname', 'LIKE', "%{$search}%");
+                      });
+                });
+            } else {
+                $query->where(function ($q) use ($search) {
+                    $q->where('code', 'LIKE', "%{$search}%")
+                      ->orWhereHas('group', function ($q2) use ($search) {
+                          $q2->where('name', 'LIKE', "%{$search}%");
+                      });
+                });
+            }
+        }
+
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+
+        if ($request->filled('start_date')) {
+            $query->whereDate('date_rejected', '>=', $request->start_date);
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('date_rejected', '<=', $request->end_date);
+        }
+
+        $loans = $query->orderBy('date_rejected', 'desc')->get();
+
+        $filename = 'rejected_' . $type . '_loans_' . date('Y-m-d') . '.csv';
+        
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function() use ($loans, $type) {
+            $file = fopen('php://output', 'w');
+            
+            // Header
+            if ($type === 'personal') {
+                fputcsv($file, ['Loan Code', 'Member', 'Branch', 'Amount', 'Interest', 'Period', 'Date Applied', 'Date Rejected', 'Rejected By', 'Rejection Reason']);
+            } else {
+                fputcsv($file, ['Loan Code', 'Group', 'Branch', 'Amount', 'Interest', 'Period', 'Date Applied', 'Date Rejected', 'Rejected By', 'Rejection Reason']);
+            }
+
+            foreach ($loans as $loan) {
+                if ($type === 'personal') {
+                    $memberName = $loan->member ? $loan->member->fname . ' ' . $loan->member->lname : 'N/A';
+                } else {
+                    $memberName = $loan->group ? $loan->group->name : 'N/A';
+                }
+
+                fputcsv($file, [
+                    $loan->code,
+                    $memberName,
+                    $loan->branch ? $loan->branch->name : 'N/A',
+                    number_format($loan->principal, 2),
+                    $loan->interest . '%',
+                    $loan->period,
+                    $loan->datecreated ? date('Y-m-d', strtotime($loan->datecreated)) : 'N/A',
+                    $loan->date_rejected ? date('Y-m-d', strtotime($loan->date_rejected)) : 'N/A',
+                    $loan->rejectedBy ? $loan->rejectedBy->name : 'System',
+                    $loan->comments ?? $loan->Rcomments ?? 'No reason provided'
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
 }

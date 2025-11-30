@@ -142,6 +142,8 @@ Route::middleware([
     Route::get('/loans/export', [\App\Http\Controllers\Admin\LoanController::class, 'export'])->name('loans.export');
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
+    Route::get('/loans/rejected', [\App\Http\Controllers\Admin\LoanController::class, 'rejectedLoans'])->name('loans.rejected');
+    Route::get('/loans/rejected/export', [\App\Http\Controllers\Admin\LoanController::class, 'exportRejectedLoans'])->name('loans.rejected.export');
     
     // Loan Create Route (Must be BEFORE {id} routes)
     Route::get('/loans/create', [\App\Http\Controllers\Admin\LoanController::class, 'create'])->name('loans.create');

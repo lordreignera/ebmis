@@ -216,13 +216,13 @@ class ReportsController extends Controller
      */
     public function rejectedLoans(Request $request)
     {
-        // Get rejected personal loans
+        // Get rejected personal loans (use status=4 for new system standard)
         $personalQuery = PersonalLoan::with(['member', 'branch'])
-            ->where('verified', 2); // Rejected status
+            ->where('status', 4); // Rejected status (new system standard)
 
         // Get rejected group loans  
         $groupQuery = GroupLoan::with(['group', 'branch'])
-            ->where('verified', 2); // Rejected status
+            ->where('status', 4); // Rejected status (new system standard)
 
         // Apply date filters
         if ($request->has('start_date') && !empty($request->start_date)) {
