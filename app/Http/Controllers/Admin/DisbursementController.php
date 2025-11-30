@@ -1142,10 +1142,10 @@ class DisbursementController extends Controller
             // Update disbursement status to disbursed
             $disbursement->update(['status' => 2]);
 
-            // Get the actual loan model based on loan_type
+            // Get the actual loan model based on loan_type (with product relationship for period_type)
             $loan = $disbursement->loan_type == 1 
-                ? PersonalLoan::find($disbursement->loan_id)
-                : GroupLoan::find($disbursement->loan_id);
+                ? PersonalLoan::with('product')->find($disbursement->loan_id)
+                : GroupLoan::with('product')->find($disbursement->loan_id);
 
             if (!$loan) {
                 throw new \Exception('Loan not found for disbursement ' . $disbursement->id);
@@ -1203,9 +1203,9 @@ class DisbursementController extends Controller
         $principal = floatval($loan->principal);
         $interestRate = floatval($loan->interest) / 100; // Convert to decimal (e.g., 0.7% = 0.007)
         $period = intval($loan->period);
-        $periodType = $loan->period_type ?? 3; // 1=Weekly, 2=Monthly, 3=Daily
+        $periodType = $loan->product->period_type ?? 3; // 1=Weekly, 2=Monthly, 3=Daily
         
-        $disbursementDate = \Carbon\Carbon::parse($disbursement->disbursement_date);
+        $disbursementDate = \Carbon\Carbon::parse($disbursement->created_at ?? $loan->date_approved ?? now());
         
         // Calculate principal per installment
         $principalPerInstallment = $principal / $period;
@@ -1218,52 +1218,88 @@ class DisbursementController extends Controller
         // Calculate half-term (first half of loan)
         $halfTerm = floor($period / 2);
         
-        // Calculate total interest based on loan type
-        if ($periodType == 2) {
-            // MONTHLY loans: Interest rate is DOUBLED
-            $totalInterest = $principal * ($interestRate * 2);
-        } else {
-            // WEEKLY and DAILY loans: Interest rate as-is
-            $totalInterest = $principal * $interestRate;
+        // Edge case: If halfTerm=0 (1 period loan), set to 1
+        if ($halfTerm == 0) {
+            $halfTerm = 1;
         }
         
-        // Distribute interest equally over FIRST HALF of term
-        // Edge case: If halfTerm=0 (1 period loan), all interest in first payment
-        if ($halfTerm == 0) {
-            $interestPerPeriodFirstHalf = $totalInterest;
-            $halfTerm = 1; // Set to 1 so first payment gets all interest
-        } else {
-            $interestPerPeriodFirstHalf = $totalInterest / $halfTerm;
-        }
+        // WEEKLY and DAILY loans use REDUCING BALANCE
+        // MONTHLY loans use FLAT RATE
+        $useReducingBalance = in_array($periodType, [1, 3]); // 1=Weekly, 3=Daily
         
         // Generate installment schedule
         $balance = $principal;
+        $installments = [];
         
-        for ($i = 1; $i <= $period; $i++) {
-            $principalAmount = $principalPerInstallment;
+        if ($useReducingBalance) {
+            // REDUCING BALANCE METHOD (for Weekly/Daily loans)
+            // Interest rate is DOUBLED and calculated on reducing global principal
+            $globalPrincipal = $principal;
+            $effectiveRate = $interestRate * 2;
+            $globalPrincipalReduction = $principal / $halfTerm;
             
-            // Interest only in FIRST HALF of loan term
-            if ($i <= $halfTerm) {
-                $interestAmount = $interestPerPeriodFirstHalf;
-            } else {
-                $interestAmount = 0; // SECOND HALF: No interest
+            for ($i = 1; $i <= $period; $i++) {
+                $principalAmount = $principalPerInstallment;
+                
+                // Interest only in FIRST HALF of loan term
+                if ($i <= $halfTerm) {
+                    // Interest = Current Global Principal * Effective Rate
+                    $interestAmount = $globalPrincipal * $effectiveRate;
+                    
+                    // Reduce global principal for NEXT iteration
+                    $globalPrincipal -= $globalPrincipalReduction;
+                } else {
+                    $interestAmount = 0; // SECOND HALF: No interest
+                }
+                
+                $installmentPayment = $principalAmount + $interestAmount;
+                
+                // Update balance
+                $balance -= $principalAmount;
+                if ($balance < 0) {
+                    $principalAmount += $balance;
+                    $balance = 0;
+                }
+                
+                $installments[] = [
+                    'principal' => $principalAmount,
+                    'interest' => $interestAmount,
+                    'payment' => $installmentPayment,
+                    'balance' => $balance
+                ];
             }
+        } else {
+            // FLAT RATE METHOD (for Monthly loans)
+            // Interest rate is DOUBLED and distributed equally over first half
+            $totalInterest = $principal * ($interestRate * 2);
+            $interestPerPeriodFirstHalf = $totalInterest / $halfTerm;
             
-            $installmentPayment = $principalAmount + $interestAmount;
-            
-            // Update balance
-            $balance -= $principalAmount;
-            if ($balance < 0) {
-                $principalAmount += $balance;
-                $balance = 0;
+            for ($i = 1; $i <= $period; $i++) {
+                $principalAmount = $principalPerInstallment;
+                
+                // Interest only in FIRST HALF of loan term
+                if ($i <= $halfTerm) {
+                    $interestAmount = $interestPerPeriodFirstHalf;
+                } else {
+                    $interestAmount = 0; // SECOND HALF: No interest
+                }
+                
+                $installmentPayment = $principalAmount + $interestAmount;
+                
+                // Update balance
+                $balance -= $principalAmount;
+                if ($balance < 0) {
+                    $principalAmount += $balance;
+                    $balance = 0;
+                }
+                
+                $installments[] = [
+                    'principal' => $principalAmount,
+                    'interest' => $interestAmount,
+                    'payment' => $installmentPayment,
+                    'balance' => $balance
+                ];
             }
-            
-            $installments[] = [
-                'principal' => $principalAmount,
-                'interest' => $interestAmount,
-                'payment' => $installmentPayment,
-                'balance' => $balance
-            ];
         }
         
         // Insert all schedules into database
@@ -1305,11 +1341,12 @@ class DisbursementController extends Controller
                                 ->get();
 
         $startDate = \Carbon\Carbon::parse($disbursementDate);
+        $periodType = $loan->product->period_type ?? 3;
         
         foreach ($schedules as $index => $schedule) {
-            $newPaymentDate = $this->calculatePaymentDate($startDate, $index + 1, $loan->period_type);
+            $newPaymentDate = $this->calculatePaymentDate($startDate, $index + 1, $periodType);
             
-            $schedule->update(['payment_date' => $newPaymentDate]);
+            $schedule->update(['payment_date' => $newPaymentDate->format('d-m-Y')]);
         }
     }
 
@@ -1320,11 +1357,38 @@ class DisbursementController extends Controller
     {
         switch ($periodType) {
             case 1: // Weekly - every Friday
-                $nextFriday = $startDate->copy()->next(\Carbon\Carbon::FRIDAY);
-                return $nextFriday->addWeeks($periodNumber - 1);
+                // Get the first Friday after disbursement
+                $firstFriday = $startDate->copy();
+                if (!$firstFriday->isFriday()) {
+                    $firstFriday->next(\Carbon\Carbon::FRIDAY);
+                } else {
+                    // If disbursement is on Friday, first payment is next Friday
+                    $firstFriday->addWeek();
+                }
+                // Add weeks for subsequent payments (period 1 = 0 weeks, period 2 = 1 week, etc.)
+                return $firstFriday->addWeeks($periodNumber - 1);
                 
-            case 2: // Monthly
-                return $startDate->copy()->addMonths($periodNumber);
+            case 2: // Monthly - 25th of each month
+                $paymentDate = $startDate->copy();
+                
+                // For first payment, get 25th of current or next month
+                if ($periodNumber == 1) {
+                    if ($paymentDate->day < 25) {
+                        $paymentDate->day(25);
+                    } else {
+                        $paymentDate->addMonth()->day(25);
+                    }
+                } else {
+                    // For subsequent payments, add months from first payment
+                    if ($paymentDate->day < 25) {
+                        $paymentDate->day(25);
+                    } else {
+                        $paymentDate->addMonth()->day(25);
+                    }
+                    $paymentDate->addMonths($periodNumber - 1);
+                }
+                
+                return $paymentDate;
                 
             case 3: // Daily - each day after disbursement, skip Sundays
                 $date = $startDate->copy();

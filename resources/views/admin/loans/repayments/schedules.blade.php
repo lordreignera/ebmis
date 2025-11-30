@@ -470,9 +470,13 @@
                         <label class="form-label text-dark">Payment Type</label>
                         <select class="form-select bg-white" id="payment_type" name="type" required onchange="toggleMedium()">
                             <option value="">Select Payment Type</option>
-                            <option value="3">Direct Bank Transfer</option>
-                            <option value="2">Mobile Money</option>
-                            <option value="1">Cash</option>
+                            @if(auth()->user()->hasRole(['superadmin', 'administrator']))
+                                <option value="3">Direct Bank Transfer</option>
+                                <option value="2">Mobile Money</option>
+                                <option value="1">Cash</option>
+                            @else
+                                <option value="2">Mobile Money</option>
+                            @endif
                         </select>
                     </div>
                     
@@ -1412,7 +1416,36 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
 
 // Print function
 function printSchedules() {
+    // Add print timestamp
+    const printDate = new Date().toLocaleString('en-UG', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    // Create a temporary element to show print date
+    const printInfo = document.createElement('div');
+    printInfo.id = 'print-info';
+    printInfo.style.display = 'none';
+    printInfo.innerHTML = `
+        <div style="text-align: center; margin-bottom: 3mm; padding: 2mm; border-bottom: 2px solid #333;">
+            <h2 style="margin: 0 0 1mm 0; font-size: 14pt; font-weight: bold;">Emuria Business Investment and Management Software (E-BIMS) Ltd</h2>
+            <p style="margin: 0 0 1mm 0; font-size: 8pt;">Plot 79, City Centre Complex, Room B27, 1st Floor, Luwum Street, Kampala, Uganda</p>
+            <h3 style="margin: 1mm 0; font-size: 12pt; font-weight: bold;">LOAN REPAYMENT SCHEDULE</h3>
+            <p style="margin: 0; font-size: 7pt; color: #666;">Printed on: ${printDate}</p>
+        </div>
+    `;
+    document.body.insertBefore(printInfo, document.body.firstChild);
+    
+    // Trigger print
     window.print();
+    
+    // Remove the temporary element after printing
+    setTimeout(() => {
+        document.body.removeChild(printInfo);
+    }, 100);
 }
 
 // Initialize Bootstrap dropdowns
@@ -1434,7 +1467,9 @@ $(document).ready(function() {
             visibility: hidden !important;
         }
         
-        /* Make only printable sections and their children visible */
+        /* Make printable sections visible */
+        #print-info,
+        #print-info *,
         #loan-summary-section,
         #loan-summary-section *,
         #repayment-schedules-section,
@@ -1442,84 +1477,143 @@ $(document).ready(function() {
             visibility: visible !important;
         }
         
-        /* Position printable sections at top */
-        #loan-summary-section,
-        #repayment-schedules-section {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+        /* Show the print info header */
+        #print-info {
+            display: block !important;
+            position: relative !important;
             width: 100% !important;
+            page-break-after: avoid !important;
+            margin-bottom: 5mm;
+        }
+        
+        /* Position printable sections */
+        #loan-summary-section {
+            position: relative !important;
+            width: 100% !important;
+            margin-bottom: 5mm;
+            page-break-after: avoid !important;
         }
         
         #repayment-schedules-section {
-            top: 300mm !important; /* Adjust based on loan summary height */
+            position: relative !important;
+            width: 100% !important;
+            page-break-before: auto !important;
         }
         
-        /* Hide buttons within printable sections */
+        /* Hide buttons, badges, and interactive elements */
         .btn,
-        button {
+        button,
+        .btn-group,
+        input[type="radio"],
+        .page-title-right,
+        .breadcrumb {
             display: none !important;
             visibility: hidden !important;
         }
         
-        /* Reset body and containers */
-        body {
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        
         /* Page setup */
         @page {
-            size: A4;
-            margin: 15mm;
+            size: A4 landscape;
+            margin: 10mm 12mm;
         }
         
-        body {
-            font-size: 11pt;
-            line-height: 1.4;
+        html, body {
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 10pt;
+            line-height: 1.2;
             color: #000;
             background: white;
         }
         
-        /* Header styling */
-        .page-title {
-            font-size: 18pt;
-            font-weight: bold;
-            margin-bottom: 10mm;
-            text-align: center;
-            border-bottom: 2px solid #333;
-            padding-bottom: 5mm;
+        .container-fluid {
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        
+        .row {
+            margin: 0 !important;
+        }
+        
+        .col, .col-12, .col-md-3, .col-auto {
+            padding: 0 !important;
         }
         
         /* Card styling */
         .card {
-            border: 1px solid #ddd;
+            border: 1px solid #333;
             page-break-inside: avoid;
-            margin-bottom: 5mm;
+            margin-bottom: 3mm;
             box-shadow: none !important;
+            background: white !important;
         }
         
         .card-header {
-            background-color: #f5f5f5 !important;
-            border-bottom: 1px solid #ddd;
-            padding: 3mm;
+            background-color: #e9ecef !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            border-bottom: 2px solid #333;
+            padding: 2mm 3mm;
             font-weight: bold;
+            font-size: 10pt;
         }
         
         .card-body {
-            padding: 3mm;
+            padding: 2mm 3mm;
+        }
+        
+        .card-title {
+            margin: 0 !important;
+            font-size: 10pt !important;
+        }
+        
+        /* Loan summary improvements */
+        #loan-summary-section .row > div {
+            padding: 1mm 2mm !important;
+        }
+        
+        #loan-summary-section h6 {
+            font-size: 9pt !important;
+            margin-bottom: 2mm !important;
+            font-weight: bold;
+        }
+        
+        #loan-summary-section p {
+            font-size: 8pt !important;
+            margin-bottom: 1mm !important;
+            line-height: 1.3;
+        }
+        
+        #loan-summary-section strong {
+            font-weight: 600;
+        }
+        
+        /* Hide page title and breadcrumb */
+        .page-title-box {
+            display: none !important;
         }
         
         /* Table styling */
+        .table-responsive {
+            overflow: visible !important;
+        }
+        
         table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 9pt;
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 6.5pt !important;
             page-break-inside: auto;
+            margin: 0 !important;
         }
         
         thead {
             display: table-header-group;
+        }
+        
+        tbody {
+            display: table-row-group;
         }
         
         tr {
@@ -1528,15 +1622,85 @@ $(document).ready(function() {
         }
         
         th {
-            background-color: #f0f0f0 !important;
-            border: 1px solid #999;
-            padding: 2mm;
+            background-color: #d9d9d9 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            border: 1px solid #333 !important;
+            padding: 1mm !important;
             font-weight: bold;
-            text-align: left;
+            text-align: center;
+            font-size: 6pt !important;
+            line-height: 1.1;
+            vertical-align: middle;
         }
         
         td {
-            border: 1px solid #ddd;
+            border: 1px solid #999 !important;
+            padding: 0.8mm !important;
+            font-size: 6.5pt !important;
+            line-height: 1.1;
+            vertical-align: middle;
+        }
+        
+        /* Alternating row colors */
+        tbody tr:nth-child(even) {
+            background-color: #f9f9f9 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        /* Status badges */
+        .badge {
+            padding: 1mm 2mm;
+            border-radius: 2mm;
+            font-size: 7pt !important;
+            font-weight: bold;
+        }
+        
+        .bg-success {
+            background-color: #28a745 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        .bg-danger {
+            background-color: #dc3545 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        .bg-warning {
+            background-color: #ffc107 !important;
+            color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        .bg-secondary {
+            background-color: #6c757d !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        /* Text colors */
+        .text-success {
+            color: #28a745 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        .text-danger {
+            color: #dc3545 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        
+        /* Summary section improvements */
+        .border-end {
+            border-right: 1px solid #ddd !important;
             padding: 2mm;
         }
         

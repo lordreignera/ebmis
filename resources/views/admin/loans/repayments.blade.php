@@ -307,10 +307,14 @@
                                 <label for="payment_method">Payment Method *</label>
                                 <select class="form-control" name="payment_method" id="payment_method" required>
                                     <option value="">Select payment method</option>
-                                    <option value="cash">Cash</option>
-                                    <option value="mobile_money">Mobile Money</option>
-                                    <option value="bank_transfer">Bank Transfer</option>
-                                    <option value="check">Check</option>
+                                    @if(auth()->user()->hasRole(['superadmin', 'administrator']))
+                                        <option value="cash">Cash</option>
+                                        <option value="mobile_money">Mobile Money</option>
+                                        <option value="bank_transfer">Bank Transfer</option>
+                                        <option value="check">Check</option>
+                                    @else
+                                        <option value="mobile_money">Mobile Money</option>
+                                    @endif
                                 </select>
                             </div>
                         </div>

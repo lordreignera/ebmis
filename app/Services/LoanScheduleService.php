@@ -175,34 +175,33 @@ class LoanScheduleService
      */
     private function calculatePaymentDate(Carbon $currentDate, string $periodType, int $paymentNumber): Carbon
     {
-        if ($paymentNumber == 1) {
-            // For first payment, calculate from current date
-            $baseDate = $currentDate;
-        } else {
-            $baseDate = $currentDate;
-        }
-        
         switch ($periodType) {
-            case '1': // Weekly loans - next Friday
+            case '1': // Weekly loans - every Friday
                 if ($paymentNumber == 1) {
-                    return $this->getNextFriday($baseDate);
+                    // First payment: Get next Friday from loan creation date
+                    return $this->getNextFriday($currentDate);
                 }
-                return $this->getNextFriday($baseDate);
+                // Subsequent payments: Add 1 week (7 days) to previous payment date
+                return $currentDate->copy()->addWeek();
                 
-            case '2': // Monthly loans - 25th of next month
+            case '2': // Monthly loans - 25th of each month
                 if ($paymentNumber == 1) {
-                    return $this->getNext25th($baseDate);
+                    // First payment: Get 25th of current or next month
+                    return $this->getNext25th($currentDate);
                 }
-                return $baseDate->copy()->addMonth();
+                // Subsequent payments: Add 1 month to previous payment date
+                return $currentDate->copy()->addMonth();
                 
-            case '3': // Daily loans - next working day (skip Sundays)
+            case '3': // Daily loans - every working day (skip Sundays)
                 if ($paymentNumber == 1) {
-                    return $this->getNextWorkingDay($baseDate);
+                    // First payment: Get next working day from loan creation date
+                    return $this->getNextWorkingDay($currentDate);
                 }
-                return $this->getNextWorkingDay($baseDate);
+                // Subsequent payments: Add 1 day (skipping Sundays) to previous payment date
+                return $this->getNextWorkingDay($currentDate);
                 
             default:
-                return $baseDate->copy()->addDays(30); // Default fallback
+                return $currentDate->copy()->addDays(30); // Default fallback
         }
     }
     

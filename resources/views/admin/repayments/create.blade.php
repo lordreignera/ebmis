@@ -172,9 +172,13 @@
                                 <label class="form-label">Payment Method <span class="text-danger">*</span></label>
                                 <select class="form-control" name="type" required>
                                     <option value="">Select method...</option>
-                                    <option value="1" {{ old('type') == '1' ? 'selected' : '' }}>Cash</option>
-                                    <option value="2" {{ old('type') == '2' ? 'selected' : '' }}>Mobile Money</option>
-                                    <option value="3" {{ old('type') == '3' ? 'selected' : '' }}>Bank Transfer</option>
+                                    @if(auth()->user()->hasRole(['superadmin', 'administrator']))
+                                        <option value="1" {{ old('type') == '1' ? 'selected' : '' }}>Cash</option>
+                                        <option value="2" {{ old('type') == '2' ? 'selected' : '' }}>Mobile Money</option>
+                                        <option value="3" {{ old('type') == '3' ? 'selected' : '' }}>Bank Transfer</option>
+                                    @else
+                                        <option value="2" {{ old('type') == '2' ? 'selected' : '' }}>Mobile Money</option>
+                                    @endif
                                 </select>
                                 @error('type')
                                     <small class="text-danger">{{ $message }}</small>
