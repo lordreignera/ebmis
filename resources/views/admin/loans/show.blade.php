@@ -363,14 +363,32 @@
                                             </div>
                                             <h6>Trading License</h6>
                                             @if($loan->trading_file)
-                                            @php
-                                                $tradingUrl = file_exists(public_path('storage/' . $loan->trading_file)) 
-                                                    ? asset('storage/' . $loan->trading_file)
-                                                    : asset('../../bimsadmin/public/' . $loan->trading_file);
-                                            @endphp
-                                            <a href="{{ $tradingUrl }}" target="_blank" class="btn btn-sm btn-primary">View</a>
+                                                @php
+                                                    $tradingExists = file_exists(storage_path('app/public/' . $loan->trading_file));
+                                                    $tradingUrl = $tradingExists 
+                                                        ? asset('storage/' . $loan->trading_file)
+                                                        : null;
+                                                @endphp
+                                                @if($tradingExists && $tradingUrl)
+                                                    <a href="{{ $tradingUrl }}" target="_blank" class="btn btn-sm btn-primary">
+                                                        <i class="mdi mdi-eye"></i> View
+                                                    </a>
+                                                    @if(in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin']))
+                                                        <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteDocument({{ $loan->id }}, 'trading')">
+                                                            <i class="mdi mdi-delete"></i> Delete
+                                                        </button>
+                                                    @endif
+                                                @else
+                                                    <span class="badge bg-danger mb-2">File Missing</span><br>
+                                                    <button type="button" class="btn btn-sm btn-warning" onclick="showReuploadModal({{ $loan->id }}, 'trading')">
+                                                        <i class="mdi mdi-upload"></i> Re-upload
+                                                    </button>
+                                                @endif
                                             @else
-                                            <span class="text-muted">Not uploaded</span>
+                                            <span class="text-muted">Not uploaded</span><br>
+                                            <button type="button" class="btn btn-sm btn-primary mt-2" onclick="showReuploadModal({{ $loan->id }}, 'trading')">
+                                                <i class="mdi mdi-upload"></i> Upload
+                                            </button>
                                             @endif
                                         </div>
                                     </div>
@@ -385,14 +403,32 @@
                                             </div>
                                             <h6>Bank Statement</h6>
                                             @if($loan->bank_file)
-                                            @php
-                                                $bankUrl = file_exists(public_path('storage/' . $loan->bank_file)) 
-                                                    ? asset('storage/' . $loan->bank_file)
-                                                    : asset('../../bimsadmin/public/' . $loan->bank_file);
-                                            @endphp
-                                            <a href="{{ $bankUrl }}" target="_blank" class="btn btn-sm btn-warning">View</a>
+                                                @php
+                                                    $bankExists = file_exists(storage_path('app/public/' . $loan->bank_file));
+                                                    $bankUrl = $bankExists 
+                                                        ? asset('storage/' . $loan->bank_file)
+                                                        : null;
+                                                @endphp
+                                                @if($bankExists && $bankUrl)
+                                                    <a href="{{ $bankUrl }}" target="_blank" class="btn btn-sm btn-warning">
+                                                        <i class="mdi mdi-eye"></i> View
+                                                    </a>
+                                                    @if(in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin']))
+                                                        <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteDocument({{ $loan->id }}, 'bank')">
+                                                            <i class="mdi mdi-delete"></i> Delete
+                                                        </button>
+                                                    @endif
+                                                @else
+                                                    <span class="badge bg-danger mb-2">File Missing</span><br>
+                                                    <button type="button" class="btn btn-sm btn-warning" onclick="showReuploadModal({{ $loan->id }}, 'bank')">
+                                                        <i class="mdi mdi-upload"></i> Re-upload
+                                                    </button>
+                                                @endif
                                             @else
-                                            <span class="text-muted">Not uploaded</span>
+                                            <span class="text-muted">Not uploaded</span><br>
+                                            <button type="button" class="btn btn-sm btn-warning mt-2" onclick="showReuploadModal({{ $loan->id }}, 'bank')">
+                                                <i class="mdi mdi-upload"></i> Upload
+                                            </button>
                                             @endif
                                         </div>
                                     </div>
@@ -407,14 +443,32 @@
                                             </div>
                                             <h6>Business Premise</h6>
                                             @if($loan->business_file)
-                                            @php
-                                                $businessUrl = file_exists(public_path('storage/' . $loan->business_file)) 
-                                                    ? asset('storage/' . $loan->business_file)
-                                                    : asset('../../bimsadmin/public/' . $loan->business_file);
-                                            @endphp
-                                            <a href="{{ $businessUrl }}" target="_blank" class="btn btn-sm btn-success">View</a>
+                                                @php
+                                                    $businessExists = file_exists(storage_path('app/public/' . $loan->business_file));
+                                                    $businessUrl = $businessExists 
+                                                        ? asset('storage/' . $loan->business_file)
+                                                        : null;
+                                                @endphp
+                                                @if($businessExists && $businessUrl)
+                                                    <a href="{{ $businessUrl }}" target="_blank" class="btn btn-sm btn-success">
+                                                        <i class="mdi mdi-eye"></i> View
+                                                    </a>
+                                                    @if(in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin']))
+                                                        <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteDocument({{ $loan->id }}, 'business')">
+                                                            <i class="mdi mdi-delete"></i> Delete
+                                                        </button>
+                                                    @endif
+                                                @else
+                                                    <span class="badge bg-danger mb-2">File Missing</span><br>
+                                                    <button type="button" class="btn btn-sm btn-success" onclick="showReuploadModal({{ $loan->id }}, 'business')">
+                                                        <i class="mdi mdi-upload"></i> Re-upload
+                                                    </button>
+                                                @endif
                                             @else
-                                            <span class="text-muted">Not uploaded</span>
+                                            <span class="text-muted">Not uploaded</span><br>
+                                            <button type="button" class="btn btn-sm btn-success mt-2" onclick="showReuploadModal({{ $loan->id }}, 'business')">
+                                                <i class="mdi mdi-upload"></i> Upload
+                                            </button>
                                             @endif
                                         </div>
                                     </div>
@@ -1757,5 +1811,151 @@ document.addEventListener('click', function(e) {
         });
     }
 });
+
+// Document Re-upload Modal and Functions
+function showReuploadModal(loanId, documentType) {
+    const modal = document.getElementById('reuploadModal');
+    const documentTitle = document.getElementById('reuploadDocumentTitle');
+    const uploadForm = document.getElementById('reuploadForm');
+    
+    // Set document title
+    const titles = {
+        'trading': 'Trading License',
+        'bank': 'Bank Statement',
+        'business': 'Business Premise Photos'
+    };
+    documentTitle.textContent = titles[documentType] || 'Document';
+    
+    // Set form action with base URL
+    const baseUrl = window.location.origin + '/admin/loans';
+    uploadForm.action = `${baseUrl}/${loanId}/upload-document`;
+    document.getElementById('documentType').value = documentType;
+    document.getElementById('loanIdInput').value = loanId;
+    
+    // Show modal
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+}
+
+// Delete document function
+function deleteDocument(loanId, documentType) {
+    const titles = {
+        'trading': 'Trading License',
+        'bank': 'Bank Statement',
+        'business': 'Business Premise Photos'
+    };
+    
+    if (!confirm(`Are you sure you want to delete ${titles[documentType]}? This action cannot be undone.`)) {
+        return;
+    }
+    
+    const baseUrl = window.location.origin + '/admin/loans';
+    fetch(`${baseUrl}/${loanId}/delete-document`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+            document_type: documentType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Document deleted successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Delete failed'));
+        }
+    })
+    .catch(error => {
+        console.error('Delete error:', error);
+        alert('Delete failed. Please try again.');
+    });
+}
+
+// Handle document upload form submission
+document.addEventListener('DOMContentLoaded', function() {
+    const reuploadForm = document.getElementById('reuploadForm');
+    if (reuploadForm) {
+        reuploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            
+            // Get the action URL that was set when modal opened
+            const actionUrl = this.action && this.action !== '#' ? this.action : '';
+            
+            if (!actionUrl || actionUrl === window.location.href + '#') {
+                alert('Error: Upload URL not set. Please close and reopen the modal.');
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';
+            
+            fetch(actionUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Document uploaded successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Upload failed'));
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                }
+            })
+            .catch(error => {
+                console.error('Upload error:', error);
+                alert('Upload failed. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            });
+        });
+    }
+});
 </script>
+
+<!-- Document Re-upload Modal -->
+<div class="modal fade" id="reuploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-white">
+                <h5 class="modal-title text-dark">Upload <span id="reuploadDocumentTitle"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="reuploadForm" method="POST" action="#" enctype="multipart/form-data">
+                @csrf
+                <input type="hidden" name="document_type" id="documentType">
+                <input type="hidden" name="loan_id" id="loanIdInput">
+                <div class="modal-body bg-white">
+                    <div class="mb-3">
+                        <label class="form-label text-dark">Select File</label>
+                        <input type="file" class="form-control" name="document" accept=".pdf,.jpg,.jpeg,.png" required>
+                        <small class="text-muted">Allowed: PDF, JPG, JPEG, PNG (Max 5MB)</small>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="mdi mdi-upload"></i> Upload
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endpush

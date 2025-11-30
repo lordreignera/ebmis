@@ -250,7 +250,17 @@ body.modal-open {
                         <li class="nav-item" role="presentation">
                             <a class="nav-link" data-bs-toggle="tab" href="#documents" role="tab" aria-controls="documents" aria-selected="false">
                                 <i class="mdi mdi-file-document"></i> Documents
-                                <span class="badge bg-info">{{ $member->documents->count() }}</span>
+                                @php
+                                    $memberDocsCount = $member->documents->count();
+                                    $loanDocsCount = \App\Models\PersonalLoan::where('member_id', $member->id)
+                                        ->whereNotNull(DB::raw('COALESCE(trading_file, bank_file, business_file)'))
+                                        ->get()
+                                        ->sum(function($loan) {
+                                            return collect([$loan->trading_file, $loan->bank_file, $loan->business_file])->filter()->count();
+                                        });
+                                    $totalDocsCount = $memberDocsCount + $loanDocsCount;
+                                @endphp
+                                <span class="badge bg-info">{{ $totalDocsCount }}</span>
                             </a>
                         </li>
                         <li class="nav-item" role="presentation">

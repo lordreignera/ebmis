@@ -315,17 +315,50 @@ class LoanController extends Controller
                 $validated['repay_name'] = $validated['business_name'];
                 $validated['repay_address'] = $validated['business_contact'];
                 
-                // Handle file uploads for personal loans
+                // Handle file uploads for personal loans with error handling
                 if ($request->hasFile('business_license')) {
-                    $validated['trading_file'] = $request->file('business_license')->store('loan-documents', 'public');
+                    try {
+                        $file = $request->file('business_license');
+                        if ($file->isValid()) {
+                            $path = $file->store('loan-documents', 'public');
+                            $validated['trading_file'] = $path;
+                            \Log::info('Trading license uploaded successfully', ['path' => $path, 'loan_code' => $validated['code']]);
+                        } else {
+                            \Log::error('Trading license file is not valid', ['loan_code' => $validated['code']]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Error uploading trading license: ' . $e->getMessage(), ['loan_code' => $validated['code']]);
+                    }
                 }
 
                 if ($request->hasFile('bank_statement')) {
-                    $validated['bank_file'] = $request->file('bank_statement')->store('loan-documents', 'public');
+                    try {
+                        $file = $request->file('bank_statement');
+                        if ($file->isValid()) {
+                            $path = $file->store('loan-documents', 'public');
+                            $validated['bank_file'] = $path;
+                            \Log::info('Bank statement uploaded successfully', ['path' => $path, 'loan_code' => $validated['code']]);
+                        } else {
+                            \Log::error('Bank statement file is not valid', ['loan_code' => $validated['code']]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Error uploading bank statement: ' . $e->getMessage(), ['loan_code' => $validated['code']]);
+                    }
                 }
 
                 if ($request->hasFile('business_photos')) {
-                    $validated['business_file'] = $request->file('business_photos')->store('loan-documents', 'public');
+                    try {
+                        $file = $request->file('business_photos');
+                        if ($file->isValid()) {
+                            $path = $file->store('loan-documents', 'public');
+                            $validated['business_file'] = $path;
+                            \Log::info('Business photos uploaded successfully', ['path' => $path, 'loan_code' => $validated['code']]);
+                        } else {
+                            \Log::error('Business photos file is not valid', ['loan_code' => $validated['code']]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Error uploading business photos: ' . $e->getMessage(), ['loan_code' => $validated['code']]);
+                    }
                 }
 
                 $validated['installment'] = $validated['max_installment'];
@@ -2771,5 +2804,176 @@ class LoanController extends Controller
         }
 
         return 0;
+    }
+
+    /**
+     * Upload or re-upload loan document
+     */
+    public function uploadDocument(Request $request, $id)
+    {
+        try {
+            // Validate request
+            $validated = $request->validate([
+                'document_type' => 'required|in:trading,bank,business',
+                'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120'
+            ]);
+
+            // Find the loan
+            $loan = PersonalLoan::findOrFail($id);
+
+            // Map document type to database field
+            $fieldMap = [
+                'trading' => 'trading_file',
+                'bank' => 'bank_file',
+                'business' => 'business_file'
+            ];
+
+            $field = $fieldMap[$validated['document_type']];
+
+            // Delete old file if it exists
+            if ($loan->$field) {
+                $oldFilePath = storage_path('app/public/' . $loan->$field);
+                if (file_exists($oldFilePath)) {
+                    unlink($oldFilePath);
+                    \Log::info('Old document deleted', [
+                        'loan_id' => $id,
+                        'document_type' => $validated['document_type'],
+                        'old_path' => $loan->$field
+                    ]);
+                }
+            }
+
+            // Upload new file
+            $file = $request->file('document');
+            if ($file->isValid()) {
+                $path = $file->store('loan-documents', 'public');
+                $loan->$field = $path;
+                $loan->save();
+
+                \Log::info('Document uploaded successfully', [
+                    'loan_id' => $id,
+                    'loan_code' => $loan->code,
+                    'document_type' => $validated['document_type'],
+                    'path' => $path
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Document uploaded successfully',
+                    'path' => $path
+                ]);
+            } else {
+                \Log::error('Invalid file upload', [
+                    'loan_id' => $id,
+                    'document_type' => $validated['document_type']
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The uploaded file is invalid'
+                ], 422);
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: ' . implode(', ', $e->errors())
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Log::error('Document upload error: ' . $e->getMessage(), [
+                'loan_id' => $id,
+                'document_type' => $request->document_type ?? 'unknown'
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error uploading document: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete loan document
+     */
+    public function deleteDocument(Request $request, $id)
+    {
+        try {
+            // Check if user has permission to delete documents
+            if (!in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized. Only super admin and administrator can delete documents.'
+                ], 403);
+            }
+
+            // Validate request
+            $validated = $request->validate([
+                'document_type' => 'required|in:trading,bank,business'
+            ]);
+
+            // Find the loan
+            $loan = PersonalLoan::findOrFail($id);
+
+            // Map document type to database field
+            $fieldMap = [
+                'trading' => 'trading_file',
+                'bank' => 'bank_file',
+                'business' => 'business_file'
+            ];
+
+            $field = $fieldMap[$validated['document_type']];
+
+            // Check if document exists
+            if (!$loan->$field) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No document to delete'
+                ], 404);
+            }
+
+            // Delete file from storage
+            $filePath = storage_path('app/public/' . $loan->$field);
+            if (file_exists($filePath)) {
+                unlink($filePath);
+                \Log::info('Document file deleted from storage', [
+                    'loan_id' => $id,
+                    'document_type' => $validated['document_type'],
+                    'path' => $loan->$field
+                ]);
+            }
+
+            // Clear database field
+            $loan->$field = null;
+            $loan->save();
+
+            \Log::info('Document deleted successfully', [
+                'loan_id' => $id,
+                'loan_code' => $loan->code,
+                'document_type' => $validated['document_type']
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document deleted successfully'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: ' . implode(', ', $e->errors())
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Log::error('Document delete error: ' . $e->getMessage(), [
+                'loan_id' => $id,
+                'document_type' => $request->document_type ?? 'unknown'
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting document: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

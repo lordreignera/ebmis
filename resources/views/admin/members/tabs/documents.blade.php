@@ -56,4 +56,92 @@
     </div>
 @endif
 
+<!-- Loan Documents Section -->
+@php
+    $personalLoans = \App\Models\PersonalLoan::where('member_id', $member->id)
+        ->whereNotNull(DB::raw('COALESCE(trading_file, bank_file, business_file)'))
+        ->get();
+@endphp
+
+@if($personalLoans->count() > 0)
+    <div class="mt-4">
+        <h5 class="mb-3"><i class="mdi mdi-file-document-outline"></i> Loan Documents</h5>
+        <div class="row">
+            @foreach($personalLoans as $loan)
+                @php
+                    $loanDocuments = [];
+                    if($loan->trading_file) {
+                        $loanDocuments[] = [
+                            'name' => 'Trading License',
+                            'file' => $loan->trading_file,
+                            'type' => 'trading',
+                            'icon' => 'mdi-store',
+                            'color' => 'primary'
+                        ];
+                    }
+                    if($loan->bank_file) {
+                        $loanDocuments[] = [
+                            'name' => 'Bank Statement',
+                            'file' => $loan->bank_file,
+                            'type' => 'bank',
+                            'icon' => 'mdi-bank',
+                            'color' => 'warning'
+                        ];
+                    }
+                    if($loan->business_file) {
+                        $loanDocuments[] = [
+                            'name' => 'Business Premise',
+                            'file' => $loan->business_file,
+                            'type' => 'business',
+                            'icon' => 'mdi-image',
+                            'color' => 'success'
+                        ];
+                    }
+                @endphp
+                
+                @foreach($loanDocuments as $doc)
+                    @php
+                        $fileExists = file_exists(storage_path('app/public/' . $doc['file']));
+                        $fileUrl = $fileExists ? asset('storage/' . $doc['file']) : null;
+                    @endphp
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-{{ $doc['color'] }}">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="mdi {{ $doc['icon'] }} text-{{ $doc['color'] }}"></i>
+                                    {{ $doc['name'] }}
+                                </h6>
+                                <span class="badge bg-{{ $doc['color'] }} mb-2">Loan: {{ $loan->code }}</span>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        Loan Date: {{ \Carbon\Carbon::parse($loan->datecreated)->format('M d, Y') }}<br>
+                                        Status: <span class="badge bg-{{ $loan->status == 1 ? 'success' : 'warning' }}">
+                                            {{ $loan->status == 1 ? 'Active' : 'Pending' }}
+                                        </span>
+                                    </small>
+                                </p>
+                                @if($fileExists && $fileUrl)
+                                    <div class="btn-group w-100">
+                                        <a href="{{ $fileUrl }}" target="_blank" class="btn btn-sm btn-{{ $doc['color'] }}">
+                                            <i class="mdi mdi-eye"></i> View
+                                        </a>
+                                        <a href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => 'personal']) }}" class="btn btn-sm btn-outline-{{ $doc['color'] }}">
+                                            <i class="mdi mdi-open-in-new"></i> Loan
+                                        </a>
+                                    </div>
+                                @else
+                                    <span class="badge bg-danger">File Missing</span>
+                                    <a href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => 'personal']) }}" class="btn btn-sm btn-outline-secondary mt-2 w-100">
+                                        <i class="mdi mdi-upload"></i> Re-upload in Loan
+                                    </a>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            @endforeach
+        </div>
+    </div>
+@endif
+
 <!-- All modals moved to main show.blade.php outside tab content to fix blinking issue -->
