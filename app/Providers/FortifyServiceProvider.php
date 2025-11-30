@@ -9,6 +9,7 @@ use App\Actions\Fortify\UpdateUserProfileInformation;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -50,16 +51,34 @@ class FortifyServiceProvider extends ServiceProvider
 
         // ===============================================================
         // CUSTOM AUTHENTICATION WITH APPROVAL STATUS VALIDATION
+        // OPTIMIZED: Only select needed columns for faster login
         // ===============================================================
         Fortify::authenticateUsing(function (Request $request) {
-            $user = User::where('email', $request->email)->first();
+            // PERFORMANCE: Select only essential columns, don't load relationships yet
+            $user = User::select('id', 'name', 'email', 'password', 'status', 'user_type', 'school_id', 'branch_id')
+                ->where('email', $request->email)
+                ->first();
 
             if ($user && Hash::check($request->password, $user->password)) {
-                // Check if user is approved (status = 'active')
-                if (!$user->isApproved()) {
-                    throw ValidationException::withMessages([
-                        Fortify::username() => [$user->getStatusMessage()],
-                    ]);
+                // Fast approval check without loading relationships
+                if ($user->user_type === 'school' && $user->school_id) {
+                    // Only load school if needed for school users
+                    $schoolStatus = \DB::table('schools')
+                        ->where('id', $user->school_id)
+                        ->value('status');
+                    
+                    if ($schoolStatus !== 'approved' || $user->status !== 'active') {
+                        throw ValidationException::withMessages([
+                            Fortify::username() => [$user->getStatusMessage()],
+                        ]);
+                    }
+                } else {
+                    // For non-school users, just check status
+                    if ($user->status !== 'active') {
+                        throw ValidationException::withMessages([
+                            Fortify::username() => ['Your account is not active. Please contact the administrator.'],
+                        ]);
+                    }
                 }
 
                 return $user;

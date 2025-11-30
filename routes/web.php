@@ -4,10 +4,14 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\SchoolRegistrationController;
+use App\Http\Controllers\Auth\LogoutController;
 
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+// Custom Logout Route (with success message)
+Route::post('/logout', [LogoutController::class, 'logout'])->name('logout');
 
 // CSRF Token Refresh API (for keeping sessions alive)
 Route::get('/api/csrf-token', function () {
@@ -263,6 +267,7 @@ Route::middleware([
     Route::prefix('loans')->name('loans.')->group(function () {
         Route::get('/{id}/history', [\App\Http\Controllers\Admin\LoanController::class, 'history'])->name('history');
         Route::get('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructure'])->name('restructure');
+        Route::post('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructureStore'])->name('restructure.store');
         Route::get('/{id}/statements/print', [\App\Http\Controllers\Admin\LoanController::class, 'printStatement'])->name('statements.print');
         Route::get('/{id}/schedules/print', [\App\Http\Controllers\Admin\LoanController::class, 'printSchedule'])->name('schedules.print');
         Route::get('/{id}/notices/print', [\App\Http\Controllers\Admin\LoanController::class, 'printNotice'])->name('notices.print');

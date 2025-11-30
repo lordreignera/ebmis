@@ -537,21 +537,21 @@
         }
 
         function performLogout() {
-            // Force logout
-            fetch('{{ route("logout") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                },
-                credentials: 'same-origin'
-            })
-            .then(() => {
-                window.location.href = '{{ route("login") }}';
-            })
-            .catch(() => {
-                window.location.href = '{{ route("login") }}';
-            });
+            // Create a form and submit it to preserve session flash messages
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ route("logout") }}';
+            
+            // Add CSRF token
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = '_token';
+            csrfInput.value = document.querySelector('meta[name="csrf-token"]').content;
+            form.appendChild(csrfInput);
+            
+            // Append to body and submit
+            document.body.appendChild(form);
+            form.submit();
         }
 
         // Track user activity
@@ -601,27 +601,24 @@
             // Handle logout forms specifically
             document.querySelectorAll('form[action*="logout"]').forEach(function(form) {
                 form.addEventListener('submit', function(e) {
+                    // Don't prevent default - let the form submit naturally
+                    // This preserves the flash message from the controller
+                    // No need to intercept with JavaScript
+                    return true;
+                });
+            });
+
+            // OLD CODE - REMOVED TO FIX LOGOUT MESSAGE
+            // The issue was that JavaScript was intercepting the form and doing a fetch()
+            // which doesn't preserve Laravel's session flash messages
+            // Now we let the form submit normally to preserve the success message
+            
+            /* BACKUP OF OLD CODE (removed):
                     e.preventDefault();
                     
                     // Force logout even if token is expired
-                    fetch('{{ route("logout") }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        credentials: 'same-origin'
-                    })
-                    .then(response => {
-                        // Redirect to login regardless of response
-                        window.location.href = '{{ route("login") }}';
-                    })
-                    .catch(error => {
-                        // Even on error, redirect to login
-                        window.location.href = '{{ route("login") }}';
-                    });
-                });
-            });
+            */ 
+        });
 
             // Global AJAX error handler for 419 errors
             if (typeof $ !== 'undefined') {

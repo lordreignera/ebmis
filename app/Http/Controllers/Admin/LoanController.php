@@ -2604,4 +2604,172 @@ class LoanController extends Controller
 
         return response()->stream($callback, 200, $headers);
     }
+
+    /**
+     * Show loan restructure form
+     */
+    public function restructure($id)
+    {
+        $loan = PersonalLoan::with(['member', 'product', 'branch', 'schedules'])
+            ->findOrFail($id);
+
+        // Check if loan is eligible for restructuring
+        if ($loan->status != 2) {
+            return redirect()->back()->with('error', 'Only active/disbursed loans can be restructured.');
+        }
+
+        // Calculate loan statistics
+        $schedules = $loan->schedules;
+        $paidCount = $schedules->where('status', 1)->count();
+        $pendingCount = $schedules->where('status', 0)->count();
+        $overdueCount = $schedules->where('periods_in_arrears', '>', 0)->count();
+
+        // Prepare loan summary data
+        $loanData = (object)[
+            'id' => $loan->id,
+            'code' => $loan->code,
+            'borrower_name' => $loan->member->fname . ' ' . $loan->member->lname,
+            'product_name' => $loan->product->name ?? 'N/A',
+            'principal_amount' => $loan->principal,
+            'interest_rate' => $loan->interest,
+            'loan_term' => $loan->period,
+            'period_type_name' => $this->getPeriodTypeName($loan->product->period_type ?? 3),
+            'disbursement_date' => $loan->date_approved,
+            'total_payable' => $schedules->sum('payment'),
+            'amount_paid' => $schedules->sum('paid'),
+            'outstanding_balance' => $schedules->sum('payment') - $schedules->sum('paid'),
+            'total_late_fees' => $schedules->sum('penalty'),
+            'days_overdue' => $this->calculateDaysOverdue($loan),
+        ];
+
+        return view('admin.loans.restructure', [
+            'loan' => $loanData,
+            'paidCount' => $paidCount,
+            'pendingCount' => $pendingCount,
+            'overdueCount' => $overdueCount,
+        ]);
+    }
+
+    /**
+     * Store restructured loan
+     */
+    public function restructureStore(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string',
+            'comments' => 'required|string|min:20',
+            'new_principal' => 'required|numeric|min:1000',
+            'new_interest' => 'required|numeric|min:0|max:100',
+            'new_period' => 'required|integer|min:1|max:260',
+            'grace_period' => 'nullable|integer|min:0|max:12',
+            'waive_late_fees' => 'nullable|boolean',
+            'confirm' => 'required|accepted',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $originalLoan = PersonalLoan::with(['member', 'product'])->findOrFail($id);
+
+            // Verify loan can be restructured
+            if ($originalLoan->status != 2) {
+                return redirect()->back()->with('error', 'Only active loans can be restructured.');
+            }
+
+            if ($originalLoan->restructured == 1) {
+                return redirect()->back()->with('error', 'This loan has already been restructured.');
+            }
+
+            // Create restructured loan
+            $restructuredLoan = new PersonalLoan();
+            $restructuredLoan->member_id = $originalLoan->member_id;
+            $restructuredLoan->product_type = $originalLoan->product_type;
+            $restructuredLoan->code = 'R' . $originalLoan->code; // Prefix with R
+            $restructuredLoan->interest = $validated['new_interest'];
+            $restructuredLoan->interest_method = $originalLoan->interest_method;
+            $restructuredLoan->period = $validated['new_period'];
+            $restructuredLoan->principal = $validated['new_principal'];
+            
+            // Calculate new installment (simplified)
+            $totalInterest = $validated['new_principal'] * ($validated['new_interest'] / 100);
+            $totalPayable = $validated['new_principal'] + $totalInterest;
+            $restructuredLoan->installment = $totalPayable / $validated['new_period'];
+            
+            $restructuredLoan->status = 0; // Pending approval
+            $restructuredLoan->verified = 0;
+            $restructuredLoan->added_by = auth()->id();
+            $restructuredLoan->branch_id = $originalLoan->branch_id;
+            $restructuredLoan->repay_strategy = $originalLoan->repay_strategy;
+            $restructuredLoan->repay_name = $originalLoan->repay_name;
+            $restructuredLoan->repay_address = $originalLoan->repay_address;
+            $restructuredLoan->charge_type = $originalLoan->charge_type;
+            $restructuredLoan->restructured = 1;
+            $restructuredLoan->OLoanID = $originalLoan->code;
+            $restructuredLoan->Rcomments = "Restructured Loan. Reason: {$validated['reason']}. Comments: {$validated['comments']}";
+            $restructuredLoan->datecreated = now();
+            $restructuredLoan->save();
+
+            // Update original loan
+            $originalLoan->status = 3; // Closed/Restructured
+            $originalLoan->restructured = 1;
+            $originalLoan->Rcomments = "Loan restructured to {$restructuredLoan->code} on " . now()->format('Y-m-d H:i:s');
+            $originalLoan->date_closed = now();
+            $originalLoan->save();
+
+            // If waive late fees is checked, mark penalties as waived
+            if ($validated['waive_late_fees']) {
+                DB::table('loan_schedules')
+                    ->where('loan_id', $originalLoan->id)
+                    ->update(['penalty' => 0]);
+            }
+
+            DB::commit();
+
+            return redirect()->route('admin.loans.show', ['id' => $restructuredLoan->id, 'type' => 'personal'])
+                ->with('success', 'Loan restructured successfully! New loan code: ' . $restructuredLoan->code . '. The loan is pending approval.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Loan restructure error: ' . $e->getMessage());
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Error restructuring loan: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get period type name
+     */
+    private function getPeriodTypeName($periodType)
+    {
+        switch ($periodType) {
+            case 1:
+                return 'Weeks';
+            case 2:
+                return 'Months';
+            case 3:
+                return 'Days';
+            default:
+                return 'Periods';
+        }
+    }
+
+    /**
+     * Calculate days overdue for a loan
+     */
+    private function calculateDaysOverdue($loan)
+    {
+        $overdueSchedule = $loan->schedules()
+            ->where('status', 0)
+            ->whereRaw("STR_TO_DATE(payment_date, '%d-%m-%Y') < CURDATE()")
+            ->orderBy('payment_date', 'asc')
+            ->first();
+
+        if ($overdueSchedule) {
+            $dueDate = \Carbon\Carbon::createFromFormat('d-m-Y', $overdueSchedule->payment_date);
+            return now()->diffInDays($dueDate, false) * -1;
+        }
+
+        return 0;
+    }
 }

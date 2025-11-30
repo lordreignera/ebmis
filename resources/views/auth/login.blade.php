@@ -326,14 +326,24 @@
                 </div>
             @endif
 
+            @if(request()->get('logout') === 'success')
+                <div class="alert alert-success alert-dismissible fade show" role="alert" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 8px rgba(21, 87, 36, 0.1);">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>Success!</strong> You have been logged out successfully!
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
             @session('status')
-                <div class="success-message">
-                    {{ $value }}
+                <div class="alert alert-success alert-dismissible fade show" role="alert" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 8px rgba(21, 87, 36, 0.1);">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>Success!</strong> {{ $value }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             @endsession
 
             @if(session('success'))
-                <div class="alert alert-success alert-dismissible fade show" role="alert" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <div class="alert alert-success alert-dismissible fade show" role="alert" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 8px rgba(21, 87, 36, 0.1);">
                     <i class="fas fa-check-circle me-2"></i>
                     <strong>Success!</strong> {{ session('success') }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -651,6 +661,28 @@
                 this.classList.toggle('fa-eye-slash');
             });
         }
+
+        // Add loading state to login button
+        const loginForm = document.querySelector('form');
+        const loginButton = document.querySelector('.login-button');
+        
+        if (loginForm && loginButton) {
+            loginForm.addEventListener('submit', function(e) {
+                // Disable button and show loading state
+                loginButton.disabled = true;
+                loginButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Logging in...';
+                loginButton.style.opacity = '0.8';
+            });
+        }
+
+        // Auto-dismiss success messages after 5 seconds
+        setTimeout(function() {
+            const alerts = document.querySelectorAll('.alert-success');
+            alerts.forEach(function(alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 5000);
     </script>
 </body>
 </html>
