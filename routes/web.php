@@ -166,6 +166,7 @@ Route::middleware([
     Route::post('/loans/store-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'storeLoanMobileMoneyPayment'])->name('loans.store-mobile-money');
     Route::post('/loans/{id}/upload-document', [\App\Http\Controllers\Admin\LoanController::class, 'uploadDocument'])->name('loans.upload-document');
     Route::post('/loans/{id}/delete-document', [\App\Http\Controllers\Admin\LoanController::class, 'deleteDocument'])->name('loans.delete-document');
+    Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->name('loans.revert');
     Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');
     Route::post('/loans/retry-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'retryLoanMobileMoneyPayment'])->name('loans.retry-mobile-money');
     Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');

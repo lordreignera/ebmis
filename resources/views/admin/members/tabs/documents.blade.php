@@ -30,18 +30,18 @@
                                 By: {{ $document->uploadedBy->name ?? 'N/A' }}
                             </small>
                         </p>
-                        <div class="btn-group w-100">
-                            <a href="{{ $document->file_url }}" target="_blank" class="btn btn-sm btn-info">
-                                <i class="mdi mdi-eye"></i> View
+                        <div class="btn-group btn-group-sm w-100">
+                            <a href="{{ $document->file_url }}" target="_blank" class="btn btn-info btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                <i class="mdi mdi-eye"></i>
                             </a>
-                            <a href="{{ route('admin.members.documents.download', [$member, $document]) }}" class="btn btn-sm btn-primary">
-                                <i class="mdi mdi-download"></i> Download
+                            <a href="{{ route('admin.members.documents.download', [$member, $document]) }}" class="btn btn-primary btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                <i class="mdi mdi-download"></i>
                             </a>
                             <form action="{{ route('admin.members.documents.destroy', [$member, $document]) }}" method="POST" class="flex-grow-1" onsubmit="return confirm('Delete this document?')">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-danger w-100">
-                                    <i class="mdi mdi-delete"></i> Delete
+                                <button type="submit" class="btn btn-danger btn-sm w-100 px-2 py-1" style="font-size: 0.75rem;">
+                                    <i class="mdi mdi-delete"></i>
                                 </button>
                             </form>
                         </div>
@@ -121,12 +121,12 @@
                                     </small>
                                 </p>
                                 @if($fileExists && $fileUrl)
-                                    <div class="btn-group w-100">
-                                        <a href="{{ $fileUrl }}" target="_blank" class="btn btn-sm btn-{{ $doc['color'] }}">
-                                            <i class="mdi mdi-eye"></i> View
+                                    <div class="btn-group btn-group-sm w-100">
+                                        <a href="{{ $fileUrl }}" target="_blank" class="btn btn-{{ $doc['color'] }} btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                            <i class="mdi mdi-eye"></i>
                                         </a>
-                                        <a href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => 'personal']) }}" class="btn btn-sm btn-outline-{{ $doc['color'] }}">
-                                            <i class="mdi mdi-open-in-new"></i> Loan
+                                        <a href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => 'personal']) }}" class="btn btn-outline-{{ $doc['color'] }} btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                            <i class="mdi mdi-open-in-new"></i>
                                         </a>
                                     </div>
                                 @else

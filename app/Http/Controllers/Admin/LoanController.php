@@ -2894,6 +2894,76 @@ class LoanController extends Controller
     }
 
     /**
+     * Revert rejected loan back to pending approval
+     */
+    public function revertLoan(Request $request, $id)
+    {
+        try {
+            // Check if user has permission to revert loans
+            if (!in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized. Only super admin and administrator can revert rejected loans.'
+                ], 403);
+            }
+
+            $loanType = $request->input('loan_type', 'personal');
+
+            // Find the loan based on type
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::findOrFail($id);
+            } else {
+                $loan = GroupLoan::findOrFail($id);
+            }
+
+            // Check if loan is actually rejected
+            if ($loan->status != 4) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only rejected loans can be reverted to pending.'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            // Revert loan to pending status
+            $loan->status = 0; // Pending
+            $loan->verified = 0; // Not verified
+            $loan->rejected_by = null;
+            $loan->date_rejected = null;
+            $loan->comments = null;
+            $loan->Rcomments = null;
+            $loan->save();
+
+            DB::commit();
+
+            \Log::info('Loan reverted to pending', [
+                'loan_id' => $id,
+                'loan_code' => $loan->code,
+                'loan_type' => $loanType,
+                'reverted_by' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Loan reverted to pending approval successfully. It can now go through the approval process again.'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Loan revert error: ' . $e->getMessage(), [
+                'loan_id' => $id,
+                'loan_type' => $request->loan_type ?? 'unknown'
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error reverting loan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Delete loan document
      */
     public function deleteDocument(Request $request, $id)

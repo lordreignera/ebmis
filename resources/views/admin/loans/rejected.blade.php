@@ -207,10 +207,19 @@
                                                 @endif
                                             </td>
                                             <td>
-                                                <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $type }}" 
-                                                   class="btn btn-sm btn-primary">
-                                                    <i class="mdi mdi-eye"></i> Details
-                                                </a>
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="{{ route('admin.loans.show', $loan->id) }}?type={{ $type }}" 
+                                                       class="btn btn-primary btn-sm px-2 py-1">
+                                                        <i class="mdi mdi-eye"></i>
+                                                    </a>
+                                                    @if(in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin']))
+                                                        <button type="button" class="btn btn-success btn-sm px-2 py-1" 
+                                                                onclick="revertLoan({{ $loan->id }}, '{{ $type }}')"
+                                                                title="Revert to Pending Approval">
+                                                            <i class="mdi mdi-undo-variant"></i>
+                                                        </button>
+                                                    @endif
+                                                </div>
                                             </td>
                                         </tr>
 
@@ -340,3 +349,40 @@
 @endforeach
 
 @endsection
+
+@push('scripts')
+<script>
+function revertLoan(loanId, loanType) {
+    if (!confirm('Are you sure you want to revert this rejected loan back to pending approval? The loan will go through the approval process again.')) {
+        return;
+    }
+    
+    const baseUrl = window.location.origin + '/admin/loans';
+    
+    fetch(`${baseUrl}/${loanId}/revert`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+            loan_type: loanType
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Loan reverted to pending approval successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to revert loan'));
+        }
+    })
+    .catch(error => {
+        console.error('Revert error:', error);
+        alert('Failed to revert loan. Please try again.');
+    });
+}
+</script>
+@endpush
