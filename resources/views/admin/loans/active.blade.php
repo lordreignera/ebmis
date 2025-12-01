@@ -38,9 +38,9 @@
     <!-- Stats Cards -->
     <div class="row">
         <div class="col-xl-3 col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <div class="row align-items-center">
+            <div class="card" style="height: 150px;">
+                <div class="card-body d-flex align-items-center">
+                    <div class="row align-items-center w-100">
                         <div class="col-6">
                             <h5 class="text-muted fw-normal mt-0 text-truncate" title="Total Active Loans">Active Loans</h5>
                             <h3 class="my-2 py-1">{{ $stats['total_active'] ?? 0 }}</h3>
@@ -59,12 +59,12 @@
         </div>
 
         <div class="col-xl-3 col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <div class="row align-items-center">
+            <div class="card" style="height: 150px;">
+                <div class="card-body d-flex align-items-center">
+                    <div class="row align-items-center w-100">
                         <div class="col-6">
                             <h5 class="text-muted fw-normal mt-0 text-truncate" title="Outstanding Amount">Outstanding</h5>
-                            <h3 class="my-2 py-1">{{ number_format($stats['outstanding_amount'] ?? 0, 0) }}</h3>
+                            <h3 class="my-2 py-1" style="font-size: 1.5rem;">{{ number_format($stats['outstanding_amount'] ?? 0, 0) }}</h3>
                             <p class="mb-0 text-muted">
                                 <span class="text-nowrap">UGX</span>
                             </p>
@@ -80,9 +80,9 @@
         </div>
 
         <div class="col-xl-3 col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <div class="row align-items-center">
+            <div class="card" style="height: 150px;">
+                <div class="card-body d-flex align-items-center">
+                    <div class="row align-items-center w-100">
                         <div class="col-6">
                             <h5 class="text-muted fw-normal mt-0 text-truncate" title="Overdue Loans">Overdue</h5>
                             <h3 class="my-2 py-1 text-danger">{{ $stats['overdue_count'] ?? 0 }}</h3>
@@ -101,9 +101,9 @@
         </div>
 
         <div class="col-xl-3 col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <div class="row align-items-center">
+            <div class="card" style="height: 150px;">
+                <div class="card-body d-flex align-items-center">
+                    <div class="row align-items-center w-100">
                         <div class="col-6">
                             <h5 class="text-muted fw-normal mt-0 text-truncate" title="Collections Today">Today's Collections</h5>
                             <h3 class="my-2 py-1 text-success">{{ number_format($stats['collections_today'] ?? 0, 0) }}</h3>
