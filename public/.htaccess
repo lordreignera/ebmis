@@ -5,11 +5,14 @@
 
     RewriteEngine On
 
-    # Increase file upload size limits
-    php_value upload_max_filesize 25M
-    php_value post_max_size 30M
-    php_value max_execution_time 300
-    php_value max_input_time 300
+    # Note: File upload limits should be configured in php.ini or PHP-FPM pool config
+    # for servers using PHP-FPM (like Digital Ocean). The php_value directives
+    # only work with mod_php and will cause errors with PHP-FPM.
+    # Configure these in /etc/php/8.x/fpm/php.ini:
+    # upload_max_filesize = 25M
+    # post_max_size = 30M
+    # max_execution_time = 300
+    # max_input_time = 300
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
