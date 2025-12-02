@@ -20,7 +20,7 @@ class FixMemberTypes extends Command
      *
      * @var string
      */
-    protected $description = 'Fix historical member_type data inconsistency (swap Individual/Group values)';
+    protected $description = '[DEPRECATED] Use members:correct-types instead. This command has incorrect logic!';
 
     /**
      * Execute the console command.
@@ -30,13 +30,29 @@ class FixMemberTypes extends Command
         $this->info('=== FIX HISTORICAL MEMBER_TYPE DATA ===');
         $this->newLine();
 
+        $this->error('⚠️  WARNING: THIS COMMAND HAS INCORRECT LOGIC! ⚠️');
+        $this->newLine();
+        $this->error('This command incorrectly sets member_type=2 for clients in groups.');
+        $this->error('The correct logic is:');
+        $this->line('- member_type=1: ALL individual clients (whether in a group or not)');
+        $this->line('- member_type=2: Group entities (the group itself)');
+        $this->newLine();
+        $this->error('Please use: php artisan members:correct-types instead');
+        $this->newLine();
+        
+        if (!$this->confirm('Are you sure you want to run this deprecated command with incorrect logic?', false)) {
+            $this->info('Operation cancelled. Please use members:correct-types instead.');
+            return 1;
+        }
+        
+        $this->newLine();
         $this->warn('PROBLEM:');
         $this->line('- Historical data uses: member_type=2 for Individual, member_type=1 for Group');
         $this->line('- member_types table says: ID=1 is Individual, ID=2 is Group');
         $this->line('- This causes inconsistency with new members');
         $this->newLine();
 
-        $this->info('SOLUTION:');
+        $this->info('SOLUTION (INCORRECT - DO NOT USE):');
         $this->line('Update ALL old members to use correct member_type values:');
         $this->line('- Members WITHOUT group_id (or group_id=0) → member_type = 1 (Individual)');
         $this->line('- Members WITH valid group_id → member_type = 2 (Group)');

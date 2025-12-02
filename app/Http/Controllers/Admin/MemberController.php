@@ -34,7 +34,13 @@ class MemberController extends Controller
                   ->orWhere('code', 'like', "%{$search}%")
                   ->orWhere('nin', 'like', "%{$search}%")
                   ->orWhere('contact', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                  ->orWhere('email', 'like', "%{$search}%")
+                  // Search by full name (first + last name combined)
+                  ->orWhereRaw("CONCAT(COALESCE(fname, ''), ' ', COALESCE(lname, '')) LIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("CONCAT(COALESCE(lname, ''), ' ', COALESCE(fname, '')) LIKE ?", ["%{$search}%"])
+                  // Search by full name with middle name
+                  ->orWhereRaw("CONCAT(COALESCE(fname, ''), ' ', COALESCE(mname, ''), ' ', COALESCE(lname, '')) LIKE ?", ["%{$search}%"])
+                  ->orWhereRaw("CONCAT(COALESCE(fname, ''), ' ', COALESCE(lname, ''), ' ', COALESCE(mname, '')) LIKE ?", ["%{$search}%"]);
             });
         }
 
@@ -44,6 +50,8 @@ class MemberController extends Controller
         }
 
         // Filter by member type
+        // Note: Individual members (member_type=1) should show ALL individual members,
+        // including those attached to groups, since they were individuals first
         if ($request->filled('member_type')) {
             $query->where('member_type', $request->member_type);
         }
