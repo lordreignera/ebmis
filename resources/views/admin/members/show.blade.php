@@ -778,7 +778,7 @@ body.modal-open {
                                 <div class="mb-3">
                                     <label class="form-label" style="color: #000;">File <span class="text-danger">*</span></label>
                                     <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required>
-                                    <small class="text-muted">Max 10MB. Allowed: PDF, JPG, PNG, DOC, DOCX</small>
+                                    <small class="text-muted">Max 20MB. Allowed: PDF, JPG, PNG, DOC, DOCX</small>
                                 </div>
                             </div>
                             <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">

@@ -57,7 +57,7 @@
 <body>
     <div class="header">
         <div class="company-name">Emuria Business Investment and Management Software (E-BIMS) Ltd</div>
-        <div class="address">Plot 79, City Centre Complex, Room B27, 1st Floor, Luwum Street, Kampala, Uganda</div>
+        <div class="address">Akisim cell, Central ward, Akore town, Kapelebyong, Uganda</div>
     </div>
 
     <div class="loan-info">
@@ -88,7 +88,7 @@
         @endif
         , whether as an individual or as a group jointly and severally liable, hereinafter (the "Borrower" including a group borrower) of the one part, and</p>
 
-    <p><strong>Emuria Business Investments and Management Software (E-BIMS) Ltd</strong>, a limited liability company incorporated in Uganda, of City Centre Complex, Room B27, University Village, Nakasero IV Parish, Kampala Central, hereinafter (the "Lender") of the other part.</p>
+    <p><strong>Emuria Business Investments and Management Software (E-BIMS) Ltd</strong>, a limited liability company incorporated in Uganda, of Akisim cell, Central ward, Akore town, Kapelebyong, hereinafter (the "Lender") of the other part.</p>
 
     <p><strong>Now it is agreed by the parties as follows:</strong></p>
 
@@ -127,10 +127,38 @@
     <p class="section-title">4. Interest, Fees, and other expenses</p>
 
     <p class="clause-title">4.1 Interest:</p>
-    <p>The loan shall attract an interest rate of <strong>{{ $loan->interest }}%</strong> per annum calculated on the reducing balance method.</p>
+    <p>The loan shall attract an interest rate of <strong>{{ $loan->interest }}%</strong> 
+    @if($loan->product)
+        @if($loan->product->period_type == 1) per week
+        @elseif($loan->product->period_type == 2) per month
+        @elseif($loan->product->period_type == 3) per day
+        @endif
+    @else
+        per annum
+    @endif
+    calculated on the reducing balance method.</p>
 
     <p class="clause-title">4.2 Fees:</p>
-    <p>Registration fees, administration fees, and processing fees of the loan amount shall be paid at the time of loan disbursement as per the lender's fee schedule.</p>
+    @if($loan->product && $loan->product->charges()->where('isactive', 1)->count() > 0)
+        <p>The following fees shall be paid at the time of loan disbursement:</p>
+        <ul style="margin-left: 20px;">
+        @foreach($loan->product->charges()->where('isactive', 1)->get() as $charge)
+            <li><strong>{{ $charge->name }}:</strong> 
+                @if($charge->type == 1)
+                    UGX {{ number_format($charge->value, 0) }} (Fixed Amount)
+                @elseif($charge->type == 2)
+                    {{ $charge->value }}% of loan amount (UGX {{ number_format(($loan->principal * $charge->value / 100), 0) }})
+                @elseif($charge->type == 3)
+                    UGX {{ number_format($charge->value, 0) }} per day
+                @elseif($charge->type == 4)
+                    UGX {{ number_format($charge->value, 0) }} per month
+                @endif
+            </li>
+        @endforeach
+        </ul>
+    @else
+        <p>Registration fees, administration fees, and processing fees of the loan amount shall be paid at the time of loan disbursement as per the lender's fee schedule.</p>
+    @endif
 
     <p class="clause-title">4.3 Loan Expenses:</p>
     <p><strong>Conveyance and Caveating fees:</strong> The cost of investigations, stamps, seals, fees, and other costs in connection with the collateral associated with the loan shall be borne by the Borrower.</p>
@@ -206,14 +234,34 @@
     <p class="clause-title">7.1 Pledged Collateral:</p>
     <p>The following Collateral has been pledged by the Borrower to secure the loan:</p>
     
-    <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: __________________________ in the name of _____________________________ held with the Lender at City Centre Complex Room B27 Kampala Branch.</p>
+    @if($type === 'personal' && $borrower->savings && $borrower->savings->count() > 0)
+        @php
+            $activeSavings = $borrower->savings->where('status', 1)->first();
+        @endphp
+        @if($activeSavings)
+            <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: <strong>{{ $activeSavings->code ?? 'N/A' }}</strong> in the name of <strong>{{ $borrower->fname }} {{ $borrower->lname }}</strong> held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
+        @else
+            <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: __________________________ in the name of {{ $borrower->fname }} {{ $borrower->lname }} held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
+        @endif
+    @else
+        <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: __________________________ in the name of _____________________________ held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
+    @endif
 
-    <p style="margin-left: 20px;">Collateral Security pledged:<br>
-    i) Immovable assets: ………………………………………<br>
-    ii) Moveable Assets: Motorcycle, vehicles, etc. ………………………………………<br>
-    iii) Intellectual property: ………………………………………<br>
-    iv) Stocks: ………………………………………<br>
-    v) Live stock: ………………………………………</p>
+    <p style="margin-left: 20px;"><strong>Collateral Security pledged:</strong></p>
+    @if($type === 'personal' && $borrower->assets && $borrower->assets->count() > 0)
+        <ul style="margin-left: 40px;">
+        @foreach($borrower->assets as $asset)
+            <li>{{ $asset->assetType->name ?? 'Asset' }}: Quantity {{ $asset->quantity }}, Value UGX {{ number_format($asset->value, 0) }}, Total Value UGX {{ number_format($asset->total_value, 0) }}</li>
+        @endforeach
+        </ul>
+    @else
+        <p style="margin-left: 40px;">
+        i) Immovable assets: ………………………………………<br>
+        ii) Moveable Assets: Motorcycle, vehicles, etc. ………………………………………<br>
+        iii) Intellectual property: ………………………………………<br>
+        iv) Stocks: ………………………………………<br>
+        v) Live stock: ………………………………………</p>
+    @endif
 
     <p class="clause-title">7.2 Loans in arrears recovery Procedure:</p>
     <p>In the event of default, a written demand note will be issued to the client in the first week, stipulating payment of the overdue installment within five business days. Should payment not be received by the second week, a second demand note will be sent, requiring settlement of all outstanding loan installments within five business days. Failure to comply will result in the issuance of a Loan Recall Note in the third week. If the client's account remains in arrears for three consecutive weeks, the entire loan becomes due and payable within 14 business days.</p>
@@ -226,15 +274,25 @@
 
     @if($type === 'personal' && $borrower->guarantors && $borrower->guarantors->count() > 0)
         @foreach($borrower->guarantors as $index => $guarantor)
-        <p><strong>Guarantor {{ $index + 1 }}:</strong> {{ $guarantor->fname ?? '' }} {{ $guarantor->lname ?? '' }}, a resident of {{ $guarantor->village ?? 'N/A' }}, {{ $guarantor->parish ?? '' }}, {{ $guarantor->subcounty ?? '' }}.</p>
+        <p style="margin-top: 15px;"><strong>Guarantor {{ $index + 1 }}:</strong> {{ $guarantor->fname ?? '' }} {{ $guarantor->lname ?? '' }}, aged {{ $guarantor->dob ? \Carbon\Carbon::parse($guarantor->dob)->age : '____' }} years, NIN: {{ $guarantor->nin ?? '____________________' }}, a resident of {{ $guarantor->village ?? '____' }}, {{ $guarantor->parish ?? '____' }}, {{ $guarantor->subcounty ?? '____' }}.</p>
+        <p style="margin-left: 20px;">Name: <strong>{{ $guarantor->fname ?? '' }} {{ $guarantor->lname ?? '' }}</strong></p>
+        <p style="margin-left: 20px;">Signature: _______________________________ Date: _______________</p>
         @endforeach
     @else
-        <p><strong>Guarantor One:</strong> [Name], aged [Age] years, is a resident of [place of residence].</p>
-        <p><strong>Guarantor Two:</strong> [Name], aged [Age] years, is a resident of [place of residence].</p>
-        <p><strong>Guarantor Three:</strong> [Name], aged [Age] years, is a resident of [place of residence].</p>
+        <p style="margin-top: 15px;"><strong>Guarantor One:</strong> [Name], aged [Age] years, NIN: ____________________, is a resident of [place of residence].</p>
+        <p style="margin-left: 20px;">Name: ______________________________</p>
+        <p style="margin-left: 20px;">Signature: _______________________________ Date: _______________</p>
+        
+        <p style="margin-top: 15px;"><strong>Guarantor Two:</strong> [Name], aged [Age] years, NIN: ____________________, is a resident of [place of residence].</p>
+        <p style="margin-left: 20px;">Name: ______________________________</p>
+        <p style="margin-left: 20px;">Signature: _______________________________ Date: _______________</p>
+        
+        <p style="margin-top: 15px;"><strong>Guarantor Three:</strong> [Name], aged [Age] years, NIN: ____________________, is a resident of [place of residence].</p>
+        <p style="margin-left: 20px;">Name: ______________________________</p>
+        <p style="margin-left: 20px;">Signature: _______________________________ Date: _______________</p>
     @endif
 
-    <p>It is hereby agreed and understood by all parties that by the said guarantors appending their signatures hereunder, they acknowledge legal liability/responsibility and fully understand that in the case of default of the principal Borrower, the Lender will proceed to recover the said loan balance from the Borrower and/or guarantors.</p>
+    <p style="margin-top: 15px;">It is hereby agreed and understood by all parties that by the said guarantors appending their signatures hereunder, they acknowledge legal liability/responsibility and fully understand that in the case of default of the principal Borrower, the Lender will proceed to recover the said loan balance from the Borrower and/or guarantors.</p>
 
     <p class="section-title">9. Supervision and Inspection</p>
     <p>The Lender reserves the right to coordinate, either directly or through authorized parties, and the Borrower is obligated to comply with any requests for information, clarification, or inspection issued by the Lender regarding the Borrower and/or their business.</p>
@@ -335,19 +393,6 @@
         <p>Name: ___________________________</p>
         <p>Tel: ___________________________</p>
         @endif
-
-        <p style="margin-top: 20px;"><strong>Guarantors</strong></p>
-        <p>Guarantor one:</p>
-        <p>Signature: <span class="signature-line"></span></p>
-        <p>Name: ___________________________ Tel: ___________________________</p>
-
-        <p>Guarantor Two:</p>
-        <p>Signature: <span class="signature-line"></span></p>
-        <p>Name: ___________________________ Tel: ___________________________</p>
-
-        <p>Guarantor Three:</p>
-        <p>Signature: <span class="signature-line"></span></p>
-        <p>Name: ___________________________ Tel: ___________________________</p>
 
         <p style="margin-top: 20px;"><strong>Lender</strong></p>
         <p>For and on behalf of Emuria Business Investment and Management Software (E-BIMS) Ltd,</p>

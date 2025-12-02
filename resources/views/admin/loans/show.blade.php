@@ -1944,7 +1944,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="mb-3">
                         <label class="form-label text-dark">Select File</label>
                         <input type="file" class="form-control" name="document" accept=".pdf,.jpg,.jpeg,.png" required>
-                        <small class="text-muted">Allowed: PDF, JPG, JPEG, PNG (Max 5MB)</small>
+                        <small class="text-muted">Allowed: PDF, JPG, JPEG, PNG (Max 20MB)</small>
                     </div>
                 </div>
                 <div class="modal-footer bg-white">

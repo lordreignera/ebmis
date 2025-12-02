@@ -16,7 +16,7 @@ class MemberDocumentController extends Controller
             'document_type' => 'required|in:id_card,passport,bank_statement,payslip,utility_bill,business_license,tax_certificate,other',
             'document_name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'file' => 'required|file|max:10240', // 10MB max
+            'file' => 'required|file|max:20480', // 20MB max
         ]);
 
         $file = $request->file('file');

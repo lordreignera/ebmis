@@ -161,7 +161,7 @@
                                 <div class="form-group mb-3">
                                     <label class="form-label">School Registration/License <span class="text-danger">*</span></label>
                                     <input type="file" class="form-control" name="business_license" accept=".pdf,.jpg,.jpeg,.png" required>
-                                    <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 5MB)</small>
+                                    <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 25MB)</small>
                                 </div>
                             </div>
 
@@ -170,7 +170,7 @@
                                 <div class="form-group mb-3">
                                     <label class="form-label">Bank Statement (Past 6 Months) <span class="text-danger">*</span></label>
                                     <input type="file" class="form-control" name="bank_statement" accept=".pdf,.jpg,.jpeg,.png" required>
-                                    <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 5MB)</small>
+                                    <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 25MB)</small>
                                 </div>
                             </div>
 
@@ -179,7 +179,7 @@
                                 <div class="form-group mb-3">
                                     <label class="form-label">Photos of School Premises <span class="text-danger">*</span></label>
                                     <input type="file" class="form-control" name="business_photos" accept=".jpg,.jpeg,.png" required>
-                                    <small class="text-muted">Accepted formats: JPG, PNG (Max: 5MB)</small>
+                                    <small class="text-muted">Accepted formats: JPG, PNG (Max: 25MB)</small>
                                 </div>
                             </div>
                         </div>

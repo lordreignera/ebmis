@@ -272,9 +272,9 @@ class LoanController extends Controller
                 'repay_strategy' => 'required|integer|in:1,2,3',
                 'business_name' => 'required|string|max:255',
                 'business_contact' => 'required|string|max:255',
-                'business_license' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'bank_statement' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'business_photos' => 'nullable|file|mimes:jpg,jpeg,png|max:5120',
+                'business_license' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:25600',
+                'bank_statement' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:25600',
+                'business_photos' => 'nullable|file|mimes:jpg,jpeg,png|max:25600',
                 'monthly_income' => 'nullable|numeric',
                 'weekly_income' => 'nullable|numeric',
                 'loan_purpose' => 'nullable|string',
@@ -559,9 +559,9 @@ class LoanController extends Controller
             'principal' => 'required|numeric|min:1000',
             'installment' => 'required|numeric|min:1',
             'branch_id' => 'required|exists:branches,id',
-            'trading_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'bank_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'business_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'trading_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:25600',
+            'bank_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:25600',
+            'business_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:25600',
             'repay_strategy' => 'nullable|integer',
             'repay_name' => 'nullable|string|max:1000',
             'repay_address' => 'nullable|string|max:1000',
@@ -2815,7 +2815,7 @@ class LoanController extends Controller
             // Validate request
             $validated = $request->validate([
                 'document_type' => 'required|in:trading,bank,business',
-                'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120'
+                'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:20480'
             ]);
 
             // Find the loan
