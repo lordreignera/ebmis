@@ -22,6 +22,14 @@
                 </div>
                 
                 <div class="card-body">
+                    <!-- Important Notice -->
+                    <div class="alert alert-info alert-dismissible fade show" role="alert">
+                        <i class="mdi mdi-information me-2"></i>
+                        <strong>Registration Fee Requirement:</strong> Members must pay the registration fee before approval. 
+                        Use the "Pay" button or view member details to record the registration fee payment.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+
                     @if(session('success'))
                         <div class="alert alert-success alert-dismissible fade show" role="alert">
                             <i class="mdi mdi-check-circle me-2"></i>{{ session('success') }}
@@ -58,6 +66,7 @@
                                         <th>Contact</th>
                                         <th>Branch</th>
                                         <th>Member Type</th>
+                                        <th>Registration Fee</th>
                                         <th>Date Created</th>
                                         <th>Added By</th>
                                         <th class="text-center">Actions</th>
@@ -90,6 +99,41 @@
                                                 </span>
                                             </td>
                                             <td>
+                                                @php
+                                                    // Check if registration fee has been paid
+                                                    $registrationFee = \App\Models\FeeType::active()
+                                                        ->where(function($q) {
+                                                            $q->where('name', 'like', '%registration%')
+                                                              ->orWhere('name', 'like', '%Registration%');
+                                                        })
+                                                        ->first();
+                                                    
+                                                    $hasPaidRegistration = false;
+                                                    if ($registrationFee) {
+                                                        $hasPaidRegistration = \App\Models\Fee::where('member_id', $member->id)
+                                                            ->where('fees_type_id', $registrationFee->id)
+                                                            ->where('status', 1)
+                                                            ->exists();
+                                                    }
+                                                @endphp
+                                                
+                                                @if($hasPaidRegistration)
+                                                    <span class="badge bg-success">
+                                                        <i class="mdi mdi-check-circle"></i> Paid
+                                                    </span>
+                                                @else
+                                                    <span class="badge bg-danger">
+                                                        <i class="mdi mdi-alert-circle"></i> Not Paid
+                                                    </span>
+                                                    <br>
+                                                    <a href="{{ route('admin.members.show', $member) }}#fees" 
+                                                       class="btn btn-xs btn-outline-primary mt-1"
+                                                       title="Pay Registration Fee">
+                                                        <i class="mdi mdi-cash"></i> Pay
+                                                    </a>
+                                                @endif
+                                            </td>
+                                            <td>
                                                 <small>{{ $member->datecreated ? \Carbon\Carbon::parse($member->datecreated)->format('d M Y') : 'N/A' }}</small>
                                             </td>
                                             <td>
@@ -107,9 +151,10 @@
                                                         <i class="mdi mdi-eye"></i>
                                                     </a>
                                                     <button type="button" 
-                                                            class="btn btn-sm btn-success" 
-                                                            onclick="approveModal({{ $member->id }}, '{{ $member->fname }} {{ $member->lname }}')"
-                                                            title="Approve Member">
+                                                            class="btn btn-sm btn-success {{ !$hasPaidRegistration ? 'disabled' : '' }}" 
+                                                            onclick="approveModal({{ $member->id }}, '{{ $member->fname }} {{ $member->lname }}', {{ $hasPaidRegistration ? 'true' : 'false' }})"
+                                                            title="{{ $hasPaidRegistration ? 'Approve Member' : 'Registration fee must be paid first' }}"
+                                                            {{ !$hasPaidRegistration ? 'disabled' : '' }}>
                                                         <i class="mdi mdi-check"></i>
                                                     </button>
                                                     <button type="button" 
@@ -162,6 +207,13 @@
                 </div>
                 <div class="modal-body">
                     <p>Are you sure you want to approve <strong id="approveMemberName"></strong>?</p>
+                    
+                    <div class="alert alert-warning" id="registrationFeeWarning" style="display: none;">
+                        <i class="mdi mdi-alert me-2"></i>
+                        <strong>Registration Fee Not Paid!</strong><br>
+                        This member has not paid the registration fee. Please record the payment before approval.
+                    </div>
+                    
                     <div class="mb-3">
                         <label for="approval_notes" class="form-label">Approval Notes (Optional)</label>
                         <textarea class="form-control" id="approval_notes" name="approval_notes" rows="3" 
@@ -224,9 +276,18 @@
 
 @push('scripts')
 <script>
-    function approveModal(memberId, memberName) {
+    function approveModal(memberId, memberName, hasPaidRegistration) {
         document.getElementById('approveMemberName').textContent = memberName;
         document.getElementById('approveForm').action = `/admin/members/${memberId}/approve`;
+        
+        // Show/hide registration fee warning
+        const warning = document.getElementById('registrationFeeWarning');
+        if (!hasPaidRegistration) {
+            warning.style.display = 'block';
+        } else {
+            warning.style.display = 'none';
+        }
+        
         new bootstrap.Modal(document.getElementById('approveModal')).show();
     }
 

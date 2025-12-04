@@ -78,8 +78,9 @@ body.modal-open {
                     <div class="row">
                         <div class="col-md-3 text-center">
                             @if($member->pp_file)
-                                <img src="{{ Storage::url($member->pp_file) }}" 
-                                     class="rounded-circle mb-3" width="150" height="150" alt="Member Photo">
+                                <img src="{{ asset($member->pp_file) }}" 
+                                     class="rounded-circle mb-3" width="150" height="150" alt="Member Photo" 
+                                     onerror="this.src='{{ asset('images/default-avatar.png') }}'; this.onerror=null;">
                             @else
                                 <div class="bg-primary rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" 
                                      style="width: 150px; height: 150px;">

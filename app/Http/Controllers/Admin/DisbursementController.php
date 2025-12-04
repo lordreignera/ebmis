@@ -1650,6 +1650,10 @@ class DisbursementController extends Controller
     /**
      * Validate that all mandatory fees are paid before disbursement
      * MANDATORY FEES CANNOT BE AUTO-DEDUCTED - MUST BE PAID SEPARATELY
+     * 
+     * NOTE: Registration fees are now enforced at member approval (MemberController::approve).
+     * Members cannot be approved without paying registration fees first.
+     * This validation remains as a safety fallback.
      */
     private function validateMandatoryFees(Member $member)
     {
@@ -1668,6 +1672,16 @@ class DisbursementController extends Controller
             \Log::info("Skipping registration fee check for subsequent loan", [
                 'member_id' => $member->id,
                 'previous_loans' => $previousLoansCount
+            ]);
+            return ['valid' => true];
+        }
+
+        // GRANDFATHERING: Skip registration fee check for members approved before Dec 3, 2025
+        // These are legacy members who were approved under old rules (no registration fee requirement)
+        if ($member->approved_at && $member->approved_at < '2025-12-03') {
+            \Log::info("Skipping registration fee check for legacy approved member", [
+                'member_id' => $member->id,
+                'approved_at' => $member->approved_at
             ]);
             return ['valid' => true];
         }

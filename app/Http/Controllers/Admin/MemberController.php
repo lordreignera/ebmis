@@ -383,6 +383,29 @@ class MemberController extends Controller
         ]);
 
         try {
+            // CRITICAL: Check if registration fee has been paid before approval
+            // NOTE: This only applies to NEW members being approved from today onwards.
+            // Existing approved members are grandfathered in (no retroactive enforcement).
+            $registrationFee = \App\Models\FeeType::active()
+                                                  ->where(function($query) {
+                                                      $query->where('name', 'like', '%registration%')
+                                                            ->orWhere('name', 'like', '%Registration%');
+                                                  })
+                                                  ->first();
+
+            if ($registrationFee) {
+                // Check if member has paid registration fee
+                $paidRegistrationFee = \App\Models\Fee::where('member_id', $member->id)
+                                                      ->where('fees_type_id', $registrationFee->id)
+                                                      ->where('status', 1) // Paid
+                                                      ->first();
+
+                if (!$paidRegistrationFee) {
+                    return redirect()->back()
+                                   ->with('error', 'Registration fee must be paid before member approval. Please record the registration fee payment first.');
+                }
+            }
+
             $member->approve(auth()->id(), $request->approval_notes);
 
             return redirect()->back()
