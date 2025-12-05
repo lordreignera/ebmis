@@ -51,13 +51,19 @@
                             <div class="alert alert-danger py-2 px-2 mb-2" style="font-size: 0.75rem;">
                                 <i class="mdi mdi-alert"></i> File missing from server
                             </div>
-                            <form action="{{ route('admin.members.documents.destroy', [$member, $document]) }}" method="POST" onsubmit="return confirm('Delete this broken document record?')">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-danger btn-sm w-100">
-                                    <i class="mdi mdi-delete"></i> Remove Record
+                            <div class="btn-group-vertical w-100 gap-1">
+                                <button type="button" class="btn btn-warning btn-sm" 
+                                        onclick="showReuploadModal({{ $document->id }}, '{{ $document->document_name }}', '{{ $document->document_type }}')">
+                                    <i class="mdi mdi-upload"></i> Re-upload File
                                 </button>
-                            </form>
+                                <form action="{{ route('admin.members.documents.destroy', [$member, $document]) }}" method="POST" onsubmit="return confirm('Delete this document record?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-danger btn-sm w-100">
+                                        <i class="mdi mdi-delete"></i> Remove Record
+                                    </button>
+                                </form>
+                            </div>
                         @endif
                     </div>
                 </div>

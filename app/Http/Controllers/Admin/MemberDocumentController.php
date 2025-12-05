@@ -60,6 +60,58 @@ class MemberDocumentController extends Controller
             ->with('success', 'Document uploaded successfully');
     }
 
+    public function update(Request $request, Member $member, MemberDocument $document)
+    {
+        $validated = $request->validate([
+            'file' => 'required|file|max:20480', // 20MB max
+            'description' => 'nullable|string',
+        ]);
+
+        $file = $request->file('file');
+        
+        // Get file info BEFORE moving (temp file will be deleted after move)
+        $mimeType = $file->getMimeType();
+        $fileSize = $file->getSize();
+        $extension = $file->getClientOriginalExtension();
+        
+        // Delete old file if exists
+        if ($document->fileExists()) {
+            $oldFilePath = public_path($document->file_path);
+            if (file_exists($oldFilePath)) {
+                unlink($oldFilePath);
+            }
+        }
+        
+        // Store directly in public/uploads/member-documents/{member_id}/
+        $uploadPath = 'uploads/member-documents/' . $member->id;
+        $publicPath = public_path($uploadPath);
+        
+        // Create directory if it doesn't exist
+        if (!file_exists($publicPath)) {
+            mkdir($publicPath, 0755, true);
+        }
+        
+        // Generate unique filename
+        $filename = uniqid() . '_' . time() . '.' . $extension;
+        
+        // Move file to public/uploads/
+        $file->move($publicPath, $filename);
+        
+        // Store path relative to public folder
+        $path = $uploadPath . '/' . $filename;
+
+        // Update document record
+        $document->update([
+            'file_path' => $path,
+            'file_type' => $mimeType,
+            'file_size' => $fileSize,
+            'description' => $request->description ?? $document->description,
+        ]);
+
+        return redirect()->route('admin.members.show', $member)
+            ->with('success', 'Document re-uploaded successfully');
+    }
+
     public function download(Member $member, MemberDocument $document)
     {
         // Check if file exists in public folder

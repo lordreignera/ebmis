@@ -115,6 +115,7 @@ Route::middleware([
         
         // Documents routes
         Route::post('/documents', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'store'])->name('documents.store');
+        Route::put('/documents/{document}', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'update'])->name('documents.reupload');
         Route::get('/documents/{document}/download', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'download'])->name('documents.download');
         Route::delete('/documents/{document}', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'destroy'])->name('documents.destroy');
     });

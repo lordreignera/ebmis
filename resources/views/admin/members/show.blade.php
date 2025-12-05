@@ -793,6 +793,45 @@ body.modal-open {
                 </div>
             </div>
 
+            <!-- Re-upload Document Modal -->
+            <div class="modal fade" id="reuploadDocumentModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+                        <form id="reuploadForm" method="POST" enctype="multipart/form-data">
+                            @csrf
+                            @method('PUT')
+                            <div class="modal-header bg-warning">
+                                <h5 class="modal-title text-white">
+                                    <i class="mdi mdi-upload"></i> Re-upload Missing File
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" style="background-color: white;">
+                                <div class="alert alert-warning">
+                                    <i class="mdi mdi-alert"></i> 
+                                    <strong>Missing File:</strong> <span id="reuploadDocumentName"></span>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Select New File <span class="text-danger">*</span></label>
+                                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required>
+                                    <small class="text-muted">Max 20MB. Allowed: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX</small>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: #000;">Update Description (Optional)</label>
+                                    <textarea name="description" class="form-control" rows="2" placeholder="Add notes about this re-upload"></textarea>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="mdi mdi-upload"></i> Re-upload File
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             <!-- View Document Modal -->
             <div class="modal fade" id="viewDocumentModal" tabindex="-1">
                 <div class="modal-dialog modal-xl">
@@ -2440,6 +2479,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
             }
         });
+    }
+
+    // Re-upload Document Modal
+    function showReuploadModal(documentId, documentName, documentType) {
+        document.getElementById('reuploadDocumentName').textContent = documentName;
+        document.getElementById('reuploadForm').action = '{{ route("admin.members.documents.reupload", [$member, ":id"]) }}'.replace(':id', documentId);
+        new bootstrap.Modal(document.getElementById('reuploadDocumentModal')).show();
     }
 });
 
