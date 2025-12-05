@@ -26,11 +26,26 @@ class MemberDocument extends Model
     {
         // Handle legacy files from old system (stored in public/uploads/)
         if (strpos($this->file_path, 'uploads/') === 0) {
-            return url($this->file_path);
+            // Check if file exists in public/uploads
+            $publicPath = public_path($this->file_path);
+            if (file_exists($publicPath)) {
+                return url($this->file_path);
+            }
+            // File doesn't exist, return null to show error
+            return null;
         }
         
-        // Handle new files using Laravel storage
-        return \Storage::url($this->file_path);
+        // Handle new files using Laravel storage (storage/app/public/)
+        // Use asset('storage/...') pattern same as loan documents for consistency
+        return asset('storage/' . $this->file_path);
+    }
+    
+    public function fileExists()
+    {
+        if (strpos($this->file_path, 'uploads/') === 0) {
+            return file_exists(public_path($this->file_path));
+        }
+        return file_exists(storage_path('app/public/' . $this->file_path));
     }
 
     public function getFileSizeFormatted()

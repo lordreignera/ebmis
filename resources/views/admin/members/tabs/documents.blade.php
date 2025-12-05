@@ -30,21 +30,35 @@
                                 By: {{ $document->uploadedBy->name ?? 'N/A' }}
                             </small>
                         </p>
-                        <div class="btn-group btn-group-sm w-100">
-                            <a href="{{ $document->file_url }}" target="_blank" class="btn btn-info btn-sm px-2 py-1" style="font-size: 0.75rem;">
-                                <i class="mdi mdi-eye"></i>
-                            </a>
-                            <a href="{{ route('admin.members.documents.download', [$member, $document]) }}" class="btn btn-primary btn-sm px-2 py-1" style="font-size: 0.75rem;">
-                                <i class="mdi mdi-download"></i>
-                            </a>
-                            <form action="{{ route('admin.members.documents.destroy', [$member, $document]) }}" method="POST" class="flex-grow-1" onsubmit="return confirm('Delete this document?')">
+                        
+                        @if($document->fileExists() && $document->file_url)
+                            <div class="btn-group btn-group-sm w-100">
+                                <a href="{{ $document->file_url }}" target="_blank" class="btn btn-info btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                    <i class="mdi mdi-eye"></i>
+                                </a>
+                                <a href="{{ route('admin.members.documents.download', [$member, $document]) }}" class="btn btn-primary btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                    <i class="mdi mdi-download"></i>
+                                </a>
+                                <form action="{{ route('admin.members.documents.destroy', [$member, $document]) }}" method="POST" class="flex-grow-1" onsubmit="return confirm('Delete this document?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-danger btn-sm w-100 px-2 py-1" style="font-size: 0.75rem;">
+                                        <i class="mdi mdi-delete"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        @else
+                            <div class="alert alert-danger py-2 px-2 mb-2" style="font-size: 0.75rem;">
+                                <i class="mdi mdi-alert"></i> File missing from server
+                            </div>
+                            <form action="{{ route('admin.members.documents.destroy', [$member, $document]) }}" method="POST" onsubmit="return confirm('Delete this broken document record?')">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="btn btn-danger btn-sm w-100 px-2 py-1" style="font-size: 0.75rem;">
-                                    <i class="mdi mdi-delete"></i>
+                                <button type="submit" class="btn btn-danger btn-sm w-100">
+                                    <i class="mdi mdi-delete"></i> Remove Record
                                 </button>
                             </form>
-                        </div>
+                        @endif
                     </div>
                 </div>
             </div>
