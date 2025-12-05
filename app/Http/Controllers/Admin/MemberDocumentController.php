@@ -20,7 +20,25 @@ class MemberDocumentController extends Controller
         ]);
 
         $file = $request->file('file');
-        $path = $file->store('member-documents/' . $member->id, 'public');
+        
+        // Store directly in public/uploads/member-documents/{member_id}/ 
+        // No symlink needed - always accessible!
+        $uploadPath = 'uploads/member-documents/' . $member->id;
+        $publicPath = public_path($uploadPath);
+        
+        // Create directory if it doesn't exist
+        if (!file_exists($publicPath)) {
+            mkdir($publicPath, 0755, true);
+        }
+        
+        // Generate unique filename
+        $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+        
+        // Move file to public/uploads/
+        $file->move($publicPath, $filename);
+        
+        // Store path relative to public folder
+        $path = $uploadPath . '/' . $filename;
 
         MemberDocument::create([
             'member_id' => $member->id,
@@ -39,18 +57,23 @@ class MemberDocumentController extends Controller
 
     public function download(Member $member, MemberDocument $document)
     {
-        if (!Storage::disk('public')->exists($document->file_path)) {
+        // Check if file exists in public folder
+        $filePath = public_path($document->file_path);
+        
+        if (!file_exists($filePath)) {
             return redirect()->back()->with('error', 'File not found');
         }
 
-        return Storage::disk('public')->download($document->file_path, $document->document_name);
+        return response()->download($filePath, $document->document_name);
     }
 
     public function destroy(Member $member, MemberDocument $document)
     {
-        // Delete file from storage
-        if (Storage::disk('public')->exists($document->file_path)) {
-            Storage::disk('public')->delete($document->file_path);
+        // Delete file from public folder
+        $filePath = public_path($document->file_path);
+        
+        if (file_exists($filePath)) {
+            unlink($filePath);
         }
 
         $document->delete();
