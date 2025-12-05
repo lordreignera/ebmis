@@ -747,13 +747,14 @@ body.modal-open {
             <div class="modal fade" id="uploadDocumentModal" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
-                        <form action="{{ route('admin.members.documents.store', $member) }}" method="POST" enctype="multipart/form-data">
+                        <form id="uploadDocumentForm" action="{{ route('admin.members.documents.store', $member) }}" method="POST" enctype="multipart/form-data" onsubmit="return handleUploadSubmit(event)">
                             @csrf
                             <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
                                 <h5 class="modal-title" style="color: #000;">Upload Document</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body" style="background-color: white;">
+                                <div id="uploadFeedback" style="display:none;" class="alert"></div>
                                 <div class="mb-3">
                                     <label class="form-label" style="color: #000;">Document Type <span class="text-danger">*</span></label>
                                     <select name="document_type" class="form-select" required>
@@ -2482,8 +2483,46 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Upload Document Handler - Log and validate before submit
+function handleUploadSubmit(event) {
+    const form = event.target;
+    const fileInput = form.querySelector('input[type="file"]');
+    const feedback = document.getElementById('uploadFeedback');
+    
+    console.log('Upload form submitting...', {
+        hasFile: fileInput.files.length > 0,
+        fileName: fileInput.files[0]?.name,
+        fileSize: fileInput.files[0]?.size,
+        user: '{{ auth()->user()->name }}',
+        member: '{{ $member->id }}'
+    });
+    
+    if (!fileInput.files.length) {
+        feedback.className = 'alert alert-danger';
+        feedback.textContent = 'Please select a file to upload';
+        feedback.style.display = 'block';
+        return false;
+    }
+    
+    if (fileInput.files[0].size > 20 * 1024 * 1024) {
+        feedback.className = 'alert alert-danger';
+        feedback.textContent = 'File size must be less than 20MB';
+        feedback.style.display = 'block';
+        return false;
+    }
+    
+    // Show loading state
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading...';
+    
+    console.log('Form validation passed, submitting...');
+    return true;
+}
+
 // Re-upload Document Modal - Global function (accessible from onclick)
 function showReuploadModal(documentId, documentName, documentType) {
+    console.log('Opening re-upload modal', {documentId, documentName, documentType});
     document.getElementById('reuploadDocumentName').textContent = documentName;
     document.getElementById('reuploadForm').action = '{{ route("admin.members.documents.reupload", [$member, ":id"]) }}'.replace(':id', documentId);
     new bootstrap.Modal(document.getElementById('reuploadDocumentModal')).show();
