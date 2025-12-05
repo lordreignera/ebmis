@@ -595,7 +595,10 @@
                       @if(isset($activity->loan_id) && $activity->loan_id)
                         @php
                           // Check if loan has been disbursed by checking disbursements table
-                          $loan = \App\Models\PersonalLoan::find($activity->loan_id) ?? \App\Models\GroupLoan::find($activity->loan_id);
+                          $loan = \App\Models\PersonalLoan::find($activity->loan_id);
+                          if (!$loan) {
+                            $loan = \App\Models\GroupLoan::find($activity->loan_id);
+                          }
                           $hasDisbursement = false;
                           
                           if ($loan) {
@@ -609,12 +612,16 @@
                             $viewUrl = route('admin.loans.repayments.schedules', $activity->loan_id);
                           } else {
                             // Otherwise route based on status
-                            $viewUrl = match($activity->status ?? '0') {
-                              '0' => route('admin.loans.show', $activity->loan_id), // Pending approval - loan details
-                              '1' => route('admin.loans.disbursements.approve.show', $activity->loan_id), // Approved - disbursement page
-                              '3' => route('admin.loans.repayments.schedules', $activity->loan_id), // Completed - repayment schedules
-                              default => route('admin.loans.show', $activity->loan_id)
-                            };
+                            $status = $activity->status ?? '0';
+                            if ($status == '0') {
+                              $viewUrl = route('admin.loans.show', $activity->loan_id); // Pending approval - loan details
+                            } elseif ($status == '1') {
+                              $viewUrl = route('admin.loans.disbursements.approve.show', $activity->loan_id); // Approved - disbursement page
+                            } elseif ($status == '3') {
+                              $viewUrl = route('admin.loans.repayments.schedules', $activity->loan_id); // Completed - repayment schedules
+                            } else {
+                              $viewUrl = route('admin.loans.show', $activity->loan_id);
+                            }
                           }
                         @endphp
                         <a href="{{ $viewUrl }}" class="btn btn-sm btn-primary">
