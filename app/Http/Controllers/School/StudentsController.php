@@ -122,8 +122,18 @@ class StudentsController extends Controller
 
         // Handle photo upload
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('student-photos/' . $school->id, 'public');
-            $validated['photo_path'] = $path;
+            $file = $request->file('photo');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            
+            $uploadPath = 'uploads/student-photos/' . $school->id;
+            $publicPath = public_path($uploadPath);
+            
+            if (!file_exists($publicPath)) {
+                mkdir($publicPath, 0755, true);
+            }
+            
+            $file->move($publicPath, $filename);
+            $validated['photo_path'] = $uploadPath . '/' . $filename;
         }
 
         $student = Student::create($validated);
@@ -212,10 +222,24 @@ class StudentsController extends Controller
         if ($request->hasFile('photo')) {
             // Delete old photo
             if ($student->photo_path) {
-                Storage::disk('public')->delete($student->photo_path);
+                $oldPath = public_path($student->photo_path);
+                if (file_exists($oldPath)) {
+                    unlink($oldPath);
+                }
             }
-            $path = $request->file('photo')->store('student-photos/' . $student->school_id, 'public');
-            $validated['photo_path'] = $path;
+            
+            $file = $request->file('photo');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            
+            $uploadPath = 'uploads/student-photos/' . $student->school_id;
+            $publicPath = public_path($uploadPath);
+            
+            if (!file_exists($publicPath)) {
+                mkdir($publicPath, 0755, true);
+            }
+            
+            $file->move($publicPath, $filename);
+            $validated['photo_path'] = $uploadPath . '/' . $filename;
         }
 
         // Update class enrollment if class changed
@@ -251,7 +275,10 @@ class StudentsController extends Controller
 
         // Delete photo
         if ($student->photo_path) {
-            Storage::disk('public')->delete($student->photo_path);
+            $photoPath = public_path($student->photo_path);
+            if (file_exists($photoPath)) {
+                unlink($photoPath);
+            }
         }
 
         $student->delete();

@@ -29,7 +29,6 @@ Thumbs.db
 /docs
 
 # Fix and test files
-fix_*.php
 check_*.php
 test_*.php
 *_fix.php

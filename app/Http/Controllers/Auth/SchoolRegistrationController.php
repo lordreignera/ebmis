@@ -309,7 +309,17 @@ class SchoolRegistrationController extends Controller
                 if ($request->hasFile($formField)) {
                     $file = $request->file($formField);
                     $filename = time() . '_' . $formField . '.' . $file->getClientOriginalExtension();
-                    $path = $file->storeAs('school-documents/' . $schoolId, $filename, 'public');
+                    
+                    // Store in public/uploads/school-documents/{school_id}/
+                    $uploadPath = 'uploads/school-documents/' . $schoolId;
+                    $publicPath = public_path($uploadPath);
+                    
+                    if (!file_exists($publicPath)) {
+                        mkdir($publicPath, 0755, true);
+                    }
+                    
+                    $file->move($publicPath, $filename);
+                    $path = $uploadPath . '/' . $filename;
                     $documentPaths[$dbColumn] = $path;
                     
                     \Log::info('Document uploaded', [
@@ -325,7 +335,16 @@ class SchoolRegistrationController extends Controller
             if ($request->hasFile('student_fees_file')) {
                 $file = $request->file('student_fees_file');
                 $filename = time() . '_student_fees.' . $file->getClientOriginalExtension();
-                $path = $file->storeAs('school-documents/' . $schoolId, $filename, 'public');
+                
+                $uploadPath = 'uploads/school-documents/' . $schoolId;
+                $publicPath = public_path($uploadPath);
+                
+                if (!file_exists($publicPath)) {
+                    mkdir($publicPath, 0755, true);
+                }
+                
+                $file->move($publicPath, $filename);
+                $path = $uploadPath . '/' . $filename;
                 $documentPaths['student_fees_file_path'] = $path;
                 
                 \Log::info('Student fees file uploaded', [
@@ -338,7 +357,16 @@ class SchoolRegistrationController extends Controller
             if ($request->hasFile('unpaid_students_file')) {
                 $file = $request->file('unpaid_students_file');
                 $filename = time() . '_unpaid_students.' . $file->getClientOriginalExtension();
-                $path = $file->storeAs('school-documents/' . $schoolId, $filename, 'public');
+                
+                $uploadPath = 'uploads/school-documents/' . $schoolId;
+                $publicPath = public_path($uploadPath);
+                
+                if (!file_exists($publicPath)) {
+                    mkdir($publicPath, 0755, true);
+                }
+                
+                $file->move($publicPath, $filename);
+                $path = $uploadPath . '/' . $filename;
                 $documentPaths['unpaid_students_file_path'] = $path;
                 
                 \Log::info('Unpaid students file uploaded', [

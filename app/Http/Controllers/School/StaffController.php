@@ -219,23 +219,68 @@ class StaffController extends Controller
         // Handle file uploads
         if ($request->hasFile('cv')) {
             if ($staff->cv_path) {
-                Storage::disk('public')->delete($staff->cv_path);
+                $oldPath = public_path($staff->cv_path);
+                if (file_exists($oldPath)) {
+                    unlink($oldPath);
+                }
             }
-            $validated['cv_path'] = $request->file('cv')->store('staff-documents/' . $staff->school_id, 'public');
+            
+            $file = $request->file('cv');
+            $filename = uniqid() . '_cv_' . time() . '.' . $file->getClientOriginalExtension();
+            
+            $uploadPath = 'uploads/staff-documents/' . $staff->school_id;
+            $publicPath = public_path($uploadPath);
+            
+            if (!file_exists($publicPath)) {
+                mkdir($publicPath, 0755, true);
+            }
+            
+            $file->move($publicPath, $filename);
+            $validated['cv_path'] = $uploadPath . '/' . $filename;
         }
 
         if ($request->hasFile('certificate')) {
             if ($staff->certificate_path) {
-                Storage::disk('public')->delete($staff->certificate_path);
+                $oldPath = public_path($staff->certificate_path);
+                if (file_exists($oldPath)) {
+                    unlink($oldPath);
+                }
             }
-            $validated['certificate_path'] = $request->file('certificate')->store('staff-documents/' . $staff->school_id, 'public');
+            
+            $file = $request->file('certificate');
+            $filename = uniqid() . '_cert_' . time() . '.' . $file->getClientOriginalExtension();
+            
+            $uploadPath = 'uploads/staff-documents/' . $staff->school_id;
+            $publicPath = public_path($uploadPath);
+            
+            if (!file_exists($publicPath)) {
+                mkdir($publicPath, 0755, true);
+            }
+            
+            $file->move($publicPath, $filename);
+            $validated['certificate_path'] = $uploadPath . '/' . $filename;
         }
 
         if ($request->hasFile('id_photo')) {
             if ($staff->id_photo_path) {
-                Storage::disk('public')->delete($staff->id_photo_path);
+                $oldPath = public_path($staff->id_photo_path);
+                if (file_exists($oldPath)) {
+                    unlink($oldPath);
+                }
             }
-            $validated['id_photo_path'] = $request->file('id_photo')->store('staff-photos/' . $staff->school_id, 'public');
+            
+            $file = $request->file('id_photo');
+            $filename = uniqid() . '_id_' . time() . '.' . $file->getClientOriginalExtension();
+            
+            $uploadPath = 'uploads/staff-photos/' . $staff->school_id;
+            $publicPath = public_path($uploadPath);
+            
+            if (!file_exists($publicPath)) {
+                mkdir($publicPath, 0755, true);
+            }
+            
+            $file->move($publicPath, $filename);
+            $validated['id_photo_path'] = $uploadPath . '/' . $filename;
         }
 
         $staff->update($validated);
@@ -253,13 +298,22 @@ class StaffController extends Controller
 
         // Delete uploaded files
         if ($staff->cv_path) {
-            Storage::disk('public')->delete($staff->cv_path);
+            $cvPath = public_path($staff->cv_path);
+            if (file_exists($cvPath)) {
+                unlink($cvPath);
+            }
         }
         if ($staff->certificate_path) {
-            Storage::disk('public')->delete($staff->certificate_path);
+            $certPath = public_path($staff->certificate_path);
+            if (file_exists($certPath)) {
+                unlink($certPath);
+            }
         }
         if ($staff->id_photo_path) {
-            Storage::disk('public')->delete($staff->id_photo_path);
+            $photoPath = public_path($staff->id_photo_path);
+            if (file_exists($photoPath)) {
+                unlink($photoPath);
+            }
         }
 
         $staff->delete();
