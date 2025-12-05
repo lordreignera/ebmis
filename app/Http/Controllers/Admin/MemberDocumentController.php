@@ -21,6 +21,11 @@ class MemberDocumentController extends Controller
 
         $file = $request->file('file');
         
+        // Get file info BEFORE moving (temp file will be deleted after move)
+        $mimeType = $file->getMimeType();
+        $fileSize = $file->getSize();
+        $extension = $file->getClientOriginalExtension();
+        
         // Store directly in public/uploads/member-documents/{member_id}/ 
         // No symlink needed - always accessible!
         $uploadPath = 'uploads/member-documents/' . $member->id;
@@ -32,7 +37,7 @@ class MemberDocumentController extends Controller
         }
         
         // Generate unique filename
-        $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+        $filename = uniqid() . '_' . time() . '.' . $extension;
         
         // Move file to public/uploads/
         $file->move($publicPath, $filename);
@@ -45,8 +50,8 @@ class MemberDocumentController extends Controller
             'document_type' => $validated['document_type'],
             'document_name' => $validated['document_name'],
             'file_path' => $path,
-            'file_type' => $file->getMimeType(),
-            'file_size' => $file->getSize(),
+            'file_type' => $mimeType,
+            'file_size' => $fileSize,
             'description' => $validated['description'] ?? null,
             'uploaded_by' => auth()->id(),
         ]);
