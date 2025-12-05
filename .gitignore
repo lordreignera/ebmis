@@ -31,7 +31,6 @@ Thumbs.db
 # Fix and test files
 check_*.php
 test_*.php
-*_fix.php
 *_test.php
 *.sql
 !database/schema/*.sql

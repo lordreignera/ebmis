@@ -2480,14 +2480,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-
-    // Re-upload Document Modal
-    function showReuploadModal(documentId, documentName, documentType) {
-        document.getElementById('reuploadDocumentName').textContent = documentName;
-        document.getElementById('reuploadForm').action = '{{ route("admin.members.documents.reupload", [$member, ":id"]) }}'.replace(':id', documentId);
-        new bootstrap.Modal(document.getElementById('reuploadDocumentModal')).show();
-    }
 });
+
+// Re-upload Document Modal - Global function (accessible from onclick)
+function showReuploadModal(documentId, documentName, documentType) {
+    document.getElementById('reuploadDocumentName').textContent = documentName;
+    document.getElementById('reuploadForm').action = '{{ route("admin.members.documents.reupload", [$member, ":id"]) }}'.replace(':id', documentId);
+    new bootstrap.Modal(document.getElementById('reuploadDocumentModal')).show();
+}
 
 // Liability Category Toggle - Show/Hide Business Dropdown
 document.addEventListener('DOMContentLoaded', function() {
