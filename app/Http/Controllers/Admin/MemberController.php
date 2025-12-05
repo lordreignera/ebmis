@@ -169,11 +169,21 @@ class MemberController extends Controller
 
         // Handle file uploads
         if ($request->hasFile('pp_file')) {
-            $validated['pp_file'] = $request->file('pp_file')->store('member-photos', 'public');
+            $file = $request->file('pp_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/member-photos');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['pp_file'] = 'uploads/member-photos/' . $filename;
         }
 
         if ($request->hasFile('id_file')) {
-            $validated['id_file'] = $request->file('id_file')->store('member-ids', 'public');
+            $file = $request->file('id_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/member-ids');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['id_file'] = 'uploads/member-ids/' . $filename;
         }
 
         $validated['added_by'] = auth()->id();
@@ -306,24 +316,24 @@ class MemberController extends Controller
 
         // Handle file uploads - Only update if new file is uploaded
         if ($request->hasFile('pp_file')) {
-            // Keep old file as backup (don't delete)
-            // You can uncomment below to delete old file if needed
-            // if ($member->pp_file) {
-            //     Storage::disk('public')->delete($member->pp_file);
-            // }
-            $validated['pp_file'] = $request->file('pp_file')->store('member-photos', 'public');
+            $file = $request->file('pp_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/member-photos');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['pp_file'] = 'uploads/member-photos/' . $filename;
         } else {
             // Preserve existing file path
             $validated['pp_file'] = $member->pp_file;
         }
 
         if ($request->hasFile('id_file')) {
-            // Keep old file as backup (don't delete)
-            // You can uncomment below to delete old file if needed
-            // if ($member->id_file) {
-            //     Storage::disk('public')->delete($member->id_file);
-            // }
-            $validated['id_file'] = $request->file('id_file')->store('member-ids', 'public');
+            $file = $request->file('id_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/member-ids');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['id_file'] = 'uploads/member-ids/' . $filename;
         } else {
             // Preserve existing file path
             $validated['id_file'] = $member->id_file;

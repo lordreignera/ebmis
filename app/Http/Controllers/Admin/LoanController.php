@@ -585,24 +585,30 @@ class LoanController extends Controller
 
         // Handle file uploads
         if ($request->hasFile('trading_file')) {
-            if ($loan->trading_file) {
-                Storage::disk('public')->delete($loan->trading_file);
-            }
-            $validated['trading_file'] = $request->file('trading_file')->store('loan-documents', 'public');
+            $file = $request->file('trading_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/loan-documents');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['trading_file'] = 'uploads/loan-documents/' . $filename;
         }
 
         if ($request->hasFile('bank_file')) {
-            if ($loan->bank_file) {
-                Storage::disk('public')->delete($loan->bank_file);
-            }
-            $validated['bank_file'] = $request->file('bank_file')->store('loan-documents', 'public');
+            $file = $request->file('bank_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/loan-documents');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['bank_file'] = 'uploads/loan-documents/' . $filename;
         }
 
         if ($request->hasFile('business_file')) {
-            if ($loan->business_file) {
-                Storage::disk('public')->delete($loan->business_file);
-            }
-            $validated['business_file'] = $request->file('business_file')->store('loan-documents', 'public');
+            $file = $request->file('business_file');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/loan-documents');
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['business_file'] = 'uploads/loan-documents/' . $filename;
         }
 
         $loan->update($validated);

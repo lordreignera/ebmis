@@ -113,15 +113,30 @@ class StaffController extends Controller
 
         // Handle file uploads
         if ($request->hasFile('cv')) {
-            $validated['cv_path'] = $request->file('cv')->store('staff-documents/' . $school->id, 'public');
+            $file = $request->file('cv');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/staff-documents/' . $school->id);
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['cv_path'] = 'uploads/staff-documents/' . $school->id . '/' . $filename;
         }
 
         if ($request->hasFile('certificate')) {
-            $validated['certificate_path'] = $request->file('certificate')->store('staff-documents/' . $school->id, 'public');
+            $file = $request->file('certificate');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/staff-documents/' . $school->id);
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['certificate_path'] = 'uploads/staff-documents/' . $school->id . '/' . $filename;
         }
 
         if ($request->hasFile('id_photo')) {
-            $validated['id_photo_path'] = $request->file('id_photo')->store('staff-photos/' . $school->id, 'public');
+            $file = $request->file('id_photo');
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $uploadPath = public_path('uploads/staff-photos/' . $school->id);
+            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+            $file->move($uploadPath, $filename);
+            $validated['id_photo_path'] = 'uploads/staff-photos/' . $school->id . '/' . $filename;
         }
 
         $staff = Staff::create($validated);
