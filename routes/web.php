@@ -84,6 +84,19 @@ Route::middleware([
     'ebims_module'
 ])->prefix('admin')->name('admin.')->group(function () {
     
+    // Log Viewer Route
+    Route::get('/logs', function() {
+        return view('admin.logs.viewer');
+    })->name('logs.viewer');
+    
+    Route::get('/logs/download', function() {
+        $logFile = storage_path('logs/laravel.log');
+        if (file_exists($logFile)) {
+            return response()->download($logFile, 'laravel-' . date('Y-m-d') . '.log');
+        }
+        return redirect()->back()->with('error', 'Log file not found');
+    })->name('logs.download');
+    
     // Member Management Routes
     Route::resource('members', \App\Http\Controllers\Admin\MemberController::class);
     Route::get('/members-pending', [\App\Http\Controllers\Admin\MemberController::class, 'pending'])->name('members.pending');
