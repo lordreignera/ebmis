@@ -779,8 +779,8 @@ body.modal-open {
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label" style="color: #000;">File <span class="text-danger">*</span></label>
-                                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required>
-                                    <small class="text-muted">Max 20MB. Allowed: PDF, JPG, PNG, DOC, DOCX</small>
+                                    <input type="file" name="file" class="form-control" required>
+                                    <small class="text-muted">Max 20MB. All file types accepted (PDF, images, Word, Excel, etc.)</small>
                                 </div>
                             </div>
                             <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
@@ -814,8 +814,8 @@ body.modal-open {
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label" style="color: #000;">Select New File <span class="text-danger">*</span></label>
-                                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required>
-                                    <small class="text-muted">Max 20MB. Allowed: PDF, JPG, PNG, DOC, DOCX, XLS, XLSX</small>
+                                    <input type="file" name="file" class="form-control" required>
+                                    <small class="text-muted">Max 20MB. All file types accepted (PDF, images, Word, Excel, etc.)</small>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label" style="color: #000;">Update Description (Optional)</label>
@@ -2488,11 +2488,13 @@ function handleUploadSubmit(event) {
     const form = event.target;
     const fileInput = form.querySelector('input[type="file"]');
     const feedback = document.getElementById('uploadFeedback');
+    const file = fileInput.files[0];
     
     console.log('Upload form submitting...', {
         hasFile: fileInput.files.length > 0,
-        fileName: fileInput.files[0]?.name,
-        fileSize: fileInput.files[0]?.size,
+        fileName: file?.name,
+        fileSize: file?.size,
+        fileType: file?.type,
         user: '{{ auth()->user()->name }}',
         member: '{{ $member->id }}'
     });
@@ -2504,11 +2506,45 @@ function handleUploadSubmit(event) {
         return false;
     }
     
-    if (fileInput.files[0].size > 20 * 1024 * 1024) {
+    // File size validation
+    if (file.size > 20 * 1024 * 1024) {
         feedback.className = 'alert alert-danger';
-        feedback.textContent = 'File size must be less than 20MB';
+        feedback.textContent = 'File size must be less than 20MB (Current: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB)';
         feedback.style.display = 'block';
         return false;
+    }
+    
+    // Check if file is suspiciously small (likely corrupted)
+    if (file.size < 100) {
+        feedback.className = 'alert alert-danger';
+        feedback.textContent = 'File is too small (less than 100 bytes) and may be corrupted. Please select a valid file.';
+        feedback.style.display = 'block';
+        return false;
+    }
+    
+    // PDF specific validation
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+        // Check if it's really a PDF by reading the first bytes
+        const reader = new FileReader();
+        reader.onloadend = function(e) {
+            const arr = new Uint8Array(e.target.result).subarray(0, 5);
+            const header = String.fromCharCode.apply(null, arr);
+            
+            if (header !== '%PDF-') {
+                feedback.className = 'alert alert-danger';
+                feedback.textContent = 'This file is not a valid PDF. It may be corrupted or renamed. Please select a proper PDF file.';
+                feedback.style.display = 'block';
+                
+                // Re-enable submit button
+                const submitBtn = form.querySelector('button[type="submit"]');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="mdi mdi-upload"></i> Upload';
+                
+                event.preventDefault();
+                return false;
+            }
+        };
+        reader.readAsArrayBuffer(file.slice(0, 5));
     }
     
     // Show loading state

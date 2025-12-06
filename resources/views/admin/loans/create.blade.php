@@ -336,7 +336,7 @@
                                     <div class="mb-3">
                                         <label for="business_license" class="form-label">Business trading License</label>
                                         <div class="input-group">
-                                            <input type="file" name="business_license" id="business_license" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                            <input type="file" name="business_license" id="business_license" class="form-control">
                                             <button type="button" class="btn btn-outline-secondary">Browse</button>
                                         </div>
                                         @error('business_license')
@@ -350,7 +350,7 @@
                                     <div class="mb-3">
                                         <label for="bank_statement" class="form-label">Bank statement past six months</label>
                                         <div class="input-group">
-                                            <input type="file" name="bank_statement" id="bank_statement" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+                                            <input type="file" name="bank_statement" id="bank_statement" class="form-control">
                                             <button type="button" class="btn btn-outline-secondary">Browse</button>
                                         </div>
                                         @error('bank_statement')
@@ -364,7 +364,7 @@
                                     <div class="mb-3">
                                         <label for="business_photos" class="form-label">Photos of the business location</label>
                                         <div class="input-group">
-                                            <input type="file" name="business_photos" id="business_photos" class="form-control" accept=".jpg,.jpeg,.png" multiple>
+                                            <input type="file" name="business_photos" id="business_photos" class="form-control" multiple>
                                             <button type="button" class="btn btn-outline-secondary">Browse</button>
                                         </div>
                                         @error('business_photos')

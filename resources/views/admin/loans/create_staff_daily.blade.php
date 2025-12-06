@@ -160,7 +160,7 @@
                             <div class="col-md-4">
                                 <div class="form-group mb-3">
                                     <label class="form-label">Staff ID/Employment Letter <span class="text-danger">*</span></label>
-                                    <input type="file" class="form-control" name="business_license" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <input type="file" class="form-control" name="business_license" required>
                                     <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 25MB)</small>
                                 </div>
                             </div>
@@ -169,7 +169,7 @@
                             <div class="col-md-4">
                                 <div class="form-group mb-3">
                                     <label class="form-label">Employment Contract <span class="text-danger">*</span></label>
-                                    <input type="file" class="form-control" name="bank_statement" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <input type="file" class="form-control" name="bank_statement" required>
                                     <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 25MB)</small>
                                 </div>
                             </div>
@@ -178,7 +178,7 @@
                             <div class="col-md-4">
                                 <div class="form-group mb-3">
                                     <label class="form-label">Payslip/Employment Proof <span class="text-danger">*</span></label>
-                                    <input type="file" class="form-control" name="business_photos" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <input type="file" class="form-control" name="business_photos" required>
                                     <small class="text-muted">Accepted formats: PDF, JPG, PNG (Max: 25MB)</small>
                                 </div>
                             </div>

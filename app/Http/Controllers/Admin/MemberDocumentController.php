@@ -13,32 +13,72 @@ class MemberDocumentController extends Controller
     public function store(Request $request, Member $member)
     {
         try {
+            $file = $request->file('file');
+            
             \Log::info('Document upload attempt', [
                 'user_id' => auth()->id(),
                 'user_name' => auth()->user()->name,
                 'member_id' => $member->id,
                 'has_file' => $request->hasFile('file'),
-                'file_size' => $request->hasFile('file') ? $request->file('file')->getSize() : 0,
+                'file_size' => $file ? $file->getSize() : 0,
+                'file_error' => $file ? $file->getError() : null,
+                'file_valid' => $file ? $file->isValid() : false,
+                'original_name' => $file ? $file->getClientOriginalName() : null,
+                'temp_path' => $file ? $file->getRealPath() : null,
             ]);
+            
+            // Check for upload errors BEFORE validation
+            if ($file && $file->getError() !== UPLOAD_ERR_OK) {
+                $errorMessages = [
+                    UPLOAD_ERR_INI_SIZE => 'File exceeds upload_max_filesize in php.ini',
+                    UPLOAD_ERR_FORM_SIZE => 'File exceeds MAX_FILE_SIZE in HTML form',
+                    UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                    UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+                    UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                    UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload',
+                ];
+                
+                $errorCode = $file->getError();
+                $errorMsg = $errorMessages[$errorCode] ?? 'Unknown upload error';
+                
+                \Log::error('Upload error before validation', [
+                    'error_code' => $errorCode,
+                    'error_message' => $errorMsg,
+                    'user' => auth()->user()->name,
+                ]);
+                
+                return redirect()->back()->with('error', 'Upload failed: ' . $errorMsg . '. Please try a smaller file or contact support.');
+            }
 
             $validated = $request->validate([
                 'document_type' => 'required|in:id_card,passport,bank_statement,payslip,utility_bill,business_license,tax_certificate,other',
                 'document_name' => 'required|string|max:255',
                 'description' => 'nullable|string',
-                'file' => 'required|file|max:20480', // 20MB max
+                'file' => 'required|file|max:51200', // 50MB max - increased limit
             ]);
 
-            $file = $request->file('file');
-            
-            if (!$file) {
-                \Log::error('No file in request', ['user' => auth()->user()->name]);
-                return redirect()->back()->with('error', 'No file was uploaded. Please try again.');
-            }
+            // File already retrieved earlier, no need to get it again
             
             // Get file info BEFORE moving (temp file will be deleted after move)
             $mimeType = $file->getMimeType();
             $fileSize = $file->getSize();
             $extension = $file->getClientOriginalExtension();
+            
+            // Log PDF info but don't reject - accept all PDF formats
+            if (strtolower($extension) === 'pdf' || strpos($mimeType, 'pdf') !== false) {
+                $fileContent = file_get_contents($file->getRealPath());
+                
+                // Just log PDF header info for debugging, don't reject
+                $header = substr($fileContent, 0, 10);
+                \Log::info('PDF file info', [
+                    'user' => auth()->user()->name,
+                    'has_pdf_header' => (substr($fileContent, 0, 5) === '%PDF-'),
+                    'first_bytes' => bin2hex($header),
+                    'size' => $fileSize,
+                    'is_encrypted' => (strpos($fileContent, '/Encrypt') !== false),
+                ]);
+            }
             
             \Log::info('File details', [
                 'mime' => $mimeType,
@@ -124,17 +164,28 @@ class MemberDocumentController extends Controller
 
     public function update(Request $request, Member $member, MemberDocument $document)
     {
-        $validated = $request->validate([
-            'file' => 'required|file|max:20480', // 20MB max
-            'description' => 'nullable|string',
-        ]);
+        try {
+            $validated = $request->validate([
+                'file' => 'required|file|max:51200', // 50MB max - accept any file type
+                'description' => 'nullable|string',
+            ]);
 
-        $file = $request->file('file');
-        
-        // Get file info BEFORE moving (temp file will be deleted after move)
-        $mimeType = $file->getMimeType();
-        $fileSize = $file->getSize();
-        $extension = $file->getClientOriginalExtension();
+            $file = $request->file('file');
+            
+            // Get file info BEFORE moving (temp file will be deleted after move)
+            $mimeType = $file->getMimeType();
+            $fileSize = $file->getSize();
+            $extension = $file->getClientOriginalExtension();
+            
+            // Log PDF info for debugging but don't reject
+            if (strtolower($extension) === 'pdf' || strpos($mimeType, 'pdf') !== false) {
+                \Log::info('PDF re-upload', [
+                    'user' => auth()->user()->name,
+                    'document_id' => $document->id,
+                    'size' => $fileSize,
+                    'mime' => $mimeType,
+                ]);
+            }
         
         // Delete old file if exists
         if ($document->fileExists()) {
@@ -162,16 +213,42 @@ class MemberDocumentController extends Controller
         // Store path relative to public folder
         $path = $uploadPath . '/' . $filename;
 
-        // Update document record
-        $document->update([
-            'file_path' => $path,
-            'file_type' => $mimeType,
-            'file_size' => $fileSize,
-            'description' => $request->description ?? $document->description,
-        ]);
+            // Update document record
+            $document->update([
+                'file_path' => $path,
+                'file_type' => $mimeType,
+                'file_size' => $fileSize,
+                'description' => $request->description ?? $document->description,
+            ]);
 
-        return redirect()->route('admin.members.show', $member)
-            ->with('success', 'Document re-uploaded successfully');
+            \Log::info('Document re-uploaded successfully', [
+                'document_id' => $document->id,
+                'user' => auth()->user()->name,
+            ]);
+
+            return redirect()->route('admin.members.show', $member)
+                ->with('success', 'Document re-uploaded successfully');
+                
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Validation error during re-upload', [
+                'errors' => $e->errors(),
+                'user' => auth()->user()->name,
+            ]);
+            return redirect()->back()
+                ->withErrors($e->errors())
+                ->with('error', 'Validation failed: ' . implode(', ', array_map(fn($err) => implode(', ', $err), $e->errors())));
+                
+        } catch (\Exception $e) {
+            \Log::error('Document re-upload failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user' => auth()->user()->name,
+                'document_id' => $document->id,
+            ]);
+            
+            return redirect()->back()
+                ->with('error', 'Re-upload failed: ' . $e->getMessage());
+        }
     }
 
     public function download(Member $member, MemberDocument $document)

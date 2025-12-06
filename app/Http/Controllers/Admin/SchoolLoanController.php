@@ -137,9 +137,9 @@ class SchoolLoanController extends Controller
             'repay_strategy' => 'required|in:1,2',
             'business_name' => 'required|string|max:255',
             'business_contact' => 'required|string|max:500',
-            'business_license' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'bank_statement' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'business_photos' => 'required|file|mimes:jpg,jpeg,png|max:5120',
+            'business_license' => 'required|file|max:5120',
+            'bank_statement' => 'required|file|max:5120',
+            'business_photos' => 'required|file|max:5120',
             'loan_code' => 'nullable|string|max:50',
         ];
 
