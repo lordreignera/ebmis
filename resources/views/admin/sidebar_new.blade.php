@@ -500,7 +500,7 @@
     @if(auth()->user()->user_type !== 'school')
     <!-- ADMIN ONLY: REPORTS & SETTINGS -->
     <li class="nav-item nav-category">
-      <span class="nav-link">REPORTS & SETTINGS</span>
+      <span class="nav-link">REPORTS</span>
     </li>
 
     <li class="nav-item menu-items">
@@ -527,7 +527,7 @@
       </div>
     </li>
 
-    <li class="nav-item menu-items">
+    <!-- <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#settings" aria-expanded="false" aria-controls="settings">
         <span class="menu-icon">
           <i class="mdi mdi-cog"></i>
@@ -550,7 +550,7 @@
           <li class="nav-item"><a class="nav-link" href="#">Manage Security Code</a></li>
         </ul>
       </div>
-    </li>
+    </li> -->
 
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#inv-approvals" aria-expanded="false" aria-controls="inv-approvals">
@@ -646,8 +646,8 @@
 @endif
 <!-- END ADMIN ONLY: ACCESS CONTROL -->
 
-@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
-    <!-- SYSTEM SETTINGS SECTION - ADMIN ONLY -->
+@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin') || auth()->user()->hasRole('Branch Manager') || auth()->user()->hasRole('Administrator'))
+    <!-- SYSTEM SETTINGS SECTION - ADMIN, BRANCH MANAGERS & ADMINISTRATORS -->
     <li class="nav-item nav-category">
       <span class="nav-link">SYSTEM SETTINGS</span>
     </li>
@@ -673,6 +673,7 @@
         <ul class="nav flex-column sub-menu">
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.agencies') }}">Agency Management</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.branches') }}">Branch Management</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.field-users') }}">Field Users</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.company-info') }}">Company Information</a></li>
         </ul>
       </div>

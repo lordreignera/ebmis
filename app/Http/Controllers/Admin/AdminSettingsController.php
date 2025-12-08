@@ -273,4 +273,279 @@ class AdminSettingsController extends Controller
     {
         return view('admin.settings.data-import');
     }
+
+    /**
+     * Field Users Management
+     */
+    public function fieldUsers()
+    {
+        $fieldUsers = \App\Models\Member::where('member_type', 4)
+            ->with(['branch', 'country'])
+            ->orderBy('datecreated', 'desc')
+            ->get();
+        
+        return view('admin.settings.field-users', compact('fieldUsers'));
+    }
+
+    public function createFieldUser()
+    {
+        $branches = \App\Models\Branch::active()->orderBy('name')->get();
+        $countries = \App\Models\Country::orderBy('name')->get();
+        
+        return view('admin.settings.field-users-create', compact('branches', 'countries'));
+    }
+
+    public function storeFieldUser(Request $request)
+    {
+        $validated = $request->validate([
+            'fname' => 'required|string|max:80',
+            'lname' => 'required|string|max:80',
+            'mname' => 'nullable|string|max:200',
+            'nin' => 'required|string|max:80',
+            'gender' => 'required|in:m,f',
+            'dob' => 'nullable|string|max:200',
+            'contact' => 'required|string|max:80',
+            'alt_contact' => 'nullable|string|max:200',
+            'fixed_line' => 'nullable|string|max:200',
+            'email' => 'nullable|email|max:200',
+            'mobile_pin' => 'required|string|min:4|max:10',
+            'branch_id' => 'required|exists:branches,id',
+            'country_id' => 'required|exists:countries,id',
+            'plot_no' => 'nullable|string|max:200',
+            'village' => 'required|string|max:200',
+            'parish' => 'required|string|max:200',
+            'subcounty' => 'required|string|max:200',
+            'county' => 'required|string|max:200',
+            'pplot_no' => 'nullable|string|max:200',
+            'pvillage' => 'required|string|max:200',
+            'pparish' => 'required|string|max:200',
+            'psubcounty' => 'required|string|max:200',
+            'pcounty' => 'required|string|max:200',
+            'pcountry_id' => 'required|exists:countries,id',
+            'pp_file' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048',
+            'id_file' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048',
+        ]);
+
+        try {
+            // Generate unique code
+            $code = 'FM' . time();
+
+            // Handle file uploads
+            $ppFile = null;
+            $idFile = null;
+
+            if ($request->hasFile('pp_file')) {
+                $ppFile = $request->file('pp_file')->store('field-users/photos', 'public');
+            }
+
+            if ($request->hasFile('id_file')) {
+                $idFile = $request->file('id_file')->store('field-users/ids', 'public');
+            }
+
+            // Create field user (member with type 4)
+            $fieldUser = \App\Models\Member::create([
+                'code' => $code,
+                'fname' => $validated['fname'],
+                'lname' => $validated['lname'],
+                'mname' => $validated['mname'] ?? null,
+                'nin' => $validated['nin'],
+                'gender' => $validated['gender'],
+                'dob' => $validated['dob'] ?? null,
+                'contact' => $validated['contact'],
+                'alt_contact' => $validated['alt_contact'] ?? null,
+                'fixed_line' => $validated['fixed_line'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'mobile_pin' => $validated['mobile_pin'], // Store as plain text (4-10 digit PIN)
+                'branch_id' => $validated['branch_id'],
+                'country_id' => $validated['country_id'],
+                'plot_no' => $validated['plot_no'] ?? null,
+                'village' => $validated['village'],
+                'parish' => $validated['parish'],
+                'subcounty' => $validated['subcounty'],
+                'county' => $validated['county'],
+                'pp_file' => $ppFile,
+                'id_file' => $idFile,
+                'member_type' => 4, // Field User type
+                'verified' => 1, // Auto verify field users
+                'status' => 'approved', // Auto approve field users
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+                'added_by' => Auth::id(),
+            ]);
+
+            // Log activity
+            \Log::info('Created field user', [
+                'field_user_id' => $fieldUser->id,
+                'code' => $fieldUser->code,
+                'name' => $fieldUser->fname . ' ' . $fieldUser->lname,
+                'created_by' => Auth::id()
+            ]);
+
+            return redirect()->route('admin.settings.field-users')
+                ->with('success', 'Field user added successfully!');
+
+        } catch (\Exception $e) {
+            \Log::error('Field user creation failed: ' . $e->getMessage());
+            
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to add field user. Please try again.');
+        }
+    }
+
+    public function showFieldUser($id)
+    {
+        $fieldUser = \App\Models\Member::where('member_type', 4)
+            ->with(['branch', 'country', 'addedBy'])
+            ->findOrFail($id);
+        
+        return view('admin.settings.field-users-show', compact('fieldUser'));
+    }
+
+    public function editFieldUser($id)
+    {
+        $fieldUser = \App\Models\Member::where('member_type', 4)->findOrFail($id);
+        $branches = \App\Models\Branch::active()->orderBy('name')->get();
+        $countries = \App\Models\Country::orderBy('name')->get();
+        
+        return view('admin.settings.field-users-edit', compact('fieldUser', 'branches', 'countries'));
+    }
+
+    public function updateFieldUser(Request $request, $id)
+    {
+        $fieldUser = \App\Models\Member::where('member_type', 4)->findOrFail($id);
+
+        $validated = $request->validate([
+            'fname' => 'required|string|max:80',
+            'lname' => 'required|string|max:80',
+            'mname' => 'nullable|string|max:200',
+            'nin' => 'required|string|max:80',
+            'gender' => 'required|in:m,f',
+            'dob' => 'nullable|string|max:200',
+            'contact' => 'required|string|max:80',
+            'alt_contact' => 'nullable|string|max:200',
+            'fixed_line' => 'nullable|string|max:200',
+            'email' => 'nullable|email|max:200',
+            'mobile_pin' => 'nullable|string|min:4|max:10',
+            'branch_id' => 'required|exists:branches,id',
+            'country_id' => 'required|exists:countries,id',
+            'plot_no' => 'nullable|string|max:200',
+            'village' => 'required|string|max:200',
+            'parish' => 'required|string|max:200',
+            'subcounty' => 'required|string|max:200',
+            'county' => 'required|string|max:200',
+            'pp_file' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+            'id_file' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+        ]);
+
+        try {
+            // Handle file uploads
+            if ($request->hasFile('pp_file')) {
+                // Delete old file if exists
+                if ($fieldUser->pp_file) {
+                    \Storage::disk('public')->delete($fieldUser->pp_file);
+                }
+                $validated['pp_file'] = $request->file('pp_file')->store('field-users/photos', 'public');
+            }
+
+            if ($request->hasFile('id_file')) {
+                // Delete old file if exists
+                if ($fieldUser->id_file) {
+                    \Storage::disk('public')->delete($fieldUser->id_file);
+                }
+                $validated['id_file'] = $request->file('id_file')->store('field-users/ids', 'public');
+            }
+
+            // Update field user
+            $updateData = [
+                'fname' => $validated['fname'],
+                'lname' => $validated['lname'],
+                'mname' => $validated['mname'] ?? null,
+                'nin' => $validated['nin'],
+                'gender' => $validated['gender'],
+                'dob' => $validated['dob'] ?? null,
+                'contact' => $validated['contact'],
+                'alt_contact' => $validated['alt_contact'] ?? null,
+                'fixed_line' => $validated['fixed_line'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'branch_id' => $validated['branch_id'],
+                'country_id' => $validated['country_id'],
+                'plot_no' => $validated['plot_no'] ?? null,
+                'village' => $validated['village'],
+                'parish' => $validated['parish'],
+                'subcounty' => $validated['subcounty'],
+                'county' => $validated['county'],
+            ];
+
+            // Only update pin if provided
+            if (!empty($validated['mobile_pin'])) {
+                $updateData['mobile_pin'] = $validated['mobile_pin'];
+            }
+
+            // Add file paths if uploaded
+            if (isset($validated['pp_file'])) {
+                $updateData['pp_file'] = $validated['pp_file'];
+            }
+            if (isset($validated['id_file'])) {
+                $updateData['id_file'] = $validated['id_file'];
+            }
+
+            $fieldUser->update($updateData);
+
+            // Log activity
+            \Log::info('Updated field user', [
+                'field_user_id' => $fieldUser->id,
+                'code' => $fieldUser->code,
+                'name' => $fieldUser->fname . ' ' . $fieldUser->lname,
+                'updated_by' => Auth::id()
+            ]);
+
+            return redirect()->route('admin.settings.field-users')
+                ->with('success', 'Field user updated successfully!');
+
+        } catch (\Exception $e) {
+            \Log::error('Field user update failed: ' . $e->getMessage());
+            
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to update field user. Please try again.');
+        }
+    }
+
+    public function deleteFieldUser($id)
+    {
+        try {
+            $fieldUser = \App\Models\Member::where('member_type', 4)->findOrFail($id);
+            
+            $name = $fieldUser->fname . ' ' . $fieldUser->lname;
+            
+            // Soft delete by setting soft_delete = 1
+            $fieldUser->update([
+                'soft_delete' => 1,
+                'del_user' => Auth::id(),
+                'del_comments' => 'Deleted from field users management'
+            ]);
+
+            // Log activity
+            \Log::info('Deleted field user', [
+                'field_user_id' => $fieldUser->id,
+                'code' => $fieldUser->code,
+                'name' => $name,
+                'deleted_by' => Auth::id()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Field user deleted successfully!'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Field user deletion failed: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete field user.'
+            ], 500);
+        }
+    }
 }

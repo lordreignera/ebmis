@@ -522,6 +522,45 @@
     </div>
 </div>
 
+@push('styles')
+<style>
+/* Sticky Table Headers */
+.table-responsive {
+    max-height: 600px;
+    overflow-y: auto;
+    position: relative;
+}
+
+.modern-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.modern-table thead th {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    padding: 15px 12px;
+    border: none;
+    white-space: nowrap;
+}
+
+.modern-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.modern-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+</style>
+@endpush
+
 @push('scripts')
 <script>
 $(document).ready(function() {

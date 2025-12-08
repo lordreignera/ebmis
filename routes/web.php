@@ -453,6 +453,13 @@ Route::middleware([
         // Organization Settings - View Routes
         Route::get('/agencies', [\App\Http\Controllers\Admin\AgencyController::class, 'index'])->name('agencies');
         Route::get('/branches', [\App\Http\Controllers\Admin\BranchCrudController::class, 'index'])->name('branches');
+        Route::get('/field-users', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'fieldUsers'])->name('field-users');
+        Route::get('/field-users/create', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'createFieldUser'])->name('field-users.create');
+        Route::post('/field-users/store', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'storeFieldUser'])->name('field-users.store');
+        Route::get('/field-users/{id}', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'showFieldUser'])->name('field-users.show');
+        Route::get('/field-users/{id}/edit', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'editFieldUser'])->name('field-users.edit');
+        Route::put('/field-users/{id}', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'updateFieldUser'])->name('field-users.update');
+        Route::delete('/field-users/{id}', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'deleteFieldUser'])->name('field-users.delete');
         Route::get('/company-info', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'companyInfo'])->name('company-info');
         
         // Product Settings
