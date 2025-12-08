@@ -593,4 +593,34 @@ class MemberController extends Controller
             'html' => $html
         ]);
     }
+
+    /**
+     * Search members (for Select2/AJAX)
+     */
+    public function search(Request $request)
+    {
+        $query = $request->get('q', '');
+        $all = $request->get('all', false); // Get all members or just approved
+        
+        $membersQuery = Member::query()
+            ->select('id', 'fname', 'lname', 'contact', 'nin', 'code', 'status', 'branch_id')
+            ->where(function($q) use ($query) {
+                $q->where('fname', 'like', "%{$query}%")
+                  ->orWhere('lname', 'like', "%{$query}%")
+                  ->orWhere('code', 'like', "%{$query}%")
+                  ->orWhere('contact', 'like', "%{$query}%");
+            });
+        
+        // If not requesting all members, filter by approved status
+        if (!$all) {
+            $membersQuery->where('status', 'approved');
+        }
+        
+        $members = $membersQuery->with('branch:id,name')
+            ->orderBy('fname')
+            ->limit(50)
+            ->get();
+        
+        return response()->json($members);
+    }
 }

@@ -98,6 +98,7 @@ Route::middleware([
     })->name('logs.download');
     
     // Member Management Routes
+    Route::get('/members/search', [\App\Http\Controllers\Admin\MemberController::class, 'search'])->name('members.search');
     Route::resource('members', \App\Http\Controllers\Admin\MemberController::class);
     Route::get('/members-pending', [\App\Http\Controllers\Admin\MemberController::class, 'pending'])->name('members.pending');
     Route::post('/members/{member}/approve', [\App\Http\Controllers\Admin\MemberController::class, 'approve'])->name('members.approve');
@@ -181,6 +182,8 @@ Route::middleware([
     Route::post('/loans/{id}/upload-document', [\App\Http\Controllers\Admin\LoanController::class, 'uploadDocument'])->name('loans.upload-document');
     Route::post('/loans/{id}/delete-document', [\App\Http\Controllers\Admin\LoanController::class, 'deleteDocument'])->name('loans.delete-document');
     Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->name('loans.revert');
+    Route::post('/loans/{id}/add-guarantor', [\App\Http\Controllers\Admin\LoanController::class, 'addGuarantor'])->name('loans.add-guarantor');
+    Route::delete('/loans/guarantors/{guarantorId}', [\App\Http\Controllers\Admin\LoanController::class, 'removeGuarantor'])->name('loans.remove-guarantor');
     Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');
     Route::post('/loans/retry-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'retryLoanMobileMoneyPayment'])->name('loans.retry-mobile-money');
     Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');

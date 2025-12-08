@@ -2,6 +2,10 @@
 
 @section('title', 'Loan Details - ' . $loan->code)
 
+@push('styles')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+@endpush
+
 @section('content')
 @php
     // Get member from loan based on loan type
@@ -300,7 +304,12 @@
 
                             @if($loanType === 'personal' && isset($loan->guarantors))
                             <hr>
-                            <h6 class="mb-3">Guarantor Details</h6>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="mb-0">Guarantor Details</h6>
+                                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addGuarantorModal">
+                                    <i class="mdi mdi-plus-circle me-1"></i> Add Guarantor
+                                </button>
+                            </div>
                             @if($loan->guarantors->count() > 0)
                             <div class="table-responsive">
                                 <table class="table table-bordered table-sm">
@@ -310,6 +319,7 @@
                                             <th>Name</th>
                                             <th>Contact</th>
                                             <th>National ID</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -319,6 +329,14 @@
                                             <td>{{ $guarantor->member->fname ?? '' }} {{ $guarantor->member->lname ?? '' }}</td>
                                             <td>{{ $guarantor->member->contact ?? 'N/A' }}</td>
                                             <td>{{ $guarantor->member->nin ?? 'N/A' }}</td>
+                                            <td>
+                                                <a href="{{ route('admin.members.show', $guarantor->member_id) }}" class="btn btn-sm btn-info" title="View Details">
+                                                    <i class="mdi mdi-eye"></i>
+                                                </a>
+                                                <button type="button" class="btn btn-sm btn-danger" onclick="removeGuarantor({{ $guarantor->id }})" title="Remove">
+                                                    <i class="mdi mdi-delete"></i>
+                                                </button>
+                                            </td>
                                         </tr>
                                         @endforeach
                                     </tbody>
@@ -1957,5 +1975,259 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
+
+<!-- Add Guarantor Modal -->
+<div class="modal fade" id="addGuarantorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-white border-bottom">
+                <h5 class="modal-title text-dark">
+                    <i class="mdi mdi-account-multiple-plus me-2"></i>Add Guarantor
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addGuarantorForm" method="POST" action="{{ route('admin.loans.add-guarantor', $loan->id) }}">
+                @csrf
+                <input type="hidden" name="loan_type" value="{{ $loanType }}">
+                <div class="modal-body bg-white">
+                    <div class="mb-3">
+                        <label class="form-label text-dark fw-bold">Select Member as Guarantor <span class="text-danger">*</span></label>
+                        <select class="form-select" name="member_id" id="guarantor_member_id" required>
+                            <option value="">Choose a member...</option>
+                        </select>
+                        <small class="text-muted">All members (approved and pending) can be selected as guarantors</small>
+                    </div>
+                    <div id="guarantorMemberPreview" class="card mt-3 border" style="display: none;">
+                        <div class="card-body bg-light">
+                            <h6 class="card-title text-dark mb-2">
+                                <i class="mdi mdi-account-circle me-1"></i>Member Details
+                            </h6>
+                            <div id="guarantorMemberDetails" class="text-dark small"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white border-top">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="addGuarantorBtn">
+                        <i class="mdi mdi-check me-1"></i> Add Guarantor Details
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+// Initialize Select2 for guarantor member selection
+$(document).ready(function() {
+    $('#guarantor_member_id').select2({
+        placeholder: 'Search for member...',
+        allowClear: true,
+        width: '100%',
+        dropdownParent: $('#addGuarantorModal'),
+        dropdownCssClass: 'select2-white-dropdown',
+        ajax: {
+            url: '{{ route("admin.members.search") }}',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    q: params.term,
+                    all: true // Get all members, not just approved
+                };
+            },
+            processResults: function (data) {
+                return {
+                    results: data.map(function(member) {
+                        return {
+                            id: member.id,
+                            text: member.fname + ' ' + member.lname + ' (' + (member.code || 'No Code') + ')',
+                            member: member
+                        };
+                    })
+                };
+            },
+            cache: true
+        }
+    });
+    
+    // Show member details when selected
+    $('#guarantor_member_id').on('select2:select', function(e) {
+        const member = e.params.data.member;
+        if (member) {
+            const details = `
+                <div class="row">
+                    <div class="col-6"><strong>Name:</strong></div>
+                    <div class="col-6">${member.fname} ${member.lname}</div>
+                </div>
+                <div class="row">
+                    <div class="col-6"><strong>Contact:</strong></div>
+                    <div class="col-6">${member.contact || 'N/A'}</div>
+                </div>
+                <div class="row">
+                    <div class="col-6"><strong>NIN:</strong></div>
+                    <div class="col-6">${member.nin || 'N/A'}</div>
+                </div>
+                <div class="row">
+                    <div class="col-6"><strong>Status:</strong></div>
+                    <div class="col-6">
+                        <span class="badge ${member.status === 'approved' ? 'bg-success' : 'bg-warning'}">
+                            ${member.status || 'N/A'}
+                        </span>
+                    </div>
+                </div>
+            `;
+            $('#guarantorMemberDetails').html(details);
+            $('#guarantorMemberPreview').slideDown();
+        }
+    });
+    
+    // Hide preview when cleared
+    $('#guarantor_member_id').on('select2:clear', function() {
+        $('#guarantorMemberPreview').slideUp();
+    });
+    
+    // Reset form when modal closes
+    $('#addGuarantorModal').on('hidden.bs.modal', function() {
+        $('#addGuarantorForm')[0].reset();
+        $('#guarantor_member_id').val(null).trigger('change');
+        $('#guarantorMemberPreview').hide();
+    });
+});
+
+// Handle guarantor form submission
+$('#addGuarantorForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    const form = $(this);
+    const submitBtn = $('#addGuarantorBtn');
+    const originalText = submitBtn.html();
+    
+    submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Adding...');
+    
+    $.ajax({
+        url: form.attr('action'),
+        method: 'POST',
+        data: form.serialize(),
+        success: function(response) {
+            if (response.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success!',
+                    text: response.message || 'Guarantor added successfully',
+                    confirmButtonColor: '#3085d6'
+                }).then(() => {
+                    location.reload();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error!',
+                    text: response.message || 'Failed to add guarantor',
+                    confirmButtonColor: '#d33'
+                });
+                submitBtn.prop('disabled', false).html(originalText);
+            }
+        },
+        error: function(xhr) {
+            let errorMsg = 'Failed to add guarantor';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                errorMsg = xhr.responseJSON.message;
+            }
+            Swal.fire({
+                icon: 'error',
+                title: 'Error!',
+                text: errorMsg,
+                confirmButtonColor: '#d33'
+            });
+            submitBtn.prop('disabled', false).html(originalText);
+        }
+    });
+});
+
+// Remove guarantor function
+function removeGuarantor(guarantorId) {
+    Swal.fire({
+        title: 'Remove Guarantor?',
+        text: 'Are you sure you want to remove this guarantor?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, remove it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: '/admin/loans/guarantors/' + guarantorId,
+                method: 'DELETE',
+                data: {
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Removed!',
+                            text: 'Guarantor has been removed',
+                            confirmButtonColor: '#3085d6'
+                        }).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error!',
+                            text: response.message || 'Failed to remove guarantor',
+                            confirmButtonColor: '#d33'
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error!',
+                        text: 'Failed to remove guarantor',
+                        confirmButtonColor: '#d33'
+                    });
+                }
+            });
+        }
+    });
+}
+</script>
+
+<style>
+/* White background for Select2 dropdown */
+.select2-white-dropdown {
+    background-color: #ffffff !important;
+}
+
+.select2-white-dropdown .select2-results {
+    background-color: #ffffff !important;
+}
+
+.select2-white-dropdown .select2-results__option {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+
+.select2-white-dropdown .select2-results__option--highlighted {
+    background-color: #0d6efd !important;
+    color: #ffffff !important;
+}
+
+.select2-white-dropdown .select2-results__option--selected {
+    background-color: #e9ecef !important;
+    color: #000000 !important;
+}
+
+.select2-white-dropdown .select2-search__field {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #ced4da !important;
+}
+</style>
 
 @endpush

@@ -9,15 +9,16 @@ class Guarantor extends Model
 {
     use HasFactory;
 
-    // Use datecreated for timestamps (old database compatibility)
+    // Use datecreated for created timestamp
     const CREATED_AT = 'datecreated';
-    const UPDATED_AT = null; // No updated_at in old database
+    const UPDATED_AT = null; // No updated_at column
+    
+    public $timestamps = true;
 
     protected $fillable = [
         'loan_id',
         'member_id',
-        'added_by',
-        'datecreated'
+        'added_by'
     ];
 
     /**

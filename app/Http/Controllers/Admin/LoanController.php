@@ -3052,4 +3052,116 @@ class LoanController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Add guarantor to loan
+     */
+    public function addGuarantor(Request $request, $id)
+    {
+        try {
+            $validated = $request->validate([
+                'member_id' => 'required|exists:members,id',
+                'loan_type' => 'required|in:personal,group'
+            ]);
+
+            $loanType = $validated['loan_type'];
+            
+            // Get the loan
+            if ($loanType === 'group') {
+                $loan = \App\Models\GroupLoan::findOrFail($id);
+            } else {
+                $loan = \App\Models\PersonalLoan::findOrFail($id);
+            }
+
+            // Check if member is already a guarantor
+            $existingGuarantor = \App\Models\Guarantor::where('loan_id', $id)
+                ->where('member_id', $validated['member_id'])
+                ->first();
+
+            if ($existingGuarantor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This member is already a guarantor for this loan'
+                ], 422);
+            }
+
+            // Check if member is the borrower (for personal loans)
+            if ($loanType === 'personal' && $loan->member_id == $validated['member_id']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The borrower cannot be their own guarantor'
+                ], 422);
+            }
+
+            // Create guarantor record
+            \App\Models\Guarantor::create([
+                'loan_id' => $id,
+                'member_id' => $validated['member_id'],
+                'added_by' => auth()->id()
+            ]);
+
+            \Log::info('Guarantor added to loan', [
+                'loan_id' => $id,
+                'loan_code' => $loan->code,
+                'member_id' => $validated['member_id'],
+                'added_by' => auth()->id()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Guarantor added successfully'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: ' . implode(', ', array_map(fn($errors) => implode(', ', $errors), $e->errors()))
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Log::error('Add guarantor error: ' . $e->getMessage(), [
+                'loan_id' => $id,
+                'member_id' => $request->member_id ?? 'unknown'
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error adding guarantor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove guarantor from loan
+     */
+    public function removeGuarantor($guarantorId)
+    {
+        try {
+            $guarantor = \App\Models\Guarantor::findOrFail($guarantorId);
+            
+            \Log::info('Removing guarantor', [
+                'guarantor_id' => $guarantorId,
+                'loan_id' => $guarantor->loan_id,
+                'member_id' => $guarantor->member_id,
+                'removed_by' => auth()->id()
+            ]);
+
+            $guarantor->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Guarantor removed successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Remove guarantor error: ' . $e->getMessage(), [
+                'guarantor_id' => $guarantorId
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error removing guarantor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
