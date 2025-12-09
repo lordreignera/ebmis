@@ -491,6 +491,48 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                {{-- Business Photos/Additional Documents --}}
+                                <div class="col-md-3 mb-3">
+                                    <div class="card border">
+                                        <div class="card-body text-center">
+                                            <div class="avatar-lg mx-auto mb-2">
+                                                <span class="avatar-title bg-info-subtle text-info rounded">
+                                                    <i class="mdi mdi-camera-image" style="font-size: 2rem;"></i>
+                                                </span>
+                                            </div>
+                                            <h6>Business Photos</h6>
+                                            @if($loan->business_photos ?? false)
+                                                @php
+                                                    $photosExist = file_exists(storage_path('app/public/' . $loan->business_photos));
+                                                    $photosUrl = $photosExist 
+                                                        ? asset('storage/' . $loan->business_photos)
+                                                        : null;
+                                                @endphp
+                                                @if($photosExist && $photosUrl)
+                                                    <a href="{{ $photosUrl }}" target="_blank" class="btn btn-sm btn-info">
+                                                        <i class="mdi mdi-eye"></i> View
+                                                    </a>
+                                                    @if(in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin']))
+                                                        <button type="button" class="btn btn-sm btn-danger ms-1" onclick="deleteDocument({{ $loan->id }}, 'photos')">
+                                                            <i class="mdi mdi-delete"></i> Delete
+                                                        </button>
+                                                    @endif
+                                                @else
+                                                    <span class="badge bg-danger mb-2">File Missing</span><br>
+                                                    <button type="button" class="btn btn-sm btn-info" onclick="showReuploadModal({{ $loan->id }}, 'photos')">
+                                                        <i class="mdi mdi-upload"></i> Re-upload
+                                                    </button>
+                                                @endif
+                                            @else
+                                            <span class="text-muted">Not uploaded</span><br>
+                                            <button type="button" class="btn btn-sm btn-info mt-2" onclick="showReuploadModal({{ $loan->id }}, 'photos')">
+                                                <i class="mdi mdi-upload"></i> Upload
+                                            </button>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
                                 @endif
                             </div>
                         </div>

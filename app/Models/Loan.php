@@ -34,6 +34,7 @@ class Loan extends Model
         'trading_file',
         'bank_file',
         'business_file',
+        'business_photos',
         'repay_strategy',
         'repay_name',
         'repay_address',

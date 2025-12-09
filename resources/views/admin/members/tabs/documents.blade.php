@@ -117,6 +117,15 @@
                             'color' => 'success'
                         ];
                     }
+                    if($loan->business_photos) {
+                        $loanDocuments[] = [
+                            'name' => 'Business Photos',
+                            'file' => $loan->business_photos,
+                            'type' => 'photos',
+                            'icon' => 'mdi-camera-image',
+                            'color' => 'info'
+                        ];
+                    }
                 @endphp
                 
                 @foreach($loanDocuments as $doc)
