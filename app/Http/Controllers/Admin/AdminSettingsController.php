@@ -330,16 +330,26 @@ class AdminSettingsController extends Controller
             // Generate unique code
             $code = 'FM' . time();
 
-            // Handle file uploads
+            // Handle file uploads - using permanent public storage
             $ppFile = null;
             $idFile = null;
 
             if ($request->hasFile('pp_file')) {
-                $ppFile = $request->file('pp_file')->store('field-users/photos', 'public');
+                $file = $request->file('pp_file');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/field-users/photos');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $ppFile = 'uploads/field-users/photos/' . $filename;
             }
 
             if ($request->hasFile('id_file')) {
-                $idFile = $request->file('id_file')->store('field-users/ids', 'public');
+                $file = $request->file('id_file');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/field-users/ids');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $idFile = 'uploads/field-users/ids/' . $filename;
             }
 
             // Create field user (member with type 4)
@@ -439,21 +449,31 @@ class AdminSettingsController extends Controller
         ]);
 
         try {
-            // Handle file uploads
+            // Handle file uploads - using permanent public storage
             if ($request->hasFile('pp_file')) {
                 // Delete old file if exists
-                if ($fieldUser->pp_file) {
-                    \Storage::disk('public')->delete($fieldUser->pp_file);
+                if ($fieldUser->pp_file && file_exists(public_path($fieldUser->pp_file))) {
+                    unlink(public_path($fieldUser->pp_file));
                 }
-                $validated['pp_file'] = $request->file('pp_file')->store('field-users/photos', 'public');
+                $file = $request->file('pp_file');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/field-users/photos');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $validated['pp_file'] = 'uploads/field-users/photos/' . $filename;
             }
 
             if ($request->hasFile('id_file')) {
                 // Delete old file if exists
-                if ($fieldUser->id_file) {
-                    \Storage::disk('public')->delete($fieldUser->id_file);
+                if ($fieldUser->id_file && file_exists(public_path($fieldUser->id_file))) {
+                    unlink(public_path($fieldUser->id_file));
                 }
-                $validated['id_file'] = $request->file('id_file')->store('field-users/ids', 'public');
+                $file = $request->file('id_file');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/field-users/ids');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $validated['id_file'] = 'uploads/field-users/ids/' . $filename;
             }
 
             // Update field user

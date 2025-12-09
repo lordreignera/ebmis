@@ -88,9 +88,14 @@ class ProductController extends Controller
                 $validated['code'] = 'BLN' . time();
             }
             
-            // Handle icon upload
+            // Handle icon upload - using permanent public storage
             if ($request->hasFile('icon')) {
-                $validated['icon'] = $request->file('icon')->store('product-icons', 'public');
+                $file = $request->file('icon');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/product-icons');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $validated['icon'] = 'uploads/product-icons/' . $filename;
             }
 
             $validated['added_by'] = auth()->id();
@@ -186,12 +191,17 @@ class ProductController extends Controller
         ]);
 
         try {
-            // Handle icon upload
+            // Handle icon upload - using permanent public storage
             if ($request->hasFile('icon')) {
-                if ($product->icon) {
-                    Storage::disk('public')->delete($product->icon);
+                if ($product->icon && file_exists(public_path($product->icon))) {
+                    unlink(public_path($product->icon));
                 }
-                $validated['icon'] = $request->file('icon')->store('product-icons', 'public');
+                $file = $request->file('icon');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/product-icons');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $validated['icon'] = 'uploads/product-icons/' . $filename;
             }
 
             $product->update($validated);

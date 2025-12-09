@@ -157,21 +157,36 @@ class SchoolLoanController extends Controller
         try {
             DB::beginTransaction();
 
-            // Handle file uploads
+            // Handle file uploads - using permanent public storage
             $businessLicensePath = null;
             $bankStatementPath = null;
             $businessPhotosPath = null;
 
             if ($request->hasFile('business_license')) {
-                $businessLicensePath = $request->file('business_license')->store('loans/documents', 'public');
+                $file = $request->file('business_license');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/loan-documents');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $businessLicensePath = 'uploads/loan-documents/' . $filename;
             }
 
             if ($request->hasFile('bank_statement')) {
-                $bankStatementPath = $request->file('bank_statement')->store('loans/documents', 'public');
+                $file = $request->file('bank_statement');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/loan-documents');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $bankStatementPath = 'uploads/loan-documents/' . $filename;
             }
 
             if ($request->hasFile('business_photos')) {
-                $businessPhotosPath = $request->file('business_photos')->store('loans/photos', 'public');
+                $file = $request->file('business_photos');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/loan-documents');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $businessPhotosPath = 'uploads/loan-documents/' . $filename;
             }
 
             // Generate loan code if not provided

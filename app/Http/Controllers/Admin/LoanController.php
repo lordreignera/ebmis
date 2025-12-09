@@ -315,14 +315,17 @@ class LoanController extends Controller
                 $validated['repay_name'] = $validated['business_name'];
                 $validated['repay_address'] = $validated['business_contact'];
                 
-                // Handle file uploads for personal loans with error handling
+                // Handle file uploads for personal loans with error handling - using permanent public storage
                 if ($request->hasFile('business_license')) {
                     try {
                         $file = $request->file('business_license');
                         if ($file->isValid()) {
-                            $path = $file->store('loan-documents', 'public');
-                            $validated['trading_file'] = $path;
-                            \Log::info('Trading license uploaded successfully', ['path' => $path, 'loan_code' => $validated['code']]);
+                            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            $uploadPath = public_path('uploads/loan-documents');
+                            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                            $file->move($uploadPath, $filename);
+                            $validated['trading_file'] = 'uploads/loan-documents/' . $filename;
+                            \Log::info('Trading license uploaded successfully', ['path' => $validated['trading_file'], 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Trading license file is not valid', ['loan_code' => $validated['code']]);
                         }
@@ -335,9 +338,12 @@ class LoanController extends Controller
                     try {
                         $file = $request->file('bank_statement');
                         if ($file->isValid()) {
-                            $path = $file->store('loan-documents', 'public');
-                            $validated['bank_file'] = $path;
-                            \Log::info('Bank statement uploaded successfully', ['path' => $path, 'loan_code' => $validated['code']]);
+                            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            $uploadPath = public_path('uploads/loan-documents');
+                            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                            $file->move($uploadPath, $filename);
+                            $validated['bank_file'] = 'uploads/loan-documents/' . $filename;
+                            \Log::info('Bank statement uploaded successfully', ['path' => $validated['bank_file'], 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Bank statement file is not valid', ['loan_code' => $validated['code']]);
                         }
@@ -350,9 +356,12 @@ class LoanController extends Controller
                     try {
                         $file = $request->file('business_photos');
                         if ($file->isValid()) {
-                            $path = $file->store('loan-documents', 'public');
-                            $validated['business_file'] = $path;
-                            \Log::info('Business photos uploaded successfully', ['path' => $path, 'loan_code' => $validated['code']]);
+                            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                            $uploadPath = public_path('uploads/loan-documents');
+                            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                            $file->move($uploadPath, $filename);
+                            $validated['business_file'] = 'uploads/loan-documents/' . $filename;
+                            \Log::info('Business photos uploaded successfully', ['path' => $validated['business_file'], 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Business photos file is not valid', ['loan_code' => $validated['code']]);
                         }
@@ -2836,23 +2845,39 @@ class LoanController extends Controller
 
             $field = $fieldMap[$validated['document_type']];
 
-            // Delete old file if it exists
+            // Delete old file if it exists (check both old and new storage locations)
             if ($loan->$field) {
-                $oldFilePath = storage_path('app/public/' . $loan->$field);
+                // Try new location first (public/uploads)
+                $oldFilePath = public_path($loan->$field);
                 if (file_exists($oldFilePath)) {
                     unlink($oldFilePath);
-                    \Log::info('Old document deleted', [
+                    \Log::info('Old document deleted from public/uploads', [
                         'loan_id' => $id,
                         'document_type' => $validated['document_type'],
                         'old_path' => $loan->$field
                     ]);
+                } else {
+                    // Try old location (storage/app/public)
+                    $oldFilePath = storage_path('app/public/' . $loan->$field);
+                    if (file_exists($oldFilePath)) {
+                        unlink($oldFilePath);
+                        \Log::info('Old document deleted from storage/app/public', [
+                            'loan_id' => $id,
+                            'document_type' => $validated['document_type'],
+                            'old_path' => $loan->$field
+                        ]);
+                    }
                 }
             }
 
-            // Upload new file
+            // Upload new file - using permanent public storage
             $file = $request->file('document');
             if ($file->isValid()) {
-                $path = $file->store('loan-documents', 'public');
+                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $uploadPath = public_path('uploads/loan-documents');
+                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
+                $file->move($uploadPath, $filename);
+                $path = 'uploads/loan-documents/' . $filename;
                 $loan->$field = $path;
                 $loan->save();
 
@@ -3008,15 +3033,26 @@ class LoanController extends Controller
                 ], 404);
             }
 
-            // Delete file from storage
-            $filePath = storage_path('app/public/' . $loan->$field);
+            // Delete file from storage (check both old and new locations)
+            $filePath = public_path($loan->$field);
             if (file_exists($filePath)) {
                 unlink($filePath);
-                \Log::info('Document file deleted from storage', [
+                \Log::info('Document file deleted from public/uploads', [
                     'loan_id' => $id,
                     'document_type' => $validated['document_type'],
                     'path' => $loan->$field
                 ]);
+            } else {
+                // Try old location (storage/app/public)
+                $filePath = storage_path('app/public/' . $loan->$field);
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                    \Log::info('Document file deleted from storage/app/public', [
+                        'loan_id' => $id,
+                        'document_type' => $validated['document_type'],
+                        'path' => $loan->$field
+                    ]);
+                }
             }
 
             // Clear database field
