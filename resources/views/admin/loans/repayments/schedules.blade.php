@@ -6,6 +6,11 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 @endpush
 
+@push('scripts')
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+@endpush
+
 @section('content')
 <div class="container-fluid">
     <!-- Page Header -->
@@ -35,9 +40,17 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0">Loan Summary</h5>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="printSchedules()">
-                        <i class="mdi mdi-printer"></i> Print Schedules
-                    </button>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="printSchedules()">
+                            <i class="mdi mdi-printer"></i> Print Schedules
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="exportToPDF()">
+                            <i class="mdi mdi-file-pdf"></i> Export to PDF
+                        </button>
+                        <button type="button" class="btn btn-sm btn-success" onclick="exportToExcel()">
+                            <i class="mdi mdi-file-excel"></i> Export to Excel
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -1414,6 +1427,260 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
     });
 });
 
+// Export to PDF function - generates and downloads PDF directly
+function exportToPDF() {
+    Swal.fire({
+        title: 'Generating PDF...',
+        text: 'Please wait a moment',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    setTimeout(() => {
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape', 'mm', 'a4');
+            
+            // Add header
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Emuria Business Investment and Management Software (E-BIMS) Ltd', 148.5, 15, { align: 'center' });
+            
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'normal');
+            doc.text('Akisim cell, Central ward, Akore town, Kapelebyong, Uganda', 148.5, 20, { align: 'center' });
+            
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'bold');
+            doc.text('LOAN REPAYMENT SCHEDULE', 148.5, 27, { align: 'center' });
+            
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'normal');
+            doc.text('Generated on: ' + new Date().toLocaleString('en-UG'), 148.5, 32, { align: 'center' });
+            
+            // Add loan summary
+            let yPos = 38;
+            doc.setFontSize(7);
+            
+            // Summary box
+            doc.setDrawColor(51, 51, 51);
+            doc.setFillColor(248, 249, 250);
+            doc.rect(10, yPos, 277, 18, 'FD');
+            
+            yPos += 4;
+            const col1X = 15;
+            const col2X = 80;
+            const col3X = 145;
+            const col4X = 210;
+            
+            doc.setFont(undefined, 'bold');
+            doc.text('BORROWER INFORMATION', col1X, yPos);
+            doc.text('LOAN TERMS', col2X, yPos);
+            doc.text('PAYMENT STATUS', col3X, yPos);
+            doc.text('NEXT PAYMENT', col4X, yPos);
+            
+            yPos += 4;
+            doc.setFont(undefined, 'normal');
+            doc.text('Name: {{ $loan->borrower_name }}', col1X, yPos);
+            doc.text('Principal: UGX {{ number_format($loan->principal_amount, 0) }}', col2X, yPos);
+            doc.text('Total Payable: UGX {{ number_format($loan->total_payable, 0) }}', col3X, yPos);
+            @if($nextDue)
+            doc.text('Due Date: {{ date("M d, Y", strtotime($nextDue->due_date)) }}', col4X, yPos);
+            @else
+            doc.text('No pending payments', col4X, yPos);
+            @endif
+            
+            yPos += 3.5;
+            doc.text('Phone: {{ $loan->phone_number }}', col1X, yPos);
+            doc.text('Interest: {{ number_format($loan->interest_rate, 2) }}%', col2X, yPos);
+            doc.text('Amount Paid: UGX {{ number_format($loan->amount_paid, 0) }}', col3X, yPos);
+            @if($nextDue)
+            doc.text('Amount: UGX {{ number_format($nextDue->due_amount, 0) }}', col4X, yPos);
+            @endif
+            
+            yPos += 3.5;
+            doc.text('Branch: {{ $loan->branch_name ?? "N/A" }}', col1X, yPos);
+            doc.text('Term: {{ $loan->loan_term }} {{ $loan->period_type_name ?? "installments" }}', col2X, yPos);
+            doc.text('Outstanding: UGX {{ number_format($loan->outstanding_balance, 0) }}', col3X, yPos);
+            
+            // Get table data
+            const tableData = [];
+            const rows = document.querySelectorAll('#schedulesTable tbody tr');
+            rows.forEach((row) => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 0) {
+                    const rowData = [];
+                    for (let i = 0; i < cells.length - 1; i++) { // Skip action column
+                        let text = cells[i].textContent.trim();
+                        // Clean up status badges
+                        if (i === cells.length - 2) {
+                            const badge = cells[i].querySelector('.badge');
+                            if (badge) {
+                                text = badge.textContent.trim();
+                            }
+                        }
+                        rowData.push(text);
+                    }
+                    tableData.push(rowData);
+                }
+            });
+            
+            // Add table
+            doc.autoTable({
+                startY: yPos + 5,
+                head: [[
+                    '#', 'Inst. Date', 'Principal', 'Orig. Interest', 'Principal cal Int', 
+                    'Principal Bal', 'Principal for Int', 'Interest Pay', 'Periods Arr', 
+                    'Late Fees', 'Total Pay', 'Principal Pd', 'Interest Pd', 'Late fees Pd', 
+                    'Total Amt Pd', 'Total Bal', 'Status'
+                ]],
+                body: tableData,
+                theme: 'grid',
+                styles: {
+                    fontSize: 5,
+                    cellPadding: 0.5,
+                    lineColor: [153, 153, 153],
+                    lineWidth: 0.1
+                },
+                headStyles: {
+                    fillColor: [217, 217, 217],
+                    textColor: [0, 0, 0],
+                    fontStyle: 'bold',
+                    fontSize: 5,
+                    halign: 'center'
+                },
+                columnStyles: {
+                    0: { halign: 'center', cellWidth: 6 },
+                    1: { halign: 'center', cellWidth: 16 },
+                    2: { halign: 'right', cellWidth: 14 },
+                    3: { halign: 'right', cellWidth: 14 },
+                    4: { halign: 'right', cellWidth: 14 },
+                    5: { halign: 'right', cellWidth: 14 },
+                    6: { halign: 'right', cellWidth: 14 },
+                    7: { halign: 'right', cellWidth: 14 },
+                    8: { halign: 'center', cellWidth: 10 },
+                    9: { halign: 'right', cellWidth: 12 },
+                    10: { halign: 'right', cellWidth: 14 },
+                    11: { halign: 'right', cellWidth: 14 },
+                    12: { halign: 'right', cellWidth: 14 },
+                    13: { halign: 'right', cellWidth: 12 },
+                    14: { halign: 'right', cellWidth: 14 },
+                    15: { halign: 'right', cellWidth: 14 },
+                    16: { halign: 'center', cellWidth: 14 }
+                },
+                margin: { left: 10, right: 10 }
+            });
+            
+            // Save the PDF
+            const fileName = 'Loan_{{ $loan->loan_code }}_Repayment_Schedule_' + new Date().toISOString().split('T')[0] + '.pdf';
+            doc.save(fileName);
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'PDF Downloaded',
+                text: 'Repayment schedule has been saved',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Export Failed',
+                text: 'Failed to generate PDF: ' + error.message
+            });
+        }
+    }, 500);
+}
+
+// Export to Excel function
+function exportToExcel() {
+    // Get table data
+    const table = document.getElementById('schedulesTable');
+    const rows = table.querySelectorAll('tbody tr');
+    
+    // Prepare CSV data with UTF-8 BOM for proper Excel encoding
+    let csvContent = '\uFEFF'; // UTF-8 BOM
+    
+    // Add header with loan information
+    csvContent += 'Emuria Business Investment and Management Software (E-BIMS) Ltd\n';
+    csvContent += 'LOAN REPAYMENT SCHEDULE\n';
+    csvContent += '\n';
+    csvContent += 'Loan Code:,{{ $loan->loan_code }}\n';
+    csvContent += 'Borrower:,{{ $loan->borrower_name }}\n';
+    csvContent += 'Phone:,{{ $loan->phone_number }}\n';
+    csvContent += 'Branch:,{{ $loan->branch_name ?? "N/A" }}\n';
+    csvContent += 'Principal Amount:,{{ number_format($loan->principal_amount, 0) }}\n';
+    csvContent += 'Interest Rate:,{{ number_format($loan->interest_rate, 2) }}%\n';
+    csvContent += 'Total Payable:,{{ number_format($loan->total_payable, 0) }}\n';
+    csvContent += 'Amount Paid:,{{ number_format($loan->amount_paid, 0) }}\n';
+    csvContent += 'Outstanding Balance:,{{ number_format($loan->outstanding_balance, 0) }}\n';
+    csvContent += '\n';
+    
+    // Add column headers
+    csvContent += '#,Installment Date,Principal,Original Interest,Principal cal Interest,Principal Bal,Principal for Interest payable,Interest payable,Periods in Arrears,Late Fees,Total Payment,Principal Paid,Interest Paid,Late fees Paid,Total Amount Paid,Total Balance,Status\n';
+    
+    // Add rows data
+    rows.forEach((row, index) => {
+        const cells = row.querySelectorAll('td');
+        const rowData = [];
+        
+        // Skip the last cell (Action column)
+        for (let i = 0; i < cells.length - 1; i++) {
+            let cellText = cells[i].textContent.trim();
+            // Remove commas from numbers for Excel
+            cellText = cellText.replace(/,/g, '');
+            // Handle status badges - extract text only
+            if (i === cells.length - 2) { // Status column
+                const badge = cells[i].querySelector('.badge');
+                if (badge) {
+                    cellText = badge.textContent.trim();
+                }
+            }
+            rowData.push(cellText);
+        }
+        
+        csvContent += rowData.join(',') + '\n';
+    });
+    
+    // Add totals row
+    const tfoot = table.querySelector('tfoot tr');
+    if (tfoot) {
+        const footerCells = tfoot.querySelectorAll('th');
+        const footerData = [];
+        for (let i = 0; i < footerCells.length - 2; i++) { // Skip last 2 cells
+            let cellText = footerCells[i].textContent.trim();
+            cellText = cellText.replace(/,/g, '');
+            footerData.push(cellText);
+        }
+        csvContent += footerData.join(',') + '\n';
+    }
+    
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'Loan_{{ $loan->loan_code }}_Repayment_Schedule_' + new Date().toISOString().split('T')[0] + '.csv');
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Show success message
+    Swal.fire({
+        icon: 'success',
+        title: 'Export Successful',
+        text: 'Repayment schedule has been exported to Excel',
+        timer: 2000,
+        showConfirmButton: false
+    });
+}
+
 // Print function
 function printSchedules() {
     // Add print timestamp
@@ -1432,7 +1699,7 @@ function printSchedules() {
     printInfo.innerHTML = `
         <div style="text-align: center; margin-bottom: 3mm; padding: 2mm; border-bottom: 2px solid #333;">
             <h2 style="margin: 0 0 1mm 0; font-size: 14pt; font-weight: bold;">Emuria Business Investment and Management Software (E-BIMS) Ltd</h2>
-            <p style="margin: 0 0 1mm 0; font-size: 8pt;">Plot 79, City Centre Complex, Room B27, 1st Floor, Luwum Street, Kampala, Uganda</p>
+            <p style="margin: 0 0 1mm 0; font-size: 8pt;">Akisim cell, Central ward, Akore town, Kapelebyong, Uganda</p>
             <h3 style="margin: 1mm 0; font-size: 12pt; font-weight: bold;">LOAN REPAYMENT SCHEDULE</h3>
             <p style="margin: 0; font-size: 7pt; color: #666;">Printed on: ${printDate}</p>
         </div>
@@ -1462,6 +1729,12 @@ $(document).ready(function() {
 
 <style type="text/css" media="print">
     @media print {
+        /* Page setup - MUST come first */
+        @page {
+            size: A4 landscape;
+            margin: 8mm 10mm;
+        }
+        
         /* Force hide everything first */
         * {
             visibility: hidden !important;
@@ -1480,72 +1753,81 @@ $(document).ready(function() {
         /* Show the print info header */
         #print-info {
             display: block !important;
-            position: relative !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
             width: 100% !important;
             page-break-after: avoid !important;
-            margin-bottom: 5mm;
+            margin-bottom: 1mm !important;
         }
         
         /* Position printable sections */
         #loan-summary-section {
-            position: relative !important;
+            position: absolute !important;
+            top: 18mm !important;
+            left: 0 !important;
             width: 100% !important;
-            margin-bottom: 5mm;
+            margin-bottom: 1mm !important;
             page-break-after: avoid !important;
+            page-break-inside: avoid !important;
         }
         
         #repayment-schedules-section {
-            position: relative !important;
+            position: absolute !important;
+            top: 38mm !important;
+            left: 0 !important;
             width: 100% !important;
-            page-break-before: auto !important;
+            page-break-before: avoid !important;
+            page-break-inside: avoid !important;
         }
         
-        /* Hide buttons, badges, and interactive elements */
+        /* Hide buttons, alerts, and interactive elements */
         .btn,
         button,
         .btn-group,
         input[type="radio"],
         .page-title-right,
-        .breadcrumb {
+        .breadcrumb,
+        .alert,
+        .dropdown {
             display: none !important;
             visibility: hidden !important;
         }
         
-        /* Page setup */
-        @page {
-            size: A4 landscape;
-            margin: 10mm 12mm;
-        }
-        
         html, body {
-            height: auto !important;
+            width: 297mm !important;
+            height: 210mm !important;
             margin: 0 !important;
             padding: 0 !important;
-            font-size: 10pt;
-            line-height: 1.2;
-            color: #000;
-            background: white;
+            font-size: 8pt !important;
+            line-height: 1.1 !important;
+            color: #000 !important;
+            background: white !important;
+            overflow: hidden !important;
         }
         
         .container-fluid {
             width: 100% !important;
+            max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
         }
         
         .row {
             margin: 0 !important;
+            display: block !important;
         }
         
         .col, .col-12, .col-md-3, .col-auto {
-            padding: 0 !important;
+            padding: 0 1mm !important;
+            float: left !important;
         }
         
-        /* Card styling */
+        /* Card styling - more compact */
         .card {
-            border: 1px solid #333;
-            page-break-inside: avoid;
-            margin-bottom: 3mm;
+            border: 1px solid #333 !important;
+            page-break-inside: avoid !important;
+            margin-bottom: 1mm !important;
             box-shadow: none !important;
             background: white !important;
         }
@@ -1554,40 +1836,63 @@ $(document).ready(function() {
             background-color: #e9ecef !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            border-bottom: 2px solid #333;
-            padding: 2mm 3mm;
-            font-weight: bold;
-            font-size: 10pt;
+            border-bottom: 1px solid #333 !important;
+            padding: 1mm 2mm !important;
+            font-weight: bold !important;
+            font-size: 8pt !important;
         }
         
         .card-body {
-            padding: 2mm 3mm;
+            padding: 1mm 2mm !important;
         }
         
         .card-title {
             margin: 0 !important;
-            font-size: 10pt !important;
+            font-size: 8pt !important;
         }
         
-        /* Loan summary improvements */
+        /* Loan summary - ultra compact horizontal */
+        #loan-summary-section .card {
+            margin-bottom: 0.5mm !important;
+        }
+        
+        #loan-summary-section .card-body {
+            padding: 0.8mm !important;
+        }
+        
+        #loan-summary-section .card-body > .row {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            margin: 0 !important;
+        }
+        
         #loan-summary-section .row > div {
-            padding: 1mm 2mm !important;
+            padding: 0 0.8mm !important;
+            flex: 1 !important;
+            min-width: 0 !important;
         }
         
         #loan-summary-section h6 {
-            font-size: 9pt !important;
-            margin-bottom: 2mm !important;
-            font-weight: bold;
+            font-size: 6pt !important;
+            margin-bottom: 0.3mm !important;
+            font-weight: bold !important;
+            text-transform: uppercase !important;
         }
         
         #loan-summary-section p {
-            font-size: 8pt !important;
-            margin-bottom: 1mm !important;
-            line-height: 1.3;
+            font-size: 5pt !important;
+            margin-bottom: 0.2mm !important;
+            line-height: 1.1 !important;
         }
         
         #loan-summary-section strong {
-            font-weight: 600;
+            font-weight: 600 !important;
+        }
+        
+        /* Hide borders in summary for space */
+        #loan-summary-section .border-end {
+            border-right: 0.5px solid #ddd !important;
+            padding-right: 0.8mm !important;
         }
         
         /* Hide page title and breadcrumb */
@@ -1595,51 +1900,60 @@ $(document).ready(function() {
             display: none !important;
         }
         
-        /* Table styling */
+        /* Table styling - ultra compact */
         .table-responsive {
             overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         
         table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 6.5pt !important;
-            page-break-inside: auto;
+            font-size: 5pt !important;
             margin: 0 !important;
+            table-layout: fixed !important;
         }
         
         thead {
-            display: table-header-group;
+            display: table-header-group !important;
         }
         
         tbody {
-            display: table-row-group;
+            display: table-row-group !important;
+        }
+        
+        tfoot {
+            display: table-footer-group !important;
         }
         
         tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
+            page-break-inside: avoid !important;
         }
         
         th {
             background-color: #d9d9d9 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            border: 1px solid #333 !important;
-            padding: 1mm !important;
-            font-weight: bold;
-            text-align: center;
-            font-size: 6pt !important;
-            line-height: 1.1;
-            vertical-align: middle;
+            border: 0.5px solid #333 !important;
+            padding: 0.5mm !important;
+            font-weight: bold !important;
+            text-align: center !important;
+            font-size: 5pt !important;
+            line-height: 1.1 !important;
+            vertical-align: middle !important;
+            word-wrap: break-word !important;
         }
         
         td {
-            border: 1px solid #999 !important;
-            padding: 0.8mm !important;
-            font-size: 6.5pt !important;
-            line-height: 1.1;
-            vertical-align: middle;
+            border: 0.5px solid #999 !important;
+            padding: 0.3mm 0.5mm !important;
+            font-size: 5pt !important;
+            line-height: 1.1 !important;
+            vertical-align: middle !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
         }
         
         /* Alternating row colors */
@@ -1649,12 +1963,13 @@ $(document).ready(function() {
             print-color-adjust: exact !important;
         }
         
-        /* Status badges */
+        /* Status badges - smaller */
         .badge {
-            padding: 1mm 2mm;
-            border-radius: 2mm;
-            font-size: 7pt !important;
-            font-weight: bold;
+            padding: 0.3mm 0.8mm !important;
+            border-radius: 1mm !important;
+            font-size: 5pt !important;
+            font-weight: bold !important;
+            border: 0.3px solid #666 !important;
         }
         
         .bg-success {
@@ -1686,39 +2001,6 @@ $(document).ready(function() {
         }
         
         /* Text colors */
-        .text-success {
-            color: #28a745 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
-        
-        .text-danger {
-            color: #dc3545 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
-        
-        /* Summary section improvements */
-        .border-end {
-            border-right: 1px solid #ddd !important;
-            padding: 2mm;
-        }
-        
-        /* Badge styling */
-        .badge {
-            border: 1px solid #666;
-            padding: 1mm 2mm;
-            font-size: 8pt;
-            background-color: transparent !important;
-            color: #000 !important;
-        }
-        
-        .bg-success { border-color: #28a745; }
-        .bg-warning { border-color: #ffc107; }
-        .bg-danger { border-color: #dc3545; }
-        .bg-info { border-color: #17a2b8; }
-        
-        /* Text colors */
         .text-success { color: #28a745 !important; }
         .text-danger { color: #dc3545 !important; }
         .text-warning { color: #856404 !important; }
@@ -1730,26 +2012,61 @@ $(document).ready(function() {
             border-right: 1px solid #ddd !important;
         }
         
-        /* Print header - removed duplicate title */
+        /* Print info header - ultra compact */
+        #print-info h2 {
+            font-size: 8pt !important;
+            margin: 0 0 0.3mm 0 !important;
+        }
         
-        /* Print footer with page numbers */
-        @page {
-            @bottom-right {
-                content: "Page " counter(page) " of " counter(pages);
-            }
-            @bottom-left {
-                content: "Printed: " date();
-            }
+        #print-info h3 {
+            font-size: 7pt !important;
+            margin: 0.3mm 0 !important;
+        }
+        
+        #print-info p {
+            font-size: 5pt !important;
+            margin: 0 !important;
+        }
+        
+        #print-info > div {
+            padding: 0.8mm !important;
+            margin-bottom: 0.8mm !important;
+        }
+        
+        /* Force single page */
+        body {
+            page-break-after: avoid !important;
         }
         
         /* Ensure content doesn't overflow */
         * {
-            box-sizing: border-box;
+            box-sizing: border-box !important;
         }
         
         img {
-            max-width: 100%;
-            height: auto;
+            max-width: 100% !important;
+            height: auto !important;
+        }
+        
+        /* Scale content to fit if needed */
+        body {
+            transform-origin: top left !important;
+            transform: scale(0.88) !important;
+        }
+        
+        /* Additional space optimization */
+        #repayment-schedules-section .card-header {
+            padding: 0.6mm 1.2mm !important;
+        }
+        
+        #repayment-schedules-section .card-body {
+            padding: 0.4mm !important;
+        }
+        
+        /* Tighter card styling */
+        .card-header {
+            padding: 0.8mm 1.5mm !important;
+            font-size: 7pt !important;
         }
     }
 </style>

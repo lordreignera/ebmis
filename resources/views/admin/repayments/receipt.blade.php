@@ -185,8 +185,8 @@
 
         <!-- Receipt Header -->
         <div class="receipt-header">
-            <div class="company-logo">EBIMS - Electronic Banking Information Management System</div>
-            <div style="color: #666; margin-bottom: 10px;">Loan Management System</div>
+            <div class="company-logo">Emuria Business Investment and Management Software (E-BIMS) Ltd</div>
+            <div style="color: #666; margin-bottom: 10px;">Akisim cell, Central ward, Akore town, Kapelebyong, Uganda</div>
             <div class="receipt-title">PAYMENT RECEIPT</div>
             <div style="font-size: 14px; color: #666;">
                 Receipt #{{ $repayment->id }} | Transaction: {{ $repayment->txn_id ?? 'N/A' }}

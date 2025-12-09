@@ -57,7 +57,7 @@
 <body>
     <div class="header">
         <div class="company-name">Emuria Business Investment and Management Software (E-BIMS) Ltd</div>
-        <div class="address">Plot 79, City Centre Complex, Room B27, 1st Floor, Luwum Street, Kampala, Uganda</div>
+        <div class="address">Akisim cell, Central ward, Akore town, Kapelebyong, Uganda</div>
     </div>
 
     <div class="loan-info">
@@ -88,7 +88,7 @@
         @endif
         , whether as an individual or as a group jointly and severally liable, hereinafter (the "Borrower" including a group borrower) of the one part, and</p>
 
-    <p><strong>Emuria Business Investments and Management Software (E-BIMS) Ltd</strong>, a limited liability company incorporated in Uganda, of City Centre Complex, Room B27, University Village, Nakasero IV Parish, Kampala Central, hereinafter (the "Lender") of the other part.</p>
+    <p><strong>Emuria Business Investments and Management Software (E-BIMS) Ltd</strong>, a limited liability company incorporated in Uganda, of Akisim cell, Central ward, Akore town, Kapelebyong, hereinafter (the "Lender") of the other part.</p>
 
     <p><strong>Now it is agreed by the parties as follows:</strong></p>
 
