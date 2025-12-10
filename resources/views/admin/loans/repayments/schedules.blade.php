@@ -131,8 +131,11 @@
                     </div>
                     <div class="flex-shrink-0">
                         @if($nextDue)
+                            @php
+                                $nextDueRemaining = ($nextDue->total_payment ?? $nextDue->payment) - $nextDue->paid;
+                            @endphp
                             <button type="button" class="btn btn-light btn-sm" 
-                                    onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDue->due_amount + $nextDue->penalty_amount }})">
+                                    onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDueRemaining }})">
                                 <i class="mdi mdi-cash-fast me-1"></i> Pay Now
                             </button>
                         @endif
@@ -157,12 +160,15 @@
                 <div class="card-body">
                     <div class="row g-3">
                         @if($nextDue)
+                            @php
+                                $nextDueRemaining2 = ($nextDue->total_payment ?? $nextDue->payment) - $nextDue->paid;
+                            @endphp
                             <div class="col-md-3">
                                 <button type="button" class="btn btn-success w-100" 
-                                        onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDue->due_amount + $nextDue->penalty_amount }})">
+                                        onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDueRemaining2 }})">
                                     <i class="mdi mdi-cash-fast me-1"></i>
                                     Record Payment
-                                    <br><small>UGX {{ number_format($nextDue->due_amount + $nextDue->penalty_amount, 0) }}</small>
+                                    <br><small>UGX {{ number_format($nextDueRemaining2, 0) }}</small>
                                 </button>
                             </div>
                         @endif
@@ -372,8 +378,11 @@
                                                 @endif
                                             @elseif($schedule->status == 0 && $schedule->pending_count == 0)
                                                 {{-- Not Paid - Show Repay Button --}}
+                                                @php
+                                                    $scheduleRemaining = ($schedule->total_payment ?? $schedule->payment) - $schedule->paid;
+                                                @endphp
                                                 <button type="button" class="btn btn-success btn-sm px-2 py-1" 
-                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $schedule->total_balance }})"
+                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRemaining }})"
                                                         title="Repay">
                                                     Repay
                                                 </button>
@@ -385,8 +394,11 @@
                                                             title="Check Payment Status">
                                                         <i class="fas fa-sync"></i> Check
                                                     </button>
+                                                    @php
+                                                        $scheduleRetryRemaining = ($schedule->total_payment ?? $schedule->payment) - $schedule->paid;
+                                                    @endphp
                                                     <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
-                                                            onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $schedule->total_balance }})"
+                                                            onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRetryRemaining }})"
                                                             title="Retry Payment">
                                                         <i class="fas fa-redo"></i> Retry
                                                     </button>
@@ -483,14 +495,21 @@
                         <label class="form-label text-dark">Payment Type</label>
                         <select class="form-select bg-white" id="payment_type" name="type" required onchange="toggleMedium()">
                             <option value="">Select Payment Type</option>
-                            @if(auth()->user()->hasRole(['superadmin', 'administrator']))
-                                <option value="3">Direct Bank Transfer</option>
-                                <option value="2">Mobile Money</option>
-                                <option value="1">Cash</option>
+                            @if(auth()->user()->hasRole(['Super Administrator', 'Administrator']))
+                                <option value="1">Cash (Instant Confirmation)</option>
+                                <option value="3">Direct Bank Transfer (Instant Confirmation)</option>
+                                <option value="2">Mobile Money (Requires Callback)</option>
                             @else
                                 <option value="2">Mobile Money</option>
                             @endif
                         </select>
+                        <small class="text-muted">
+                            @if(auth()->user()->hasRole(['Super Administrator', 'Administrator']))
+                                Cash & Bank Transfer are confirmed instantly. Mobile Money requires customer approval.
+                            @else
+                                Only Mobile Money payments available for your role.
+                            @endif
+                        </small>
                     </div>
                     
                     <div class="mb-3" id="medium_div" style="display: none;">
@@ -711,6 +730,12 @@ function toggleMedium() {
 function openRepayModal(scheduleId, dueDate, amount) {
     $('#schedule_id').val(scheduleId);
     $('#payment_amount').val(amount.toFixed(0));
+    $('#payment_amount').attr('max', amount.toFixed(0));
+    
+    // Add helper text showing remaining balance
+    const helperText = 'Remaining balance: UGX ' + amount.toLocaleString('en-US', {maximumFractionDigits: 0});
+    $('#payment_amount').next('.form-text').text(helperText);
+    
     $('#repaymentModal').modal('show');
 }
 

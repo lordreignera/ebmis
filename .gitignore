@@ -32,8 +32,13 @@ Thumbs.db
 check_*.php
 test_*.php
 *_test.php
+verify_*.php
 *.sql
 !database/schema/*.sql
+
+# IMPORTANT: Keep these fix scripts for production deployment
+!fix_all_migration_issues.php
+!generate_fixed_loans_report.php
 
 # Documentation files (except deployment guide)
 *.md

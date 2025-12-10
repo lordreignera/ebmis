@@ -773,9 +773,14 @@ class RepaymentController extends Controller
         // Log incoming request for debugging
         \Log::info('storeRepayment called', [
             'all_data' => $request->all(),
+            'is_ajax' => $request->ajax(),
+            'wants_json' => $request->wantsJson(),
+            'user_id' => auth()->id(),
+            'user_roles' => auth()->user()->getRoleNames(),
             'has_s_id' => $request->has('s_id'),
             'has_type' => $request->has('type'),
-            'has_amount' => $request->has('amount')
+            'has_amount' => $request->has('amount'),
+            'has_details' => $request->has('details')
         ]);
 
         // Handle bimsadmin-style form submission (POST with s_id, type, details, amount, medium)
@@ -790,10 +795,40 @@ class RepaymentController extends Controller
         ]);
 
         if ($validator->fails()) {
+            // Check if it's an AJAX request
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed: ' . $validator->errors()->first()
+                ], 422);
+            }
+            
             return redirect()->back()
                 ->withErrors($validator)
                 ->withInput()
                 ->with('error', 'Please fill in all required fields correctly.');
+        }
+
+        // Security check: Only Super Administrator and Administrator can use Cash (1) or Bank Transfer (3)
+        if (in_array($request->type, [1, 3]) && !auth()->user()->hasRole(['Super Administrator', 'Administrator'])) {
+            \Log::warning('Unauthorized payment type attempt', [
+                'user_id' => auth()->id(),
+                'user_name' => auth()->user()->name,
+                'payment_type' => $request->type,
+                'loan_id' => $request->loan_id
+            ]);
+            
+            // Check if it's an AJAX request
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Access denied. Only Super Administrator and Administrator can record Cash or Bank Transfer payments.'
+                ], 403);
+            }
+            
+            return redirect()->back()
+                ->with('error', 'Access denied. Only Super Administrator and Administrator can record Cash or Bank Transfer payments.')
+                ->withInput();
         }
 
         // Find loan from either personal_loans or group_loans
@@ -832,6 +867,9 @@ class RepaymentController extends Controller
         } else {
             $schedule = LoanSchedule::findOrFail($request->s_id);
         }
+        
+        // Note: Validation removed temporarily - the overpayment logic will handle excess amounts
+        // by redistributing to next schedules automatically
         
         // Get member/group for contact details
         if ($loanType === 'personal') {
@@ -941,20 +979,32 @@ class RepaymentController extends Controller
                         ->with('error', 'Mobile money collection failed: ' . $mobileMoneyResult['message']);
                 }
             } else {
-                // Cash or Bank Transfer - immediately confirmed
+                // Cash (type=1) or Bank Transfer (type=3) - immediately confirmed by Super Admin/Administrator
                 // Generate proper reference matching FlexiPay format: EbP##########
                 $reference = 'EbP' . str_pad(rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
                 
-                $repaymentData['status'] = 1; // Confirmed
+                $paymentMethodName = $request->type == 1 ? 'Cash' : 'Bank Transfer';
+                
+                $repaymentData['status'] = 1; // Confirmed immediately
                 $repaymentData['pay_status'] = 'SUCCESS';
-                $repaymentData['pay_message'] = 'Payment confirmed';
+                $repaymentData['pay_message'] = $paymentMethodName . ' payment confirmed by ' . auth()->user()->name;
                 $repaymentData['txn_id'] = $reference;
                 $repaymentData['transaction_reference'] = $reference; // Also set this for consistency
                 
+                \Log::info('Cash/Bank payment confirmed instantly', [
+                    'loan_id' => $request->loan_id,
+                    'loan_code' => $loan->code,
+                    'schedule_id' => $schedule->id,
+                    'amount' => $request->amount,
+                    'payment_type' => $paymentMethodName,
+                    'confirmed_by' => auth()->user()->name,
+                    'reference' => $reference
+                ]);
+                
                 $repayment = Repayment::create($repaymentData);
                 
-                // Update loan and schedule for confirmed payments
-                $loan->increment('paid', $request->amount);
+                // Update schedule for confirmed payments
+                // NOTE: personal_loans table doesn't have 'paid' column - tracking is done via loan_schedules
                 
                 // Handle payment allocation with overpayment redistribution
                 $paymentAmount = $request->amount;
@@ -999,12 +1049,14 @@ class RepaymentController extends Controller
                 if ($request->ajax() || $request->wantsJson()) {
                     return response()->json([
                         'success' => true,
-                        'message' => 'Repayment recorded successfully'
+                        'message' => $paymentMethodName . ' payment of UGX ' . number_format($request->amount) . ' has been confirmed and recorded successfully. Schedule updated to PAID.'
                     ]);
                 }
             }
 
-            $message = "Repayment recorded successfully.";
+            $message = $request->type == 2 
+                ? "Mobile Money collection request sent successfully. Awaiting customer confirmation."
+                : ($request->type == 1 ? "Cash" : "Bank Transfer") . " payment of UGX " . number_format($request->amount) . " confirmed and recorded successfully!";
 
             return redirect()->route('admin.loans.repayments.schedules', $request->loan_id)
                 ->with('success', $message);
@@ -1015,9 +1067,20 @@ class RepaymentController extends Controller
             \Log::error('Repayment storage failed', [
                 'loan_id' => $request->loan_id,
                 'schedule_id' => $request->s_id,
+                'amount' => $request->amount,
+                'type' => $request->type,
+                'user_id' => auth()->id(),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+
+            // Check if it's an AJAX request
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment recording failed: ' . $e->getMessage()
+                ], 500);
+            }
 
             return redirect()->back()
                 ->withInput()
