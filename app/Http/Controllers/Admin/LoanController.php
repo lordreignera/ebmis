@@ -14,6 +14,7 @@ use App\Models\Guarantor;
 use App\Models\Repayment;
 use App\Models\Fee;
 use App\Models\FeeType;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -315,16 +316,12 @@ class LoanController extends Controller
                 $validated['repay_name'] = $validated['business_name'];
                 $validated['repay_address'] = $validated['business_contact'];
                 
-                // Handle file uploads for personal loans with error handling - using permanent public storage
+                // Handle file uploads - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
                 if ($request->hasFile('business_license')) {
                     try {
                         $file = $request->file('business_license');
                         if ($file->isValid()) {
-                            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            $uploadPath = public_path('uploads/loan-documents');
-                            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                            $file->move($uploadPath, $filename);
-                            $validated['trading_file'] = 'uploads/loan-documents/' . $filename;
+                            $validated['trading_file'] = FileStorageService::storeFile($file, 'loan-documents');
                             \Log::info('Trading license uploaded successfully', ['path' => $validated['trading_file'], 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Trading license file is not valid', ['loan_code' => $validated['code']]);
@@ -338,11 +335,7 @@ class LoanController extends Controller
                     try {
                         $file = $request->file('bank_statement');
                         if ($file->isValid()) {
-                            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            $uploadPath = public_path('uploads/loan-documents');
-                            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                            $file->move($uploadPath, $filename);
-                            $validated['bank_file'] = 'uploads/loan-documents/' . $filename;
+                            $validated['bank_file'] = FileStorageService::storeFile($file, 'loan-documents');
                             \Log::info('Bank statement uploaded successfully', ['path' => $validated['bank_file'], 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Bank statement file is not valid', ['loan_code' => $validated['code']]);
@@ -356,11 +349,7 @@ class LoanController extends Controller
                     try {
                         $file = $request->file('business_photos');
                         if ($file->isValid()) {
-                            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                            $uploadPath = public_path('uploads/loan-documents');
-                            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                            $file->move($uploadPath, $filename);
-                            $validated['business_file'] = 'uploads/loan-documents/' . $filename;
+                            $validated['business_file'] = FileStorageService::storeFile($file, 'loan-documents');
                             \Log::info('Business photos uploaded successfully', ['path' => $validated['business_file'], 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Business photos file is not valid', ['loan_code' => $validated['code']]);
@@ -592,32 +581,17 @@ class LoanController extends Controller
                                   $member->status_display);
         }
 
-        // Handle file uploads
+        // Handle file uploads - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
         if ($request->hasFile('trading_file')) {
-            $file = $request->file('trading_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/loan-documents');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['trading_file'] = 'uploads/loan-documents/' . $filename;
+            $validated['trading_file'] = FileStorageService::storeFile($request->file('trading_file'), 'loan-documents');
         }
 
         if ($request->hasFile('bank_file')) {
-            $file = $request->file('bank_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/loan-documents');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['bank_file'] = 'uploads/loan-documents/' . $filename;
+            $validated['bank_file'] = FileStorageService::storeFile($request->file('bank_file'), 'loan-documents');
         }
 
         if ($request->hasFile('business_file')) {
-            $file = $request->file('business_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/loan-documents');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['business_file'] = 'uploads/loan-documents/' . $filename;
+            $validated['business_file'] = FileStorageService::storeFile($request->file('business_file'), 'loan-documents');
         }
 
         $loan->update($validated);
@@ -2870,14 +2844,10 @@ class LoanController extends Controller
                 }
             }
 
-            // Upload new file - using permanent public storage
+            // Upload new file - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
             $file = $request->file('document');
             if ($file->isValid()) {
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/loan-documents');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $path = 'uploads/loan-documents/' . $filename;
+                $path = FileStorageService::storeFile($file, 'loan-documents');
                 $loan->$field = $path;
                 $loan->save();
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\School;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -111,32 +112,17 @@ class StaffController extends Controller
         $validated['status'] = 'active';
         $validated['allowances'] = $validated['allowances'] ?? 0;
 
-        // Handle file uploads
+        // Handle file uploads - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
         if ($request->hasFile('cv')) {
-            $file = $request->file('cv');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/staff-documents/' . $school->id);
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['cv_path'] = 'uploads/staff-documents/' . $school->id . '/' . $filename;
+            $validated['cv_path'] = FileStorageService::storeFile($request->file('cv'), 'staff-documents/' . $school->id);
         }
 
         if ($request->hasFile('certificate')) {
-            $file = $request->file('certificate');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/staff-documents/' . $school->id);
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['certificate_path'] = 'uploads/staff-documents/' . $school->id . '/' . $filename;
+            $validated['certificate_path'] = FileStorageService::storeFile($request->file('certificate'), 'staff-documents/' . $school->id);
         }
 
         if ($request->hasFile('id_photo')) {
-            $file = $request->file('id_photo');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/staff-photos/' . $school->id);
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['id_photo_path'] = 'uploads/staff-photos/' . $school->id . '/' . $filename;
+            $validated['id_photo_path'] = FileStorageService::storeFile($request->file('id_photo'), 'staff-photos/' . $school->id);
         }
 
         $staff = Staff::create($validated);
@@ -226,61 +212,32 @@ class StaffController extends Controller
             }
             
             $file = $request->file('cv');
-            $filename = uniqid() . '_cv_' . time() . '.' . $file->getClientOriginalExtension();
-            
-            $uploadPath = 'uploads/staff-documents/' . $staff->school_id;
-            $publicPath = public_path($uploadPath);
-            
-            if (!file_exists($publicPath)) {
-                mkdir($publicPath, 0755, true);
-            }
-            
-            $file->move($publicPath, $filename);
-            $validated['cv_path'] = $uploadPath . '/' . $filename;
+            $validated['cv_path'] = FileStorageService::storeFile(
+                $request->file('cv'),
+                'staff-documents/' . $staff->school_id
+            );
         }
 
         if ($request->hasFile('certificate')) {
             if ($staff->certificate_path) {
-                $oldPath = public_path($staff->certificate_path);
-                if (file_exists($oldPath)) {
-                    unlink($oldPath);
-                }
+                FileStorageService::deleteFile($staff->certificate_path);
             }
             
-            $file = $request->file('certificate');
-            $filename = uniqid() . '_cert_' . time() . '.' . $file->getClientOriginalExtension();
-            
-            $uploadPath = 'uploads/staff-documents/' . $staff->school_id;
-            $publicPath = public_path($uploadPath);
-            
-            if (!file_exists($publicPath)) {
-                mkdir($publicPath, 0755, true);
-            }
-            
-            $file->move($publicPath, $filename);
-            $validated['certificate_path'] = $uploadPath . '/' . $filename;
+            $validated['certificate_path'] = FileStorageService::storeFile(
+                $request->file('certificate'),
+                'staff-documents/' . $staff->school_id
+            );
         }
 
         if ($request->hasFile('id_photo')) {
             if ($staff->id_photo_path) {
-                $oldPath = public_path($staff->id_photo_path);
-                if (file_exists($oldPath)) {
-                    unlink($oldPath);
-                }
+                FileStorageService::deleteFile($staff->id_photo_path);
             }
             
-            $file = $request->file('id_photo');
-            $filename = uniqid() . '_id_' . time() . '.' . $file->getClientOriginalExtension();
-            
-            $uploadPath = 'uploads/staff-photos/' . $staff->school_id;
-            $publicPath = public_path($uploadPath);
-            
-            if (!file_exists($publicPath)) {
-                mkdir($publicPath, 0755, true);
-            }
-            
-            $file->move($publicPath, $filename);
-            $validated['id_photo_path'] = $uploadPath . '/' . $filename;
+            $validated['id_photo_path'] = FileStorageService::storeFile(
+                $request->file('id_photo'),
+                'staff-photos/' . $staff->school_id
+            );
         }
 
         $staff->update($validated);

@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\Group;
 use App\Models\PlaceOfBirth;
 use App\Rules\UniqueMemberIdentifier;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
@@ -167,23 +168,13 @@ class MemberController extends Controller
             return back()->withErrors($errorMessages)->withInput();
         }
 
-        // Handle file uploads
+        // Handle file uploads - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
         if ($request->hasFile('pp_file')) {
-            $file = $request->file('pp_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/member-photos');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['pp_file'] = 'uploads/member-photos/' . $filename;
+            $validated['pp_file'] = FileStorageService::storeFile($request->file('pp_file'), 'member-photos');
         }
 
         if ($request->hasFile('id_file')) {
-            $file = $request->file('id_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/member-ids');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['id_file'] = 'uploads/member-ids/' . $filename;
+            $validated['id_file'] = FileStorageService::storeFile($request->file('id_file'), 'member-ids');
         }
 
         $validated['added_by'] = auth()->id();
@@ -316,24 +307,14 @@ class MemberController extends Controller
 
         // Handle file uploads - Only update if new file is uploaded
         if ($request->hasFile('pp_file')) {
-            $file = $request->file('pp_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/member-photos');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['pp_file'] = 'uploads/member-photos/' . $filename;
+            $validated['pp_file'] = FileStorageService::storeFile($request->file('pp_file'), 'member-photos');
         } else {
             // Preserve existing file path
             $validated['pp_file'] = $member->pp_file;
         }
 
         if ($request->hasFile('id_file')) {
-            $file = $request->file('id_file');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $uploadPath = public_path('uploads/member-ids');
-            if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-            $file->move($uploadPath, $filename);
-            $validated['id_file'] = 'uploads/member-ids/' . $filename;
+            $validated['id_file'] = FileStorageService::storeFile($request->file('id_file'), 'member-ids');
         } else {
             // Preserve existing file path
             $validated['id_file'] = $member->id_file;

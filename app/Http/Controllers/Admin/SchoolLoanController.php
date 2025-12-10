@@ -12,6 +12,7 @@ use App\Models\Staff;
 use App\Models\Member;
 use App\Models\Product;
 use App\Models\Branch;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -163,30 +164,15 @@ class SchoolLoanController extends Controller
             $businessPhotosPath = null;
 
             if ($request->hasFile('business_license')) {
-                $file = $request->file('business_license');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/loan-documents');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $businessLicensePath = 'uploads/loan-documents/' . $filename;
+                $businessLicensePath = FileStorageService::storeFile($request->file('business_license'), 'loan-documents');
             }
 
             if ($request->hasFile('bank_statement')) {
-                $file = $request->file('bank_statement');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/loan-documents');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $bankStatementPath = 'uploads/loan-documents/' . $filename;
+                $bankStatementPath = FileStorageService::storeFile($request->file('bank_statement'), 'loan-documents');
             }
 
             if ($request->hasFile('business_photos')) {
-                $file = $request->file('business_photos');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/loan-documents');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $businessPhotosPath = 'uploads/loan-documents/' . $filename;
+                $businessPhotosPath = FileStorageService::storeFile($request->file('business_photos'), 'loan-documents');
             }
 
             // Generate loan code if not provided

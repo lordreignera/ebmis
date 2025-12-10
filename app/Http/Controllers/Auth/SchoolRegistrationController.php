@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Models\User;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -307,19 +308,10 @@ class SchoolRegistrationController extends Controller
 
             foreach ($documentFieldMapping as $formField => $dbColumn) {
                 if ($request->hasFile($formField)) {
-                    $file = $request->file($formField);
-                    $filename = time() . '_' . $formField . '.' . $file->getClientOriginalExtension();
-                    
-                    // Store in public/uploads/school-documents/{school_id}/
-                    $uploadPath = 'uploads/school-documents/' . $schoolId;
-                    $publicPath = public_path($uploadPath);
-                    
-                    if (!file_exists($publicPath)) {
-                        mkdir($publicPath, 0755, true);
-                    }
-                    
-                    $file->move($publicPath, $filename);
-                    $path = $uploadPath . '/' . $filename;
+                    $path = FileStorageService::storeFile(
+                        $request->file($formField),
+                        'school-documents/' . $schoolId
+                    );
                     $documentPaths[$dbColumn] = $path;
                     
                     \Log::info('Document uploaded', [
@@ -331,20 +323,12 @@ class SchoolRegistrationController extends Controller
                 }
             }
 
-            // Handle student fees file upload
+            // Handle student fees file upload - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
             if ($request->hasFile('student_fees_file')) {
-                $file = $request->file('student_fees_file');
-                $filename = time() . '_student_fees.' . $file->getClientOriginalExtension();
-                
-                $uploadPath = 'uploads/school-documents/' . $schoolId;
-                $publicPath = public_path($uploadPath);
-                
-                if (!file_exists($publicPath)) {
-                    mkdir($publicPath, 0755, true);
-                }
-                
-                $file->move($publicPath, $filename);
-                $path = $uploadPath . '/' . $filename;
+                $path = FileStorageService::storeFile(
+                    $request->file('student_fees_file'),
+                    'school-documents/' . $schoolId
+                );
                 $documentPaths['student_fees_file_path'] = $path;
                 
                 \Log::info('Student fees file uploaded', [
@@ -353,20 +337,12 @@ class SchoolRegistrationController extends Controller
                 ]);
             }
 
-            // Handle unpaid students file upload
+            // Handle unpaid students file upload - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
             if ($request->hasFile('unpaid_students_file')) {
-                $file = $request->file('unpaid_students_file');
-                $filename = time() . '_unpaid_students.' . $file->getClientOriginalExtension();
-                
-                $uploadPath = 'uploads/school-documents/' . $schoolId;
-                $publicPath = public_path($uploadPath);
-                
-                if (!file_exists($publicPath)) {
-                    mkdir($publicPath, 0755, true);
-                }
-                
-                $file->move($publicPath, $filename);
-                $path = $uploadPath . '/' . $filename;
+                $path = FileStorageService::storeFile(
+                    $request->file('unpaid_students_file'),
+                    'school-documents/' . $schoolId
+                );
                 $documentPaths['unpaid_students_file_path'] = $path;
                 
                 \Log::info('Unpaid students file uploaded', [

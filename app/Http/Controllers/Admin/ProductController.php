@@ -8,6 +8,7 @@ use App\Models\ProductSetting;
 use App\Models\Branch;
 use App\Models\Loan;
 use App\Models\Saving;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -88,14 +89,9 @@ class ProductController extends Controller
                 $validated['code'] = 'BLN' . time();
             }
             
-            // Handle icon upload - using permanent public storage
+            // Handle icon upload - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
             if ($request->hasFile('icon')) {
-                $file = $request->file('icon');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/product-icons');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $validated['icon'] = 'uploads/product-icons/' . $filename;
+                $validated['icon'] = FileStorageService::storeFile($request->file('icon'), 'product-icons');
             }
 
             $validated['added_by'] = auth()->id();
@@ -196,12 +192,7 @@ class ProductController extends Controller
                 if ($product->icon && file_exists(public_path($product->icon))) {
                     unlink(public_path($product->icon));
                 }
-                $file = $request->file('icon');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/product-icons');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $validated['icon'] = 'uploads/product-icons/' . $filename;
+                $validated['icon'] = FileStorageService::storeFile($request->file('icon'), 'product-icons');
             }
 
             $product->update($validated);

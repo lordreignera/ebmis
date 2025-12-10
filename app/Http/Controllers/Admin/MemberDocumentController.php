@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Member;
 use App\Models\MemberDocument;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -108,16 +109,15 @@ class MemberDocumentController extends Controller
                 'to' => $publicPath . '/' . $filename,
             ]);
             
-            // Move file to public/uploads/
-            if (!$file->move($publicPath, $filename)) {
-                \Log::error('Failed to move file', [
-                    'destination' => $publicPath . '/' . $filename,
+            // Upload file using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
+            try {
+                $path = FileStorageService::storeFile($file, 'member-documents/' . $member->id);
+            } catch (\Exception $e) {
+                \Log::error('Failed to upload file', [
+                    'error' => $e->getMessage(),
                 ]);
                 return redirect()->back()->with('error', 'Failed to save file. Please try again.');
             }
-            
-            // Store path relative to public folder
-            $path = $uploadPath . '/' . $filename;
 
             $document = MemberDocument::create([
                 'member_id' => $member->id,
@@ -197,21 +197,8 @@ class MemberDocumentController extends Controller
         
         // Store directly in public/uploads/member-documents/{member_id}/
         $uploadPath = 'uploads/member-documents/' . $member->id;
-        $publicPath = public_path($uploadPath);
-        
-        // Create directory if it doesn't exist
-        if (!file_exists($publicPath)) {
-            mkdir($publicPath, 0755, true);
-        }
-        
-        // Generate unique filename
-        $filename = uniqid() . '_' . time() . '.' . $extension;
-        
-        // Move file to public/uploads/
-        $file->move($publicPath, $filename);
-        
-        // Store path relative to public folder
-        $path = $uploadPath . '/' . $filename;
+        // Upload file using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
+        $path = FileStorageService::storeFile($file, 'member-documents/' . $member->id);
 
             // Update document record
             $document->update([

@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\Product;
 use App\Models\SavingsProduct;
 use App\Models\SystemAccount;
+use App\Services\FileStorageService;
 
 class AdminSettingsController extends Controller
 {
@@ -335,21 +336,11 @@ class AdminSettingsController extends Controller
             $idFile = null;
 
             if ($request->hasFile('pp_file')) {
-                $file = $request->file('pp_file');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/field-users/photos');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $ppFile = 'uploads/field-users/photos/' . $filename;
+                $ppFile = FileStorageService::storeFile($request->file('pp_file'), 'field-users/photos');
             }
 
             if ($request->hasFile('id_file')) {
-                $file = $request->file('id_file');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/field-users/ids');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $idFile = 'uploads/field-users/ids/' . $filename;
+                $idFile = FileStorageService::storeFile($request->file('id_file'), 'field-users/ids');
             }
 
             // Create field user (member with type 4)
@@ -456,24 +447,15 @@ class AdminSettingsController extends Controller
                     unlink(public_path($fieldUser->pp_file));
                 }
                 $file = $request->file('pp_file');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/field-users/photos');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $validated['pp_file'] = 'uploads/field-users/photos/' . $filename;
+                $validated['pp_file'] = FileStorageService::storeFile($request->file('pp_file'), 'field-users/photos');
             }
 
             if ($request->hasFile('id_file')) {
                 // Delete old file if exists
-                if ($fieldUser->id_file && file_exists(public_path($fieldUser->id_file))) {
-                    unlink(public_path($fieldUser->id_file));
+                if ($fieldUser->id_file) {
+                    FileStorageService::deleteFile($fieldUser->id_file);
                 }
-                $file = $request->file('id_file');
-                $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-                $uploadPath = public_path('uploads/field-users/ids');
-                if (!file_exists($uploadPath)) { mkdir($uploadPath, 0755, true); }
-                $file->move($uploadPath, $filename);
-                $validated['id_file'] = 'uploads/field-users/ids/' . $filename;
+                $validated['id_file'] = FileStorageService::storeFile($request->file('id_file'), 'field-users/ids');
             }
 
             // Update field user

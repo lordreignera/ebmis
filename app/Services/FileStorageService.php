@@ -21,8 +21,8 @@ class FileStorageService
         $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
         $path = $folder . '/' . $filename;
         
-        // Check if Spaces is configured
-        $useSpaces = !empty(env('DO_SPACES_KEY')) && !empty(env('DO_SPACES_SECRET')) && !empty(env('DO_SPACES_BUCKET'));
+        // Check if Spaces is configured (uses standard AWS env variables)
+        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY')) && !empty(env('AWS_BUCKET'));
         
         if ($useSpaces && $disk === null) {
             $disk = 'spaces';
@@ -70,7 +70,7 @@ class FileStorageService
      */
     public static function deleteFile(string $path): bool
     {
-        $useSpaces = !empty(env('DO_SPACES_KEY')) && !empty(env('DO_SPACES_SECRET'));
+        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY'));
         
         // Try Spaces first if configured
         if ($useSpaces && !str_starts_with($path, 'uploads/')) {
@@ -110,7 +110,7 @@ class FileStorageService
      */
     public static function getFileUrl(string $path): string
     {
-        $useSpaces = !empty(env('DO_SPACES_KEY')) && !empty(env('DO_SPACES_SECRET'));
+        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY'));
         
         // If Spaces is configured and path doesn't start with 'uploads/', it's in Spaces
         if ($useSpaces && !str_starts_with($path, 'uploads/')) {
@@ -133,7 +133,7 @@ class FileStorageService
      */
     public static function fileExists(string $path): bool
     {
-        $useSpaces = !empty(env('DO_SPACES_KEY')) && !empty(env('DO_SPACES_SECRET'));
+        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY'));
         
         // Check Spaces
         if ($useSpaces && !str_starts_with($path, 'uploads/')) {

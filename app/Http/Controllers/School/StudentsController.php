@@ -5,6 +5,7 @@ namespace App\Http\Controllers\School;
 use App\Http\Controllers\Controller;
 use App\Models\Student;
 use App\Models\SchoolClass;
+use App\Services\FileStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -120,20 +121,12 @@ class StudentsController extends Controller
         $validated['school_id'] = $school->id;
         $validated['status'] = 'active';
 
-        // Handle photo upload
+        // Handle photo upload - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
         if ($request->hasFile('photo')) {
-            $file = $request->file('photo');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            
-            $uploadPath = 'uploads/student-photos/' . $school->id;
-            $publicPath = public_path($uploadPath);
-            
-            if (!file_exists($publicPath)) {
-                mkdir($publicPath, 0755, true);
-            }
-            
-            $file->move($publicPath, $filename);
-            $validated['photo_path'] = $uploadPath . '/' . $filename;
+            $validated['photo_path'] = FileStorageService::storeFile(
+                $request->file('photo'),
+                'student-photos/' . $school->id
+            );
         }
 
         $student = Student::create($validated);
@@ -218,28 +211,17 @@ class StudentsController extends Controller
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
-        // Handle photo upload
+        // Handle photo upload - using FileStorageService (auto-uploads to DigitalOcean Spaces in production)
         if ($request->hasFile('photo')) {
             // Delete old photo
             if ($student->photo_path) {
-                $oldPath = public_path($student->photo_path);
-                if (file_exists($oldPath)) {
-                    unlink($oldPath);
-                }
+                FileStorageService::deleteFile($student->photo_path);
             }
             
-            $file = $request->file('photo');
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            
-            $uploadPath = 'uploads/student-photos/' . $student->school_id;
-            $publicPath = public_path($uploadPath);
-            
-            if (!file_exists($publicPath)) {
-                mkdir($publicPath, 0755, true);
-            }
-            
-            $file->move($publicPath, $filename);
-            $validated['photo_path'] = $uploadPath . '/' . $filename;
+            $validated['photo_path'] = FileStorageService::storeFile(
+                $request->file('photo'),
+                'student-photos/' . $student->school_id
+            );
         }
 
         // Update class enrollment if class changed
