@@ -78,7 +78,7 @@ body.modal-open {
                     <div class="row">
                         <div class="col-md-3 text-center">
                             @if($member->pp_file)
-                                <img src="{{ asset($member->pp_file) }}" 
+                                <img src="{{ $member->pp_file_url }}" 
                                      class="rounded-circle mb-3" width="150" height="150" alt="Member Photo" 
                                      onerror="this.src='{{ asset('images/default-avatar.png') }}'; this.onerror=null;">
                             @else

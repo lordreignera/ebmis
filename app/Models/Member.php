@@ -236,6 +236,22 @@ class Member extends Model
     }
 
     /**
+     * Get member photo URL
+     */
+    public function getPpFileUrlAttribute()
+    {
+        return $this->pp_file ? \App\Services\FileStorageService::getFileUrl($this->pp_file) : null;
+    }
+
+    /**
+     * Get member ID file URL
+     */
+    public function getIdFileUrlAttribute()
+    {
+        return $this->id_file ? \App\Services\FileStorageService::getFileUrl($this->id_file) : null;
+    }
+
+    /**
      * Get member's full address
      */
     public function getFullAddressAttribute()

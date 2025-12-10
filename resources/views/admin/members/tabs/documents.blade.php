@@ -130,8 +130,8 @@
                 
                 @foreach($loanDocuments as $doc)
                     @php
-                        $fileExists = file_exists(storage_path('app/public/' . $doc['file']));
-                        $fileUrl = $fileExists ? asset('storage/' . $doc['file']) : null;
+                        $fileExists = \App\Services\FileStorageService::fileExists($doc['file']);
+                        $fileUrl = $fileExists ? \App\Services\FileStorageService::getFileUrl($doc['file']) : null;
                     @endphp
                     <div class="col-md-4 mb-3">
                         <div class="card border-{{ $doc['color'] }}">

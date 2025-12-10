@@ -21,12 +21,13 @@ class FileStorageService
         $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
         $path = $folder . '/' . $filename;
         
+        // Use the configured default disk if not specified
+        if ($disk === null) {
+            $disk = config('filesystems.default', 'local');
+        }
+        
         // Check if Spaces is configured (uses standard AWS env variables)
         $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY')) && !empty(env('AWS_BUCKET'));
-        
-        if ($useSpaces && $disk === null) {
-            $disk = 'spaces';
-        }
         
         if ($disk === 'spaces' && $useSpaces) {
             try {
@@ -70,10 +71,10 @@ class FileStorageService
      */
     public static function deleteFile(string $path): bool
     {
-        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY'));
+        $defaultDisk = config('filesystems.default', 'local');
         
         // Try Spaces first if configured
-        if ($useSpaces && !str_starts_with($path, 'uploads/')) {
+        if ($defaultDisk === 'spaces' && !str_starts_with($path, 'uploads/')) {
             try {
                 if (Storage::disk('spaces')->exists($path)) {
                     Storage::disk('spaces')->delete($path);
@@ -110,14 +111,16 @@ class FileStorageService
      */
     public static function getFileUrl(string $path): string
     {
-        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY'));
+        $defaultDisk = config('filesystems.default', 'local');
         
-        // If Spaces is configured and path doesn't start with 'uploads/', it's in Spaces
-        if ($useSpaces && !str_starts_with($path, 'uploads/')) {
+        // If using Spaces and path doesn't start with 'uploads/', it's in Spaces
+        if ($defaultDisk === 'spaces' && !str_starts_with($path, 'uploads/')) {
             try {
                 return Storage::disk('spaces')->url($path);
             } catch (\Exception $e) {
                 Log::error('Failed to get Spaces URL', ['error' => $e->getMessage()]);
+                // Fall back to local
+                return asset($path);
             }
         }
         
@@ -133,18 +136,19 @@ class FileStorageService
      */
     public static function fileExists(string $path): bool
     {
-        $useSpaces = !empty(env('AWS_ACCESS_KEY_ID')) && !empty(env('AWS_SECRET_ACCESS_KEY'));
+        $defaultDisk = config('filesystems.default', 'local');
         
         // Check Spaces
-        if ($useSpaces && !str_starts_with($path, 'uploads/')) {
+        if ($defaultDisk === 'spaces' && !str_starts_with($path, 'uploads/')) {
             try {
                 return Storage::disk('spaces')->exists($path);
             } catch (\Exception $e) {
                 Log::error('Failed to check Spaces existence', ['error' => $e->getMessage()]);
+                return false;
             }
         }
         
-        // Check local
+        // Check local - try both public/uploads and storage/app/public
         return file_exists(public_path($path)) || file_exists(storage_path('app/public/' . str_replace('uploads/', '', $path)));
     }
 }
