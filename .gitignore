@@ -44,4 +44,5 @@ verify_*.php
 *.md
 !README.md
 !DEPLOYMENT_GUIDE.md
+!MIGRATION_FIX_DEPLOYMENT.md
 
