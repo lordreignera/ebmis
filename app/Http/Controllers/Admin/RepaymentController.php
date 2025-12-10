@@ -728,7 +728,8 @@ class RepaymentController extends Controller
 
             // Update loan balance and schedules if confirmed
             if ($repaymentData['status'] == 1) {
-                $loan->increment('paid', $request->amount);
+                // NOTE: personal_loans table doesn't have 'paid' column
+                // Payment tracking is done via loan_schedules.paid only
                 $this->updateLoanSchedules($loan, $repayment);
                 
                 // Check if loan is fully paid by checking ALL schedules
@@ -1140,8 +1141,8 @@ class RepaymentController extends Controller
 
             $repayment = Repayment::create($repaymentData);
 
-            // Update loan balance
-            $loan->increment('paid', $request->amount);
+            // NOTE: personal_loans table doesn't have 'paid' column
+            // Payment tracking is done via loan_schedules.paid only
 
             // Apply to oldest outstanding schedules
             $this->applyPartialPayment($loan, $request->amount);
@@ -1436,10 +1437,9 @@ class RepaymentController extends Controller
 
             $repayment = Repayment::create($repaymentData);
 
-            // Update loan balance - in old system we don't track separate principal/interest
+            // NOTE: personal_loans table doesn't have 'paid' column
+            // Payment tracking is done via loan_schedules.paid only
             if ($validated['status']) {
-                $loan->increment('paid', $validated['amount']);
-                
                 // Check if loan has balance field, if not calculate from paid amount
                 if (method_exists($loan, 'outstanding_balance')) {
                     if ($loan->outstanding_balance <= 0) {
@@ -1542,10 +1542,9 @@ class RepaymentController extends Controller
 
             $repayment->update($updateData);
 
-            // Apply new repayment if confirmed
+            // NOTE: personal_loans table doesn't have 'paid' column
+            // Payment tracking is done via loan_schedules.paid only
             if ($validated['status']) {
-                $loan->increment('paid', $validated['amount']);
-                
                 // Check loan status
                 if (method_exists($loan, 'outstanding_balance')) {
                     if ($loan->outstanding_balance <= 0) {
@@ -1836,8 +1835,8 @@ class RepaymentController extends Controller
                         $schedule = LoanSchedule::find($repayment->schedule_id);
                         
                         if ($loan && $schedule) {
-                            // Update loan paid amount
-                            $loan->increment('paid', $repayment->amount);
+                            // NOTE: personal_loans table doesn't have 'paid' column
+                            // Payment tracking is done via loan_schedules.paid only
                             
                             // Handle payment allocation with overpayment redistribution
                             $paymentAmount = $repayment->amount;
