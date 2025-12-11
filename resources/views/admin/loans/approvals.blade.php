@@ -449,9 +449,9 @@
 </div>
 
 <!-- Reject Loan Modal -->
-<div class="modal fade" id="rejectLoanModal" tabindex="-1" aria-labelledby="rejectLoanModalLabel" aria-hidden="true">
+<div class="modal fade" id="rejectLoanModal" tabindex="-1" aria-labelledby="rejectLoanModalLabel" aria-hidden="true" data-bs-backdrop="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="background: white; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+        <div class="modal-content" style="background: #ffffff !important; border-radius: 15px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.1); position: relative; z-index: 1055;">
             <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; border: none; border-radius: 15px 15px 0 0; padding: 25px 30px;">
                 <div>
                     <h5 class="modal-title mb-1" id="rejectLoanModalLabel" style="font-weight: 600; font-size: 1.4rem;">
@@ -466,7 +466,7 @@
                 <input type="hidden" id="rejectLoanId" name="loan_id">
                 <input type="hidden" id="rejectLoanType" name="loan_type">
                 
-                <div class="modal-body" style="padding: 30px;">
+                <div class="modal-body" style="padding: 30px; background: #ffffff;">
                     <div class="alert" style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); border: 2px solid #ffc107; border-radius: 12px; padding: 20px;">
                         <div class="d-flex align-items-start">
                             <i class="mdi mdi-alert-outline" style="font-size: 2rem; color: #ff6b6b; margin-right: 15px;"></i>
@@ -489,7 +489,7 @@
                         </label>
                         <textarea class="form-control" id="rejectComments" name="comments" rows="5" required
                                   placeholder="Explain why this loan is being rejected (e.g., Insufficient collateral, Credit history issues, Documentation incomplete...)" 
-                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s; resize: vertical;"
+                                  style="border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; font-size: 0.95rem; transition: all 0.3s; resize: vertical; background: #ffffff;"
                                   onfocus="this.style.borderColor='#dc3545'; this.style.boxShadow='0 0 0 0.2rem rgba(220, 53, 69, 0.1)'"
                                   onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
                         <div class="d-flex align-items-center mt-2" style="color: #6c757d; font-size: 0.875rem;">
@@ -512,7 +512,7 @@
                             style="padding: 12px 30px; border-radius: 8px; font-weight: 500; border: 2px solid #e0e0e0;">
                         <i class="mdi mdi-arrow-left me-1"></i>Cancel
                     </button>
-                    <button type="submit" class="btn btn-danger" 
+                    <button type="submit" class="btn btn-danger" id="rejectLoanBtn"
                             style="padding: 12px 30px; border-radius: 8px; font-weight: 500; box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);">
                         <i class="mdi mdi-close-circle me-1"></i>Reject Loan
                     </button>
@@ -657,15 +657,40 @@ $('#approveLoanForm').on('submit', function(e) {
 $('#rejectLoanForm').on('submit', function(e) {
     e.preventDefault();
     
-    const formData = $(this).serialize();
     const loanId = $('#rejectLoanId').val();
     const loanType = $('#rejectLoanType').val();
+    const comments = $('#rejectComments').val().trim();
+    const submitBtn = $('#rejectLoanBtn');
+    const originalBtnText = submitBtn.html();
+    
+    // Validation
+    if (!loanId || !loanType) {
+        Swal.fire('Error!', 'Missing loan information. Please try again.', 'error');
+        return;
+    }
+    
+    if (!comments || comments.length < 10) {
+        Swal.fire('Error!', 'Please provide a detailed reason for rejection (at least 10 characters).', 'warning');
+        return;
+    }
+    
+    // Disable button and show loading
+    submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i>Processing...');
+    
+    const formData = {
+        loan_type: loanType,
+        comments: comments,
+        _token: '{{ csrf_token() }}'
+    };
     
     $.ajax({
         url: '{{ route("admin.loans.reject", ":id") }}'.replace(':id', loanId),
         method: 'POST',
         data: formData,
+        dataType: 'json',
         success: function(response) {
+            submitBtn.prop('disabled', false).html(originalBtnText);
+            
             if (response.success) {
                 Swal.fire({
                     title: 'Success!',
@@ -676,15 +701,35 @@ $('#rejectLoanForm').on('submit', function(e) {
                 }).then(() => {
                     window.location.reload();
                 });
+                $('#rejectLoanModal').modal('hide');
             } else {
-                Swal.fire('Error!', response.message, 'error');
+                Swal.fire('Error!', response.message || 'Failed to reject loan', 'error');
             }
-            $('#rejectLoanModal').modal('hide');
         },
-        error: function(xhr) {
-            const errorMsg = xhr.responseJSON?.message || 'Failed to reject loan';
+        error: function(xhr, status, error) {
+            submitBtn.prop('disabled', false).html(originalBtnText);
+            
+            let errorMsg = 'Failed to reject loan. ';
+            
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                errorMsg += xhr.responseJSON.message;
+            } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                const errors = Object.values(xhr.responseJSON.errors).flat();
+                errorMsg += errors.join(', ');
+            } else if (xhr.statusText) {
+                errorMsg += xhr.statusText;
+            } else {
+                errorMsg += 'Please check your connection and try again.';
+            }
+            
+            console.error('Rejection error:', {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                response: xhr.responseJSON,
+                error: error
+            });
+            
             Swal.fire('Error!', errorMsg, 'error');
-            $('#rejectLoanModal').modal('hide');
         }
     });
 });

@@ -297,6 +297,7 @@
                                                     1 => 'status-approved',
                                                     2 => 'status-disbursed',
                                                     3 => 'status-verified',
+                                                    4 => 'status-not-verified',
                                                     default => 'status-not-verified'
                                                 };
                                                 $statusText = match($loan->status) {
@@ -304,6 +305,7 @@
                                                     1 => 'Approved for Disbursement',
                                                     2 => 'Disbursed',
                                                     3 => 'Completed',
+                                                    4 => 'Rejected',
                                                     default => 'Unknown'
                                                 };
                                             @endphp

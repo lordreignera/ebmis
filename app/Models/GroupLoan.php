@@ -33,6 +33,7 @@ class GroupLoan extends Model
         'comments',
         'charge_type',
         'date_closed',
+        'datecreated',
         'is_esign',
         'otp_code',
         'otp_expires_at',

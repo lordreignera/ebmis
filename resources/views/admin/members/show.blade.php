@@ -949,7 +949,18 @@ body.modal-open {
                                                 {!! $badges[$actualStatus] ?? '<span class="badge bg-light text-dark">Unknown</span>' !!}
                                             </td>
                                             <td>
-                                                <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" class="btn btn-sm btn-outline-primary" title="View Schedules">
+                                                @php
+                                                    // Determine the correct route based on loan status
+                                                    $loanType = 'personal'; // Assuming personal loans from member->loans
+                                                    if ($actualStatus === 'pending') {
+                                                        $viewUrl = route('admin.loans.show', ['id' => $loan->id]) . '?type=' . $loanType;
+                                                    } elseif ($actualStatus === 'rejected') {
+                                                        $viewUrl = route('admin.loans.rejected') . '?loan_id=' . $loan->id;
+                                                    } else {
+                                                        $viewUrl = route('admin.loans.show', ['id' => $loan->id]) . '?type=' . $loanType;
+                                                    }
+                                                @endphp
+                                                <a href="{{ $viewUrl }}" class="btn btn-sm btn-outline-primary" title="View Details">
                                                     <i class="mdi mdi-eye"></i> View
                                                 </a>
                                             </td>

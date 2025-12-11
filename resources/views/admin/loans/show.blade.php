@@ -382,9 +382,9 @@
                                             <h6>Trading License</h6>
                                             @if($loan->trading_file)
                                                 @php
-                                                    $tradingExists = file_exists(storage_path('app/public/' . $loan->trading_file));
+                                                    $tradingExists = \App\Services\FileStorageService::fileExists($loan->trading_file);
                                                     $tradingUrl = $tradingExists 
-                                                        ? asset('storage/' . $loan->trading_file)
+                                                        ? \App\Services\FileStorageService::getFileUrl($loan->trading_file)
                                                         : null;
                                                 @endphp
                                                 @if($tradingExists && $tradingUrl)
@@ -422,9 +422,9 @@
                                             <h6>Bank Statement</h6>
                                             @if($loan->bank_file)
                                                 @php
-                                                    $bankExists = file_exists(storage_path('app/public/' . $loan->bank_file));
+                                                    $bankExists = \App\Services\FileStorageService::fileExists($loan->bank_file);
                                                     $bankUrl = $bankExists 
-                                                        ? asset('storage/' . $loan->bank_file)
+                                                        ? \App\Services\FileStorageService::getFileUrl($loan->bank_file)
                                                         : null;
                                                 @endphp
                                                 @if($bankExists && $bankUrl)
@@ -462,9 +462,9 @@
                                             <h6>Business Premise</h6>
                                             @if($loan->business_file)
                                                 @php
-                                                    $businessExists = file_exists(storage_path('app/public/' . $loan->business_file));
+                                                    $businessExists = \App\Services\FileStorageService::fileExists($loan->business_file);
                                                     $businessUrl = $businessExists 
-                                                        ? asset('storage/' . $loan->business_file)
+                                                        ? \App\Services\FileStorageService::getFileUrl($loan->business_file)
                                                         : null;
                                                 @endphp
                                                 @if($businessExists && $businessUrl)
@@ -504,9 +504,9 @@
                                             <h6>Business Photos</h6>
                                             @if($loan->business_photos ?? false)
                                                 @php
-                                                    $photosExist = file_exists(storage_path('app/public/' . $loan->business_photos));
+                                                    $photosExist = \App\Services\FileStorageService::fileExists($loan->business_photos);
                                                     $photosUrl = $photosExist 
-                                                        ? asset('storage/' . $loan->business_photos)
+                                                        ? \App\Services\FileStorageService::getFileUrl($loan->business_photos)
                                                         : null;
                                                 @endphp
                                                 @if($photosExist && $photosUrl)

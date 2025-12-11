@@ -349,8 +349,13 @@ class LoanController extends Controller
                     try {
                         $file = $request->file('business_photos');
                         if ($file->isValid()) {
-                            $validated['business_file'] = FileStorageService::storeFile($file, 'loan-documents');
-                            \Log::info('Business photos uploaded successfully', ['path' => $validated['business_file'], 'loan_code' => $validated['code']]);
+                            // Store as business_file since business_photos column doesn't exist
+                            $businessFilePath = FileStorageService::storeFile($file, 'loan-documents');
+                            // Only set business_file if it wasn't already set by business_license
+                            if (!isset($validated['business_file'])) {
+                                $validated['business_file'] = $businessFilePath;
+                            }
+                            \Log::info('Business photos uploaded successfully', ['path' => $businessFilePath, 'loan_code' => $validated['code']]);
                         } else {
                             \Log::error('Business photos file is not valid', ['loan_code' => $validated['code']]);
                         }
@@ -411,9 +416,14 @@ class LoanController extends Controller
                 }
                 
                 // Set required fields for group loan
+                // Note: group_loans table doesn't have installment column, so we remove it from validated
+                if (isset($validated['max_installment'])) {
+                    unset($validated['max_installment']);
+                }
                 $validated['added_by'] = auth()->id();
                 $validated['status'] = 0; // Pending approval
                 $validated['verified'] = false;
+                $validated['datecreated'] = now();
 
                 // Create the group loan using GroupLoan model
                 $loan = \App\Models\GroupLoan::create($validated);
