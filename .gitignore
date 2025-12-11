@@ -25,24 +25,29 @@ Homestead.yaml
 Thumbs.db
 
 # Database migration and fix scripts
-/fix-scripts
-/docs
+/fix-scripts/
+/deployment/
+/docs/
 
 # Fix and test files
 check_*.php
 test_*.php
 *_test.php
 verify_*.php
+find_*.php
+fix_*.php
+restore_*.php
+remove_*.php
+generate_*.php
 *.sql
+*.csv
+*.bat
+*.sh
 !database/schema/*.sql
-
-# IMPORTANT: Keep these fix scripts for production deployment
-!fix_all_migration_issues.php
-!generate_fixed_loans_report.php
+!composer.json
+!package.json
 
 # Documentation files (except deployment guide)
 *.md
 !README.md
-!DEPLOYMENT_GUIDE.md
-!MIGRATION_FIX_DEPLOYMENT.md
 
