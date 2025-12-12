@@ -173,6 +173,11 @@
                             <i class="mdi mdi-file-sign me-1"></i> Loan Agreement
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#esignature" role="tab">
+                            <i class="mdi mdi-draw me-1"></i> E-Signature
+                        </a>
+                    </li>
                 </ul>
 
                 <div class="card-body">
@@ -330,6 +335,15 @@
                                             <td>{{ $guarantor->member->contact ?? 'N/A' }}</td>
                                             <td>{{ $guarantor->member->nin ?? 'N/A' }}</td>
                                             <td>
+                                                @if($guarantor->signature)
+                                                <span class="badge bg-success">
+                                                    <i class="mdi mdi-check-circle me-1"></i> Signed
+                                                </span>
+                                                @else
+                                                <button type="button" class="btn btn-sm btn-warning" onclick="openGuarantorSignModal({{ $guarantor->id }}, '{{ $guarantor->member->fname }} {{ $guarantor->member->lname }}')" title="Sign Agreement">
+                                                    <i class="mdi mdi-draw"></i> Sign
+                                                </button>
+                                                @endif
                                                 <a href="{{ route('admin.members.show', $guarantor->member_id) }}" class="btn btn-sm btn-info" title="View Details">
                                                     <i class="mdi mdi-eye"></i>
                                                 </a>
@@ -997,6 +1011,11 @@
                             </div>
                             @endif
                         </div>
+
+                        <!-- E-Signature Tab -->
+                        <div class="tab-pane" id="esignature" role="tabpanel">
+                            @include('admin.loans.partials.esignature-form')
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1538,9 +1557,176 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
+<!-- Guarantor Signature Modal -->
+<div class="modal fade" id="guarantorSignModal" tabindex="-1">
+    <div class="modal-dialog" style="max-width: 550px;">
+        <div class="modal-content" style="background-color: #ffffff;">
+            <div class="modal-header" style="background-color: #ffffff;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-draw me-2"></i>Guarantor Signature
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="background-color: #ffffff;">
+                <p class="text-muted mb-3">
+                    <strong id="guarantorName"></strong> - Please sign below to guarantee this loan
+                </p>
+                
+                <!-- Signature Tabs -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#drawGuarantorSign">
+                            <i class="mdi mdi-draw me-1"></i> Draw Signature
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#uploadGuarantorSign">
+                            <i class="mdi mdi-upload me-1"></i> Upload Signature
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- Draw Signature Tab -->
+                    <div class="tab-pane fade show active" id="drawGuarantorSign">
+                        <div class="signature-pad-container mb-3" style="border: 1px solid #dee2e6; background-color: #ffffff; width: 100%; max-width: 500px; overflow: hidden;">
+                            <canvas id="guarantorSignaturePad" width="500" height="150" style="display: block; width: 100%;"></canvas>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="clearGuarantorSignature()">
+                            <i class="mdi mdi-eraser me-1"></i> Clear
+                        </button>
+                    </div>
+
+                    <!-- Upload Signature Tab -->
+                    <div class="tab-pane fade" id="uploadGuarantorSign">
+                        <input type="file" class="form-control" id="guarantorSignatureFile" accept="image/*">
+                        <small class="text-muted">Upload a scanned image of the guarantor's signature</small>
+                    </div>
+                </div>
+
+                <input type="hidden" id="currentGuarantorId">
+            </div>
+            <div class="modal-footer" style="background-color: #ffffff;">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveGuarantorSignature()">
+                    <i class="mdi mdi-check me-1"></i> Save Signature
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
+@push('styles')
+<style>
+.signature-pad-container {
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: #f8f9fa;
+    padding: 10px;
+    cursor: crosshair;
+}
+
+.signature-pad-container canvas {
+    background: white;
+    border-radius: 4px;
+    display: block;
+    width: 100%;
+    height: 200px;
+    touch-action: none;
+}
+</style>
+@endpush
+
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+<script>
+let guarantorSignaturePad;
+
+// Initialize signature pad when modal is shown
+$('#guarantorSignModal').on('shown.bs.modal', function() {
+    setTimeout(function() {
+        const canvas = document.getElementById('guarantorSignaturePad');
+        if (canvas && !guarantorSignaturePad) {
+            // Set canvas size
+            const container = canvas.parentElement;
+            const ratio = Math.max(window.devicePixelRatio || 1, 1);
+            canvas.width = container.offsetWidth * ratio;
+            canvas.height = 200 * ratio;
+            canvas.getContext('2d').scale(ratio, ratio);
+            
+            guarantorSignaturePad = new SignaturePad(canvas, {
+                backgroundColor: 'rgb(255, 255, 255)',
+                penColor: 'rgb(0, 0, 0)'
+            });
+        } else if (guarantorSignaturePad) {
+            guarantorSignaturePad.clear();
+        }
+    }, 300);
+});
+
+function openGuarantorSignModal(guarantorId, guarantorName) {
+    $('#currentGuarantorId').val(guarantorId);
+    $('#guarantorName').text(guarantorName);
+    $('#guarantorSignModal').modal('show');
+}
+
+function clearGuarantorSignature() {
+    if (guarantorSignaturePad) {
+        guarantorSignaturePad.clear();
+    }
+}
+
+function saveGuarantorSignature() {
+    const guarantorId = $('#currentGuarantorId').val();
+    const formData = new FormData();
+    formData.append('guarantor_id', guarantorId);
+    
+    // Check which tab is active
+    if ($('#drawGuarantorSign').hasClass('active')) {
+        if (!guarantorSignaturePad || guarantorSignaturePad.isEmpty()) {
+            Swal.fire('Error', 'Please provide a signature', 'error');
+            return;
+        }
+        formData.append('signature_data', guarantorSignaturePad.toDataURL());
+        formData.append('signature_type', 'drawn');
+    } else {
+        const fileInput = document.getElementById('guarantorSignatureFile');
+        if (!fileInput.files || !fileInput.files[0]) {
+            Swal.fire('Error', 'Please upload a signature image', 'error');
+            return;
+        }
+        formData.append('signature_file', fileInput.files[0]);
+        formData.append('signature_type', 'uploaded');
+    }
+    
+    // Send to server
+    fetch('{{ route("admin.loans.save-guarantor-signature", $loan->id) }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire('Success!', data.message, 'success').then(() => {
+                $('#guarantorSignModal').modal('hide');
+                window.location.reload();
+            });
+        } else {
+            Swal.fire('Error!', data.message || 'Failed to save signature', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire('Error!', 'An error occurred while saving', 'error');
+    });
+}
+</script>
 <script>
 // Auto-check pending payments on page load
 document.addEventListener('DOMContentLoaded', function() {

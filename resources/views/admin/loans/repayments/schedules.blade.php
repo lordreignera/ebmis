@@ -309,7 +309,7 @@
                                         <td class="text-end">{{ number_format($schedule->principal_balance, 0) }}</td>
                                         <td class="text-end">{{ number_format($schedule->globalprincipal, 0) }}</td>
                                         <td class="text-end">{{ number_format($schedule->intrestamtpayable, 0) }}</td>
-                                        <td class="text-center">{{ $schedule->periods_in_arrears }}</td>
+                                        <td class="text-center">{{ number_format($schedule->periods_in_arrears, 0) }}</td>
                                         <td class="text-end">
                                             @if($schedule->penalty > 0)
                                                 <span class="text-danger">{{ number_format($schedule->penalty, 0) }}</span>

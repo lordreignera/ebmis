@@ -48,7 +48,34 @@ class PersonalLoan extends Model
         'otp_expires_at',
         'signature_status',
         'signature_date',
-        'signature_comments'
+        'signature_comments',
+        'loan_purpose',
+        'cash_account_number',
+        'cash_account_name',
+        'immovable_assets',
+        'moveable_assets',
+        'intellectual_property',
+        'stocks_collateral',
+        'livestock_collateral',
+        'group_banker_name',
+        'group_banker_nin',
+        'group_banker_occupation',
+        'group_banker_residence',
+        'witness_name',
+        'witness_nin',
+        'witness_signature',
+        'witness_signature_type',
+        'witness_signature_date',
+        'borrower_signature',
+        'borrower_signature_type',
+        'borrower_signature_date',
+        'lender_signature',
+        'lender_signature_type',
+        'lender_signature_date',
+        'lender_signed_by',
+        'lender_title',
+        'signed_agreement_path',
+        'agreement_finalized_at'
     ];
 
     protected $casts = [
@@ -263,6 +290,20 @@ class PersonalLoan extends Model
     public function getActualStatusAttribute()
     {
         return $this->getActualStatus();
+    }
+
+    /**
+     * Get period type from product relationship
+     * 1 = Weekly, 2 = Monthly, 3 = Daily
+     */
+    public function getPeriodTypeAttribute()
+    {
+        if ($this->relationLoaded('product') && $this->product) {
+            return $this->product->period_type;
+        }
+        
+        // Lazy load if not already loaded
+        return $this->product->period_type ?? null;
     }
 
     /**

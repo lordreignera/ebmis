@@ -18,7 +18,10 @@ class Guarantor extends Model
     protected $fillable = [
         'loan_id',
         'member_id',
-        'added_by'
+        'added_by',
+        'signature',
+        'signature_type',
+        'signature_date'
     ];
 
     /**

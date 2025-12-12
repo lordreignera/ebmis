@@ -200,6 +200,9 @@ Route::middleware([
     Route::post('/loans/sign-agreement', [\App\Http\Controllers\Admin\LoanController::class, 'signAgreement'])->name('loans.sign-agreement');
     Route::get('/loans/view-agreement/{id}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'viewAgreement'])->name('loans.view-agreement');
     Route::get('/loans/download-signed-agreement/{id}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'downloadSignedAgreement'])->name('loans.download-signed-agreement');
+    Route::post('/loans/save-esignature/{id}', [\App\Http\Controllers\Admin\LoanController::class, 'saveESignature'])->name('loans.save-esignature');
+    Route::post('/loans/regenerate-agreement/{id}', [\App\Http\Controllers\Admin\LoanController::class, 'regenerateAgreement'])->name('loans.regenerate-agreement');
+    Route::post('/loans/save-guarantor-signature/{id}', [\App\Http\Controllers\Admin\LoanController::class, 'saveGuarantorSignature'])->name('loans.save-guarantor-signature');
     
     // Enhanced Loan Management Routes (New Services Integration)
     Route::prefix('loan-management')->name('loan-management.')->group(function () {

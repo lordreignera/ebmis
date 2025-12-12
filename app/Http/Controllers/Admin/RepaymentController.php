@@ -411,8 +411,8 @@ class RepaymentController extends Controller
             
             $dd = 0; // Periods overdue
             if ($d > 0) {
-                // Fix: Use $loan->period (not period_type) - the actual column name
-                $period_type = $loan->period ?? $loan->period_type ?? '1';
+                // Get period type from loan's product (1=Weekly, 2=Monthly, 3=Daily)
+                $period_type = optional($loan->product)->period_type ?? '2'; // Default to monthly if not set
                 
                 if ($period_type == '1') {
                     // Weekly loans: divide by 7
@@ -432,16 +432,22 @@ class RepaymentController extends Controller
             // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
             $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
             
-            // 4a. Check if late fee has been waived
+            // 4a. Check if late fee has been waived (e.g., November 2025 system upgrade)
             $waivedLateFee = DB::table('late_fees')
                 ->where('schedule_id', $schedule->id)
                 ->where('status', 2) // Waived
                 ->first();
             
             if ($waivedLateFee) {
-                // Late fee was waived - set to 0
-                $latepayment = 0;
-                $dd = 0; // Also set periods to 0 for display
+                // Subtract the waived amount (e.g., November portion only)
+                $latepayment = max(0, $latepayment - $waivedLateFee->amount);
+                
+                // Recalculate periods based on remaining late fee
+                if ($latepayment > 0 && $schedule->principal + $intrestamtpayable > 0) {
+                    $dd = $latepayment / (($schedule->principal + $intrestamtpayable) * 0.06);
+                } else {
+                    $dd = 0;
+                }
             }
             
             // 5. Get total paid from pre-loaded data (optimized - no N+1 queries)
@@ -2638,43 +2644,91 @@ class RepaymentController extends Controller
     private function checkAndCloseLoanIfComplete(int $loanId): bool
     {
         try {
-            // Get all schedules for this loan
-            $schedules = DB::table('loan_schedules')
-                ->where('loan_id', $loanId)
-                ->get();
-
+            // Try PersonalLoan first, then GroupLoan
+            $loan = PersonalLoan::find($loanId);
+            $loanType = 'personal';
+            
+            if (!$loan) {
+                $loan = GroupLoan::find($loanId);
+                $loanType = 'group';
+            }
+            
+            if (!$loan) {
+                Log::warning("Loan {$loanId} not found");
+                return false;
+            }
+            
+            // Get all schedules with repayments
+            $schedules = LoanSchedule::where('loan_id', $loanId)->get();
+            
+            if ($schedules->isEmpty()) {
+                return false;
+            }
+            
+            // Calculate total amount due (principal + interest + late fees - waivers)
+            $totalDue = 0;
             $allSchedulesPaid = true;
-            $totalOutstanding = 0;
-
+            
             foreach ($schedules as $schedule) {
-                $balance = $schedule->payment - $schedule->paid;
-                $totalOutstanding += $balance;
-
-                // Check if schedule is fully paid (or overpaid)
-                if ($balance > 0.01) {
-                    // Still has a balance - loan cannot close
+                $scheduleDue = $schedule->principal + $schedule->interest;
+                
+                // Calculate late fee (if overdue)
+                $lateFee = 0;
+                if ($schedule->status != 1) {
+                    $dueDate = \Carbon\Carbon::parse($schedule->payment_date);
+                    $today = \Carbon\Carbon::now();
+                    
+                    if ($today->gt($dueDate)) {
+                        $daysOverdue = $dueDate->diffInDays($today);
+                        
+                        // Get period type from product
+                        $periodType = optional($loan->product)->period_type ?? '2';
+                        $periods = 0;
+                        
+                        if ($periodType == '3') {
+                            $periods = $daysOverdue; // Daily
+                        } else if ($periodType == '1') {
+                            $periods = ceil($daysOverdue / 7); // Weekly
+                        } else {
+                            $periods = ceil($daysOverdue / 30); // Monthly
+                        }
+                        
+                        $lateFee = ($scheduleDue * 0.06) * $periods;
+                        
+                        // Check for waivers
+                        $waiver = DB::table('late_fees')
+                            ->where('schedule_id', $schedule->id)
+                            ->where('status', 2)
+                            ->first();
+                        
+                        if ($waiver) {
+                            $lateFee = max(0, $lateFee - $waiver->amount);
+                        }
+                    }
+                }
+                
+                // Calculate total paid for this schedule
+                $totalPaid = Repayment::where('schedule_id', $schedule->id)
+                    ->where('status', 1)
+                    ->sum('amount');
+                
+                $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
+                $totalDue += max(0, $scheduleBalance);
+                
+                if ($scheduleBalance > 0.01) {
                     $allSchedulesPaid = false;
-                } else if ($balance <= 0 && $schedule->status != 1) {
-                    // Paid in full (or overpaid), mark as paid
-                    DB::table('loan_schedules')
-                        ->where('id', $schedule->id)
-                        ->update([
-                            'status' => 1,
-                            'date_cleared' => now()
-                        ]);
+                } else if ($scheduleBalance <= 0.01 && $schedule->status != 1) {
+                    // Mark schedule as paid
+                    $schedule->update([
+                        'status' => 1,
+                        'date_cleared' => now()
+                    ]);
                 }
             }
-
-            // If all schedules are paid, close the loan
-            if ($allSchedulesPaid && $totalOutstanding <= 0.01) {
-                // Try PersonalLoan first
-                $loan = PersonalLoan::find($loanId);
-                if (!$loan) {
-                    // Try GroupLoan
-                    $loan = GroupLoan::find($loanId);
-                }
-
-                if ($loan && $loan->status != 3) {
+            
+            // If total due is <= 0 (fully paid), close the loan
+            if ($totalDue <= 0.01 && $allSchedulesPaid) {
+                if ($loan->status != 3) {
                     $loan->update([
                         'status' => 3, // Closed/Completed
                         'date_closed' => now()
@@ -2683,7 +2737,8 @@ class RepaymentController extends Controller
                     Log::info("Loan automatically closed", [
                         'loan_id' => $loanId,
                         'loan_code' => $loan->code ?? 'N/A',
-                        'total_outstanding' => $totalOutstanding
+                        'loan_type' => $loanType,
+                        'total_due' => $totalDue
                     ]);
 
                     return true;

@@ -112,7 +112,11 @@
         , and the Borrower individually and collectively accepts responsibility for all obligations and debts under this agreement without protest and acknowledges such indebtedness to the Lender, through its {{ $loan->branch->name ?? 'Main' }} Branch.</p>
 
     <p class="section-title">2. Loan Purpose:</p>
+    @if($loan->loan_purpose)
+    <p>The loan shall be used for the purpose of <strong>{{ $loan->loan_purpose }}</strong>. Diversion of loan funds to other uses shall not be permitted and will constitute a breach of this agreement on loan use. This breach will cause the Lender to restrict future loans to the Borrower or recall the loan entirely.</p>
+    @else
     <p>The loan shall be used for the purpose of investing in ……………………………………………. Diversion of loan funds to other uses shall not be permitted and will constitute a breach of this agreement on loan use. This breach will cause the Lender to restrict future loans to the Borrower or recall the loan entirely.</p>
+    @endif
 
     <p class="section-title">3. Loan Tenure:</p>
     <p>The Loan shall be for a term of {{ $loan->period }}
@@ -221,7 +225,11 @@
 
     @if($type === 'group')
     <p class="clause-title">6.2 Group Banker:</p>
+    @if($loan->group_banker_name)
+    <p>{{ $borrower->name }}, unanimously elected <strong>{{ $loan->group_banker_name }}</strong> with national identification number <strong>{{ $loan->group_banker_nin }}</strong>, a <strong>{{ $loan->group_banker_occupation }}</strong> and a resident of <strong>{{ $loan->group_banker_residence }}</strong>, to be their Group Banker.</p>
+    @else
     <p>[Name of group], unanimously elected [person elected] with national identification number [elected person's NIN], a [occupation of person elected] and a resident of [location/residence of person elected], to be their Group Banker.</p>
+    @endif
     
     <p>The Group Banker is responsible for ensuring that the loan disbursed by the Lender to the Group Banker's mobile wallet is distributed to the respective members of the group. It is the role of the banker to ensure that each individual member makes their loan repayment contributions at least one day before the due date. If the loan installment is delayed, the entire group will be charged a late fee of 6 percent per week on the overdue amount.</p>
     @endif
@@ -234,18 +242,37 @@
     <p class="clause-title">7.1 Pledged Collateral:</p>
     <p>The following Collateral has been pledged by the Borrower to secure the loan:</p>
     
-    @if($type === 'personal' && $borrower->savings && $borrower->savings->count() > 0)
-        @php
+    @php
+        // Priority: 1) E-signature form data, 2) Active savings account, 3) Blank
+        $accountNumber = $loan->cash_account_number;
+        $accountName = $loan->cash_account_name;
+        
+        if (!$accountNumber && $type === 'personal' && $borrower->savings && $borrower->savings->count() > 0) {
             $activeSavings = $borrower->savings->where('status', 1)->first();
-        @endphp
-        @if($activeSavings)
-            <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: <strong>{{ $activeSavings->code ?? 'N/A' }}</strong> in the name of <strong>{{ $borrower->fname }} {{ $borrower->lname }}</strong> held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
-        @else
-            <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: __________________________ in the name of {{ $borrower->fname }} {{ $borrower->lname }} held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
-        @endif
+            if ($activeSavings) {
+                $accountNumber = $activeSavings->code;
+                $accountName = $borrower->fname . ' ' . $borrower->lname;
+            }
+        }
+        
+        if (!$accountName && $type === 'personal') {
+            $accountName = $borrower->fname . ' ' . $borrower->lname;
+        }
+    @endphp
+    
+    <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: 
+    @if($accountNumber)
+        <strong>{{ $accountNumber }}</strong>
     @else
-        <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: __________________________ in the name of _____________________________ held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
+        __________________________
     @endif
+    in the name of 
+    @if($accountName)
+        <strong>{{ $accountName }}</strong>
+    @else
+        _____________________________
+    @endif
+    held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
 
     <p style="margin-left: 20px;"><strong>Collateral Security pledged:</strong></p>
     @if($type === 'personal' && $borrower->assets && $borrower->assets->count() > 0)
@@ -254,7 +281,17 @@
             <li>{{ $asset->assetType->name ?? 'Asset' }}: Quantity {{ $asset->quantity }}, Value UGX {{ number_format($asset->value, 0) }}, Total Value UGX {{ number_format($asset->total_value, 0) }}</li>
         @endforeach
         </ul>
-    @else
+    @endif
+    
+    @if($loan->immovable_assets || $loan->moveable_assets || $loan->intellectual_property || $loan->stocks_collateral || $loan->livestock_collateral)
+        <p style="margin-left: 40px;">
+        @if($loan->immovable_assets)<strong>i) Immovable assets:</strong> {{ $loan->immovable_assets }}<br>@endif
+        @if($loan->moveable_assets)<strong>ii) Moveable Assets:</strong> {{ $loan->moveable_assets }}<br>@endif
+        @if($loan->intellectual_property)<strong>iii) Intellectual property:</strong> {{ $loan->intellectual_property }}<br>@endif
+        @if($loan->stocks_collateral)<strong>iv) Stocks:</strong> {{ $loan->stocks_collateral }}<br>@endif
+        @if($loan->livestock_collateral)<strong>v) Livestock:</strong> {{ $loan->livestock_collateral }}@endif
+        </p>
+    @elseif(!($type === 'personal' && $borrower->assets && $borrower->assets->count() > 0))
         <p style="margin-left: 40px;">
         i) Immovable assets: ………………………………………<br>
         ii) Moveable Assets: Motorcycle, vehicles, etc. ………………………………………<br>
@@ -272,11 +309,23 @@
     <p class="section-title">8. Loan Guarantors</p>
     <p>The Borrower presents the following loan guarantors, and the guarantors willingly agree to guarantee the loan to the Borrower.</p>
 
-    @if($type === 'personal' && $borrower->guarantors && $borrower->guarantors->count() > 0)
-        @foreach($borrower->guarantors as $index => $guarantor)
-        <p style="margin-top: 15px;"><strong>Guarantor {{ $index + 1 }}:</strong> {{ $guarantor->fname ?? '' }} {{ $guarantor->lname ?? '' }}, aged {{ $guarantor->dob ? \Carbon\Carbon::parse($guarantor->dob)->age : '____' }} years, NIN: {{ $guarantor->nin ?? '____________________' }}, a resident of {{ $guarantor->village ?? '____' }}, {{ $guarantor->parish ?? '____' }}, {{ $guarantor->subcounty ?? '____' }}.</p>
-        <p style="margin-left: 20px;">Name: <strong>{{ $guarantor->fname ?? '' }} {{ $guarantor->lname ?? '' }}</strong></p>
+    @if($loan->guarantors && $loan->guarantors->count() > 0)
+        @foreach($loan->guarantors as $index => $guarantor)
+        @php
+            $guarantorMember = $guarantor->member;
+        @endphp
+        <p style="margin-top: 15px;"><strong>Guarantor {{ $index + 1 }}:</strong> {{ $guarantorMember->fname ?? '' }} {{ $guarantorMember->lname ?? '' }}, aged {{ $guarantorMember->dob ? \Carbon\Carbon::parse($guarantorMember->dob)->age : '____' }} years, NIN: {{ $guarantorMember->nin ?? '____________________' }}, a resident of {{ $guarantorMember->village ?? '____' }}, {{ $guarantorMember->parish ?? '____' }}, {{ $guarantorMember->subcounty ?? '____' }}.</p>
+        <p style="margin-left: 20px;">Name: <strong>{{ $guarantorMember->fname ?? '' }} {{ $guarantorMember->lname ?? '' }}</strong></p>
+        @if($guarantor->signature)
+            @if($guarantor->signature_type === 'drawn')
+            <p style="margin-left: 20px;"><img src="{{ $guarantor->signature }}" style="height: 50px;" alt="Guarantor Signature"></p>
+            @else
+            <p style="margin-left: 20px;"><img src="{{ \App\Services\FileStorageService::getFileUrl($guarantor->signature) }}" style="height: 50px;" alt="Guarantor Signature"></p>
+            @endif
+            <p style="margin-left: 20px;">Date: {{ \Carbon\Carbon::parse($guarantor->signature_date)->format('M d, Y \a\t h:i A') }}</p>
+        @else
         <p style="margin-left: 20px;">Signature: _______________________________ Date: _______________</p>
+        @endif
         @endforeach
     @else
         <p style="margin-top: 15px;"><strong>Guarantor One:</strong> [Name], aged [Age] years, NIN: ____________________, is a resident of [place of residence].</p>
@@ -323,7 +372,15 @@
     <p>The Lender will not make loans or provide other financial services to individuals engaged in the following activities: Drift net fishing in the marine environment using nets more than 1 km in length; Significant conversion or degradation of critical habitat; Production, trade, storage, or transport of significant volumes of hazardous chemicals; Production or trade in radioactive materials; Production or trade in unbonded asbestos fibres; Production or activities involving harmful or exploitative forms of forced labour/harmful labour, child labour, Discriminatory practices; Relocation of Indigenous people from traditional or customary land; Production or trade in weapons and munitions as primary business activity; Production or trade in alcoholic beverages as a primary source of business activity; Production or trade in tobacco as primary business activity; Gambling, betting, casinos, and equivalent enterprises as a primary business activity; Any business related to pornography or prostitution; Cross-border trade in waste and waste products unless compliant to the Basel Convention; Production or trade in any activity deemed illegal under the Uganda laws or regulations or international conventions and agreements.</p>
 
     <p><strong>The Borrower has complied with the requirements of this exclusion list in clause 14 above.</strong></p>
+    @if($loan->borrower_signature)
+        @if($loan->borrower_signature_type === 'drawn')
+        <p><img src="{{ $loan->borrower_signature }}" style="height: 50px;" alt="Borrower Signature"></p>
+        @else
+        <p><img src="{{ \App\Services\FileStorageService::getFileUrl($loan->borrower_signature) }}" style="height: 50px;" alt="Borrower Signature"></p>
+        @endif
+    @else
     <p>Signature: <span class="signature-line"></span></p>
+    @endif
     <p>Name of Borrower: @if($type === 'personal') {{ $borrower->fname }} {{ $borrower->lname }} @else {{ $borrower->name }} @endif</p>
 
     <p class="section-title">15. Sanction List</p>
@@ -348,7 +405,15 @@
     <p>Deliberately destroying, falsifying, altering, or concealing of evidence material to the investigation or making of false statements to investigators, in order to materially impede the Lender's investigation into allegations of a corrupt, fraudulent, Coercive or collusive practice.</p>
 
     <p><strong>The Borrower has complied with the requirements of this sanction list.</strong></p>
+    @if($loan->borrower_signature)
+        @if($loan->borrower_signature_type === 'drawn')
+        <p><img src="{{ $loan->borrower_signature }}" style="height: 50px;" alt="Borrower Signature"></p>
+        @else
+        <p><img src="{{ \App\Services\FileStorageService::getFileUrl($loan->borrower_signature) }}" style="height: 50px;" alt="Borrower Signature"></p>
+        @endif
+    @else
     <p>Signed by: <span class="signature-line"></span></p>
+    @endif
     <p>Name of Borrower: @if($type === 'personal') {{ $borrower->fname }} {{ $borrower->lname }} @else {{ $borrower->name }} @endif</p>
 
     <p class="section-title">16. Applicable Law</p>
@@ -384,23 +449,73 @@
         <p><strong>Borrower</strong></p>
         @if($type === 'personal')
         <p>Borrower One:</p>
+        @if($loan->borrower_signature)
+            @if($loan->borrower_signature_type === 'drawn')
+            <p><img src="{{ $loan->borrower_signature }}" style="height: 50px;" alt="Borrower Signature"></p>
+            @else
+            <p><img src="{{ \App\Services\FileStorageService::getFileUrl($loan->borrower_signature) }}" style="height: 50px;" alt="Borrower Signature"></p>
+            @endif
+            <p>Signed on: {{ \Carbon\Carbon::parse($loan->borrower_signature_date)->format('M d, Y \a\t h:i A') }}</p>
+        @else
         <p>Signature: <span class="signature-line"></span></p>
+        @endif
         <p>Name: {{ $borrower->fname }} {{ $borrower->lname }}</p>
         <p>Tel: {{ $borrower->contact }}</p>
         @else
         <p>Group Representative:</p>
+        @if($loan->borrower_signature)
+            @if($loan->borrower_signature_type === 'drawn')
+            <p><img src="{{ $loan->borrower_signature }}" style="height: 50px;" alt="Borrower Signature"></p>
+            @else
+            <p><img src="{{ \App\Services\FileStorageService::getFileUrl($loan->borrower_signature) }}" style="height: 50px;" alt="Borrower Signature"></p>
+            @endif
+            <p>Signed on: {{ \Carbon\Carbon::parse($loan->borrower_signature_date)->format('M d, Y \a\t h:i A') }}</p>
+        @else
         <p>Signature: <span class="signature-line"></span></p>
+        @endif
+        @if($loan->group_representative_name)
+        <p>Name: {{ $loan->group_representative_name }}</p>
+        <p>Tel: {{ $loan->group_representative_phone }}</p>
+        @else
         <p>Name: ___________________________</p>
         <p>Tel: ___________________________</p>
+        @endif
         @endif
 
         <p style="margin-top: 20px;"><strong>Lender</strong></p>
         <p>For and on behalf of Emuria Business Investment and Management Software (E-BIMS) Ltd,</p>
+        @if($loan->lender_signature)
+            @if($loan->lender_signature_type === 'drawn')
+            <p><img src="{{ $loan->lender_signature }}" style="height: 50px;" alt="Lender Signature"></p>
+            @else
+            <p><img src="{{ \App\Services\FileStorageService::getFileUrl($loan->lender_signature) }}" style="height: 50px;" alt="Lender Signature"></p>
+            @endif
+            @php
+                $signer = $loan->lender_signed_by ? \App\Models\User::find($loan->lender_signed_by) : null;
+            @endphp
+            <p>Signed by: {{ $signer ? $signer->name : 'Branch Manager' }}</p>
+            <p>Title: {{ $loan->lender_title ?? 'Branch Manager' }}</p>
+            <p>Date: {{ \Carbon\Carbon::parse($loan->lender_signature_date)->format('M d, Y \a\t h:i A') }}</p>
+        @else
         <p>Signature: <span class="signature-line"></span></p>
         <p>Title: Branch Manager</p>
+        @endif
 
-        <p style="margin-top: 20px;">Witnessed by: <span class="signature-line"></span></p>
-        <p>Name: ___________________________ NIN: ___________________________</p>
+        <p style="margin-top: 20px;"><strong>Witnessed by:</strong></p>
+        @if($loan->witness_signature)
+            @if($loan->witness_signature_type === 'drawn')
+            <p><img src="{{ $loan->witness_signature }}" style="height: 50px;" alt="Witness Signature"></p>
+            @else
+            <p><img src="{{ \App\Services\FileStorageService::getFileUrl($loan->witness_signature) }}" style="height: 50px;" alt="Witness Signature"></p>
+            @endif
+        @else
+        <p>Signature: <span class="signature-line"></span></p>
+        @endif
+        @if($loan->witness_name)
+        <p>Name: {{ $loan->witness_name }} &nbsp;&nbsp;&nbsp; NIN: {{ $loan->witness_nin }}</p>
+        @else
+        <p>Name: ___________________________ &nbsp;&nbsp;&nbsp; NIN: ___________________________</p>
+        @endif
     </div>
 
 </body>

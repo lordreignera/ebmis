@@ -7,6 +7,7 @@ use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Models\MemberDocument;
 use App\Models\Product;
 use App\Models\Branch;
 use App\Models\LoanSchedule;
@@ -2226,6 +2227,367 @@ class LoanController extends Controller
         } catch (\Exception $e) {
             \Log::error('Agreement viewing error: ' . $e->getMessage());
             return back()->with('error', 'Error generating agreement: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save electronic signature data
+     */
+    public function saveESignature(Request $request, $id)
+    {
+        try {
+            \DB::beginTransaction();
+
+            $loanType = $request->input('loan_type', 'personal');
+            $saveDraft = $request->input('save_draft', false);
+
+            // Get loan
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::with(['member', 'product', 'branch', 'guarantors.member'])->findOrFail($id);
+                $borrower = $loan->member;
+            } else {
+                $loan = GroupLoan::with(['group.members', 'product', 'branch', 'guarantors.member'])->findOrFail($id);
+                $borrower = $loan->group;
+            }
+
+            // Prevent editing finalized agreements (unless saving draft before finalization)
+            if ($loan->agreement_finalized_at && !$saveDraft) {
+                return back()->with('error', 'This agreement has already been finalized and cannot be modified.');
+            }
+
+            // Validate if not just saving draft
+            if (!$saveDraft) {
+                $rules = [
+                    'loan_purpose' => 'required|string',
+                ];
+
+                // Require signatures only when finalizing
+                if (!$request->has('borrower_signature_data') && !$request->hasFile('borrower_signature_file')) {
+                    return back()->with('error', 'Borrower signature is required')->withInput();
+                }
+                if (!$request->has('lender_signature_data') && !$request->hasFile('lender_signature_file')) {
+                    return back()->with('error', 'Lender signature is required')->withInput();
+                }
+
+                $request->validate($rules);
+            }
+
+            // Update basic fields
+            $loan->loan_purpose = $request->input('loan_purpose');
+            $loan->cash_account_number = $request->input('cash_account_number');
+            $loan->cash_account_name = $request->input('cash_account_name');
+            $loan->immovable_assets = $request->input('immovable_assets');
+            $loan->moveable_assets = $request->input('moveable_assets');
+            $loan->intellectual_property = $request->input('intellectual_property');
+            $loan->stocks_collateral = $request->input('stocks_collateral');
+            $loan->livestock_collateral = $request->input('livestock_collateral');
+            
+            // Witness details
+            $loan->witness_name = $request->input('witness_name');
+            $loan->witness_nin = $request->input('witness_nin');
+
+            // Handle witness signature
+            if ($request->has('witness_signature_data') && !empty($request->input('witness_signature_data'))) {
+                $loan->witness_signature = $request->input('witness_signature_data');
+                $loan->witness_signature_type = 'drawn';
+                $loan->witness_signature_date = now();
+            } elseif ($request->hasFile('witness_signature_file')) {
+                $file = $request->file('witness_signature_file');
+                $path = FileStorageService::storeFile($file, 'signatures/witness');
+                $loan->witness_signature = $path;
+                $loan->witness_signature_type = 'uploaded';
+                $loan->witness_signature_date = now();
+            }
+
+            // Group-specific fields
+            if ($loanType === 'group') {
+                $loan->group_banker_name = $request->input('group_banker_name');
+                $loan->group_banker_nin = $request->input('group_banker_nin');
+                $loan->group_banker_occupation = $request->input('group_banker_occupation');
+                $loan->group_banker_residence = $request->input('group_banker_residence');
+                $loan->group_representative_name = $request->input('group_representative_name');
+                $loan->group_representative_phone = $request->input('group_representative_phone');
+            }
+
+            // Handle borrower signature
+            if ($request->has('borrower_signature_data') && !empty($request->input('borrower_signature_data'))) {
+                $loan->borrower_signature = $request->input('borrower_signature_data');
+                $loan->borrower_signature_type = 'drawn';
+                $loan->borrower_signature_date = now();
+            } elseif ($request->hasFile('borrower_signature_file')) {
+                $file = $request->file('borrower_signature_file');
+                $path = FileStorageService::storeFile($file, 'signatures/borrower');
+                $loan->borrower_signature = $path;
+                $loan->borrower_signature_type = 'uploaded';
+                $loan->borrower_signature_date = now();
+            }
+
+            // Handle lender signature
+            if ($request->has('lender_signature_data') && !empty($request->input('lender_signature_data'))) {
+                $loan->lender_signature = $request->input('lender_signature_data');
+                $loan->lender_signature_type = 'drawn';
+                $loan->lender_signature_date = now();
+                $loan->lender_signed_by = auth()->id(); // Store user ID, not name
+                $loan->lender_title = $request->input('lender_title', 'Branch Manager');
+            } elseif ($request->hasFile('lender_signature_file')) {
+                $file = $request->file('lender_signature_file');
+                $path = FileStorageService::storeFile($file, 'signatures/lender');
+                $loan->lender_signature = $path;
+                $loan->lender_signature_type = 'uploaded';
+                $loan->lender_signature_date = now();
+                $loan->lender_signed_by = auth()->id(); // Store user ID, not name
+                $loan->lender_title = $request->input('lender_title', 'Branch Manager');
+            }
+
+            // If not saving draft, finalize the agreement
+            if (!$saveDraft) {
+                $loan->agreement_finalized_at = now();
+
+                // Generate signed PDF
+                $pdfPath = $this->generateSignedAgreementPDF($loan, $borrower, $loanType);
+                $loan->signed_agreement_path = $pdfPath;
+                
+                // Save to member documents
+                $this->savePDFToMemberDocuments($loan, $pdfPath, $loanType);
+            }
+
+            $loan->save();
+
+            \DB::commit();
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $saveDraft ? 'Draft saved successfully' : 'Agreement finalized successfully'
+                ]);
+            }
+
+            return back()->with('success', $saveDraft ? 'Draft saved successfully' : 'Agreement finalized and signed PDF generated successfully');
+
+        } catch (\Exception $e) {
+            \DB::rollBack();
+            \Log::error('E-Signature save error: ' . $e->getMessage());
+            
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error saving e-signature: ' . $e->getMessage()
+                ], 500);
+            }
+
+            return back()->with('error', 'Error saving e-signature: ' . $e->getMessage())->withInput();
+        }
+    }
+
+    /**
+     * Generate signed agreement PDF with signatures
+     */
+    private function generateSignedAgreementPDF($loan, $borrower, $type)
+    {
+        try {
+            // Use DOMPDF
+            $options = new \Dompdf\Options();
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('isRemoteEnabled', true);
+            $options->set('chroot', public_path());
+            
+            $dompdf = new \Dompdf\Dompdf($options);
+            
+            // Load HTML from view with signatures
+            $html = view('admin.loans.agreement-pdf', compact('loan', 'borrower', 'type'))->render();
+            $dompdf->loadHtml($html);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            
+            // Get PDF content
+            $pdfContent = $dompdf->output();
+            
+            // Determine member ID
+            $memberId = $type === 'personal' ? $loan->member_id : $loan->group_id;
+            
+            // Create filename
+            $filename = $loan->code . '-signed-agreement-' . time() . '.pdf';
+            
+            // Store directly in public/uploads/member-documents/{member_id}/
+            $uploadPath = public_path('uploads/member-documents/' . $memberId);
+            if (!file_exists($uploadPath)) {
+                mkdir($uploadPath, 0755, true);
+            }
+            
+            // Save PDF file
+            $filePath = $uploadPath . '/' . $filename;
+            file_put_contents($filePath, $pdfContent);
+            
+            // Return relative path
+            return 'uploads/member-documents/' . $memberId . '/' . $filename;
+
+        } catch (\Exception $e) {
+            \Log::error('PDF generation error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Regenerate signed agreement PDF with current data (guarantors, etc.)
+     */
+    public function regenerateAgreement(Request $request, $id)
+    {
+        try {
+            \Log::info('Regenerate agreement request for loan ID: ' . $id);
+            
+            $loanType = $request->input('loan_type', 'personal');
+            \Log::info('Loan type: ' . $loanType);
+
+            // Get loan
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::with(['member', 'product', 'branch', 'guarantors.member'])->findOrFail($id);
+                $borrower = $loan->member;
+                \Log::info('Personal loan found. Guarantors count: ' . $loan->guarantors->count());
+            } else {
+                $loan = GroupLoan::with(['group.members', 'product', 'branch', 'guarantors.member'])->findOrFail($id);
+                $borrower = $loan->group;
+                \Log::info('Group loan found. Guarantors count: ' . $loan->guarantors->count());
+            }
+
+            // Check if agreement is finalized
+            if (!$loan->agreement_finalized_at) {
+                \Log::warning('Agreement not finalized for loan: ' . $id);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Agreement must be finalized first'
+                ], 400);
+            }
+
+            \Log::info('Regenerating PDF for loan: ' . $loan->code);
+            
+            // Regenerate PDF with current data
+            $pdfPath = $this->generateSignedAgreementPDF($loan, $borrower, $loanType);
+            $loan->signed_agreement_path = $pdfPath;
+            $loan->save();
+            
+            // Update member document
+            $this->savePDFToMemberDocuments($loan, $pdfPath, $loanType, true);
+
+            \Log::info('PDF regenerated successfully. Path: ' . $pdfPath);
+
+            // Always return JSON for this endpoint
+            return response()->json([
+                'success' => true,
+                'message' => 'Agreement regenerated successfully with current guarantor data (' . $loan->guarantors->count() . ' guarantors)',
+                'pdf_url' => FileStorageService::getFileUrl($pdfPath)
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Agreement regeneration error: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            
+            // Always return JSON for this endpoint
+            return response()->json([
+                'success' => false,
+                'message' => 'Error regenerating agreement: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save guarantor signature
+     */
+    public function saveGuarantorSignature(Request $request, $id)
+    {
+        try {
+            $guarantorId = $request->input('guarantor_id');
+            $guarantor = \App\Models\Guarantor::findOrFail($guarantorId);
+
+            // Verify guarantor belongs to this loan
+            if ($guarantor->loan_id != $id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Guarantor does not belong to this loan'
+                ], 403);
+            }
+
+            $signatureType = $request->input('signature_type');
+
+            if ($signatureType === 'drawn') {
+                $signatureData = $request->input('signature_data');
+                if (!$signatureData) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Signature data is required'
+                    ], 400);
+                }
+                $guarantor->signature = $signatureData;
+            } else {
+                // Handle uploaded signature
+                if (!$request->hasFile('signature_file')) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Signature file is required'
+                    ], 400);
+                }
+                $file = $request->file('signature_file');
+                $path = FileStorageService::storeFile($file, 'signatures/guarantors');
+                $guarantor->signature = $path;
+            }
+
+            $guarantor->signature_type = $signatureType;
+            $guarantor->signature_date = now();
+            $guarantor->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Guarantor signature saved successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Guarantor signature save error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error saving signature: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save PDF to member documents table
+     */
+    private function savePDFToMemberDocuments($loan, $pdfPath, $loanType, $isRegeneration = false)
+    {
+        try {
+            $memberId = $loanType === 'personal' ? $loan->member_id : $loan->group_id;
+            $filePath = public_path($pdfPath);
+            $fileSize = file_exists($filePath) ? filesize($filePath) : 0;
+            
+            // Check if document already exists for this loan
+            $existingDoc = MemberDocument::where('member_id', $memberId)
+                ->where('document_type', 'loan_agreement')
+                ->where('document_name', 'LIKE', $loan->code . '%')
+                ->first();
+            
+            if ($isRegeneration && $existingDoc) {
+                // Update existing document
+                $existingDoc->file_path = $pdfPath;
+                $existingDoc->file_size = $fileSize;
+                $existingDoc->updated_at = now();
+                $existingDoc->save();
+                \Log::info('Updated existing member document for loan: ' . $loan->code);
+            } else {
+                // Create new document record
+                MemberDocument::create([
+                    'member_id' => $memberId,
+                    'document_type' => 'loan_agreement',
+                    'document_name' => $loan->code . ' - Signed Loan Agreement',
+                    'file_path' => $pdfPath,
+                    'file_type' => 'application/pdf',
+                    'file_size' => $fileSize,
+                    'description' => 'Electronically signed loan agreement for loan ' . $loan->code,
+                    'uploaded_by' => auth()->id(),
+                ]);
+                \Log::info('Created new member document for loan: ' . $loan->code);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error saving PDF to member documents: ' . $e->getMessage());
+            // Don't throw - this is not critical to the main flow
         }
     }
 

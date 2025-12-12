@@ -293,6 +293,10 @@
                     $lateFee = 0;
                     $scheduleAmount = 0;
                     $daysLate = 0;
+                    $interestPaid = 0;
+                    $principalPaid = 0;
+                    $lateFeePaid = 0;
+                    $periodName = '';
                     
                     if ($repayment->schedule_id) {
                         $schedule = \App\Models\LoanSchedule::find($repayment->schedule_id);
@@ -308,19 +312,22 @@
                                 $datediff = $paymentDate - $dueDate;
                                 $daysLate = floor($datediff / (60 * 60 * 24));
                                 
-                                // Calculate periods overdue
+                                // Calculate periods overdue based on loan type
                                 $periodsOverdue = 0;
-                                $periodType = $repayment->loan->period_type ?? '2';
+                                $periodType = optional($repayment->loan->product)->period_type ?? '2';
                                 
-                                if ($periodType == '1') {
+                                if ($periodType == '3') {
+                                    // Daily loans: 6% per DAY
+                                    $periodsOverdue = $daysLate;
+                                    $periodName = 'day' . ($periodsOverdue > 1 ? 's' : '');
+                                } else if ($periodType == '1') {
+                                    // Weekly loans: 6% per WEEK
                                     $periodsOverdue = ceil($daysLate / 7);
                                     $periodName = 'week' . ($periodsOverdue > 1 ? 's' : '');
                                 } else if ($periodType == '2') {
+                                    // Monthly loans: 6% per MONTH
                                     $periodsOverdue = ceil($daysLate / 30);
                                     $periodName = 'month' . ($periodsOverdue > 1 ? 's' : '');
-                                } else if ($periodType == '3') {
-                                    $periodsOverdue = $daysLate;
-                                    $periodName = 'day' . ($periodsOverdue > 1 ? 's' : '');
                                 } else {
                                     $periodsOverdue = ceil($daysLate / 7);
                                     $periodName = 'week' . ($periodsOverdue > 1 ? 's' : '');
@@ -328,24 +335,64 @@
                                 
                                 // 6% late fee per period
                                 $lateFee = ($scheduleAmount * 0.06) * $periodsOverdue;
+                                
+                                // Check if late fee has been waived (e.g., November 2025 system upgrade)
+                                $waivedLateFee = \App\Models\LateFee::where('schedule_id', $schedule->id)
+                                    ->where('status', 2) // Waived
+                                    ->first();
+                                
+                                if ($waivedLateFee) {
+                                    // Subtract the waived amount (e.g., November portion only)
+                                    $lateFee = max(0, $lateFee - $waivedLateFee->amount);
+                                }
+                            }
+                            
+                            // Calculate payment allocation: Late Fee → Interest → Principal
+                            $remainingAmount = $repayment->amount;
+                            
+                            // 1. Deduct late fee first
+                            if ($lateFee > 0) {
+                                $lateFeePaid = min($remainingAmount, $lateFee);
+                                $remainingAmount -= $lateFeePaid;
+                            }
+                            
+                            // 2. Deduct interest
+                            if ($remainingAmount > 0 && $schedule->interest > 0) {
+                                $interestPaid = min($remainingAmount, $schedule->interest);
+                                $remainingAmount -= $interestPaid;
+                            }
+                            
+                            // 3. Remaining goes to principal
+                            if ($remainingAmount > 0) {
+                                $principalPaid = $remainingAmount;
                             }
                         }
                     }
                 @endphp
                 
                 @if($schedule && $scheduleAmount > 0)
+                    @if($interestPaid > 0)
                     <tr>
-                        <td>Schedule Payment (Principal + Interest)</td>
-                        <td style="text-align: right;">{{ number_format($scheduleAmount, 2) }}</td>
+                        <td>Interest Paid</td>
+                        <td style="text-align: right;">{{ number_format($interestPaid, 2) }}</td>
                     </tr>
-                    @if($lateFee > 0)
+                    @endif
+                    
+                    @if($lateFeePaid > 0)
                         <tr style="color: #dc3545;">
                             <td>
-                                Late Fee ({{ $daysLate }} days late, 6% per {{ $periodName ?? 'period' }})
+                                Late Fee ({{ $daysLate }} {{ $daysLate > 1 ? 'days' : 'day' }} late, 6% per {{ $periodName }})
                                 <br><small style="color: #6c757d;">Payment made after due date: {{ $schedule->payment_date }}</small>
                             </td>
-                            <td style="text-align: right;">{{ number_format($lateFee, 2) }}</td>
+                            <td style="text-align: right;">{{ number_format($lateFeePaid, 2) }}</td>
                         </tr>
+                    @endif
+                    
+                    @if($principalPaid > 0)
+                    <tr>
+                        <td>Principal Paid</td>
+                        <td style="text-align: right;">{{ number_format($principalPaid, 2) }}</td>
+                    </tr>
                     @endif
                 @else
                     <tr>
