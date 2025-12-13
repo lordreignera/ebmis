@@ -348,16 +348,25 @@ class RepaymentController extends Controller
                              ->where('status', 1)
                              ->sum('amount');
         
-        // Calculate total payable from SCHEDULES (principal + interest + any late fees)
+        // Calculate total payable from SCHEDULES (principal + interest + any late fees - waived fees)
         // This matches bimsadmin logic exactly
         $totalPayable = $loan->schedules->sum(function($schedule) {
             return $schedule->principal + $schedule->interest;
         });
         
+        // Add outstanding late fees (excluding waived ones)
+        $totalLateFees = DB::table('late_fees')
+            ->where('loan_id', $loan->id)
+            ->where('status', 0) // Only pending (unpaid, not waived)
+            ->sum('amount');
+        
+        // Total payable includes pending late fees
+        $totalPayableWithFees = $totalPayable + $totalLateFees;
+        
         $loan->amount_paid = $totalPaid;
-        $loan->outstanding_balance = $totalPayable - $totalPaid;
-        $loan->total_payable = $totalPayable;
-        $loan->payment_percentage = $totalPayable > 0 ? ($totalPaid / $totalPayable) * 100 : 0;
+        $loan->outstanding_balance = $totalPayableWithFees - $totalPaid;
+        $loan->total_payable = $totalPayableWithFees;
+        $loan->payment_percentage = $totalPayableWithFees > 0 ? ($totalPaid / $totalPayableWithFees) * 100 : 0;
         
         // Calculate days overdue
         $overdueSchedules = $loan->schedules()
@@ -412,7 +421,8 @@ class RepaymentController extends Controller
             $dd = 0; // Periods overdue
             if ($d > 0) {
                 // Get period type from loan's product (1=Weekly, 2=Monthly, 3=Daily)
-                $period_type = optional($loan->product)->period_type ?? '2'; // Default to monthly if not set
+                // Ensure we use the product's period_type, defaulting to weekly (not monthly!)
+                $period_type = $loan->product ? $loan->product->period_type : '1';
                 
                 if ($period_type == '1') {
                     // Weekly loans: divide by 7
@@ -424,7 +434,7 @@ class RepaymentController extends Controller
                     // Daily loans: each day is 1 period
                     $dd = $d;
                 } else {
-                    // Default to weekly
+                    // Default to weekly (matches old system)
                     $dd = ceil($d / 7);
                 }
             }
@@ -432,22 +442,20 @@ class RepaymentController extends Controller
             // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
             $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
             
-            // 4a. Check if late fee has been waived (e.g., November 2025 system upgrade)
-            $waivedLateFee = DB::table('late_fees')
+            // 4a. Check if late fees have been waived (e.g., November 2025 system upgrade)
+            // Sum ALL waived late fees for this schedule (there may be multiple)
+            $totalWaivedAmount = DB::table('late_fees')
                 ->where('schedule_id', $schedule->id)
                 ->where('status', 2) // Waived
-                ->first();
+                ->sum('amount');
             
-            if ($waivedLateFee) {
-                // Subtract the waived amount (e.g., November portion only)
-                $latepayment = max(0, $latepayment - $waivedLateFee->amount);
+            if ($totalWaivedAmount > 0) {
+                // Subtract the total waived amount from calculated late fees
+                $latepayment = max(0, $latepayment - $totalWaivedAmount);
                 
-                // Recalculate periods based on remaining late fee
-                if ($latepayment > 0 && $schedule->principal + $intrestamtpayable > 0) {
-                    $dd = $latepayment / (($schedule->principal + $intrestamtpayable) * 0.06);
-                } else {
-                    $dd = 0;
-                }
+                // DO NOT recalculate periods - periods in arrears should reflect actual time elapsed
+                // The waiver reduces the late fee amount, but doesn't change how many periods have passed
+                // Keep $dd as calculated above based on actual days overdue
             }
             
             // 5. Get total paid from pre-loaded data (optimized - no N+1 queries)
@@ -497,6 +505,7 @@ class RepaymentController extends Controller
             $schedule->principal_paid = $pafterprinicpalpayment;
             $schedule->interest_paid = $pafterinterestpayment;
             $schedule->penalty_paid = $pafterlatepayment;
+            $schedule->paid = $totalPaid; // Total amount actually paid (from repayments table)
             $schedule->total_balance = $act_bal;
             $schedule->principal_balance = $principal;
             $schedule->pending_count = $pendingCount;
@@ -1172,6 +1181,144 @@ class RepaymentController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Partial payment processing failed. Please try again.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Pay outstanding balances for specific schedules
+     */
+    public function payBalance(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'loan_id' => 'required|integer',
+            'amount' => 'required|numeric|min:1',
+            'payment_method' => 'required|in:mobile_money,cash,bank_transfer',
+            'schedules' => 'required|string',
+            'txn_reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Find loan from either table
+        $loan = PersonalLoan::find($request->loan_id);
+        if (!$loan) {
+            $loan = GroupLoan::find($request->loan_id);
+        }
+        if (!$loan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Loan not found'
+            ], 404);
+        }
+
+        // Parse schedules JSON
+        $schedules = json_decode($request->schedules, true);
+        if (!is_array($schedules) || count($schedules) === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid schedules data'
+            ], 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $totalAmount = floatval($request->amount);
+            $remainingAmount = $totalAmount;
+            $paymentsCreated = 0;
+            $schedulesPaid = [];
+
+            // Process each selected schedule
+            foreach ($schedules as $scheduleData) {
+                if ($remainingAmount <= 0) {
+                    break;
+                }
+
+                $scheduleId = $scheduleData['schedule_id'];
+                $scheduleBalance = floatval($scheduleData['balance']);
+
+                // Get the actual schedule from database
+                $schedule = DB::table('loan_schedules')->where('id', $scheduleId)->first();
+                if (!$schedule) {
+                    continue;
+                }
+
+                // Determine payment amount for this schedule
+                $paymentAmount = min($remainingAmount, $scheduleBalance);
+
+                // Create repayment record
+                $repaymentData = [
+                    'type' => $this->getPaymentTypeCode($request->payment_method),
+                    'details' => 'Balance payment: ' . ($request->notes ?: 'Schedule balance cleared'),
+                    'loan_id' => $request->loan_id,
+                    'schedule_id' => $scheduleId,
+                    'amount' => $paymentAmount,
+                    'date_created' => now(),
+                    'added_by' => auth()->id(),
+                    'status' => 1, // Confirmed
+                    'platform' => 'Web',
+                    'txn_id' => $request->txn_reference ?: ('BAL-' . time() . '-' . $scheduleId),
+                    'pay_status' => 'SUCCESS',
+                    'pay_message' => 'Balance payment confirmed',
+                ];
+
+                $repayment = Repayment::create($repaymentData);
+                $paymentsCreated++;
+
+                // Calculate new total paid for this schedule
+                $totalPaid = DB::table('repayments')
+                    ->where('schedule_id', $scheduleId)
+                    ->where('status', 1)
+                    ->sum('amount');
+
+                $totalDue = $schedule->principal + $schedule->interest;
+
+                // Mark schedule as paid if fully paid (with 0.99 tolerance for rounding)
+                if ($totalPaid >= ($totalDue - 0.99)) {
+                    DB::table('loan_schedules')
+                        ->where('id', $scheduleId)
+                        ->update(['status' => 1]);
+                    
+                    $schedulesPaid[] = $scheduleData['due_date'];
+                }
+
+                $remainingAmount -= $paymentAmount;
+            }
+
+            DB::commit();
+
+            $message = "Successfully processed payment for {$paymentsCreated} schedule(s).";
+            if (count($schedulesPaid) > 0) {
+                $message .= "<br>Schedules marked as paid: " . implode(', ', $schedulesPaid);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'payments_created' => $paymentsCreated,
+                'schedules_paid' => count($schedulesPaid)
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Balance payment failed', [
+                'loan_id' => $request->loan_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Balance payment processing failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -2695,14 +2842,14 @@ class RepaymentController extends Controller
                         
                         $lateFee = ($scheduleDue * 0.06) * $periods;
                         
-                        // Check for waivers
-                        $waiver = DB::table('late_fees')
+                        // Check for waived late fees (sum ALL waived amounts for this schedule)
+                        $totalWaivedAmount = DB::table('late_fees')
                             ->where('schedule_id', $schedule->id)
-                            ->where('status', 2)
-                            ->first();
+                            ->where('status', 2) // Waived
+                            ->sum('amount');
                         
-                        if ($waiver) {
-                            $lateFee = max(0, $lateFee - $waiver->amount);
+                        if ($totalWaivedAmount > 0) {
+                            $lateFee = max(0, $lateFee - $totalWaivedAmount);
                         }
                     }
                 }
@@ -2750,6 +2897,207 @@ class RepaymentController extends Controller
         } catch (\Exception $e) {
             Log::error("Failed to check/close loan {$loanId}: " . $e->getMessage());
             return false;
+        }
+    }
+    
+    /**
+     * Waive selected late fees for a loan
+     * Only accessible by superadmin and administrator roles
+     */
+    public function waiveLateFees(Request $request)
+    {
+        try {
+            // Authorization check - only superadmin and administrator can waive late fees
+            $user = auth()->user();
+            $allowedRoles = ['Super Administrator', 'superadmin', 'Administrator', 'administrator'];
+            $hasPermission = false;
+            
+            foreach ($allowedRoles as $role) {
+                if ($user->hasRole($role)) {
+                    $hasPermission = true;
+                    break;
+                }
+            }
+            
+            if (!$hasPermission) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized. Only administrators can waive late fees.'
+                ], 403);
+            }
+            
+            // Validate request
+            $validator = Validator::make($request->all(), [
+                'loan_id' => 'required|integer|exists:personal_loans,id',
+                'late_fees' => 'required|json',
+                'waiver_reason' => 'required|string|max:255'
+            ]);
+            
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed: ' . $validator->errors()->first()
+                ], 422);
+            }
+            
+            $loanId = $request->loan_id;
+            $lateFees = json_decode($request->late_fees, true);
+            $waiverReason = $request->waiver_reason;
+            
+            if (empty($lateFees)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No late fees selected'
+                ], 422);
+            }
+            
+            // Get loan and member details
+            $loan = PersonalLoan::find($loanId);
+            if (!$loan) {
+                $loan = GroupLoan::find($loanId);
+            }
+            if (!$loan) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Loan not found'
+                ], 404);
+            }
+            
+            $memberId = $loan->member_id ?? $loan->group_id ?? 0;
+            
+            DB::beginTransaction();
+            
+            $waivedCount = 0;
+            $totalWaived = 0;
+            $failedIds = [];
+            
+            foreach ($lateFees as $lateFee) {
+                // Check if this is an existing late_fee record or a calculated penalty from schedule
+                if (isset($lateFee['late_fee_id'])) {
+                    // Existing late fee record in late_fees table
+                    $lateFeeId = $lateFee['late_fee_id'];
+                    $amount = $lateFee['amount'];
+                    
+                    // Verify the late fee exists and is pending
+                    $lateFeeRecord = DB::table('late_fees')
+                        ->where('id', $lateFeeId)
+                        ->where('loan_id', $loanId)
+                        ->where('status', 0) // Only pending late fees can be waived
+                        ->first();
+                    
+                    if (!$lateFeeRecord) {
+                        $failedIds[] = $lateFeeId;
+                        continue;
+                    }
+                    
+                    // Update late fee status to waived (status = 2)
+                    $updated = DB::table('late_fees')
+                        ->where('id', $lateFeeId)
+                        ->update([
+                            'status' => 2, // 2 = waived
+                            'waiver_reason' => $waiverReason,
+                            'waived_at' => now(),
+                            'waived_by' => $user->id,
+                            'updated_at' => now()
+                        ]);
+                    
+                    if ($updated) {
+                        $waivedCount++;
+                        $totalWaived += $lateFeeRecord->amount;
+                    } else {
+                        $failedIds[] = $lateFeeId;
+                    }
+                    
+                } else if (isset($lateFee['schedule_id'])) {
+                    // Calculated penalty from schedule - create late_fee record and mark as waived
+                    $scheduleId = $lateFee['schedule_id'];
+                    $amount = $lateFee['amount'];
+                    
+                    // Get schedule details
+                    $schedule = LoanSchedule::find($scheduleId);
+                    if (!$schedule || $schedule->loan_id != $loanId) {
+                        $failedIds[] = $scheduleId;
+                        continue;
+                    }
+                    
+                    // Calculate days overdue
+                    $dueDate = Carbon::parse($schedule->payment_date);
+                    $daysOverdue = $dueDate->isPast() ? $dueDate->diffInDays(now(), false) : 0;
+                    
+                    // Insert late fee record as waived
+                    $inserted = DB::table('late_fees')->insert([
+                        'loan_id' => $loanId,
+                        'schedule_id' => $scheduleId,
+                        'member_id' => $memberId,
+                        'amount' => $amount,
+                        'days_overdue' => $daysOverdue,
+                        'schedule_due_date' => $schedule->payment_date,
+                        'calculated_date' => now(),
+                        'status' => 2, // 2 = waived (create as already waived)
+                        'waiver_reason' => $waiverReason,
+                        'waived_at' => now(),
+                        'waived_by' => $user->id,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                    
+                    if ($inserted) {
+                        $waivedCount++;
+                        $totalWaived += $amount;
+                    } else {
+                        $failedIds[] = $scheduleId;
+                    }
+                }
+            }
+            
+            // Log the waiver action
+            Log::info("Late fees waived", [
+                'loan_id' => $loanId,
+                'waived_by' => $user->id,
+                'waived_by_name' => $user->name ?? $user->fname . ' ' . $user->lname,
+                'count' => $waivedCount,
+                'total_amount' => $totalWaived,
+                'reason' => $waiverReason,
+                'failed_ids' => $failedIds
+            ]);
+            
+            if ($waivedCount > 0) {
+                DB::commit();
+                
+                $message = "Successfully waived <strong>{$waivedCount} late fee(s)</strong> totaling <strong>UGX " . 
+                          number_format($totalWaived, 0) . "</strong>";
+                
+                if (!empty($failedIds)) {
+                    $message .= "<br><small class='text-warning'>Note: " . count($failedIds) . " late fee(s) could not be waived (may have been already paid/waived)</small>";
+                }
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'waived_count' => $waivedCount,
+                    'total_waived' => $totalWaived
+                ]);
+            } else {
+                DB::rollBack();
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No late fees could be waived. They may have been already paid or waived.'
+                ], 422);
+            }
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error("Failed to waive late fees", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while waiving late fees: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

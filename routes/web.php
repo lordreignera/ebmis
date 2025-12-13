@@ -269,12 +269,16 @@ Route::middleware([
         Route::post('/quick', [\App\Http\Controllers\Admin\RepaymentController::class, 'quickRepayment'])->name('quick');
         Route::post('/store', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeRepayment'])->name('store');
         Route::post('/partial', [\App\Http\Controllers\Admin\RepaymentController::class, 'partialPayment'])->name('partial');
+        Route::post('/pay-balance', [\App\Http\Controllers\Admin\RepaymentController::class, 'payBalance'])->name('pay-balance');
         Route::post('/store-mobile-money', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeMobileMoneyRepayment'])->name('store-mobile-money');
         Route::get('/check-mm-status/{reference}', [\App\Http\Controllers\Admin\RepaymentController::class, 'checkRepaymentMmStatus'])->name('check-mm-status');
         Route::post('/retry-mobile-money', [\App\Http\Controllers\Admin\RepaymentController::class, 'retryMobileMoneyRepayment'])->name('retry-mobile-money');
         Route::get('/get/{id}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getRepayment'])->name('get');
         Route::get('/schedule-pending/{scheduleId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePendingRepayments'])->name('schedule-pending');
     });
+    
+    // Late Fees Management Routes (Superadmin & Administrator only)
+    Route::post('/loans/late-fees/waive', [\App\Http\Controllers\Admin\RepaymentController::class, 'waiveLateFees'])->name('loans.late-fees.waive');
     
     // Loan Reschedule Route
     Route::post('/loans/{loan}/reschedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'rescheduleLoan'])->name('loans.reschedule');

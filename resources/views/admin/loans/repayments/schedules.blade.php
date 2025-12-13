@@ -181,6 +181,39 @@
                             </button>
                         </div>
                         
+                        <div class="col-md-3">
+                            <button type="button" class="btn btn-success w-100" onclick="$('#payBalanceModal').modal('show')">
+                                <i class="mdi mdi-cash-check me-1"></i>
+                                Pay Balance
+                                <br><small>Clear specific balances</small>
+                            </button>
+                        </div>
+                        
+                        @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @php
+                                // Check for pending late fees in late_fees table (already recorded)
+                                $unpaidLateFees = DB::table('late_fees')
+                                    ->where('loan_id', $loan->id)
+                                    ->where('status', 0)
+                                    ->sum('amount');
+                                
+                                // Also check for calculated penalties from overdue schedules (not yet in late_fees table)
+                                $calculatedLateFees = $schedules->where('status', 0)->sum('penalty');
+                                
+                                // Show button if either has late fees
+                                $totalLateFees = $unpaidLateFees > 0 ? $unpaidLateFees : $calculatedLateFees;
+                            @endphp
+                            @if($totalLateFees > 0)
+                                <div class="col-md-3">
+                                    <button type="button" class="btn btn-warning w-100" onclick="$('#waiveLateFeeModal').modal('show')">
+                                        <i class="mdi mdi-cash-remove me-1"></i>
+                                        Waive Late Fees
+                                        <br><small>UGX {{ number_format($totalLateFees, 0) }} calculated</small>
+                                    </button>
+                                </div>
+                            @endif
+                        @endif
+                        
                         @if($loan->days_overdue > 7)
                             <div class="col-md-3">
                                 <a href="{{ route('admin.loans.restructure', $loan->id) }}" class="btn btn-warning w-100">
@@ -589,6 +622,231 @@
     </div>
 </div>
 
+<!-- Waive Late Fees Modal -->
+<div class="modal fade" id="waiveLateFeeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title text-dark"><i class="mdi mdi-cash-remove me-1"></i> Waive Late Fees</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="waiveLateFeeForm">
+                @csrf
+                <div class="modal-body bg-white">
+                    <div class="alert alert-warning">
+                        <small><i class="mdi mdi-alert me-1"></i> <strong>Waiving late fees will permanently remove them from the system.</strong> This action should only be used when late fees were caused by system issues, upgrades, or other circumstances beyond the client's control. Select the late fees to waive below.</small>
+                    </div>
+                    
+                    <div class="table-responsive mb-3" style="max-height: 350px; overflow-y: auto;">
+                        <table class="table table-sm table-hover">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th width="40">
+                                        <input type="checkbox" id="selectAllLateFees" class="form-check-input">
+                                    </th>
+                                    <th>Schedule Date</th>
+                                    <th>Days Overdue</th>
+                                    <th>Calculated Date</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lateFeeList">
+                                @php
+                                    // Get late fees already in the database
+                                    $pendingLateFees = DB::table('late_fees')
+                                        ->where('loan_id', $loan->id)
+                                        ->where('status', 0)
+                                        ->orderBy('calculated_date')
+                                        ->get();
+                                    
+                                    // Get calculated penalties from overdue schedules (not yet in late_fees table)
+                                    $overdueSchedules = $schedules->filter(function($schedule) {
+                                        return $schedule->status == 0 && $schedule->penalty > 0;
+                                    });
+                                @endphp
+                                
+                                @if($pendingLateFees->count() > 0)
+                                    {{-- Show late fees from late_fees table --}}
+                                    @foreach($pendingLateFees as $lateFee)
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox" 
+                                                       class="form-check-input late-fee-checkbox" 
+                                                       name="late_fee_ids[]" 
+                                                       value="{{ $lateFee->id }}"
+                                                       data-amount="{{ $lateFee->amount }}"
+                                                       data-schedule-id="{{ $lateFee->schedule_id }}"
+                                                       data-schedule-date="{{ date('d-m-Y', strtotime($lateFee->schedule_due_date)) }}">
+                                            </td>
+                                            <td><small>{{ date('d-m-Y', strtotime($lateFee->schedule_due_date)) }}</small></td>
+                                            <td><span class="badge bg-danger">{{ $lateFee->days_overdue }} days</span></td>
+                                            <td><small class="text-muted">{{ date('d-m-Y', strtotime($lateFee->calculated_date)) }}</small></td>
+                                            <td class="text-end text-danger"><strong>{{ number_format($lateFee->amount, 0) }}</strong></td>
+                                        </tr>
+                                    @endforeach
+                                @else
+                                    {{-- Show calculated penalties from schedules --}}
+                                    @forelse($overdueSchedules as $schedule)
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox" 
+                                                       class="form-check-input late-fee-checkbox calculated-penalty" 
+                                                       name="schedule_ids[]" 
+                                                       value="{{ $schedule->id }}"
+                                                       data-amount="{{ $schedule->penalty }}"
+                                                       data-schedule-id="{{ $schedule->id }}"
+                                                       data-schedule-date="{{ date('d-m-Y', strtotime($schedule->payment_date)) }}"
+                                                       data-days-overdue="{{ $schedule->days_overdue }}">
+                                            </td>
+                                            <td><small>{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</small></td>
+                                            <td><span class="badge bg-danger">{{ $schedule->days_overdue }} days</span></td>
+                                            <td><small class="text-muted">Calculated now</small></td>
+                                            <td class="text-end text-danger"><strong>{{ number_format($schedule->penalty, 0) }}</strong></td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="5" class="text-center text-muted">No late fees to waive</td>
+                                        </tr>
+                                    @endforelse
+                                @endif
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-secondary mb-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Selected Late Fees:</strong> <span id="selectedLateFeeCount">0</span>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <strong>Total to Waive:</strong> UGX <span id="totalToWaive">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Waiver Reason <span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="waiver_reason" id="waiverReason" rows="3" required placeholder="Explain why these late fees are being waived (e.g., System upgrade/maintenance, Technical issues, etc.)">System upgrade maintenance period - waiving unwarranted late fees</textarea>
+                        <div class="form-text">This reason will be recorded in the system for audit purposes</div>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="confirmWaiver" required>
+                        <label class="form-check-label" for="confirmWaiver">
+                            I confirm that I have reviewed these late fees and they should be waived
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="processWaiverBtn" disabled>
+                        <i class="mdi mdi-check me-1"></i> Waive Selected Fees
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Pay Balance Modal -->
+<div class="modal fade" id="payBalanceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-white">
+                <h5 class="modal-title"><i class="mdi mdi-cash-check me-1"></i> Pay Outstanding Balances</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="payBalanceForm">
+                <div class="modal-body bg-white">
+                    <div class="alert alert-info">
+                        <small><i class="mdi mdi-information me-1"></i> Select schedules to pay their outstanding balances. You can pay multiple schedules at once.</small>
+                    </div>
+                    
+                    <div class="table-responsive mb-3" style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm table-hover">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th width="40">
+                                        <input type="checkbox" id="selectAllBalances" class="form-check-input">
+                                    </th>
+                                    <th>Date</th>
+                                    <th class="text-end">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody id="balanceList">
+                                @foreach($schedules as $schedule)
+                                    @php
+                                        $totalDue = $schedule->total_payment ?? ($schedule->principal + $schedule->interest);
+                                        $totalPaid = $schedule->paid ?? 0;
+                                        $balance = $schedule->total_balance ?? ($totalDue - $totalPaid);
+                                    @endphp
+                                    @if($balance > 0.01)
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox" 
+                                                       class="form-check-input balance-checkbox" 
+                                                       name="schedule_ids[]" 
+                                                       value="{{ $schedule->id }}"
+                                                       data-balance="{{ $balance }}"
+                                                       data-due-date="{{ date('d-m-Y', strtotime($schedule->payment_date)) }}">
+                                            </td>
+                                            <td><small>{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</small></td>
+                                            <td class="text-end text-danger"><strong>{{ number_format($balance, 0) }}</strong></td>
+                                        </tr>
+                                    @endif
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-secondary mb-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Selected Schedules:</strong> <span id="selectedCount">0</span>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <strong>Total to Pay:</strong> UGX <span id="totalToPay">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Payment Amount <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="balancePaymentAmount" name="amount" step="0.01" min="1" required readonly>
+                        <div class="form-text">This will be distributed across selected schedules to clear their balances</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method <span class="text-danger">*</span></label>
+                        <select class="form-select" name="payment_method" required>
+                            <option value="">Select Method</option>
+                            <option value="mobile_money">Mobile Money</option>
+                            <option value="cash">Cash</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Transaction Reference</label>
+                        <input type="text" class="form-control" name="txn_reference" placeholder="Optional">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" name="notes" rows="2" placeholder="Optional payment notes"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success" id="processBalancePaymentBtn" disabled>
+                        <i class="mdi mdi-check me-1"></i> Process Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {{-- Reschedule Modal --}}
 <div class="modal fade" id="rescheduleModal" tabindex="-1">
     <div class="modal-dialog">
@@ -804,6 +1062,244 @@ $(document).ready(function() {
                 Swal.fire('Error!', message, 'error');
             }
         });
+    });
+    
+    // Handle Pay Balance checkbox selection
+    function updateBalanceSelection() {
+        var total = 0;
+        var count = 0;
+        
+        $('.balance-checkbox:checked').each(function() {
+            var balance = parseFloat($(this).data('balance'));
+            total += balance;
+            count++;
+        });
+        
+        $('#selectedCount').text(count);
+        $('#totalToPay').text(total.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}));
+        $('#balancePaymentAmount').val(total.toFixed(2));
+        
+        // Enable/disable submit button
+        if (count > 0) {
+            $('#processBalancePaymentBtn').prop('disabled', false);
+        } else {
+            $('#processBalancePaymentBtn').prop('disabled', true);
+        }
+    }
+    
+    // Handle individual checkbox clicks
+    $(document).on('change', '.balance-checkbox', function() {
+        updateBalanceSelection();
+    });
+    
+    // Handle select all checkbox
+    $('#selectAllBalances').on('change', function() {
+        $('.balance-checkbox').prop('checked', $(this).prop('checked'));
+        updateBalanceSelection();
+    });
+    
+    // Handle Pay Balance form submission
+    $('#payBalanceForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        var selectedSchedules = [];
+        $('.balance-checkbox:checked').each(function() {
+            selectedSchedules.push({
+                schedule_id: $(this).val(),
+                balance: parseFloat($(this).data('balance')),
+                due_date: $(this).data('due-date')
+            });
+        });
+        
+        if (selectedSchedules.length === 0) {
+            Swal.fire('Error!', 'Please select at least one schedule to pay', 'error');
+            return;
+        }
+        
+        var formData = new FormData(this);
+        formData.append('loan_id', {{ $loan->id }});
+        formData.append('schedules', JSON.stringify(selectedSchedules));
+        formData.append('_token', '{{ csrf_token() }}');
+        
+        // Show loading state
+        $('#processBalancePaymentBtn').prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Processing...');
+        
+        $.ajax({
+            url: '{{ route("admin.loans.repayments.pay-balance") }}',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    $('#payBalanceModal').modal('hide');
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Payment Successful!',
+                        html: response.message,
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire('Error!', response.message, 'error');
+                    $('#processBalancePaymentBtn').prop('disabled', false).html('<i class="mdi mdi-check me-1"></i> Process Payment');
+                }
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON?.message || 'An error occurred while processing the payment';
+                Swal.fire('Error!', message, 'error');
+                $('#processBalancePaymentBtn').prop('disabled', false).html('<i class="mdi mdi-check me-1"></i> Process Payment');
+            }
+        });
+    });
+    
+    // Reset modal when closed
+    $('#payBalanceModal').on('hidden.bs.modal', function() {
+        $('#payBalanceForm')[0].reset();
+        $('.balance-checkbox').prop('checked', false);
+        $('#selectAllBalances').prop('checked', false);
+        updateBalanceSelection();
+    });
+    
+    // ==================== WAIVE LATE FEES FUNCTIONALITY ====================
+    
+    // Handle late fee checkbox selection
+    function updateLateFeeSelection() {
+        var total = 0;
+        var count = 0;
+        
+        $('.late-fee-checkbox:checked').each(function() {
+            var amount = parseFloat($(this).data('amount'));
+            total += amount;
+            count++;
+        });
+        
+        $('#selectedLateFeeCount').text(count);
+        $('#totalToWaive').text(total.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}));
+        
+        // Enable/disable submit button based on selection and confirmation
+        var hasSelection = count > 0;
+        var isConfirmed = $('#confirmWaiver').is(':checked');
+        $('#processWaiverBtn').prop('disabled', !(hasSelection && isConfirmed));
+    }
+    
+    // Handle individual late fee checkbox clicks
+    $(document).on('change', '.late-fee-checkbox', function() {
+        updateLateFeeSelection();
+    });
+    
+    // Handle select all late fees checkbox
+    $('#selectAllLateFees').on('change', function() {
+        $('.late-fee-checkbox').prop('checked', $(this).prop('checked'));
+        updateLateFeeSelection();
+    });
+    
+    // Handle confirmation checkbox
+    $('#confirmWaiver').on('change', function() {
+        updateLateFeeSelection();
+    });
+    
+    // Handle Waive Late Fee form submission
+    $('#waiveLateFeeForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        var selectedLateFees = [];
+        $('.late-fee-checkbox:checked').each(function() {
+            var item = {};
+            
+            // Check if this is an existing late_fee record or calculated penalty
+            if ($(this).hasClass('calculated-penalty')) {
+                // Calculated penalty from schedule
+                item.schedule_id = $(this).data('schedule-id');
+                item.amount = parseFloat($(this).data('amount'));
+                item.schedule_date = $(this).data('schedule-date');
+            } else {
+                // Existing late_fee record
+                item.late_fee_id = $(this).val();
+                item.amount = parseFloat($(this).data('amount'));
+                item.schedule_date = $(this).data('schedule-date');
+            }
+            
+            selectedLateFees.push(item);
+        });
+        
+        if (selectedLateFees.length === 0) {
+            Swal.fire('Error!', 'Please select at least one late fee to waive', 'error');
+            return;
+        }
+        
+        var waiverReason = $('#waiverReason').val().trim();
+        if (!waiverReason) {
+            Swal.fire('Error!', 'Please provide a reason for waiving these late fees', 'error');
+            return;
+        }
+        
+        // Confirm before waiving
+        var totalToWaive = selectedLateFees.reduce((sum, fee) => sum + fee.amount, 0);
+        Swal.fire({
+            title: 'Confirm Waiver',
+            html: `You are about to waive <strong>${selectedLateFees.length} late fee(s)</strong> totaling <strong>UGX ${totalToWaive.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>.<br><br>This action cannot be undone. Continue?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f0ad4e',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, Waive Fees',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                processWaiver(selectedLateFees, waiverReason);
+            }
+        });
+    });
+    
+    function processWaiver(selectedLateFees, waiverReason) {
+        var formData = new FormData();
+        formData.append('loan_id', {{ $loan->id }});
+        formData.append('late_fees', JSON.stringify(selectedLateFees));
+        formData.append('waiver_reason', waiverReason);
+        formData.append('_token', '{{ csrf_token() }}');
+        
+        // Show loading state
+        $('#processWaiverBtn').prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Processing...');
+        
+        $.ajax({
+            url: '{{ route("admin.loans.late-fees.waive") }}',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    $('#waiveLateFeeModal').modal('hide');
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Late Fees Waived!',
+                        html: response.message,
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire('Error!', response.message, 'error');
+                    $('#processWaiverBtn').prop('disabled', false).html('<i class="mdi mdi-check me-1"></i> Waive Selected Fees');
+                }
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON?.message || 'An error occurred while waiving late fees';
+                Swal.fire('Error!', message, 'error');
+                $('#processWaiverBtn').prop('disabled', false).html('<i class="mdi mdi-check me-1"></i> Waive Selected Fees');
+            }
+        });
+    }
+    
+    // Reset waive late fee modal when closed
+    $('#waiveLateFeeModal').on('hidden.bs.modal', function() {
+        $('#waiveLateFeeForm')[0].reset();
+        $('.late-fee-checkbox').prop('checked', false);
+        $('#selectAllLateFees').prop('checked', false);
+        $('#confirmWaiver').prop('checked', false);
+        updateLateFeeSelection();
     });
 });
 
