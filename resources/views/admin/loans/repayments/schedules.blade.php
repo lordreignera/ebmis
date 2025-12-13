@@ -27,7 +27,7 @@
                 <h4 class="page-title">
                     Repayment Schedules - {{ $loan->loan_code }}
                     @if($loan->days_overdue > 0)
-                        <span class="badge bg-danger ms-2">{{ $loan->days_overdue }} days overdue</span>
+                        <span class="badge bg-danger ms-2">{{ number_format($loan->days_overdue, 0) }} days overdue</span>
                     @endif
                 </h4>
             </div>
@@ -96,7 +96,7 @@
                                     </p>
                                     <p class="mb-1"><strong>Amount:</strong> UGX {{ number_format($nextDue->due_amount, 0) }}</p>
                                     @if($nextDue->is_overdue)
-                                        <p class="mb-1"><strong>Days Late:</strong> <span class="text-danger">{{ $loan->days_overdue }} {{ $loan->days_overdue == 1 ? 'day' : 'days' }}</span></p>
+                                        <p class="mb-1"><strong>Days Late:</strong> <span class="text-danger">{{ number_format($loan->days_overdue, 0) }} {{ $loan->days_overdue == 1 ? 'day' : 'days' }}</span></p>
                                         <p class="mb-0"><strong>Penalty:</strong> <span class="text-danger">UGX {{ number_format($nextDue->penalty_amount, 0) }}</span></p>
                                     @endif
                                 @else

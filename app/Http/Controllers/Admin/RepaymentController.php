@@ -268,7 +268,9 @@ class RepaymentController extends Controller
                 return $loan->schedules->where('status', 0)
                                       ->filter(function($schedule) {
                                           try {
-                                              return \Carbon\Carbon::parse($schedule->payment_date)->isPast();
+                                              // Use strtotime to properly handle DD-MM-YYYY format
+                                              $dueTimestamp = strtotime($schedule->payment_date);
+                                              return $dueTimestamp !== false && $dueTimestamp < time();
                                           } catch (\Exception $e) {
                                               return false;
                                           }
@@ -368,14 +370,25 @@ class RepaymentController extends Controller
         $loan->total_payable = $totalPayableWithFees;
         $loan->payment_percentage = $totalPayableWithFees > 0 ? ($totalPaid / $totalPayableWithFees) * 100 : 0;
         
-        // Calculate days overdue
-        $overdueSchedules = $loan->schedules()
-                                ->where('status', 0)
-                                ->where('payment_date', '<', now())
-                                ->get();
+        // Calculate days overdue - find first unpaid schedule and check if it's past due
+        $firstUnpaid = $loan->schedules()
+                            ->where('status', 0)
+                            ->orderBy('payment_date')
+                            ->first();
         
-        $loan->days_overdue = $overdueSchedules->count() > 0 ? 
-                             now()->diffInDays($overdueSchedules->first()->payment_date) : 0;
+        if ($firstUnpaid) {
+            // Use strtotime() to handle DD-MM-YYYY format correctly
+            // Compare dates only (at midnight) to avoid time-of-day issues
+            $dueDate = date('Y-m-d', strtotime($firstUnpaid->payment_date));
+            $today = date('Y-m-d');
+            
+            $dueTimestamp = strtotime($dueDate . ' 00:00:00');
+            $nowTimestamp = strtotime($today . ' 00:00:00');
+            $daysOverdue = floor(($nowTimestamp - $dueTimestamp) / (60 * 60 * 24));
+            $loan->days_overdue = max(0, (int) $daysOverdue);
+        } else {
+            $loan->days_overdue = 0;
+        }
 
         // Pre-load all repayment data to avoid N+1 queries
         $scheduleIds = $loan->schedules->pluck('id')->toArray();

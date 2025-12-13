@@ -144,26 +144,28 @@ class AdminController extends Controller
         $totalActiveLoansValue = $activePersonalLoansValue + $activeGroupLoansValue;
 
         // === REPAYMENTS DUE (Overdue) ===
+        // payment_date is stored as DD-MM-YYYY format, need to convert for comparison
         $repaymentsDue = DB::table('loan_schedules')
             ->where('status', '0')
-            ->where('payment_date', '<', $today)
+            ->whereRaw("STR_TO_DATE(payment_date, '%d-%m-%Y') < ?", [$today])
             ->sum('payment');
 
         $repaymentsDueCount = DB::table('loan_schedules')
             ->where('status', '0')
-            ->where('payment_date', '<', $today)
+            ->whereRaw("STR_TO_DATE(payment_date, '%d-%m-%Y') < ?", [$today])
             ->count();
 
         // === REPAYMENTS DUE TODAY ===
-        // payment_date is stored as string (VARCHAR), so we compare directly
+        // payment_date is stored as DD-MM-YYYY format, need to convert for comparison
+        $todayFormatted = Carbon::parse($today)->format('d-m-Y');
         $repaymentsDueToday = DB::table('loan_schedules')
             ->where('status', '0')
-            ->where('payment_date', $today)
+            ->where('payment_date', $todayFormatted)
             ->sum('payment');
 
         $repaymentsDueTodayCount = DB::table('loan_schedules')
             ->where('status', '0')
-            ->where('payment_date', $today)
+            ->where('payment_date', $todayFormatted)
             ->count();
 
         // === CASH SECURITIES (SAVINGS) ===
