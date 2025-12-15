@@ -28,7 +28,9 @@
                         <p class="text-muted mb-0">Configure savings products, interest rates, and account terms</p>
                     </div>
                     <div>
-                        <!-- Product creation is managed through legacy system -->
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProductModal">
+                            <i class="mdi mdi-plus"></i> Add New Product
+                        </button>
                     </div>
                 </div>
             </div>
@@ -84,7 +86,17 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <span class="text-muted small">View only</span>
+                                            <div class="btn-group" role="group">
+                                                <button type="button" class="btn btn-sm btn-info" onclick="editProduct({{ $product->id }})" data-product='@json($product)'>
+                                                    <i class="mdi mdi-pencil"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-{{ $product->isactive ? 'warning' : 'success' }}" onclick="toggleStatus({{ $product->id }}, {{ $product->isactive }})">
+                                                    <i class="mdi mdi-{{ $product->isactive ? 'pause' : 'play' }}"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-danger" onclick="deleteProduct({{ $product->id }})">
+                                                    <i class="mdi mdi-delete"></i>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                     @empty
@@ -152,38 +164,282 @@
     </div>
 </div>
 
+<!-- Add Product Modal -->
+<div class="modal fade" id="addProductModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: white; min-width: 500px;">
+            <div class="modal-header" style="background-color: #0d6efd; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #fff;"><i class="mdi mdi-bank-plus"></i> Add New Savings Product</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ route('admin.savings-products.store') }}" method="POST">
+                @csrf
+                <div class="modal-body" style="background-color: white;">
+                    <div class="form-group mb-3">
+                        <label for="add_code" class="form-label" style="color: #000;">Product Code <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="add_code" name="code" readonly style="background-color: #e9ecef; color: #000;">
+                        <small class="text-muted">Auto-generated</small>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="add_name" class="form-label" style="color: #000;">Product Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="add_name" name="name" required placeholder="e.g., Regular Savings" style="background-color: white; color: #000;">
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="add_interest" class="form-label" style="color: #000;">Interest Rate (%) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="add_interest" name="interest" step="0.01" min="0" max="100" required style="background-color: white; color: #000;">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="add_min_amt" class="form-label" style="color: #000;">Minimum Amount (UGX) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="add_min_amt" name="min_amt" min="0" required style="background-color: white; color: #000;">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="add_max_amt" class="form-label" style="color: #000;">Maximum Amount (UGX) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="add_max_amt" name="max_amt" min="0" required style="background-color: white; color: #000;">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="add_charge" class="form-label" style="color: #000;">Charge (UGX)</label>
+                        <input type="number" class="form-control" id="add_charge" name="charge" min="0" step="0.01" style="background-color: white; color: #000;">
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="add_account" class="form-label" style="color: #000;">System Account <span class="text-danger">*</span></label>
+                        <select class="form-control" id="add_account" name="account" required style="background-color: white; color: #000;">
+                            <option value="">Select Account</option>
+                            @foreach($systemAccounts as $account)
+                                <option value="{{ $account->id }}">{{ $account->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="add_isactive" name="isactive" value="1" checked>
+                            <label class="form-check-label" for="add_isactive" style="color: #000;">
+                                Active
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="add_description" class="form-label" style="color: #000;">Description</label>
+                        <textarea class="form-control" id="add_description" name="description" rows="3" placeholder="Product description" style="background-color: white; color: #000;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                    <button type="submit" class="btn btn-primary"><i class="mdi mdi-check"></i> Create Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Product Modal -->
+<div class="modal fade" id="editProductModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: white; min-width: 500px;">
+            <div class="modal-header" style="background-color: #0d6efd; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #fff;"><i class="mdi mdi-pencil"></i> Edit Savings Product</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editProductForm" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="modal-body" style="background-color: white;">
+                    <div class="form-group mb-3">
+                        <label for="edit_code" class="form-label" style="color: #000;">Product Code <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit_code" name="code" readonly style="background-color: #e9ecef; color: #000;">
+                        <small class="text-muted">Cannot be changed</small>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="edit_name" class="form-label" style="color: #000;">Product Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required style="background-color: white; color: #000;">
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="edit_interest" class="form-label" style="color: #000;">Interest Rate (%) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="edit_interest" name="interest" step="0.01" min="0" max="100" required style="background-color: white; color: #000;">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="edit_min_amt" class="form-label" style="color: #000;">Minimum Amount (UGX) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="edit_min_amt" name="min_amt" min="0" required style="background-color: white; color: #000;">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="edit_max_amt" class="form-label" style="color: #000;">Maximum Amount (UGX) <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="edit_max_amt" name="max_amt" min="0" required style="background-color: white; color: #000;">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="edit_charge" class="form-label" style="color: #000;">Charge (UGX)</label>
+                        <input type="number" class="form-control" id="edit_charge" name="charge" min="0" step="0.01" style="background-color: white; color: #000;">
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="edit_account" class="form-label" style="color: #000;">System Account <span class="text-danger">*</span></label>
+                        <select class="form-control" id="edit_account" name="account" required style="background-color: white; color: #000;">
+                            <option value="">Select Account</option>
+                            @foreach($systemAccounts as $account)
+                                <option value="{{ $account->id }}">{{ $account->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="edit_isactive" name="isactive" value="1">
+                            <label class="form-check-label" for="edit_isactive" style="color: #000;">
+                                Active
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="edit_description" class="form-label" style="color: #000;">Description</label>
+                        <textarea class="form-control" id="edit_description" name="description" rows="3" style="background-color: white; color: #000;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                    <button type="submit" class="btn btn-primary"><i class="mdi mdi-check"></i> Update Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
-function deactivateProduct(productId) {
+// Generate product code when Add modal opens
+document.getElementById('addProductModal').addEventListener('show.bs.modal', function () {
+    // Generate code like BSV1738908165 (BSV + timestamp)
+    const code = 'BSV' + Math.floor(Date.now() / 1000);
+    document.getElementById('add_code').value = code;
+});
+
+function editProduct(productId) {
+    const btn = event.target.closest('button');
+    const product = JSON.parse(btn.getAttribute('data-product'));
+    
+    document.getElementById('edit_code').value = product.code;
+    document.getElementById('edit_name').value = product.name;
+    document.getElementById('edit_interest').value = product.interest;
+    document.getElementById('edit_min_amt').value = product.min_amt;
+    document.getElementById('edit_max_amt').value = product.max_amt;
+    document.getElementById('edit_charge').value = product.charge || '';
+    document.getElementById('edit_account').value = product.account || '';
+    document.getElementById('edit_description').value = product.description || '';
+    document.getElementById('edit_isactive').checked = product.isactive == 1;
+    
+    document.getElementById('editProductForm').action = `/admin/savings-products/${product.id}`;
+    
+    new bootstrap.Modal(document.getElementById('editProductModal')).show();
+}
+
+function toggleStatus(productId, currentStatus) {
+    const action = currentStatus ? 'deactivate' : 'activate';
+    const icon = currentStatus ? 'warning' : 'question';
+    
     Swal.fire({
-        title: 'Deactivate Product?',
-        text: "This product will no longer be available for new accounts",
-        icon: 'warning',
+        title: `${action.charAt(0).toUpperCase() + action.slice(1)} Product?`,
+        text: currentStatus ? "This product will no longer be available for new accounts" : "This product will be available for new accounts",
+        icon: icon,
         showCancelButton: true,
-        confirmButtonColor: '#d33',
+        confirmButtonColor: currentStatus ? '#d33' : '#28a745',
         cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, deactivate it'
+        confirmButtonText: `Yes, ${action} it`
     }).then((result) => {
         if (result.isConfirmed) {
-            // TODO: Implement deactivation via AJAX
-            Swal.fire('Deactivated!', 'The product has been deactivated.', 'success');
+            fetch(`/admin/savings-products/${productId}/toggle-status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Success!', data.message, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Error!', data.message, 'error');
+                }
+            })
+            .catch(error => {
+                Swal.fire('Error!', 'Failed to update product status', 'error');
+            });
         }
     });
 }
 
-function activateProduct(productId) {
+function deleteProduct(productId) {
+    if (typeof Swal === 'undefined') {
+        if (confirm('Delete Product? This action cannot be undone!')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/admin/savings-products/${productId}`;
+            
+            const csrfToken = document.createElement('input');
+            csrfToken.type = 'hidden';
+            csrfToken.name = '_token';
+            csrfToken.value = document.querySelector('meta[name="csrf-token"]').content;
+            
+            const methodField = document.createElement('input');
+            methodField.type = 'hidden';
+            methodField.name = '_method';
+            methodField.value = 'DELETE';
+            
+            form.appendChild(csrfToken);
+            form.appendChild(methodField);
+            document.body.appendChild(form);
+            form.submit();
+        }
+        return;
+    }
+    
     Swal.fire({
-        title: 'Activate Product?',
-        text: "This product will be available for new accounts",
-        icon: 'question',
+        title: 'Delete Product?',
+        text: "This action cannot be undone!",
+        icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#28a745',
+        confirmButtonColor: '#d33',
         cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, activate it'
+        confirmButtonText: 'Yes, delete it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            // TODO: Implement activation via AJAX
-            Swal.fire('Activated!', 'The product has been activated.', 'success');
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/admin/savings-products/${productId}`;
+            
+            const csrfToken = document.createElement('input');
+            csrfToken.type = 'hidden';
+            csrfToken.name = '_token';
+            csrfToken.value = document.querySelector('meta[name="csrf-token"]').content;
+            
+            const methodField = document.createElement('input');
+            methodField.type = 'hidden';
+            methodField.name = '_method';
+            methodField.value = 'DELETE';
+            
+            form.appendChild(csrfToken);
+            form.appendChild(methodField);
+            document.body.appendChild(form);
+            form.submit();
         }
     });
 }

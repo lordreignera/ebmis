@@ -332,7 +332,7 @@ class RepaymentService
             $statusCode = $callbackResult['status_code'];
             $statusDesc = $callbackResult['status_description'];
             
-            // Find the repayment record - check both reference fields
+            // Try to find the repayment record first
             $repayment = Repayment::where(function($query) use ($transactionRef) {
                                 $query->where('txn_id', $transactionRef)
                                       ->orWhere('transaction_reference', $transactionRef);
@@ -340,36 +340,154 @@ class RepaymentService
                                 ->where('status', '0')
                                 ->first();
             
-            if (!$repayment) {
-                Log::warning("Repayment not found for transaction: {$transactionRef}");
-                return [
-                    'success' => false,
-                    'message' => 'Repayment not found for transaction'
-                ];
+            if ($repayment) {
+                // Handle repayment
+                if (in_array($statusCode, ['00', '01'])) {
+                    $result = $this->approveRepayment($repayment->id, $statusCode, $statusDesc);
+                    
+                    return [
+                        'success' => $result['success'],
+                        'message' => $result['message'],
+                        'repayment_id' => $repayment->id
+                    ];
+                } else {
+                    $repayment->update([
+                        'pay_status' => $statusCode,
+                        'pay_message' => $statusDesc
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'message' => "Payment failed: {$statusDesc}",
+                        'repayment_id' => $repayment->id
+                    ];
+                }
             }
             
-            // If payment was successful, approve it
-            if (in_array($statusCode, ['00', '01'])) {
-                $result = $this->approveRepayment($repayment->id, $statusCode, $statusDesc);
-                
-                return [
-                    'success' => $result['success'],
-                    'message' => $result['message'],
-                    'repayment_id' => $repayment->id
-                ];
-            } else {
-                // Payment failed - update status
-                $repayment->update([
-                    'pay_status' => $statusCode,
-                    'pay_message' => $statusDesc
-                ]);
-                
-                return [
-                    'success' => false,
-                    'message' => "Payment failed: {$statusDesc}",
-                    'repayment_id' => $repayment->id
-                ];
+            // Try to find a fee record
+            $fee = \App\Models\Fee::where(function($query) use ($transactionRef) {
+                                $query->where('pay_ref', $transactionRef)
+                                      ->orWhere('transaction_reference', $transactionRef);
+                            })
+                                ->where('status', 0)
+                                ->first();
+            
+            if ($fee) {
+                // Handle fee payment
+                if (in_array($statusCode, ['00', '01']) || $statusCode === 'SUCCESSFUL') {
+                    $fee->update([
+                        'status' => 1,
+                        'payment_status' => 'Paid',
+                        'payment_description' => 'Payment confirmed via callback',
+                        'payment_raw' => json_encode($callbackResult)
+                    ]);
+                    
+                    Log::info("Fee payment confirmed via callback", ['fee_id' => $fee->id]);
+                    
+                    return [
+                        'success' => true,
+                        'message' => 'Fee payment confirmed successfully',
+                        'fee_id' => $fee->id
+                    ];
+                } else {
+                    $fee->update([
+                        'status' => 2,
+                        'payment_status' => 'Failed',
+                        'payment_description' => $statusDesc,
+                        'payment_raw' => json_encode($callbackResult)
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'message' => "Fee payment failed: {$statusDesc}",
+                        'fee_id' => $fee->id
+                    ];
+                }
             }
+            
+            // Try to find a cash security record
+            $cashSecurity = \App\Models\CashSecurity::where(function($query) use ($transactionRef) {
+                                $query->where('pay_ref', $transactionRef)
+                                      ->orWhere('transaction_reference', $transactionRef);
+                            })
+                                ->where('status', 0)
+                                ->first();
+            
+            if ($cashSecurity) {
+                // Handle cash security payment
+                if (in_array($statusCode, ['00', '01']) || $statusCode === 'SUCCESSFUL') {
+                    $cashSecurity->update([
+                        'status' => 1,
+                        'payment_status' => 'Paid',
+                        'payment_description' => 'Payment confirmed via callback',
+                        'payment_raw' => json_encode($callbackResult)
+                    ]);
+                    
+                    Log::info("Cash security payment confirmed via callback", ['cash_security_id' => $cashSecurity->id]);
+                    
+                    return [
+                        'success' => true,
+                        'message' => 'Cash security payment confirmed successfully',
+                        'cash_security_id' => $cashSecurity->id
+                    ];
+                } else {
+                    $cashSecurity->update([
+                        'status' => 2,
+                        'payment_status' => 'Failed',
+                        'payment_description' => $statusDesc,
+                        'payment_raw' => json_encode($callbackResult)
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'message' => "Cash security payment failed: {$statusDesc}",
+                        'cash_security_id' => $cashSecurity->id
+                    ];
+                }
+            }
+            
+            // Try to find a saving record
+            $saving = \App\Models\Saving::where('txn_id', $transactionRef)
+                                ->where('status', 0)
+                                ->first();
+            
+            if ($saving) {
+                // Handle savings deposit payment
+                if (in_array($statusCode, ['00', '01']) || $statusCode === 'SUCCESSFUL') {
+                    $saving->update([
+                        'status' => 1,
+                        'pay_status' => 'PAID',
+                        'pay_message' => json_encode($callbackResult)
+                    ]);
+                    
+                    Log::info("Savings deposit confirmed via callback", ['saving_id' => $saving->id]);
+                    
+                    return [
+                        'success' => true,
+                        'message' => 'Savings deposit confirmed successfully',
+                        'saving_id' => $saving->id
+                    ];
+                } else {
+                    $saving->update([
+                        'status' => 2,
+                        'pay_status' => 'FAILED',
+                        'pay_message' => json_encode($callbackResult)
+                    ]);
+                    
+                    return [
+                        'success' => false,
+                        'message' => "Savings deposit failed: {$statusDesc}",
+                        'saving_id' => $saving->id
+                    ];
+                }
+            }
+            
+            // No matching record found
+            Log::warning("No matching payment record found for transaction: {$transactionRef}");
+            return [
+                'success' => false,
+                'message' => 'Payment record not found for transaction'
+            ];
             
         } catch (\Exception $e) {
             Log::error('Payment callback processing failed: ' . $e->getMessage());

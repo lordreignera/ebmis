@@ -1111,9 +1111,13 @@ body.modal-open {
                             </div>
                             
                             @php
-                                $cashSecurityFees = $member->fees->where('fee_type_id', 7); // Individual affiliation fee is cash security
-                                $totalCashSecurity = $cashSecurityFees->sum('amount');
+                                $cashSecurities = $member->cashSecurities;
+                                $totalCashSecurity = $cashSecurities->where('status', 1)->sum('amount');
                             @endphp
+                            
+                                            <div class="alert alert-info mb-3">
+                                <i class="mdi mdi-information"></i> <strong>Cash Security Note:</strong> This payment represents a refundable security deposit held by EBIMS. The cash security will be returned to the member upon completion of agreed terms and conditions.
+                            </div>
                             
                             <div class="row mb-3">
                                 <div class="col-md-4">
@@ -1124,21 +1128,20 @@ body.modal-open {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                            
-                            <div class="table-responsive">
+                            </div>                            <div class="table-responsive">
                                 <table class="table table-hover">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Date</th>
                                             <th>Amount</th>
                                             <th>Payment Method</th>
+                                            <th>Status</th>
                                             <th>Description</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @forelse($cashSecurityFees as $security)
+                                        @forelse($cashSecurities as $security)
                                             <tr>
                                                 <td>{{ $security->created_at ? $security->created_at->format('d M Y') : ($security->datecreated ? $security->datecreated->format('d M Y') : 'N/A') }}</td>
                                                 <td><strong>UGX {{ number_format($security->amount, 2) }}</strong></td>
@@ -1150,16 +1153,65 @@ body.modal-open {
                                                         {{ $paymentMethods[$security->payment_type] ?? 'Unknown' }}
                                                     </span>
                                                 </td>
-                                                <td>{{ $security->description }}</td>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary receipt-btn" data-fee-id="{{ $security->id }}">
-                                                        <i class="mdi mdi-receipt"></i> Receipt
-                                                    </button>
+                                                    @if($security->returned == 1)
+                                                        <span class="badge bg-info">Returned</span>
+                                                    @elseif($security->status == 1)
+                                                        <span class="badge bg-success">Paid</span>
+                                                    @elseif($security->status == 2)
+                                                        <span class="badge bg-danger">Failed</span>
+                                                    @else
+                                                        <span class="badge bg-warning">Pending</span>
+                                                    @endif
+                                                </td>
+                                                <td>{{ $security->description ?? 'N/A' }}</td>
+                                                <td>
+                                                    @if($security->returned == 1)
+                                                        <button class="btn btn-sm btn-info" onclick="viewCashSecurityReceipt({{ $security->id }})">
+                                                            <i class="mdi mdi-receipt"></i> Receipt
+                                                        </button>
+                                                        <span class="badge bg-secondary ms-1">
+                                                            <i class="mdi mdi-check-circle"></i> Already Returned
+                                                        </span>
+                                                    @elseif($security->status == 1)
+                                                        <button class="btn btn-sm btn-info" onclick="viewCashSecurityReceipt({{ $security->id }})">
+                                                            <i class="mdi mdi-receipt"></i> Receipt
+                                                        </button>
+                                                        @if(auth()->user()->hasRole(['Super Administrator', 'superadmin']))
+                                                            <button class="btn btn-sm btn-primary ms-1 return-cash-security-btn" 
+                                                                    data-security-id="{{ $security->id }}"
+                                                                    data-member-phone="{{ $member->contact }}"
+                                                                    data-member-name="{{ $member->fname }} {{ $member->lname }}"
+                                                                    data-amount="{{ $security->amount }}">
+                                                                <i class="mdi mdi-cash-refund"></i> Return Cash
+                                                            </button>
+                                                        @endif
+                                                    @elseif(($security->status == 2 || $security->status == 0) && $security->payment_type == 1)
+                                                        <!-- Show retry for both Failed (2) and Pending (0) mobile money payments -->
+                                                        <button class="btn btn-sm btn-warning retry-cash-security-btn" 
+                                                                data-security-id="{{ $security->id }}"
+                                                                data-member-phone="{{ $member->contact }}"
+                                                                data-member-name="{{ $member->fname }} {{ $member->lname }}"
+                                                                data-amount="{{ $security->amount }}">
+                                                            <i class="mdi mdi-refresh"></i> Retry Payment
+                                                        </button>
+                                                        <!-- Add Check Status button for pending/failed mobile money payments -->
+                                                        @if(!empty($security->transaction_reference))
+                                                        <button class="btn btn-sm btn-info ms-1" onclick="checkCashSecurityStatus('{{ $security->transaction_reference }}')">
+                                                            <i class="mdi mdi-cash-check"></i> Check Status
+                                                        </button>
+                                                        @endif
+                                                    @elseif($security->status == 0)
+                                                        <!-- For pending non-mobile money payments -->
+                                                        <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                                                            <i class="mdi mdi-refresh"></i> Check Status
+                                                        </button>
+                                                    @endif
                                                 </td>
                                             </tr>
                                         @empty
                                             <tr>
-                                                <td colspan="5" class="text-center py-4">
+                                                <td colspan="6" class="text-center py-4">
                                                     <i class="mdi mdi-shield-off mdi-48px text-muted"></i>
                                                     <br>No cash security payments found.
                                                 </td>
@@ -1199,25 +1251,36 @@ body.modal-open {
                                         @forelse($member->savings as $saving)
                                             <tr>
                                                 <td>{{ $saving->product->name ?? 'N/A' }}</td>
-                                                <td><strong>UGX {{ number_format($saving->balance, 2) }}</strong></td>
+                                                <td><strong>UGX {{ number_format($saving->value, 2) }}</strong></td>
                                                 <td>{{ $saving->product->interest ?? 0 }}%</td>
                                                 <td>{{ $saving->created_at ? $saving->created_at->format('d M Y') : ($saving->datecreated ? $saving->datecreated->format('d M Y') : 'N/A') }}</td>
                                                 <td>
-                                                    <span class="badge {{ $saving->is_active ? 'bg-success' : 'bg-warning' }}">
-                                                        {{ $saving->is_active ? 'Active' : 'Inactive' }}
-                                                    </span>
+                                                    @if($saving->status == 1)
+                                                        <span class="badge bg-success">Paid</span>
+                                                    @elseif($saving->status == 2)
+                                                        <span class="badge bg-danger">Failed</span>
+                                                    @else
+                                                        <span class="badge bg-warning">Pending</span>
+                                                    @endif
                                                 </td>
                                                 <td>
-                                                    <a href="{{ route('admin.savings.show', $saving) }}" class="btn btn-sm btn-outline-primary">
-                                                        <i class="mdi mdi-eye"></i> View
-                                                    </a>
+                                                    @if($saving->platform == 1 && $saving->status == 0 && !empty($saving->txn_id))
+                                                        <!-- Mobile money pending - show check status -->
+                                                        <button class="btn btn-sm btn-info" onclick="checkSavingPaymentStatus('{{ $saving->txn_id }}', {{ $saving->id }})">
+                                                            <i class="mdi mdi-cash-check"></i> Check Status
+                                                        </button>
+                                                    @elseif($saving->status == 1)
+                                                        <span class="badge bg-success">
+                                                            <i class="mdi mdi-check-circle"></i> Confirmed
+                                                        </span>
+                                                    @endif
                                                 </td>
                                             </tr>
                                         @empty
                                             <tr>
                                                 <td colspan="6" class="text-center py-4">
                                                     <i class="mdi mdi-piggy-bank-outline mdi-48px text-muted"></i>
-                                                    <br>No savings accounts found.
+                                                    <br>No savings deposits found.
                                                 </td>
                                             </tr>
                                         @endforelse
@@ -1426,8 +1489,8 @@ body.modal-open {
                 <input type="hidden" name="member_name" id="member_name" value="{{ $member->fname }} {{ $member->lname }}">
                 <div class="modal-body" style="background-color: white;">
                     <div class="mb-3">
-                        <label for="fee_type_id" class="form-label" style="color: #000;">Fee Type <span class="text-danger">*</span></label>
-                        <select name="fee_type_id" id="fee_type_id" class="form-select" required>
+                        <label for="fees_type_id" class="form-label" style="color: #000;">Fee Type <span class="text-danger">*</span></label>
+                        <select name="fees_type_id" id="fees_type_id" class="form-select" required>
                             <option value="">Select Fee Type</option>
                             @foreach($feeTypes as $feeType)
                                 @if($feeType->id != 7) {{-- Exclude cash security fee type --}}
@@ -1496,23 +1559,24 @@ body.modal-open {
 <!-- Add Cash Security Modal -->
 <div class="modal fade" id="addCashSecurityModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Add Cash Security</h5>
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #000;"><i class="mdi mdi-shield-check"></i> Add Cash Security</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="{{ route('admin.fees.store') }}" method="POST">
+            <form action="{{ route('admin.cash-securities.store') }}" method="POST" id="cashSecurityForm">
                 @csrf
                 <input type="hidden" name="member_id" value="{{ $member->id }}">
-                <input type="hidden" name="fee_type_id" value="7"> {{-- Individual affiliation fee is cash security --}}
-                <div class="modal-body">
+                <input type="hidden" name="member_phone" value="{{ $member->contact }}">
+                <input type="hidden" name="member_name" value="{{ $member->fname }} {{ $member->lname }}">
+                <div class="modal-body" style="background-color: white;">
                     <div class="mb-3">
-                        <label for="cash_amount" class="form-label">Amount (UGX) <span class="text-danger">*</span></label>
+                        <label for="cash_amount" class="form-label" style="color: #000;">Amount (UGX) <span class="text-danger">*</span></label>
                         <input type="number" name="amount" id="cash_amount" class="form-control" min="1" required>
                         <small class="form-text text-muted">Enter the cash security amount to be paid</small>
                     </div>
                     <div class="mb-3">
-                        <label for="cash_payment_type" class="form-label">Payment Method <span class="text-danger">*</span></label>
+                        <label for="cash_payment_type" class="form-label" style="color: #000;">Payment Method <span class="text-danger">*</span></label>
                         <select name="payment_type" id="cash_payment_type" class="form-select" required>
                             <option value="">Select Payment Method</option>
                             <option value="1">Mobile Money</option>
@@ -1520,15 +1584,44 @@ body.modal-open {
                             <option value="3">Bank Transfer</option>
                         </select>
                     </div>
+                    
+                    <!-- Mobile Money Payment Section (Hidden by default) -->
+                    <div id="cashSecurityMobileMoneySection" style="display: none;">
+                        <div class="alert alert-info mb-3">
+                            <i class="mdi mdi-information"></i>
+                            <strong>Mobile Money Payment</strong><br>
+                            A payment request will be sent to: <strong>{{ $member->contact }}</strong><br>
+                            <small>The member will receive a prompt on their phone to authorize the payment.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cash_mm_phone" class="form-label">Phone Number</label>
+                            <input type="tel" name="mm_phone" id="cash_mm_phone" class="form-control" 
+                                   value="{{ $member->contact }}" readonly style="background-color: #e9ecef;">
+                            <small class="text-muted">Member's registered phone number</small>
+                        </div>
+                    </div>
+                    
                     <div class="mb-3">
-                        <label for="cash_description" class="form-label">Description</label>
+                        <label for="cash_description" class="form-label" style="color: #000;">Description</label>
                         <textarea name="description" id="cash_description" class="form-control" rows="3" 
                                   placeholder="Cash security payment notes"></textarea>
                     </div>
+                    
+                    <!-- Processing Status Alert (Hidden by default) -->
+                    <div id="cashSecurityProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="cashSecurityStatusText">Processing mobile money payment...</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success">Add Cash Security</button>
+                    <button type="submit" class="btn btn-success" id="cashSecuritySubmitBtn">
+                        <span id="cashSecuritySubmitText">Add Cash Security</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -1595,6 +1688,175 @@ body.modal-open {
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-warning" id="retrySubmitBtn">
                         <i class="mdi mdi-refresh"></i> Retry Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Retry Cash Security Payment Modal -->
+<div class="modal fade" id="retryCashSecurityModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #000;">
+                    <i class="mdi mdi-refresh"></i> Retry Cash Security Payment
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="retryCashSecurityForm">
+                <input type="hidden" id="retrySecurityId">
+                <input type="hidden" id="retrySecurityMemberPhone">
+                <input type="hidden" id="retrySecurityMemberName">
+                
+                <div class="modal-body" style="background-color: white;">
+                    <div class="alert alert-warning">
+                        <i class="mdi mdi-alert"></i> <strong>Retry Cash Security Payment</strong><br>
+                        A new mobile money payment request will be sent.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="retrySecurityPhoneNumber" class="form-label">
+                            Phone Number <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" id="retrySecurityPhoneNumber" class="form-control" 
+                               placeholder="256772123456" required>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> 
+                            <span id="retrySecurityNetworkInfo">Original: <strong id="retrySecurityOriginalPhone"></strong></span>
+                            <br>
+                            <span class="text-info">💡 Tip: Change MTN (077/078/076) to Airtel (075/070/074) if needed</span>
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="retrySecurityAmount" class="form-label">
+                            Amount (UGX) <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" id="retrySecurityAmount" class="form-control" 
+                               min="500" step="1" required>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> Minimum amount: 500 UGX
+                        </small>
+                    </div>
+                    
+                    <div id="retrySecurityProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="retrySecurityStatusText">Sending payment request...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning" id="retrySecuritySubmitBtn">
+                        <i class="mdi mdi-refresh"></i> Retry Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Return Cash Security Modal -->
+<div class="modal fade" id="returnCashSecurityModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: white;">
+            <div class="modal-header" style="background-color: white; border-bottom: 1px solid #dee2e6;">
+                <h5 class="modal-title" style="color: #000;">
+                    <i class="mdi mdi-cash-refund"></i> Return Cash Security via Mobile Money
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="returnCashSecurityForm">
+                <input type="hidden" id="returnSecurityId">
+                <input type="hidden" id="returnSecurityMemberPhone">
+                <input type="hidden" id="returnSecurityMemberName">
+                <input type="hidden" id="returnSecurityAmount">
+                
+                <div class="modal-body" style="background-color: white;">
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i> <strong>Return Cash Security</strong><br>
+                        This will send the cash security amount back to the member's mobile money account.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label" style="color: #000;">Member Name</label>
+                        <input type="text" id="returnMemberName" class="form-control" readonly style="background-color: #e9ecef;">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="returnPhoneNumber" class="form-label">
+                            Phone Number <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" id="returnPhoneNumber" class="form-control" 
+                               placeholder="256772123456" required>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> 
+                            <span id="returnNetworkInfo">Original: <strong id="returnOriginalPhone"></strong></span>
+                            <br>
+                            <span class="text-info">💡 The refund will be sent to this number</span>
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="returnAmount" class="form-label">
+                            Return Amount (UGX) <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" id="returnAmount" class="form-control" 
+                               min="1000" step="1" required readonly style="background-color: #e9ecef;">
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> This is the original cash security amount<br>
+                            <span class="text-warning">⚠️ Minimum mobile money disbursement: 1,000 UGX</span>
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="returnInvestmentId" class="form-label">
+                            <i class="mdi mdi-bank"></i> Source Account <span class="text-danger">*</span>
+                        </label>
+                        <select id="returnInvestmentId" class="form-select" required>
+                            <option value="">Select source account</option>
+                            @php
+                                $investments = \App\Models\Investment::orderBy('name')->get();
+                            @endphp
+                            @foreach($investments as $inv)
+                                <option value="{{ $inv->id }}" data-balance="{{ $inv->amount }}">
+                                    {{ $inv->name }} (Available: UGX {{ number_format($inv->amount, 2) }})
+                                </option>
+                            @endforeach
+                        </select>
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> Select the account from which funds will be disbursed
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="returnReason" class="form-label">
+                            Return Reason <span class="text-danger">*</span>
+                        </label>
+                        <textarea id="returnReason" class="form-control" rows="3" 
+                                  placeholder="Enter reason for returning cash security" required></textarea>
+                    </div>
+                    
+                    <div id="returnProcessingAlert" class="alert alert-warning" style="display: none;">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span id="returnStatusText">Processing return...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="background-color: white; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="returnSecuritySubmitBtn">
+                        <i class="mdi mdi-cash-refund"></i> Return Cash Security
                     </button>
                 </div>
             </form>
@@ -1773,7 +2035,44 @@ document.addEventListener('DOMContentLoaded', function() {
                             Initial Deposit (UGX)
                         </label>
                         <input type="number" class="form-control" id="initial_deposit" name="initial_deposit" 
-                               step="0.01" min="0" placeholder="0.00">
+                               step="0.01" min="500" placeholder="0.00">
+                        <small class="text-muted">
+                            <i class="mdi mdi-information"></i> Minimum: 500 UGX for mobile money payment
+                        </small>
+                    </div>
+
+                    <!-- Payment Method -->
+                    <div class="mb-3">
+                        <label for="savings_payment_type" class="form-label">
+                            Payment Method <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="savings_payment_type" name="payment_type" required>
+                            <option value="">Select Payment Method</option>
+                            <option value="1">Mobile Money</option>
+                            <option value="2">Cash</option>
+                            <option value="3">Bank Transfer</option>
+                        </select>
+                    </div>
+
+                    <!-- Mobile Money Section (Hidden by default) -->
+                    <div id="savings_mobile_money_section" style="display: none;">
+                        <div class="alert alert-info">
+                            <i class="mdi mdi-information"></i>
+                            <strong>Mobile Money Payment</strong><br>
+                            The member will receive a payment prompt on their phone to complete this savings deposit.
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="savings_phone_number" class="form-label">
+                                Member Phone Number <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="savings_phone_number" 
+                                   name="phone_number" value="{{ $member->contact }}" 
+                                   placeholder="256772123456">
+                            <small class="text-muted">
+                                <i class="mdi mdi-information"></i> Format: 256772123456 (MTN) or 256701234567 (Airtel)
+                            </small>
+                        </div>
                     </div>
 
                     <!-- Interest Rate (Auto-filled, read-only) -->
@@ -1788,8 +2087,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     <!-- Description/Notes -->
                     <div class="mb-3">
-                        <label for="description" class="form-label">Description</label>
-                        <textarea class="form-control" id="description" name="description" 
+                        <label for="savings_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="savings_description" name="description" 
                                   rows="3" placeholder="Additional notes about this savings account"></textarea>
                     </div>
                 </div>
@@ -1807,8 +2106,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 @push('scripts')
 <script>
+// Show/Hide Mobile Money section for savings
+document.getElementById('savings_payment_type')?.addEventListener('change', function() {
+    const paymentType = this.value;
+    const mobileMoneySection = document.getElementById('savings_mobile_money_section');
+    const phoneField = document.getElementById('savings_phone_number');
+    
+    if (paymentType === '1') { // Mobile Money
+        mobileMoneySection.style.display = 'block';
+        phoneField.setAttribute('required', 'required');
+    } else {
+        mobileMoneySection.style.display = 'none';
+        phoneField.removeAttribute('required');
+    }
+});
+
 // Show/Hide Mobile Money section based on payment method
-document.getElementById('payment_type').addEventListener('change', function() {
+document.getElementById('payment_type')?.addEventListener('change', function() {
     const paymentType = this.value;
     const mobileMoneySection = document.getElementById('mobileMoneySection');
     const submitBtn = document.getElementById('feeSubmitBtn');
@@ -1850,8 +2164,8 @@ function processMobileMoneyPayment() {
     const formData = new FormData(form);
     formData.append('is_mobile_money', '1');
     
-    // Map fee_type_id to fees_type_id for mobile money endpoint
-    const feeTypeId = document.getElementById('fee_type_id').value;
+    // Get fees_type_id from form
+    const feeTypeId = document.getElementById('fees_type_id').value;
     if (feeTypeId) {
         formData.append('fees_type_id', feeTypeId);
     }
@@ -2364,6 +2678,364 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// Handle Retry Cash Security Payment for Failed Transactions
+document.addEventListener('DOMContentLoaded', function() {
+    const retrySecurityButtons = document.querySelectorAll('.retry-cash-security-btn');
+    
+    retrySecurityButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const securityId = this.getAttribute('data-security-id');
+            const memberPhone = this.getAttribute('data-member-phone');
+            const memberName = this.getAttribute('data-member-name');
+            const amount = this.getAttribute('data-amount');
+            
+            // Show modal to edit amount before retrying
+            showRetryCashSecurityModal(securityId, memberPhone, memberName, amount);
+        });
+    });
+});
+
+function showRetryCashSecurityModal(securityId, memberPhone, memberName, amount) {
+    // Set modal data
+    document.getElementById('retrySecurityId').value = securityId;
+    document.getElementById('retrySecurityMemberPhone').value = memberPhone;
+    document.getElementById('retrySecurityMemberName').value = memberName;
+    document.getElementById('retrySecurityAmount').value = amount;
+    
+    // Set editable phone number field
+    document.getElementById('retrySecurityPhoneNumber').value = memberPhone;
+    document.getElementById('retrySecurityOriginalPhone').innerHTML = memberPhone;
+    
+    // Detect and display network
+    const networkInfo = detectNetwork(memberPhone);
+    document.getElementById('retrySecurityOriginalPhone').innerHTML = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
+    
+    // Hide processing alert
+    document.getElementById('retrySecurityProcessingAlert').style.display = 'none';
+    
+    // Add real-time network detection on phone input
+    document.getElementById('retrySecurityPhoneNumber').oninput = function(e) {
+        const newPhone = e.target.value;
+        const newNetwork = detectNetwork(newPhone);
+        
+        // Update border color based on network
+        if (newNetwork.network === 'MTN') {
+            e.target.className = 'form-control border-warning';
+        } else if (newNetwork.network === 'Airtel') {
+            e.target.className = 'form-control border-success';
+        } else {
+            e.target.className = 'form-control';
+        }
+    };
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('retryCashSecurityModal'));
+    modal.show();
+    
+    // Handle form submission
+    document.getElementById('retryCashSecurityForm').onsubmit = function(e) {
+        e.preventDefault();
+        
+        // Get updated values from modal
+        const updatedPhone = document.getElementById('retrySecurityPhoneNumber').value.trim();
+        const updatedAmount = document.getElementById('retrySecurityAmount').value;
+        
+        // Validate phone number
+        if (!updatedPhone || updatedPhone.length < 9) {
+            alert('Please enter a valid phone number');
+            return;
+        }
+        
+        // Validate minimum amount
+        if (parseFloat(updatedAmount) < 500) {
+            alert('The minimum amount should be 500 UGX');
+            return;
+        }
+        
+        // Detect network and warn if MTN
+        const networkInfo = detectNetwork(updatedPhone);
+        if (networkInfo.network === 'MTN') {
+            if (!confirm('⚠️ Warning: MTN payments are currently not sending prompts due to missing merchant credentials.\n\nConsider changing to an Airtel number (075/070/074) instead.\n\nContinue with MTN anyway?')) {
+                return;
+            }
+        }
+        
+        // Call retry function with updated phone and amount
+        retryCashSecurityPayment(securityId, updatedPhone, memberName, updatedAmount);
+    };
+}
+
+function retryCashSecurityPayment(securityId, memberPhone, memberName, amount) {
+    // Show processing alert in modal
+    const processingAlert = document.getElementById('retrySecurityProcessingAlert');
+    const statusText = document.getElementById('retrySecurityStatusText');
+    const submitBtn = document.getElementById('retrySecuritySubmitBtn');
+    
+    processingAlert.style.display = 'block';
+    processingAlert.className = 'alert alert-warning';
+    statusText.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Sending payment request...';
+    submitBtn.disabled = true;
+    
+    // Send retry request
+    fetch('{{ route("admin.cash-securities.store") }}', {
+        method: 'POST',
+        body: JSON.stringify({
+            member_id: {{ $member->id }},
+            member_phone: memberPhone,
+            member_name: memberName,
+            amount: amount,
+            payment_type: 1, // Mobile Money
+            description: 'Cash Security Payment (Retry)',
+            is_retry: true,
+            original_security_id: securityId
+        }),
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update status
+            statusText.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Waiting for member to authorize payment...';
+            
+            // Start polling for new payment status
+            pollRetryCashSecurityStatus(data.transaction_reference, securityId);
+        } else {
+            // Show error
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to retry payment');
+            submitBtn.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Retry error:', error);
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+    });
+}
+
+function pollRetryCashSecurityStatus(transactionRef, securityId, attempts = 0) {
+    const maxAttempts = 120; // Extended to 120 seconds (2 minutes)
+    const processingAlert = document.getElementById('retrySecurityProcessingAlert');
+    const statusText = document.getElementById('retrySecurityStatusText');
+    
+    // Wait 30 seconds before FIRST status check
+    if (attempts === 0) {
+        statusText.innerHTML = `
+            <i class="mdi mdi-loading mdi-spin"></i> USSD prompt sent to phone. Waiting for user to enter PIN... (30s)
+            <br><small class="text-muted">Please check your phone and enter your Mobile Money PIN when prompted</small>
+        `;
+        
+        setTimeout(() => {
+            pollRetryCashSecurityStatus(transactionRef, securityId, 1);
+        }, 30000);
+        return;
+    }
+    
+    if (attempts >= maxAttempts) {
+        processingAlert.className = 'alert alert-warning';
+        statusText.innerHTML = `
+            <i class="mdi mdi-alert"></i> Payment check timed out. The transaction may still be processing.<br>
+            <button type="button" class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+                <i class="mdi mdi-refresh"></i> Refresh Status
+            </button>
+        `;
+        return;
+    }
+    
+    fetch(`{{ url('admin/cash-securities/check-status') }}/${transactionRef}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            processingAlert.className = 'alert alert-success';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
+            
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+            
+        } else if (data.status === 'failed') {
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Payment failed: ' + (data.message || 'Transaction declined');
+            
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
+            
+        } else {
+            const elapsedSeconds = 30 + (attempts - 1) * 5;
+            const retriesRemaining = Math.floor((120 - elapsedSeconds) / 30);
+            
+            statusText.innerHTML = `
+                <i class="mdi mdi-loading mdi-spin"></i> Waiting for payment authorization... (${elapsedSeconds}s elapsed)
+                <br><small class="text-muted">FlexiPay will retry ${retriesRemaining} more time(s) if user cancelled</small>
+            `;
+            
+            setTimeout(() => {
+                pollRetryCashSecurityStatus(transactionRef, securityId, attempts + 1);
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Status check error:', error);
+        setTimeout(() => {
+            pollRetryCashSecurityStatus(transactionRef, securityId, attempts + 1);
+        }, 1000);
+    });
+}
+
+// Handle Return Cash Security Button
+document.addEventListener('DOMContentLoaded', function() {
+    const returnButtons = document.querySelectorAll('.return-cash-security-btn');
+    
+    returnButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const securityId = this.getAttribute('data-security-id');
+            const memberPhone = this.getAttribute('data-member-phone');
+            const memberName = this.getAttribute('data-member-name');
+            const amount = this.getAttribute('data-amount');
+            
+            showReturnCashSecurityModal(securityId, memberPhone, memberName, amount);
+        });
+    });
+});
+
+function showReturnCashSecurityModal(securityId, memberPhone, memberName, amount) {
+    // Set modal data
+    document.getElementById('returnSecurityId').value = securityId;
+    document.getElementById('returnSecurityMemberPhone').value = memberPhone;
+    document.getElementById('returnSecurityMemberName').value = memberName;
+    document.getElementById('returnSecurityAmount').value = amount;
+    
+    // Set display fields
+    document.getElementById('returnMemberName').value = memberName;
+    document.getElementById('returnPhoneNumber').value = memberPhone;
+    document.getElementById('returnOriginalPhone').innerHTML = memberPhone;
+    document.getElementById('returnAmount').value = amount;
+    
+    // Detect and display network
+    const networkInfo = detectNetwork(memberPhone);
+    document.getElementById('returnOriginalPhone').innerHTML = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
+    
+    // Hide processing alert
+    document.getElementById('returnProcessingAlert').style.display = 'none';
+    
+    // Add real-time network detection
+    document.getElementById('returnPhoneNumber').oninput = function(e) {
+        const newPhone = e.target.value;
+        const newNetwork = detectNetwork(newPhone);
+        
+        if (newNetwork.network === 'MTN') {
+            e.target.className = 'form-control border-warning';
+        } else if (newNetwork.network === 'Airtel') {
+            e.target.className = 'form-control border-success';
+        } else {
+            e.target.className = 'form-control';
+        }
+    };
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('returnCashSecurityModal'));
+    modal.show();
+    
+    // Handle form submission
+    document.getElementById('returnCashSecurityForm').onsubmit = function(e) {
+        e.preventDefault();
+        
+        const phone = document.getElementById('returnPhoneNumber').value.trim();
+        const reason = document.getElementById('returnReason').value.trim();
+        const investmentId = document.getElementById('returnInvestmentId').value;
+        
+        if (!phone || phone.length < 9) {
+            alert('Please enter a valid phone number');
+            return;
+        }
+        
+        if (!investmentId) {
+            alert('Please select a source account');
+            return;
+        }
+        
+        // Check if account has sufficient balance
+        const selectedOption = document.getElementById('returnInvestmentId').selectedOptions[0];
+        const accountBalance = parseFloat(selectedOption.getAttribute('data-balance'));
+        if (accountBalance < parseFloat(amount)) {
+            alert(`Insufficient balance in selected account.\nAvailable: UGX ${accountBalance.toLocaleString()}\nRequired: UGX ${parseFloat(amount).toLocaleString()}`);
+            return;
+        }
+        
+        if (!reason) {
+            alert('Please enter a reason for returning the cash security');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to return UGX ${parseFloat(amount).toLocaleString()} to ${memberName}?\n\nThis action cannot be undone.`)) {
+            return;
+        }
+        
+        returnCashSecurity(securityId, phone, memberName, amount, reason, investmentId);
+    };
+}
+
+function returnCashSecurity(securityId, phone, memberName, amount, reason, investmentId) {
+    const processingAlert = document.getElementById('returnProcessingAlert');
+    const statusText = document.getElementById('returnStatusText');
+    const submitBtn = document.getElementById('returnSecuritySubmitBtn');
+    
+    processingAlert.style.display = 'block';
+    processingAlert.className = 'alert alert-warning';
+    statusText.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Processing return request...';
+    submitBtn.disabled = true;
+    
+    fetch('{{ route("admin.cash-securities.return") }}', {
+        method: 'POST',
+        body: JSON.stringify({
+            cash_security_id: securityId,
+            phone: phone,
+            member_name: memberName,
+            amount: amount,
+            reason: reason,
+            investment_id: investmentId
+        }),
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            processingAlert.className = 'alert alert-success';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Cash security returned successfully!';
+            
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to process return');
+            submitBtn.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Return error:', error);
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+    });
+}
+
 // Auto-fill interest rate when savings product is selected
 document.getElementById('product_id').addEventListener('change', function() {
     const selectedOption = this.options[this.selectedIndex];
@@ -2613,6 +3285,230 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ============================================
+// Cash Security Payment Handling
+// ============================================
+
+// Show/Hide Mobile Money Section for Cash Security
+document.getElementById('cash_payment_type')?.addEventListener('change', function() {
+    const mobileMoneySection = document.getElementById('cashSecurityMobileMoneySection');
+    if (this.value == '1') { // Mobile Money
+        mobileMoneySection.style.display = 'block';
+    } else {
+        mobileMoneySection.style.display = 'none';
+    }
+});
+
+// Handle Cash Security Form Submission
+document.getElementById('cashSecurityForm')?.addEventListener('submit', function(e) {
+    const paymentType = document.getElementById('cash_payment_type').value;
+    
+    if (paymentType == '1') { // Mobile Money - handle with AJAX
+        e.preventDefault();
+        handleCashSecurityMobileMoneyPayment(this);
+    }
+    // For cash or bank transfer, let the form submit normally
+});
+
+function handleCashSecurityMobileMoneyPayment(form) {
+    const submitBtn = document.getElementById('cashSecuritySubmitBtn');
+    const submitText = document.getElementById('cashSecuritySubmitText');
+    const processingAlert = document.getElementById('cashSecurityProcessingAlert');
+    const statusText = document.getElementById('cashSecurityStatusText');
+    
+    // Disable submit button and show processing
+    submitBtn.disabled = true;
+    submitText.textContent = 'Initiating...';
+    processingAlert.style.display = 'block';
+    statusText.textContent = 'Initiating mobile money payment...';
+    
+    // Prepare form data
+    const formData = new FormData(form);
+    formData.append('is_mobile_money', '1');
+    
+    // Send AJAX request
+    fetch('{{ route("admin.cash-securities.store") }}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Payment request sent successfully
+            statusText.textContent = 'Payment request sent! Checking status...';
+            
+            // Start polling for payment status
+            pollCashSecurityPaymentStatus(data.transaction_reference, data.cash_security_id);
+        } else {
+            // Request failed
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + (data.message || 'Failed to send payment request');
+            submitBtn.disabled = false;
+            submitText.textContent = 'Add Cash Security';
+            
+            setTimeout(() => {
+                processingAlert.style.display = 'none';
+                processingAlert.className = 'alert alert-warning';
+            }, 5000);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        processingAlert.className = 'alert alert-danger';
+        statusText.textContent = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+        submitText.textContent = 'Add Cash Security';
+        
+        setTimeout(() => {
+            processingAlert.style.display = 'none';
+            processingAlert.className = 'alert alert-warning';
+        }, 5000);
+    });
+}
+
+function pollCashSecurityPaymentStatus(transactionRef, cashSecurityId, attempts = 0) {
+    const maxAttempts = 120;
+    const processingAlert = document.getElementById('cashSecurityProcessingAlert');
+    const statusText = document.getElementById('cashSecurityStatusText');
+    
+    // Wait 30 seconds before FIRST status check
+    if (attempts === 0) {
+        statusText.innerHTML = `
+            <i class="mdi mdi-loading mdi-spin"></i> USSD prompt sent to phone. Waiting for user to enter PIN... (30s)
+            <br><small class="text-muted">Please check your phone and enter your Mobile Money PIN when prompted</small>
+        `;
+        
+        setTimeout(() => {
+            pollCashSecurityPaymentStatus(transactionRef, cashSecurityId, 1);
+        }, 30000);
+        return;
+    }
+    
+    if (attempts >= maxAttempts) {
+        processingAlert.className = 'alert alert-warning';
+        statusText.innerHTML = `
+            <i class="mdi mdi-information"></i> Payment check timed out. The transaction may still be processing.<br>
+            <button type="button" class="btn btn-primary btn-sm mt-2" onclick="location.reload()">
+                <i class="mdi mdi-refresh"></i> Refresh Page
+            </button>
+        `;
+        return;
+    }
+    
+    fetch(`/admin/cash-securities/check-status/${transactionRef}`, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            processingAlert.className = 'alert alert-success';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment successful! Refreshing page...';
+            setTimeout(() => location.reload(), 2000);
+        } else if (data.status === 'failed') {
+            processingAlert.className = 'alert alert-danger';
+            statusText.textContent = 'Payment failed: ' + (data.message || 'Unknown error');
+        } else {
+            // Still pending, check again in 2 seconds
+            statusText.innerHTML = `
+                <i class="mdi mdi-loading mdi-spin"></i> Checking payment status... (Attempt ${attempts}/${maxAttempts})
+                <br><small class="text-muted">Please complete the payment on your phone</small>
+            `;
+            setTimeout(() => {
+                pollCashSecurityPaymentStatus(transactionRef, cashSecurityId, attempts + 1);
+            }, 2000);
+        }
+    })
+    .catch(error => {
+        console.error('Error checking status:', error);
+        setTimeout(() => {
+            pollCashSecurityPaymentStatus(transactionRef, cashSecurityId, attempts + 1);
+        }, 2000);
+    });
+}
+
+function checkCashSecurityStatus(transactionRef) {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking...';
+    
+    fetch(`/admin/cash-securities/check-status/${transactionRef}`, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            alert('Payment successful!');
+            location.reload();
+        } else if (data.status === 'failed') {
+            alert('Payment failed: ' + (data.message || 'Unknown error'));
+            location.reload();
+        } else {
+            alert('Payment is still pending. Please try again in a moment.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-refresh"></i> Check Status';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error checking payment status');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="mdi mdi-refresh"></i> Check Status';
+    });
+}
+
+function checkSavingPaymentStatus(transactionRef, savingId) {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking...';
+    
+    fetch('/admin/savings/check-payment-status', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({
+            transaction_reference: transactionRef
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.status === 'paid') {
+            alert('Savings deposit payment confirmed!');
+            location.reload();
+        } else if (data.status === 'pending') {
+            alert('Payment is still pending: ' + (data.message || 'Please try again in a moment.'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-cash-check"></i> Check Status';
+        } else {
+            alert('Error: ' + (data.message || 'Could not verify payment status'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-cash-check"></i> Check Status';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error checking payment status');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="mdi mdi-cash-check"></i> Check Status';
+    });
+}
+
+function viewCashSecurityReceipt(cashSecurityId) {
+    window.open(`/admin/cash-securities/${cashSecurityId}/receipt`, '_blank');
+}
 </script>
 @endpush
 @endsection

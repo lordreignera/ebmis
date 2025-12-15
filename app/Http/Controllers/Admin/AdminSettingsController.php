@@ -134,7 +134,8 @@ class AdminSettingsController extends Controller
     public function savingsProducts()
     {
         $savingsProducts = SavingsProduct::orderBy('name')->get();
-        return view('admin.settings.savings-products', compact('savingsProducts'));
+        $systemAccounts = \DB::table('system_accounts')->select('id', 'name')->orderBy('name')->get();
+        return view('admin.settings.savings-products', compact('savingsProducts', 'systemAccounts'));
     }
 
     public function feesProducts(Request $request)

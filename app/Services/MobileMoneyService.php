@@ -154,7 +154,34 @@ class MobileMoneyService
                 $requestId  // Pass request ID for idempotency
             );
             
-            if ($result['success']) {
+            // Check both HTTP success AND Stanbic's statusCode
+            if ($result['success'] && isset($result['response']['statusCode'])) {
+                $statusCode = $result['response']['statusCode'];
+                $statusDesc = $result['response']['statusDescription'] ?? '';
+                
+                // Success codes: 00 (success), 01 (pending - accepted)
+                if (in_array($statusCode, ['00', '01'])) {
+                    return [
+                        'success' => true,
+                        'status_code' => $statusCode,
+                        'message' => $statusDesc ?: 'Disbursement initiated successfully',
+                        'reference' => $result['request_id'],
+                        'phone' => $formattedPhone,
+                        'amount' => $amount,
+                        'network' => $network,
+                        'provider' => 'stanbic'
+                    ];
+                } else {
+                    // Failed with specific Stanbic error code
+                    return [
+                        'success' => false,
+                        'status_code' => $statusCode,
+                        'message' => $statusDesc ?: 'Disbursement failed',
+                        'provider' => 'stanbic'
+                    ];
+                }
+            } else if ($result['success']) {
+                // HTTP success but no statusCode (shouldn't happen)
                 return [
                     'success' => true,
                     'status_code' => '00',
@@ -166,6 +193,7 @@ class MobileMoneyService
                     'provider' => 'stanbic'
                 ];
             } else {
+                // HTTP request failed
                 return [
                     'success' => false,
                     'status_code' => 'ERROR',

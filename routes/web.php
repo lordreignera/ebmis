@@ -134,6 +134,16 @@ Route::middleware([
         Route::delete('/documents/{document}', [\App\Http\Controllers\Admin\MemberDocumentController::class, 'destroy'])->name('documents.destroy');
     });
     
+    // Cash Security Routes
+    Route::prefix('cash-securities')->name('cash-securities.')->group(function () {
+        Route::post('/store', [\App\Http\Controllers\Admin\CashSecurityController::class, 'store'])->name('store');
+        Route::post('/return', [\App\Http\Controllers\Admin\CashSecurityController::class, 'returnCashSecurity'])->name('return');
+        Route::get('/check-status/{transactionRef}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'checkPaymentStatus'])->name('check-status');
+        Route::get('/{cashSecurity}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'show'])->name('show');
+        Route::get('/{cashSecurity}/receipt', [\App\Http\Controllers\Admin\CashSecurityController::class, 'receipt'])->name('receipt');
+        Route::delete('/{cashSecurity}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'destroy'])->name('destroy');
+    });
+    
     // Tables Demo Route
     Route::get('/tables-demo', function () {
         return view('admin.tables-demo');
@@ -344,6 +354,7 @@ Route::middleware([
     Route::get('/savings/approved', [\App\Http\Controllers\Admin\SavingController::class, 'approved'])->name('savings.approved');
     Route::post('/savings/{saving}/approve', [\App\Http\Controllers\Admin\SavingController::class, 'approve'])->name('savings.approve');
     Route::post('/savings/{saving}/reject', [\App\Http\Controllers\Admin\SavingController::class, 'reject'])->name('savings.reject');
+    Route::post('/savings/check-payment-status', [\App\Http\Controllers\Admin\SavingController::class, 'checkPaymentStatus'])->name('savings.check-payment-status');
     
     // Investment Management Routes
     Route::prefix('investments')->name('investments.')->group(function () {
@@ -526,6 +537,7 @@ Route::middleware([
         Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->name('fees.mark-paid');
         Route::get('/fees/{fee}/receipt', [\App\Http\Controllers\Admin\FeeController::class, 'receipt'])->name('fees.receipt');
         Route::get('/fees/{fee}/receipt-modal', [\App\Http\Controllers\Admin\FeeController::class, 'getReceiptModal'])->name('fees.receipt-modal');
+        
         Route::post('/fees/mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'storeMobileMoneyPayment'])->name('fees.mobile-money');
         Route::get('/fees/mobile-money/status/{transactionRef}', [\App\Http\Controllers\Admin\FeeController::class, 'checkMobileMoneyStatus'])->name('fees.mobile-money.status');
         Route::post('/fees/mobile-money/retry', [\App\Http\Controllers\Admin\FeeController::class, 'retryMobileMoneyPayment'])->name('fees.mobile-money.retry');

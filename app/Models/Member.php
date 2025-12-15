@@ -137,6 +137,14 @@ class Member extends Model
     }
 
     /**
+     * Get all cash securities for this member
+     */
+    public function cashSecurities()
+    {
+        return $this->hasMany(CashSecurity::class)->orderBy('datecreated', 'desc');
+    }
+
+    /**
      * Get the place of birth for this member
      */
     public function placeOfBirth()

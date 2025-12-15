@@ -366,18 +366,147 @@
                         <div class="tab-pane" id="financials" role="tabpanel">
                             <h5 class="mb-3">Financial Details</h5>
                             @if($loanType === 'personal')
+                            @php
+                                $member = $loan->member;
+                                $totalCashSecurity = $member->cashSecurities->where('status', 1)->where('returned', 0)->sum('amount');
+                                $totalSavings = $member->savings->where('is_active', 1)->sum('balance');
+                            @endphp
                             <div class="row">
-                                <div class="col-md-4">
-                                    <div class="card border">
+                                <div class="col-md-4 mb-3">
+                                    <div class="card border-success">
                                         <div class="card-body text-center">
-                                            <h3 class="text-success">UGX {{ number_format($loan->member->savings->sum('amount') ?? 0, 0) }}</h3>
-                                            <p class="mb-0">Cash Security</p>
+                                            <i class="mdi mdi-shield-check text-success mdi-36px"></i>
+                                            <h3 class="text-success mt-2">UGX {{ number_format($totalCashSecurity, 2) }}</h3>
+                                            <p class="mb-0 text-muted">Total Cash Security</p>
+                                            <small class="text-muted">(Paid & Not Returned)</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="card border-info">
+                                        <div class="card-body text-center">
+                                            <i class="mdi mdi-piggy-bank text-info mdi-36px"></i>
+                                            <h3 class="text-info mt-2">UGX {{ number_format($totalSavings, 2) }}</h3>
+                                            <p class="mb-0 text-muted">Total Savings Balance</p>
+                                            <small class="text-muted">(Active Accounts)</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="card border-primary">
+                                        <div class="card-body text-center">
+                                            <i class="mdi mdi-cash-multiple text-primary mdi-36px"></i>
+                                            <h3 class="text-primary mt-2">UGX {{ number_format($totalCashSecurity + $totalSavings, 2) }}</h3>
+                                            <p class="mb-0 text-muted">Total Available Funds</p>
+                                            <small class="text-muted">(Security + Savings)</small>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+                            
+                            <!-- Cash Securities Details -->
+                            <div class="card mb-3">
+                                <div class="card-header bg-success text-white">
+                                    <h6 class="mb-0"><i class="mdi mdi-shield-check"></i> Cash Securities</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Amount</th>
+                                                    <th>Payment Method</th>
+                                                    <th>Status</th>
+                                                    <th>Description</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @forelse($member->cashSecurities as $security)
+                                                    <tr>
+                                                        <td>{{ $security->created_at ? $security->created_at->format('d M Y') : 'N/A' }}</td>
+                                                        <td><strong>UGX {{ number_format($security->amount, 2) }}</strong></td>
+                                                        <td>
+                                                            @php
+                                                                $paymentMethods = [1 => 'Mobile Money', 2 => 'Cash', 3 => 'Bank'];
+                                                            @endphp
+                                                            <span class="badge bg-info">{{ $paymentMethods[$security->payment_type] ?? 'Unknown' }}</span>
+                                                        </td>
+                                                        <td>
+                                                            @if($security->returned == 1)
+                                                                <span class="badge bg-secondary">Returned</span>
+                                                            @elseif($security->status == 1)
+                                                                <span class="badge bg-success">Paid</span>
+                                                            @elseif($security->status == 2)
+                                                                <span class="badge bg-danger">Failed</span>
+                                                            @else
+                                                                <span class="badge bg-warning">Pending</span>
+                                                            @endif
+                                                        </td>
+                                                        <td>{{ $security->description ?? 'N/A' }}</td>
+                                                    </tr>
+                                                @empty
+                                                    <tr>
+                                                        <td colspan="5" class="text-center text-muted py-3">
+                                                            <i class="mdi mdi-shield-off mdi-24px"></i><br>
+                                                            No cash security records found
+                                                        </td>
+                                                    </tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Savings Accounts Details -->
+                            <div class="card mb-3">
+                                <div class="card-header bg-info text-white">
+                                    <h6 class="mb-0"><i class="mdi mdi-piggy-bank"></i> Savings Accounts</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Product</th>
+                                                    <th>Balance</th>
+                                                    <th>Interest Rate</th>
+                                                    <th>Created Date</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @forelse($member->savings as $saving)
+                                                    <tr>
+                                                        <td>{{ $saving->product->name ?? 'N/A' }}</td>
+                                                        <td><strong>UGX {{ number_format($saving->balance, 2) }}</strong></td>
+                                                        <td>{{ $saving->product->interest ?? 0 }}%</td>
+                                                        <td>{{ $saving->created_at ? $saving->created_at->format('d M Y') : 'N/A' }}</td>
+                                                        <td>
+                                                            <span class="badge {{ $saving->is_active ? 'bg-success' : 'bg-warning' }}">
+                                                                {{ $saving->is_active ? 'Active' : 'Inactive' }}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                @empty
+                                                    <tr>
+                                                        <td colspan="5" class="text-center text-muted py-3">
+                                                            <i class="mdi mdi-piggy-bank-outline mdi-24px"></i><br>
+                                                            No savings accounts found
+                                                        </td>
+                                                    </tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            @else
+                            <div class="alert alert-info">
+                                <i class="mdi mdi-information"></i> Financial details are only available for personal loans.
+                            </div>
                             @endif
-                            <p class="text-muted">Financial information will be displayed here</p>
                         </div>
 
                         <!-- Documents Tab -->

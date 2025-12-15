@@ -72,14 +72,17 @@ return [
 
     // Transaction Limits (UGX)
     'limits' => [
-        'min_amount' => 500, // 500 UGX (minimum for upfront fees)
+        'min_amount' => 500, // 500 UGX (minimum for collections/upfront fees)
         'max_amount' => 4000000, // 4,000,000 UGX
+        'min_disbursement' => 1000, // 1000 UGX minimum for sending money (Stanbic requirement)
         'MTN' => [
-            'min' => 500, // Reduced to support small upfront fees
+            'min' => 500, // Collection minimum
+            'min_disbursement' => 1000, // Disbursement minimum
             'max' => 4000000,
         ],
         'AIRTEL' => [
-            'min' => 500, // Reduced to support small upfront fees
+            'min' => 500, // Collection minimum
+            'min_disbursement' => 1000, // Disbursement minimum
             'max' => 1000000,
         ],
     ],

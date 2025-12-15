@@ -77,7 +77,7 @@ class SavingController extends Controller
     }
 
     /**
-     * Store a newly created savings account
+     * Store a newly created savings deposit
      */
     public function store(Request $request)
     {
@@ -85,53 +85,91 @@ class SavingController extends Controller
             'member_id' => 'required|exists:members,id',
             'product_id' => 'required|exists:products,id',
             'branch_id' => 'required|exists:branches,id',
+            'initial_deposit' => 'required|numeric|min:500',
+            'payment_type' => 'required|in:1,2,3',
+            'phone_number' => 'required_if:payment_type,1|nullable|string',
             'interest' => 'required|numeric|min:0|max:100',
-            'initial_deposit' => 'nullable|numeric|min:0',
-            'minimum_balance' => 'nullable|numeric|min:0',
-            'maximum_balance' => 'nullable|numeric|min:0',
-            'auto_dividends' => 'nullable|boolean',
-            'charges' => 'nullable|string',
             'description' => 'nullable|string',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Generate savings account code
-            $branch = Branch::find($validated['branch_id']);
-            $savingsCount = Saving::where('branch_id', $validated['branch_id'])->count();
-            $validated['code'] = 'SAV-' . $branch->name . '-' . str_pad($savingsCount + 1, 6, '0', STR_PAD_LEFT);
+            $member = Member::findOrFail($validated['member_id']);
+            $product = SavingsProduct::findOrFail($validated['product_id']);
 
-            $validated['added_by'] = auth()->id();
-            $validated['status'] = 0; // Pending approval
-            $validated['balance'] = $validated['initial_deposit'] ?? 0;
+            // Create saving record using DB query to avoid model casts
+            $savingData = [
+                'member_id' => $validated['member_id'],
+                'branch_id' => $validated['branch_id'],
+                'pdt_id' => $validated['product_id'],
+                'value' => $validated['initial_deposit'],
+                'sperson' => $member->fname . ' ' . $member->lname,
+                'sdate' => now()->format('Y-m-d'), // Date only as string
+                'description' => $validated['description'] ?? 'Savings deposit',
+                'added_by' => auth()->id(),
+                'datecreated' => now()
+            ];
 
-            $saving = Saving::create($validated);
+            // Handle payment based on type
+            if ($validated['payment_type'] == 1) { // Mobile Money
+                $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+                
+                // Validate phone number
+                $phoneValidation = $mobileMoneyService->validatePhoneNumber($validated['phone_number']);
+                if (!$phoneValidation['valid']) {
+                    throw new \Exception('Invalid phone number: ' . $phoneValidation['message']);
+                }
 
-            // Record initial deposit if provided
-            if (!empty($validated['initial_deposit']) && $validated['initial_deposit'] > 0) {
-                SavingTransaction::create([
-                    'saving_id' => $saving->id,
-                    'type' => 'deposit',
-                    'amount' => $validated['initial_deposit'],
-                    'balance' => $validated['initial_deposit'],
-                    'description' => 'Initial deposit',
-                    'added_by' => auth()->id(),
-                    'transaction_date' => now()
-                ]);
+                // Initiate mobile money collection
+                $result = $mobileMoneyService->collectMoney(
+                    $member->fname . ' ' . $member->lname,
+                    $phoneValidation['formatted_phone'],
+                    $validated['initial_deposit'],
+                    'Savings Deposit'
+                );
+
+                if (!$result['success']) {
+                    throw new \Exception($result['message'] ?? 'Mobile money collection failed');
+                }
+
+                $savingData['status'] = 0; // Pending
+                $savingData['platform'] = 1; // Mobile Money
+                $savingData['txn_id'] = $result['transaction_reference'] ?? $result['reference'] ?? null;
+                $savingData['pay_status'] = 'PENDING';
+                $savingData['pay_message'] = json_encode($result);
+
+            } else { // Cash or Bank
+                $savingData['status'] = 1; // Paid (manual payments are auto-approved)
+                $savingData['platform'] = $validated['payment_type'];
+                $savingData['pay_status'] = 'PAID';
+                $savingData['pay_message'] = json_encode(['type' => $validated['payment_type'] == 2 ? 'Cash' : 'Bank', 'status' => 'Manual payment recorded']);
             }
+
+            // Insert using DB query to bypass model casts
+            $savingId = DB::table('savings')->insertGetId($savingData);
+            $saving = Saving::find($savingId);
 
             DB::commit();
 
-            return redirect()->route('admin.savings.show', $saving)
-                            ->with('success', 'Savings account created successfully.');
+            if ($validated['payment_type'] == 1) {
+                return redirect()->back()
+                    ->with('success', 'Payment request sent to ' . $phoneValidation['formatted_phone'] . '. Waiting for member to approve.');
+            }
+
+            return redirect()->back()
+                            ->with('success', 'Savings deposit recorded successfully as paid.');
 
         } catch (\Exception $e) {
             DB::rollback();
             
+            \Log::error("Savings deposit error: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return redirect()->back()
                             ->withInput()
-                            ->with('error', 'Error creating savings account: ' . $e->getMessage());
+                            ->with('error', 'Error adding savings: ' . $e->getMessage());
         }
     }
 
@@ -422,5 +460,79 @@ class SavingController extends Controller
             'balance' => $saving->balance,
             'formatted_balance' => number_format($saving->balance, 2)
         ]);
+    }
+
+    /**
+     * Check payment status for mobile money savings deposit
+     */
+    public function checkPaymentStatus(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'transaction_reference' => 'required|string'
+            ]);
+
+            $saving = Saving::where('txn_id', $validated['transaction_reference'])->first();
+
+            if (!$saving) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Savings deposit not found'
+                ], 404);
+            }
+
+            // Check if already paid
+            if ($saving->status == 1) {
+                return response()->json([
+                    'success' => true,
+                    'status' => 'paid',
+                    'message' => 'Savings deposit already confirmed as paid'
+                ]);
+            }
+
+            // Query Stanbic FlexiPay for status
+            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+            $statusResult = $mobileMoneyService->checkTransactionStatus(
+                $validated['transaction_reference']
+            );
+
+            if ($statusResult['success']) {
+                $statusCode = $statusResult['status_code'] ?? '';
+                
+                // Update based on status
+                if (in_array($statusCode, ['00', '01', 'SUCCESSFUL', 'SUCCESS'])) {
+                    $saving->update([
+                        'status' => 1,
+                        'pay_status' => 'PAID',
+                        'pay_message' => json_encode($statusResult)
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'status' => 'paid',
+                        'message' => 'Payment confirmed successfully'
+                    ]);
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'status' => 'pending',
+                        'message' => 'Payment still pending or failed: ' . ($statusResult['status_description'] ?? 'Unknown status')
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not verify payment status'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Savings payment status check error: " . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error checking payment status: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
