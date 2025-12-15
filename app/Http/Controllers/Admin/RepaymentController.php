@@ -30,6 +30,42 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Calculate late fee for a schedule with waiver support
+     * Centralized method to avoid code duplication
+     */
+    protected function calculateLateFee($schedule, $loan)
+    {
+        $now = time();
+        $your_date = strtotime($schedule->payment_date);
+        $d = max(0, floor(($now - $your_date) / 86400));
+        
+        $dd = 0;
+        if ($d > 0) {
+            $period_type = $loan->product ? $loan->product->period_type : '1';
+            $dd = $period_type == '1' ? ceil($d / 7) : ($period_type == '2' ? ceil($d / 30) : $d);
+        }
+        
+        $intrestamtpayable = $schedule->interest;
+        $latepaymentOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+        
+        // Check for waivers
+        $totalWaivedAmount = DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', 2)
+            ->sum('amount');
+        
+        $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
+        
+        return [
+            'days_overdue' => $d,
+            'periods_overdue' => $dd,
+            'original' => $latepaymentOriginal,
+            'waived' => $totalWaivedAmount,
+            'net' => $latepayment
+        ];
+    }
+
+    /**
      * Display active loans for repayment management
      */
     public function activeLoans(Request $request)
@@ -350,25 +386,48 @@ class RepaymentController extends Controller
                              ->where('status', 1)
                              ->sum('amount');
         
-        // Calculate total payable from SCHEDULES (principal + interest + any late fees - waived fees)
-        // This matches bimsadmin logic exactly
-        $totalPayable = $loan->schedules->sum(function($schedule) {
-            return $schedule->principal + $schedule->interest;
-        });
+        // Calculate outstanding balance by summing each schedule's balance
+        // WITH overpayment distribution (matching per-schedule loop logic)
+        $totalOutstanding = 0;
+        $totalDue = 0;
+        $carryOverPaymentSummary = 0; // Track overpayments to distribute
         
-        // Add outstanding late fees (excluding waived ones)
-        $totalLateFees = DB::table('late_fees')
-            ->where('loan_id', $loan->id)
-            ->where('status', 0) // Only pending (unpaid, not waived)
-            ->sum('amount');
-        
-        // Total payable includes pending late fees
-        $totalPayableWithFees = $totalPayable + $totalLateFees;
+        foreach ($loan->schedules->sortBy('payment_date') as $schedule) {
+            // Get amount already paid for this schedule
+            // Priority: Use repayments table sum, but fall back to schedule.paid if no repayments found
+            $paidFromRepayments = Repayment::where('schedule_id', $schedule->id)
+                ->where('status', 1)
+                ->sum('amount');
+            
+            $paidForSchedule = $paidFromRepayments > 0 ? $paidFromRepayments : ($schedule->paid ?? 0);
+            
+            // Apply carry-over from previous overpaid schedules
+            $paidForSchedule += $carryOverPaymentSummary;
+            $carryOverPaymentSummary = 0;
+            
+            // Calculate late fees using helper method
+            $lateFeeData = $this->calculateLateFee($schedule, $loan);
+            $lateFee = $lateFeeData['net'];
+            
+            // Calculate this schedule's balance
+            $scheduleDue = $schedule->principal + $schedule->interest + $lateFee;
+            $scheduleBalance = $scheduleDue - $paidForSchedule;
+            
+            // Handle overpayments - carry excess to next schedule
+            if ($scheduleBalance < 0) {
+                $carryOverPaymentSummary = abs($scheduleBalance);
+                $scheduleBalance = 0; // Show as fully paid
+            }
+            
+            // Add to totals
+            $totalDue += $scheduleDue;
+            $totalOutstanding += $scheduleBalance; // Already non-negative
+        }
         
         $loan->amount_paid = $totalPaid;
-        $loan->outstanding_balance = $totalPayableWithFees - $totalPaid;
-        $loan->total_payable = $totalPayableWithFees;
-        $loan->payment_percentage = $totalPayableWithFees > 0 ? ($totalPaid / $totalPayableWithFees) * 100 : 0;
+        $loan->outstanding_balance = max(0, $totalOutstanding); // Ensure non-negative
+        $loan->total_payable = $totalDue;
+        $loan->payment_percentage = $totalDue > 0 ? ($totalPaid / $totalDue) * 100 : 0;
         
         // Calculate days overdue - find first unpaid schedule and check if it's past due
         $firstUnpaid = $loan->schedules()
@@ -415,8 +474,9 @@ class RepaymentController extends Controller
         // Get schedules with payment status - EXACT bimsadmin calculation logic
         $principal = floatval($loan->principal); // Running principal balance
         $globalprincipal = floatval($loan->principal); // Global principal for interest calculation
+        $carryOverPayment = 0; // Track overpayments to distribute to next schedules
         
-        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $pendingPerSchedule) {
+        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $pendingPerSchedule, &$carryOverPayment) {
             // 1. Calculate "Principal cal Interest" (reducing balance per period)
             $period = floor($loan->period / 2);
             $pricipalcalIntrest = $period > 0 ? ($loan->principal / $period) : 0;
@@ -452,39 +512,48 @@ class RepaymentController extends Controller
                 }
             }
             
-            // 4. Calculate late fees (penalty): 6% per period overdue (NOT 10%!)
-            $latepayment = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+            // 4. Calculate late fees using helper method
+            $lateFeeData = $this->calculateLateFee($schedule, $loan);
+            $latepaymentOriginal = $lateFeeData['original'];
+            $totalWaivedAmount = $lateFeeData['waived'];
+            $latepayment = $lateFeeData['net'];
             
-            // 4a. Check if late fees have been waived (e.g., November 2025 system upgrade)
-            // Sum ALL waived late fees for this schedule (there may be multiple)
-            $totalWaivedAmount = DB::table('late_fees')
-                ->where('schedule_id', $schedule->id)
-                ->where('status', 2) // Waived
-                ->sum('amount');
-            
-            if ($totalWaivedAmount > 0) {
-                // Subtract the total waived amount from calculated late fees
-                $latepayment = max(0, $latepayment - $totalWaivedAmount);
-                
-                // DO NOT recalculate periods - periods in arrears should reflect actual time elapsed
-                // The waiver reduces the late fee amount, but doesn't change how many periods have passed
-                // Keep $dd as calculated above based on actual days overdue
-            }
+            // Store both values for summary display
+            // DO NOT recalculate periods - periods in arrears should reflect actual time elapsed
+            // The waiver reduces the late fee amount, but doesn't change how many periods have passed
+            // Keep $dd as calculated above based on actual days overdue
             
             // 5. Get total paid from pre-loaded data (optimized - no N+1 queries)
-            $totalPaid = floatval($paidPerSchedule[$schedule->id] ?? 0);
+            // Fallback to schedule.paid if no repayments found (for cash payments not recorded in repayments table)
+            $paidFromRepayments = floatval($paidPerSchedule[$schedule->id] ?? 0);
+            $totalPaid = $paidFromRepayments > 0 ? $paidFromRepayments : floatval($schedule->paid ?? 0);
+            
+            // 5a. Apply carry-over payment from previous overpaid schedule
+            // This distributes excess payments to reduce future schedules' balances
+            $totalPaid += $carryOverPayment;
+            $carryOverPayment = 0; // Reset after applying
             
             // 6. Get pending count from pre-loaded data (optimized - no N+1 queries)
             $pendingCount = intval($pendingPerSchedule[$schedule->id] ?? 0);
             
             // 7. Allocate payments - BIMSADMIN ORDER: Late Fees → Interest → Principal
-            // Late fees paid
-            $afterlatepayment = $totalPaid - $latepayment;
-            if ($afterlatepayment > 0) {
-                $pafterlatepayment = $latepayment; // Full late payment covered
+            // CRITICAL FIX: If late fees were waived, skip them in payment allocation!
+            // Waived late fees should NOT consume client payments
+            
+            if ($totalWaivedAmount > 0 && $latepayment == 0) {
+                // All late fees were waived - skip late fee allocation entirely
+                // Payment goes directly to Interest → Principal
+                $pafterlatepayment = 0; // No late fees paid (they were waived!)
+                $afterlatepayment = $totalPaid; // Full payment available for interest/principal
             } else {
-                $pafterlatepayment = $totalPaid; // Partial payment
-                $afterlatepayment = 0;
+                // Normal allocation: Late fees must be paid first
+                $afterlatepayment = $totalPaid - $latepayment;
+                if ($afterlatepayment > 0) {
+                    $pafterlatepayment = $latepayment; // Full late payment covered
+                } else {
+                    $pafterlatepayment = $totalPaid; // Partial payment
+                    $afterlatepayment = 0;
+                }
             }
             
             // Interest paid
@@ -508,12 +577,20 @@ class RepaymentController extends Controller
             // 8. Calculate total balance
             $act_bal = ($schedule->principal + $intrestamtpayable + $latepayment) - $totalPaid;
             
+            // 8a. Handle overpayments - carry excess to next schedule
+            if ($act_bal < 0) {
+                $carryOverPayment = abs($act_bal); // Carry excess to next schedule
+                $act_bal = 0; // Show 0 balance for this schedule (not negative)
+            }
+            
             // 9. Attach calculated values to schedule
             $schedule->pricipalcalIntrest = $pricipalcalIntrest;
             $schedule->globalprincipal = $globalprincipal;
             $schedule->intrestamtpayable = $intrestamtpayable;
             $schedule->periods_in_arrears = $dd;
-            $schedule->penalty = $latepayment;
+            $schedule->penalty_original = $latepaymentOriginal; // Late fee BEFORE waiver
+            $schedule->penalty_waived = $totalWaivedAmount; // Amount waived by admin
+            $schedule->penalty = $latepayment; // Late fee AFTER waiver (what client owes)
             $schedule->total_payment = $schedule->principal + $intrestamtpayable + $latepayment;
             $schedule->principal_paid = $pafterprinicpalpayment;
             $schedule->interest_paid = $pafterinterestpayment;
@@ -560,8 +637,15 @@ class RepaymentController extends Controller
             return $schedule->due_amount + $schedule->penalty_amount;
         });
 
+        // Calculate late fees summary
+        // Show ORIGINAL late fees (before waiver) for clarity
+        $totalLateFees = $schedules->sum('penalty_original'); // Total BEFORE waiver
+        $lateFeesWaived = $schedules->sum('penalty_waived'); // Total waived by admin
+        $lateFeesPaid = $schedules->sum('penalty_paid'); // Total actually paid by client
+
         return view('admin.loans.repayments.schedules', compact(
-            'loan', 'schedules', 'nextDue', 'overdueCount', 'overdueAmount'
+            'loan', 'schedules', 'nextDue', 'overdueCount', 'overdueAmount',
+            'totalLateFees', 'lateFeesWaived', 'lateFeesPaid'
         ));
     }
 
@@ -1900,12 +1984,111 @@ class RepaymentController extends Controller
             'loan.member',
             'loan.product',
             'loan.branch',
-            'addedBy'
+            'addedBy',
+            'schedule'
         ]);
 
-        // Calculate loan summary
+        // Calculate payment breakdown if schedule exists
+        $paymentBreakdown = null;
+        if ($repayment->schedule_id && $repayment->schedule) {
+            $schedule = $repayment->schedule;
+            
+            // Calculate late fees using helper method
+            $lateFeeData = $this->calculateLateFee($schedule, $repayment->loan);
+            $latepayment = $lateFeeData['net'];
+            $latepaymentOriginal = $lateFeeData['original'];
+            $totalWaivedAmount = $lateFeeData['waived'];
+            $d = $lateFeeData['days_overdue'];
+            $dd = $lateFeeData['periods_overdue'];
+            
+            // Get interest amount
+            $intrestamtpayable = $schedule->interest;
+            
+            // Allocate this specific payment amount
+            $totalPaid = $repayment->amount;
+            
+            // Payment allocation: Late Fees → Interest → Principal
+            if ($totalWaivedAmount > 0 && $latepayment == 0) {
+                // Fully waived - skip late fee allocation
+                $pafterlatepayment = 0;
+                $afterlatepayment = $totalPaid;
+            } else {
+                $afterlatepayment = $totalPaid - $latepayment;
+                if ($afterlatepayment > 0) {
+                    $pafterlatepayment = $latepayment;
+                } else {
+                    $pafterlatepayment = $totalPaid;
+                    $afterlatepayment = 0;
+                }
+            }
+            
+            $afterinterestpayment = $afterlatepayment - $intrestamtpayable;
+            if ($afterinterestpayment > 0) {
+                $pafterinterestpayment = $intrestamtpayable;
+            } else {
+                $pafterinterestpayment = $afterlatepayment;
+                $afterinterestpayment = 0;
+            }
+            
+            $pafterprinicpalpayment = $afterinterestpayment > $schedule->principal ? $schedule->principal : $afterinterestpayment;
+            
+            $paymentBreakdown = [
+                'late_fees_paid' => $pafterlatepayment,
+                'interest_paid' => $pafterinterestpayment,
+                'principal_paid' => $pafterprinicpalpayment,
+                'schedule_principal' => $schedule->principal,
+                'schedule_interest' => $schedule->interest,
+                'late_fees_due' => $latepayment,
+                'late_fees_waived' => $totalWaivedAmount,
+                'days_late' => $d,
+                'periods_overdue' => $dd
+            ];
+        }
+
+        // Calculate loan summary with overpayment distribution (same as schedules page)
         if ($repayment->loan) {
-            // Calculate total paid (all completed repayments for this loan)
+            $loan = $repayment->loan;
+            
+            // Get total paid per schedule (single query)
+            $paidPerSchedule = DB::table('repayments')
+                ->whereIn('schedule_id', $loan->schedules->pluck('id')->toArray())
+                ->where('status', 1)
+                ->groupBy('schedule_id')
+                ->select('schedule_id', DB::raw('SUM(amount) as total_paid'))
+                ->pluck('total_paid', 'schedule_id')
+                ->toArray();
+            
+            // Calculate outstanding with overpayment distribution
+            $carryOverPaymentSummary = 0;
+            $outstandingBalance = 0;
+            
+            foreach ($loan->schedules->sortBy('payment_date') as $schedule) {
+                // Get amount paid from repayments table, fallback to schedule.paid
+                $paidFromRepayments = floatval($paidPerSchedule[$schedule->id] ?? 0);
+                $paidForSchedule = $paidFromRepayments > 0 ? $paidFromRepayments : floatval($schedule->paid ?? 0);
+                
+                // Apply carry-over from previous overpaid schedules
+                $paidForSchedule += $carryOverPaymentSummary;
+                $carryOverPaymentSummary = 0;
+                
+                // Calculate late fees using helper method
+                $lateFeeData = $this->calculateLateFee($schedule, $loan);
+                $latepayment = $lateFeeData['net'];
+                
+                // Calculate schedule balance
+                $scheduleDue = $schedule->principal + $schedule->interest + $latepayment;
+                $scheduleBalance = $scheduleDue - $paidForSchedule;
+                
+                // Capture overpayment as carry-over
+                if ($scheduleBalance < 0) {
+                    $carryOverPaymentSummary = abs($scheduleBalance);
+                    $scheduleBalance = 0;
+                }
+                
+                $outstandingBalance += $scheduleBalance;
+            }
+            
+            // Calculate total paid
             $totalPaid = Repayment::where('loan_id', $repayment->loan_id)
                 ->where(function($q) {
                     $q->where('status', 1)
@@ -1913,19 +2096,16 @@ class RepaymentController extends Controller
                 })
                 ->sum('amount');
             
-            // Calculate total due
-            $totalDue = $repayment->loan->principal + $repayment->loan->interest;
-            
-            // Calculate outstanding balance
-            $outstandingBalance = $totalDue - $totalPaid;
+            $totalDue = $loan->principal + $loan->interest;
             
             // Add to loan object for view
             $repayment->loan->paid = $totalPaid;
-            $repayment->loan->outstanding_balance = max(0, $outstandingBalance); // Don't show negative
+            $repayment->loan->outstanding_balance = $outstandingBalance; // Uses distribution logic
             $repayment->loan->total_due = $totalDue;
+            $repayment->loan->unused_overpayment = $carryOverPaymentSummary; // Available for refund
         }
 
-        return view('admin.repayments.receipt', compact('repayment'));
+        return view('admin.repayments.receipt', compact('repayment', 'paymentBreakdown'));
     }
 
     /**
@@ -2832,40 +3012,9 @@ class RepaymentController extends Controller
             foreach ($schedules as $schedule) {
                 $scheduleDue = $schedule->principal + $schedule->interest;
                 
-                // Calculate late fee (if overdue)
-                $lateFee = 0;
-                if ($schedule->status != 1) {
-                    $dueDate = \Carbon\Carbon::parse($schedule->payment_date);
-                    $today = \Carbon\Carbon::now();
-                    
-                    if ($today->gt($dueDate)) {
-                        $daysOverdue = $dueDate->diffInDays($today);
-                        
-                        // Get period type from product
-                        $periodType = optional($loan->product)->period_type ?? '2';
-                        $periods = 0;
-                        
-                        if ($periodType == '3') {
-                            $periods = $daysOverdue; // Daily
-                        } else if ($periodType == '1') {
-                            $periods = ceil($daysOverdue / 7); // Weekly
-                        } else {
-                            $periods = ceil($daysOverdue / 30); // Monthly
-                        }
-                        
-                        $lateFee = ($scheduleDue * 0.06) * $periods;
-                        
-                        // Check for waived late fees (sum ALL waived amounts for this schedule)
-                        $totalWaivedAmount = DB::table('late_fees')
-                            ->where('schedule_id', $schedule->id)
-                            ->where('status', 2) // Waived
-                            ->sum('amount');
-                        
-                        if ($totalWaivedAmount > 0) {
-                            $lateFee = max(0, $lateFee - $totalWaivedAmount);
-                        }
-                    }
-                }
+                // Calculate late fee using helper method
+                $lateFeeData = $this->calculateLateFee($schedule, $loan);
+                $lateFee = $lateFeeData['netLateFee'];
                 
                 // Calculate total paid for this schedule
                 $totalPaid = Repayment::where('schedule_id', $schedule->id)

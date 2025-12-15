@@ -249,23 +249,20 @@
                     <span class="info-value">{{ $repayment->loan->code ?? 'N/A' }}</span>
                 </div>
                 @if($repayment->loan && $repayment->loan->status != 3)
-                    @php
-                        // Calculate remaining loan balance
-                        $totalLoanAmount = $repayment->loan->principal + $repayment->loan->interest;
-                        $totalPaid = \App\Models\Repayment::where('loan_id', $repayment->loan->id)
-                            ->where(function($query) {
-                                $query->where('status', 1)
-                                      ->orWhere('payment_status', 'Completed');
-                            })
-                            ->sum('amount');
-                        $remainingBalance = $totalLoanAmount - $totalPaid;
-                    @endphp
                     <div class="info-row">
                         <span class="info-label">Loan Balance:</span>
-                        <span class="info-value" style="color: {{ $remainingBalance > 0 ? '#dc3545' : '#28a745' }}; font-weight: bold;">
-                            UGX {{ number_format($remainingBalance, 0) }}
+                        <span class="info-value" style="color: {{ $repayment->loan->outstanding_balance > 0 ? '#dc3545' : '#28a745' }}; font-weight: bold;">
+                            UGX {{ number_format($repayment->loan->outstanding_balance, 0) }}
                         </span>
                     </div>
+                    @if(isset($repayment->loan->unused_overpayment) && $repayment->loan->unused_overpayment > 0)
+                    <div class="info-row">
+                        <span class="info-label">Unused Overpayment:</span>
+                        <span class="info-value" style="color: #28a745; font-weight: bold;">
+                            UGX {{ number_format($repayment->loan->unused_overpayment, 0) }}
+                        </span>
+                    </div>
+                    @endif
                 @endif
             </div>
         </div>
@@ -287,111 +284,37 @@
                     <th>Description</th>
                     <th>Amount (UGX)</th>
                 </tr>
-                @php
-                    // Get the schedule this payment is for
-                    $schedule = null;
-                    $lateFee = 0;
-                    $scheduleAmount = 0;
-                    $daysLate = 0;
-                    $interestPaid = 0;
-                    $principalPaid = 0;
-                    $lateFeePaid = 0;
-                    $periodName = '';
-                    
-                    if ($repayment->schedule_id) {
-                        $schedule = \App\Models\LoanSchedule::find($repayment->schedule_id);
-                        
-                        if ($schedule) {
-                            $scheduleAmount = $schedule->principal + $schedule->interest;
-                            
-                            // Calculate late fee if payment was made after due date
-                            $paymentDate = $repayment->date_created ? strtotime($repayment->date_created) : time();
-                            $dueDate = strtotime($schedule->payment_date);
-                            
-                            if ($paymentDate > $dueDate) {
-                                $datediff = $paymentDate - $dueDate;
-                                $daysLate = floor($datediff / (60 * 60 * 24));
-                                
-                                // Calculate periods overdue based on loan type
-                                $periodsOverdue = 0;
-                                $periodType = optional($repayment->loan->product)->period_type ?? '2';
-                                
-                                if ($periodType == '3') {
-                                    // Daily loans: 6% per DAY
-                                    $periodsOverdue = $daysLate;
-                                    $periodName = 'day' . ($periodsOverdue > 1 ? 's' : '');
-                                } else if ($periodType == '1') {
-                                    // Weekly loans: 6% per WEEK
-                                    $periodsOverdue = ceil($daysLate / 7);
-                                    $periodName = 'week' . ($periodsOverdue > 1 ? 's' : '');
-                                } else if ($periodType == '2') {
-                                    // Monthly loans: 6% per MONTH
-                                    $periodsOverdue = ceil($daysLate / 30);
-                                    $periodName = 'month' . ($periodsOverdue > 1 ? 's' : '');
-                                } else {
-                                    $periodsOverdue = ceil($daysLate / 7);
-                                    $periodName = 'week' . ($periodsOverdue > 1 ? 's' : '');
-                                }
-                                
-                                // 6% late fee per period
-                                $lateFee = ($scheduleAmount * 0.06) * $periodsOverdue;
-                                
-                                // Check if late fee has been waived (e.g., November 2025 system upgrade)
-                                $waivedLateFee = \App\Models\LateFee::where('schedule_id', $schedule->id)
-                                    ->where('status', 2) // Waived
-                                    ->first();
-                                
-                                if ($waivedLateFee) {
-                                    // Subtract the waived amount (e.g., November portion only)
-                                    $lateFee = max(0, $lateFee - $waivedLateFee->amount);
-                                }
-                            }
-                            
-                            // Calculate payment allocation: Late Fee → Interest → Principal
-                            $remainingAmount = $repayment->amount;
-                            
-                            // 1. Deduct late fee first
-                            if ($lateFee > 0) {
-                                $lateFeePaid = min($remainingAmount, $lateFee);
-                                $remainingAmount -= $lateFeePaid;
-                            }
-                            
-                            // 2. Deduct interest
-                            if ($remainingAmount > 0 && $schedule->interest > 0) {
-                                $interestPaid = min($remainingAmount, $schedule->interest);
-                                $remainingAmount -= $interestPaid;
-                            }
-                            
-                            // 3. Remaining goes to principal
-                            if ($remainingAmount > 0) {
-                                $principalPaid = $remainingAmount;
-                            }
-                        }
-                    }
-                @endphp
                 
-                @if($schedule && $scheduleAmount > 0)
-                    @if($interestPaid > 0)
-                    <tr>
-                        <td>Interest Paid</td>
-                        <td style="text-align: right;">{{ number_format($interestPaid, 2) }}</td>
+                @if($paymentBreakdown)
+                    @if($paymentBreakdown['late_fees_paid'] > 0)
+                    <tr style="color: #dc3545;">
+                        <td>
+                            Late Fees Paid
+                            @if($paymentBreakdown['days_late'] > 0)
+                                <br><small style="color: #6c757d;">
+                                    ({{ $paymentBreakdown['days_late'] }} {{ $paymentBreakdown['days_late'] > 1 ? 'days' : 'day' }} overdue, 
+                                    {{ $paymentBreakdown['periods_overdue'] }} {{ $repayment->loan->product->period_type == '3' ? 'day(s)' : ($repayment->loan->product->period_type == '1' ? 'week(s)' : 'month(s)') }} @ 6%)
+                                </small>
+                            @endif
+                            @if($paymentBreakdown['late_fees_waived'] > 0)
+                                <br><small style="color: #28a745;">{{ number_format($paymentBreakdown['late_fees_waived'], 0) }} waived</small>
+                            @endif
+                        </td>
+                        <td style="text-align: right;">{{ number_format($paymentBreakdown['late_fees_paid'], 0) }}</td>
                     </tr>
                     @endif
                     
-                    @if($lateFeePaid > 0)
-                        <tr style="color: #dc3545;">
-                            <td>
-                                Late Fee ({{ $daysLate }} {{ $daysLate > 1 ? 'days' : 'day' }} late, 6% per {{ $periodName }})
-                                <br><small style="color: #6c757d;">Payment made after due date: {{ $schedule->payment_date }}</small>
-                            </td>
-                            <td style="text-align: right;">{{ number_format($lateFeePaid, 2) }}</td>
-                        </tr>
+                    @if($paymentBreakdown['interest_paid'] > 0)
+                    <tr>
+                        <td>Interest Paid</td>
+                        <td style="text-align: right;">{{ number_format($paymentBreakdown['interest_paid'], 0) }}</td>
+                    </tr>
                     @endif
                     
-                    @if($principalPaid > 0)
+                    @if($paymentBreakdown['principal_paid'] > 0)
                     <tr>
                         <td>Principal Paid</td>
-                        <td style="text-align: right;">{{ number_format($principalPaid, 2) }}</td>
+                        <td style="text-align: right;">{{ number_format($paymentBreakdown['principal_paid'], 0) }}</td>
                     </tr>
                     @endif
                 @else

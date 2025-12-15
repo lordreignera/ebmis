@@ -86,6 +86,14 @@
                             </div>
                         </div>
                         <div class="col-md-3">
+                            <div class="border-end pe-3">
+                                <h6 class="text-muted">Late Fees</h6>
+                                <p class="mb-1"><strong>Total Late Fees:</strong> <span class="text-danger">UGX {{ number_format($totalLateFees ?? 0, 0) }}</span></p>
+                                <p class="mb-1"><strong>Late Fees Paid:</strong> <span class="text-success">UGX {{ number_format($lateFeesPaid ?? 0, 0) }}</span></p>
+                                <p class="mb-0"><strong>Late Fees Waived:</strong> <span class="text-info">UGX {{ number_format($lateFeesWaived ?? 0, 0) }}</span></p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
                             <div>
                                 <h6 class="text-muted">Next Payment</h6>
                                 @if($nextDue)
@@ -344,8 +352,15 @@
                                         <td class="text-end">{{ number_format($schedule->intrestamtpayable, 0) }}</td>
                                         <td class="text-center">{{ number_format($schedule->periods_in_arrears, 0) }}</td>
                                         <td class="text-end">
-                                            @if($schedule->penalty > 0)
-                                                <span class="text-danger">{{ number_format($schedule->penalty, 0) }}</span>
+                                            @php
+                                                $originalLateFee = $schedule->penalty_original ?? $schedule->penalty;
+                                                $waivedAmount = $schedule->penalty_waived ?? 0;
+                                            @endphp
+                                            @if($originalLateFee > 0)
+                                                <span class="text-danger">{{ number_format($originalLateFee, 0) }}</span>
+                                                @if($waivedAmount > 0)
+                                                    <br><small class="text-info">({{ number_format($waivedAmount, 0) }} waived)</small>
+                                                @endif
                                             @else
                                                 0
                                             @endif
@@ -461,7 +476,10 @@
                                         <strong>{{ number_format($schedules->sum('periods_in_arrears'), 0) }}</strong>
                                     </th>
                                     <th class="text-end">
-                                        <strong>{{ number_format($schedules->sum('penalty'), 0) }}</strong>
+                                        <strong>{{ number_format($schedules->sum('penalty_original'), 0) }}</strong>
+                                        @if($schedules->sum('penalty_waived') > 0)
+                                            <br><small class="text-info">({{ number_format($schedules->sum('penalty_waived'), 0) }} waived)</small>
+                                        @endif
                                     </th>
                                     <th></th>
                                     <th class="text-end text-success">
@@ -477,7 +495,14 @@
                                         <strong>{{ number_format($schedules->sum('paid'), 0) }}</strong>
                                     </th>
                                     <th class="text-end text-danger">
-                                        <strong>{{ number_format($schedules->sum('total_balance'), 0) }}</strong>
+                                        @php
+                                            // Only sum positive balances (unpaid amounts)
+                                            // Negative balances (overpayments) should not reduce the total
+                                            $totalOutstanding = $schedules->sum(function($schedule) {
+                                                return max(0, $schedule->total_balance ?? 0);
+                                            });
+                                        @endphp
+                                        <strong>{{ number_format($totalOutstanding, 0) }}</strong>
                                     </th>
                                     <th colspan="2"></th>
                                 </tr>
