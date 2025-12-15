@@ -31,7 +31,6 @@ return new class extends Migration
             $table->timestamps();
             
             $table->foreign('member_id')->references('id')->on('members')->onDelete('cascade');
-            $table->foreign('loan_id')->references('id')->on('loans')->onDelete('set null');
             $table->foreign('added_by')->references('id')->on('users')->onDelete('restrict');
             
             $table->index(['member_id', 'status']);
