@@ -65,12 +65,12 @@
                                     </select>
                                 </div>
                                 <div class="col-md-2">
-                                    <select name="period_type" class="form-select">
-                                        <option value="">All Periods</option>
-                                        <option value="1" {{ request('period_type') == '1' ? 'selected' : '' }}>Daily</option>
-                                        <option value="2" {{ request('period_type') == '2' ? 'selected' : '' }}>Weekly</option>
-                                        <option value="3" {{ request('period_type') == '3' ? 'selected' : '' }}>Monthly</option>
-                                        <option value="4" {{ request('period_type') == '4' ? 'selected' : '' }}>Yearly</option>
+                                        <select name="period_type" class="form-select">
+                                            <option value="">All Period Types</option>
+                                            <option value="1" {{ request('period_type') == '1' ? 'selected' : '' }}>Weekly</option>
+                                            <option value="2" {{ request('period_type') == '2' ? 'selected' : '' }}>Monthly</option>
+                                            <option value="3" {{ request('period_type') == '3' ? 'selected' : '' }}>Daily</option>
+                                            <option value="4" {{ request('period_type') == '4' ? 'selected' : '' }}>Yearly</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -140,11 +140,11 @@
                                         <td>UGX {{ number_format($product->max_amt) }}</td>
                                         <td>
                                             @if($product->period_type == 1)
-                                                Daily
-                                            @elseif($product->period_type == 2)
                                                 Weekly
-                                            @elseif($product->period_type == 3)
+                                            @elseif($product->period_type == 2)
                                                 Monthly
+                                            @elseif($product->period_type == 3)
+                                                Daily
                                             @elseif($product->period_type == 4)
                                                 Yearly
                                             @else
@@ -422,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success && data.product) {
                     const product = data.product;
                     const loanTypes = {1: 'Personal Loan', 2: 'Group Loan', 3: 'Business Loan', 4: 'School Loan', 5: 'Student Loan', 6: 'Staff Loan'};
-                    const periodTypes = {1: 'Daily', 2: 'Weekly', 3: 'Monthly', 4: 'Yearly'};
+                    const periodTypes = {1: 'Weekly', 2: 'Monthly', 3: 'Daily', 4: 'Yearly'};
                     
                     const html = `
                         <div class="mb-3" style="background-color: #ffffff; color: #333333;">

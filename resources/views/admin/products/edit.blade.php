@@ -85,11 +85,14 @@
                                         </div>
                                         <div class="col-md-6">
                                             <div class="form-group mb-3">
-                                                <label for="account">Fees Account <span class="text-danger">*</span></label>
-                                                <select class="form-control" id="account" name="account" required>
+                                                <label for="fees_account">Fees Account <span class="text-danger">*</span></label>
+                                                <select class="form-control" id="fees_account" name="account" required>
                                                     <option value="">Select</option>
                                                     @foreach(\App\Models\SystemAccount::where('status', 1)->get() as $acc)
-                                                        <option value="{{ $acc->id }}" {{ $product->account == $acc->id ? 'selected' : '' }}>
+                                                        @php
+                                                            $accId = $acc->Id ?? $acc->id;
+                                                        @endphp
+                                                        <option value="{{ $accId }}" {{ (string)$product->account === (string)$accId ? 'selected' : '' }}>
                                                             {{ $acc->code }} - {{ $acc->name }}
                                                         </option>
                                                     @endforeach
@@ -129,10 +132,10 @@
                                                 <label for="period_type">Period Type <span class="text-danger">*</span></label>
                                                 <select class="form-control" id="period_type" name="period_type" required>
                                                     <option value="">Select Period Type</option>
-                                                    <option value="1" {{ $product->period_type == 1 ? 'selected' : '' }}>Days</option>
-                                                    <option value="2" {{ $product->period_type == 2 ? 'selected' : '' }}>Weeks</option>
-                                                    <option value="3" {{ $product->period_type == 3 ? 'selected' : '' }}>Months</option>
-                                                    <option value="4" {{ $product->period_type == 4 ? 'selected' : '' }}>Years</option>
+                                                    <option value="3" {{ $product->period_type == 3 ? 'selected' : '' }}>Daily</option>
+                                                    <option value="1" {{ $product->period_type == 1 ? 'selected' : '' }}>Weekly</option>
+                                                    <option value="2" {{ $product->period_type == 2 ? 'selected' : '' }}>Monthly</option>
+                                                    <option value="4" {{ $product->period_type == 4 ? 'selected' : '' }}>Yearly</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -160,7 +163,9 @@
                                         <div class="col-md-4">
                                             <div class="form-group mb-3">
                                                 <label for="max_amt">Max Loan Amount <span class="text-danger">*</span></label>
-                                                <input type="number" step="0.01" class="form-control" id="max_amt" name="max_amt" value="{{ $product->max_amt }}" required>
+                                                <input type="text" class="form-control amount-input" id="max_amt_display" value="{{ number_format($product->max_amt, 0) }}" required>
+                                                <input type="hidden" id="max_amt" name="max_amt" value="{{ $product->max_amt }}">
+                                                <small class="text-muted">Maximum amount that can be borrowed</small>
                                             </div>
                                         </div>
                                         <div class="col-md-4">
@@ -172,7 +177,8 @@
                                         <div class="col-md-4">
                                             <div class="form-group mb-3">
                                                 <label for="cash_sceurity">Cash Security (%age required 0-100) <span class="text-danger">*</span></label>
-                                                <input type="number" step="0.01" class="form-control" id="cash_sceurity" name="cash_sceurity" value="{{ $product->cash_sceurity }}" required>
+                                                <input type="number" step="0.01" class="form-control" id="cash_sceurity" name="cash_sceurity" value="{{ $product->cash_sceurity }}" min="0" max="100" required>
+                                                <small class="text-muted">Percentage of loan amount required as security deposit</small>
                                             </div>
                                         </div>
                                     </div>
@@ -286,25 +292,70 @@
 <script>
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const productId = {{ $product->id }};
+const accountSelectElement = document.getElementById('fees_account');
+
+if (accountSelectElement) {
+    console.log('Fees account select detected:', accountSelectElement.value);
+    accountSelectElement.addEventListener('change', function() {
+        console.log('Fees account changed to:', this.value);
+    });
+} else {
+    console.warn('Fees account select element not found in DOM');
+}
 
 // Update Product Details
 document.getElementById('productDetailsForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const formData = new FormData(this);
+    const accountSelect = document.getElementById('fees_account');
+    const accountValue = accountSelect ? accountSelect.value : formData.get('account');
+    
+    console.log('Account value from form:', formData.get('account'));
+    console.log('Account value from select element:', accountValue);
+    if (accountSelect) {
+        const selectedOption = accountSelect.options[accountSelect.selectedIndex];
+        console.log('Selected option details:', selectedOption ? {
+            value: selectedOption.value,
+            text: selectedOption.text,
+            dataset: selectedOption.dataset
+        } : 'No option selected');
+    }
+    
+    // Validate account field
+    if (!accountValue || accountValue === '' || accountValue === null) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Validation Error',
+            text: 'Please select a Fees Account'
+        });
+        return;
+    }
+    
+    const accountInt = parseInt(accountValue);
+    if (isNaN(accountInt)) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Validation Error',
+            text: 'Invalid account value selected'
+        });
+        return;
+    }
+    
     const data = {
         name: formData.get('name'),
-        loan_type: formData.get('loan_type'),
-        type: formData.get('type'),
-        period_type: formData.get('period_type'),
+        loan_type: parseInt(formData.get('loan_type')),
+        type: parseInt(formData.get('type')),
+        period_type: parseInt(formData.get('period_type')),
         description: formData.get('description'),
-        account: formData.get('account'),
-        isactive: {{ $product->isactive }},
-        max_amt: {{ $product->max_amt }},
-        interest: {{ $product->interest }},
-        cash_sceurity: {{ $product->cash_sceurity }}
+        account: accountInt,
+        isactive: {{ $product->isactive ?? 1 }},
+        max_amt: {{ $product->max_amt ?? 0 }},
+        interest: {{ $product->interest ?? 0 }},
+        cash_sceurity: {{ $product->cash_sceurity ?? 0 }}
     };
     
+    console.log('Data being sent:', data);
     updateProduct(data, 'Product details updated successfully');
 });
 
@@ -313,13 +364,20 @@ document.getElementById('productParametersForm').addEventListener('submit', func
     e.preventDefault();
     
     const formData = new FormData(this);
+    const nameInput = document.getElementById('name');
+    const loanTypeInput = document.getElementById('loan_type');
+    const productTypeInput = document.getElementById('type');
+    const periodTypeInput = document.getElementById('period_type');
+    const descriptionInput = document.getElementById('description');
+    const accountInput = accountSelectElement;
+
     const data = {
-        name: '{{ $product->name }}',
-        loan_type: {{ $product->loan_type }},
-        type: {{ $product->type }},
-        period_type: {{ $product->period_type }},
-        description: '{{ addslashes($product->description) }}',
-        account: {{ $product->account }},
+        name: nameInput ? nameInput.value : '{{ addslashes($product->name) }}',
+        loan_type: loanTypeInput && loanTypeInput.value ? parseInt(loanTypeInput.value) : {{ $product->loan_type }},
+        type: productTypeInput && productTypeInput.value ? parseInt(productTypeInput.value) : {{ $product->type }},
+        period_type: periodTypeInput && periodTypeInput.value ? parseInt(periodTypeInput.value) : {{ $product->period_type }},
+        description: descriptionInput ? descriptionInput.value : '{{ addslashes($product->description) }}',
+        account: accountInput && accountInput.value ? parseInt(accountInput.value) : {{ $product->account }},
         isactive: {{ $product->isactive }},
         max_amt: formData.get('max_amt'),
         interest: formData.get('interest'),
@@ -330,6 +388,9 @@ document.getElementById('productParametersForm').addEventListener('submit', func
 });
 
 function updateProduct(data, successMessage) {
+    console.log('Sending request to:', `/admin/products/${productId}`);
+    console.log('Request data:', data);
+    
     fetch(`/admin/products/${productId}`, {
         method: 'PUT',
         headers: {
@@ -339,15 +400,37 @@ function updateProduct(data, successMessage) {
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json().then(jsonData => ({
+            status: response.status,
+            data: jsonData
+        }));
+    })
+    .then(({status, data}) => {
+        console.log('Response data:', data);
+        
+        if (status === 200 && data.success) {
             Swal.fire({
                 icon: 'success',
                 title: 'Success!',
                 text: successMessage,
                 showConfirmButton: false,
                 timer: 1500
+            });
+        } else if (status === 422) {
+            // Validation errors
+            let errorMsg = 'Validation failed:\n';
+            if (data.errors) {
+                errorMsg += Object.values(data.errors).flat().join('\n');
+            } else {
+                errorMsg = data.message || 'Validation failed';
+            }
+            console.error('Validation errors:', data.errors);
+            Swal.fire({
+                icon: 'error',
+                title: 'Validation Error!',
+                text: errorMsg
             });
         } else {
             Swal.fire({
@@ -529,6 +612,46 @@ document.querySelectorAll('.delete-charge').forEach(button => {
             }
         });
     });
+});
+
+// Format amount inputs with thousand separators
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to format amount inputs
+    function setupAmountInput(displayId, hiddenId, fieldName) {
+        const displayInput = document.getElementById(displayId);
+        const hiddenInput = document.getElementById(hiddenId);
+        
+        if (displayInput && hiddenInput) {
+            // Format on input
+            displayInput.addEventListener('input', function(e) {
+                // Remove all non-digit characters
+                let value = e.target.value.replace(/[^\d]/g, '');
+                
+                // Update hidden input with raw value
+                hiddenInput.value = value;
+                
+                // Format with commas
+                if (value) {
+                    e.target.value = parseInt(value).toLocaleString();
+                } else {
+                    e.target.value = '';
+                }
+            });
+            
+            // Prevent form submission if value is invalid
+            displayInput.closest('form').addEventListener('submit', function(e) {
+                const rawValue = hiddenInput.value;
+                if (displayInput.hasAttribute('required') && (!rawValue || rawValue === '0')) {
+                    e.preventDefault();
+                    displayInput.focus();
+                    alert('Please enter a valid ' + fieldName);
+                }
+            });
+        }
+    }
+    
+    // Setup formatter only for max loan amount
+    setupAmountInput('max_amt_display', 'max_amt', 'max loan amount');
 });
 </script>
 @endpush

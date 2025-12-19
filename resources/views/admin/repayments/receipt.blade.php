@@ -293,7 +293,15 @@
                             @if($paymentBreakdown['days_late'] > 0)
                                 <br><small style="color: #6c757d;">
                                     ({{ $paymentBreakdown['days_late'] }} {{ $paymentBreakdown['days_late'] > 1 ? 'days' : 'day' }} overdue, 
-                                    {{ $paymentBreakdown['periods_overdue'] }} {{ $repayment->loan->product->period_type == '3' ? 'day(s)' : ($repayment->loan->product->period_type == '1' ? 'week(s)' : 'month(s)') }} @ 6%)
+                                    {{ $paymentBreakdown['periods_overdue'] }}
+                                    @switch($repayment->loan->product->period_type)
+                                        @case('1') week(s) @break
+                                        @case('2') month(s) @break
+                                        @case('3') day(s) @break
+                                        @case('4') year(s) @break
+                                        @default period(s)
+                                    @endswitch
+                                    @ 6%)
                                 </small>
                             @endif
                             @if($paymentBreakdown['late_fees_waived'] > 0)

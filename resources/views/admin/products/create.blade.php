@@ -145,10 +145,10 @@
                                                 <select class="form-control @error('period_type') is-invalid @enderror" 
                                                         id="period_type" name="period_type" required>
                                                     <option value="">Select Period Type</option>
-                                                    <option value="1" {{ old('period_type') == 1 ? 'selected' : '' }}>Days</option>
-                                                    <option value="2" {{ old('period_type') == 2 ? 'selected' : '' }}>Weeks</option>
-                                                    <option value="3" {{ old('period_type') == 3 ? 'selected' : '' }}>Months</option>
-                                                    <option value="4" {{ old('period_type') == 4 ? 'selected' : '' }}>Years</option>
+                                                    <option value="3" {{ old('period_type') == 3 ? 'selected' : '' }}>Daily</option>
+                                                    <option value="1" {{ old('period_type') == 1 ? 'selected' : '' }}>Weekly</option>
+                                                    <option value="2" {{ old('period_type') == 2 ? 'selected' : '' }}>Monthly</option>
+                                                    <option value="4" {{ old('period_type') == 4 ? 'selected' : '' }}>Yearly</option>
                                                 </select>
                                                 @error('period_type')
                                                     <div class="invalid-feedback">{{ $message }}</div>
