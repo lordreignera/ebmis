@@ -136,7 +136,7 @@ class AutomateRepayments extends Command
             ->join('members as m', 'pl.member_id', '=', 'm.id')
             ->where('p.period_type', $periodType)
             ->where('pl.status', 2) // Disbursed loans only
-            ->where('ls.payment_date', $today)
+            ->where('ls.payment_date', '<=', $today) // Include overdue schedules
             ->where('ls.status', 0) // Unpaid schedules
             ->whereRaw('(ls.payment + ls.interest + ls.principal) > COALESCE(ls.paid, 0)') // Not fully paid
             ->select(
@@ -151,6 +151,7 @@ class AutomateRepayments extends Command
                 'pl.code as loan_code',
                 'p.name as product_name'
             )
+            ->orderBy('ls.payment_date', 'asc') // Oldest first
             ->get();
     }
     
