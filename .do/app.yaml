@@ -1,0 +1,45 @@
+name: ebmis
+region: sgp
+
+services:
+  - name: web
+    environment_slug: php
+    github:
+      branch: master
+      deploy_on_push: true
+      repo: lordreignera/ebmis
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /
+    run_command: heroku-php-apache2 public/
+    envs:
+      - key: APP_ENV
+        value: production
+      - key: APP_KEY
+        value: ${APP_KEY}
+        type: SECRET
+
+# Add this worker component for scheduler
+workers:
+  - name: scheduler
+    environment_slug: php
+    github:
+      branch: master
+      deploy_on_push: true
+      repo: lordreignera/ebmis
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    run_command: php artisan schedule:work
+    envs:
+      - key: APP_ENV
+        value: production
+      - key: APP_KEY
+        value: ${APP_KEY}
+        type: SECRET
+
+databases:
+  - name: ebims1
+    engine: MYSQL
+    version: "8"
