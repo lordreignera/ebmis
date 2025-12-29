@@ -583,22 +583,58 @@ class RepaymentService
     private function checkAndCloseLoanIfComplete(int $loanId): bool
     {
         try {
-            // Get all schedules for this loan
+            // Try PersonalLoan first, then GroupLoan
+            $loan = PersonalLoan::find($loanId);
+            $loanType = 'personal';
+            
+            if (!$loan) {
+                $loan = GroupLoan::find($loanId);
+                $loanType = 'group';
+            }
+            
+            if (!$loan) {
+                $loan = Loan::find($loanId);
+                $loanType = 'other';
+            }
+            
+            if (!$loan) {
+                Log::warning("Loan {$loanId} not found in checkAndCloseLoanIfComplete");
+                return false;
+            }
+            
+            // Get all schedules with repayments
             $schedules = LoanSchedule::where('loan_id', $loanId)->get();
             
+            if ($schedules->isEmpty()) {
+                return false;
+            }
+            
+            // Calculate total amount due (principal + interest + late fees - waivers)
+            $totalDue = 0;
             $allSchedulesPaid = true;
-            $totalOutstanding = 0;
             
             foreach ($schedules as $schedule) {
-                $balance = $schedule->payment - $schedule->paid;
-                $totalOutstanding += $balance;
+                $scheduleDue = $schedule->principal + $schedule->interest;
                 
-                // Check if schedule is fully paid (or overpaid)
-                if ($balance > 0.01) {
-                    // Still has a balance - loan cannot close
+                // Calculate late fee with waiver support
+                $lateFee = $this->calculateNetLateFee($schedule, $loan);
+                
+                // Calculate total paid for this schedule
+                // Use BOTH repayments table AND schedule.paid column (for backward compatibility)
+                $totalPaidFromRepayments = Repayment::where('schedule_id', $schedule->id)
+                    ->where('status', 1)
+                    ->sum('amount');
+                
+                // Use the greater of: repayments table sum OR schedule.paid column
+                $totalPaid = max($totalPaidFromRepayments, $schedule->paid ?? 0);
+                
+                $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
+                $totalDue += max(0, $scheduleBalance);
+                
+                if ($scheduleBalance > 0.01) {
                     $allSchedulesPaid = false;
-                } else if ($balance <= 0 && $schedule->status != 1) {
-                    // Paid in full (or overpaid), mark as paid
+                } else if ($scheduleBalance <= 0.01 && $schedule->status != 1) {
+                    // Mark schedule as paid
                     $schedule->update([
                         'status' => 1,
                         'date_cleared' => now()
@@ -606,31 +642,67 @@ class RepaymentService
                 }
             }
             
-            // If all schedules are paid, close the loan
-            if ($allSchedulesPaid && $totalOutstanding <= 0.01) {
-                $loan = PersonalLoan::find($loanId) ?? 
-                       GroupLoan::find($loanId) ?? 
-                       Loan::find($loanId);
-                
-                if ($loan && $loan->status != 3) {
+            // If total due is <= 0 (fully paid), close the loan
+            if ($totalDue <= 0.01 && $allSchedulesPaid) {
+                if ($loan->status != 3) {
                     $loan->update([
-                        'status' => 3, // Status 3 = Closed/Completed
+                        'status' => 3, // Closed/Completed
                         'date_closed' => now()
                     ]);
-                    
-                    Log::info("Loan {$loanId} marked as complete - all schedules paid", [
+
+                    Log::info("Loan automatically closed", [
+                        'loan_id' => $loanId,
                         'loan_code' => $loan->code ?? 'N/A',
-                        'total_outstanding' => $totalOutstanding
+                        'loan_type' => $loanType,
+                        'total_due' => $totalDue
                     ]);
+
                     return true;
+                } else {
+                    Log::info("Loan already closed", ['loan_id' => $loanId]);
                 }
+            } else {
+                Log::info("Loan not ready to close", [
+                    'loan_id' => $loanId,
+                    'total_due' => $totalDue,
+                    'all_schedules_paid' => $allSchedulesPaid,
+                    'schedules_count' => $schedules->count()
+                ]);
             }
-            
+
             return false;
+
         } catch (\Exception $e) {
             Log::error("Failed to check/close loan {$loanId}: " . $e->getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Calculate net late fee for a schedule (original fee minus waivers)
+     */
+    private function calculateNetLateFee($schedule, $loan): float
+    {
+        $now = time();
+        $your_date = strtotime($schedule->payment_date);
+        $d = max(0, floor(($now - $your_date) / 86400));
+        
+        $dd = 0;
+        if ($d > 0) {
+            $period_type = $loan->product ? $loan->product->period_type : '1';
+            $dd = $period_type == '1' ? ceil($d / 7) : ($period_type == '2' ? ceil($d / 30) : $d);
+        }
+        
+        $intrestamtpayable = $schedule->interest;
+        $lateFeeOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+        
+        // Check for waivers in late_fees table (status=2 means waived)
+        $totalWaivedAmount = DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', 2)
+            ->sum('amount');
+        
+        return max(0, $lateFeeOriginal - $totalWaivedAmount);
     }
     
     /**

@@ -1265,6 +1265,9 @@ class RepaymentController extends Controller
 
             // Apply to oldest outstanding schedules
             $this->applyPartialPayment($loan, $request->amount);
+            
+            // Check if loan is fully paid after partial payment
+            $this->checkAndCloseLoanIfComplete($loan->id);
 
             DB::commit();
 
@@ -1396,6 +1399,9 @@ class RepaymentController extends Controller
 
                 $remainingAmount -= $paymentAmount;
             }
+            
+            // Check if loan is fully paid after balance payment
+            $this->checkAndCloseLoanIfComplete($loan->id);
 
             DB::commit();
 
@@ -1703,6 +1709,9 @@ class RepaymentController extends Controller
                         $loan->update(['status' => 3]); // Completed
                     }
                 }
+                
+                // Check if loan is fully paid
+                $this->checkAndCloseLoanIfComplete($validated['loan_id']);
             }
 
             DB::commit();
@@ -1810,6 +1819,9 @@ class RepaymentController extends Controller
                         $loan->update(['status' => 2]); // Active
                     }
                 }
+                
+                // Check if loan is fully paid
+                $this->checkAndCloseLoanIfComplete($repayment->loan_id);
             }
 
             DB::commit();
@@ -3021,12 +3033,17 @@ class RepaymentController extends Controller
                 
                 // Calculate late fee using helper method
                 $lateFeeData = $this->calculateLateFee($schedule, $loan);
-                $lateFee = $lateFeeData['netLateFee'];
+                $lateFee = $lateFeeData['net'];
                 
                 // Calculate total paid for this schedule
-                $totalPaid = Repayment::where('schedule_id', $schedule->id)
+                // FIXED: Also use schedule.paid column as fallback for old loans without repayment records
+                $totalPaidFromRepayments = Repayment::where('schedule_id', $schedule->id)
                     ->where('status', 1)
                     ->sum('amount');
+                
+                // Use the greater of: repayments table sum OR schedule.paid column
+                // This handles both new loans (with repayment records) and old loans (direct schedule updates)
+                $totalPaid = max($totalPaidFromRepayments, $schedule->paid ?? 0);
                 
                 $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
                 $totalDue += max(0, $scheduleBalance);
@@ -3058,7 +3075,16 @@ class RepaymentController extends Controller
                     ]);
 
                     return true;
+                } else {
+                    Log::info("Loan already closed", ['loan_id' => $loanId]);
                 }
+            } else {
+                Log::info("Loan not ready to close", [
+                    'loan_id' => $loanId,
+                    'total_due' => $totalDue,
+                    'all_schedules_paid' => $allSchedulesPaid,
+                    'schedules_count' => $schedules->count()
+                ]);
             }
 
             return false;

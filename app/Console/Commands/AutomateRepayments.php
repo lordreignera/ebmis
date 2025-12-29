@@ -331,11 +331,13 @@ class AutomateRepayments extends Command
         ]);
         
         try {
-            // Get loan details for member name
+            // Get loan and schedule details
+            $paymentRequest = DB::table('auto_payment_requests')->find($requestId);
+            
             $loan = DB::table('personal_loans as pl')
                 ->join('members as m', 'pl.member_id', '=', 'm.id')
                 ->where('pl.code', $loanCode)
-                ->select('m.fname', 'm.lname', 'pl.id', 'pl.code')
+                ->select('m.fname', 'm.lname', 'pl.id', 'pl.code', 'm.id as member_id')
                 ->first();
             
             if (!$loan) {
@@ -367,13 +369,61 @@ class AutomateRepayments extends Command
                 ]);
             
             if ($result['success']) {
-                Log::info("Payment request sent successfully", [
-                    'request_id' => $requestId,
-                    'reference' => $result['reference'] ?? null,
-                    'message' => $result['message'] ?? 'Success'
+                // Create Repayment record so callback can find it and update status
+                // This matches the manual repayment flow
+                $transactionRef = $result['reference'];
+                $formattedPhone = $this->formatPhone($phone);
+                
+                DB::table('repayments')->insert([
+                    'schedule_id' => $paymentRequest->schedule_id,
+                    'loan_id' => $loan->id,
+                    'amount' => $amount,
+                    'type' => 2, // Mobile Money
+                    'status' => '0', // Pending - will be approved by callback
+                    'txn_id' => $transactionRef,
+                    'transaction_reference' => $transactionRef,
+                    'pay_status' => 'PENDING',
+                    'pay_message' => 'Automatic payment initiated - awaiting confirmation',
+                    'payment_phone' => $formattedPhone,
+                    'added_by' => 1, // System user
+                    'date_created' => Carbon::now()
                 ]);
                 
-                $this->info("  → Payment request sent: {$result['reference']}");
+                // Also create raw_payments record for tracking (bimsadmin style)
+                DB::table('raw_payments')->insert([
+                    'trans_id' => $transactionRef,
+                    'phone' => $formattedPhone,
+                    'amount' => $amount,
+                    'ref' => $result['flexipay_ref'] ?? '',
+                    'message' => 'Automatic payment initiated',
+                    'status' => 'Processed',
+                    'pay_status' => '00',
+                    'pay_message' => 'Completed successfully',
+                    'date_created' => Carbon::now(),
+                    'type' => 'repayment',
+                    'direction' => 'cash_in',
+                    'added_by' => 1,
+                    'raw_message' => serialize([
+                        'schedule_id' => $paymentRequest->schedule_id, 
+                        'loan_id' => $loan->id, 
+                        'member_id' => $loan->member_id,
+                        'auto_payment_request_id' => $requestId
+                    ]),
+                ]);
+                
+                Log::info("Payment request sent successfully", [
+                    'request_id' => $requestId,
+                    'reference' => $transactionRef,
+                    'message' => $result['message'] ?? 'Success',
+                    'repayment_created' => true
+                ]);
+                
+                $this->info("  → Payment request sent: {$transactionRef}");
+                
+                // Poll for payment status (like manual payments) - wait 60 seconds
+                $this->info("  → Polling for status confirmation...");
+                $this->pollPaymentStatus($transactionRef, $requestId, $paymentRequest->schedule_id, 12); // 12 attempts x 5 seconds = 60 seconds
+                
             } else {
                 Log::warning("Payment request failed", [
                     'request_id' => $requestId,
@@ -414,5 +464,111 @@ class AutomateRepayments extends Command
         }
         
         return $phone;
+    }
+    
+    /**
+     * Poll payment status after initiation (like manual payments)
+     */
+    protected function pollPaymentStatus($transactionRef, $requestId, $scheduleId, $maxAttempts = 12)
+    {
+        $attempt = 0;
+        
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            sleep(5); // Wait 5 seconds between checks
+            
+            // Check repayment status in database
+            $repayment = DB::table('repayments')
+                ->where('txn_id', $transactionRef)
+                ->orWhere('transaction_reference', $transactionRef)
+                ->first();
+            
+            if ($repayment && $repayment->status == 1) {
+                $this->info("  → ✓ Payment confirmed in database!");
+                
+                // Update auto_payment_requests
+                DB::table('auto_payment_requests')
+                    ->where('id', $requestId)
+                    ->update([
+                        'status' => 'completed',
+                        'completed_at' => Carbon::now()
+                    ]);
+                
+                return true;
+            }
+            
+            // Check status with FlexiPay/Stanbic API
+            $statusResult = $this->mobileMoneyService->checkTransactionStatus($transactionRef);
+            
+            if ($statusResult['success'] && $statusResult['status'] === 'completed') {
+                $this->info("  → ✓ Payment confirmed by FlexiPay!");
+                
+                // Update repayment if not already updated by callback
+                if ($repayment && $repayment->status == 0) {
+                    DB::beginTransaction();
+                    try {
+                        DB::table('repayments')
+                            ->where('id', $repayment->id)
+                            ->update([
+                                'status' => '1',
+                                'pay_status' => 'SUCCESS',
+                                'pay_message' => 'Payment completed (auto-polling)',
+                                'updated_at' => Carbon::now()
+                            ]);
+                        
+                        // Update schedule
+                        $schedule = DB::table('loan_schedules')->find($scheduleId);
+                        if ($schedule) {
+                            $newPaid = ($schedule->paid ?? 0) + $repayment->amount;
+                            $isFullyPaid = $newPaid >= $schedule->payment;
+                            
+                            DB::table('loan_schedules')
+                                ->where('id', $scheduleId)
+                                ->update([
+                                    'paid' => $newPaid,
+                                    'status' => $isFullyPaid ? 1 : 0,
+                                    'date_cleared' => $isFullyPaid ? Carbon::now() : null
+                                ]);
+                            
+                            $this->info("  → ✓ Updated schedule #{$scheduleId}");
+                        }
+                        
+                        // Update auto_payment_requests
+                        DB::table('auto_payment_requests')
+                            ->where('id', $requestId)
+                            ->update([
+                                'status' => 'completed',
+                                'completed_at' => Carbon::now()
+                            ]);
+                        
+                        DB::commit();
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+                        Log::error("Failed to update payment status", [
+                            'transaction_ref' => $transactionRef,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                return true;
+            } elseif ($statusResult['success'] && $statusResult['status'] === 'failed') {
+                $this->warn("  → ✗ Payment failed: {$statusResult['message']}");
+                
+                DB::table('auto_payment_requests')
+                    ->where('id', $requestId)
+                    ->update(['status' => 'failed']);
+                
+                return false;
+            }
+            
+            // Still pending...
+            if ($attempt % 3 == 0) { // Show progress every 15 seconds
+                $this->info("  → [{$attempt}/{$maxAttempts}] Still pending...");
+            }
+        }
+        
+        $this->warn("  → Timeout after 60 seconds - will retry later");
+        return false;
     }
 }
