@@ -197,6 +197,7 @@ Route::middleware([
     Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');
     Route::post('/loans/retry-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'retryLoanMobileMoneyPayment'])->name('loans.retry-mobile-money');
     Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');
+    Route::match(['get', 'post'], '/loans/{loan}/close-manual', [\App\Http\Controllers\Admin\LoanController::class, 'closeLoanManually'])->name('loans.close-manual');
     
     // Enhanced Loan Services Integration
     Route::post('/loans/calculate', [\App\Http\Controllers\Admin\LoanController::class, 'calculateLoan'])->name('loans.calculate');

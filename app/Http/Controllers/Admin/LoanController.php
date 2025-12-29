@@ -16,10 +16,12 @@ use App\Models\Repayment;
 use App\Models\Fee;
 use App\Models\FeeType;
 use App\Services\FileStorageService;
+use App\Services\LoanClosureService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 class LoanController extends Controller
 {
@@ -3540,6 +3542,63 @@ class LoanController extends Controller
                 'success' => false,
                 'message' => 'Error removing guarantor: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Manually close a loan that has cleared schedules
+     */
+    public function closeLoanManually(Request $request, int $loanId, LoanClosureService $loanClosureService)
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $result = $loanClosureService->closeLoan($loanId, auth()->id());
+
+            $message = $result['already_closed'] ?? false
+                ? 'Loan is already marked as closed.'
+                : 'Loan closed successfully.';
+
+            if (($result['overpayment'] ?? 0) > 0) {
+                $message .= ' Overpayment balance of UGX ' . number_format($result['overpayment'], 2) . ' remains.';
+            }
+
+            Log::info('Manual loan closure executed', [
+                'loan_id' => $loanId,
+                'user_id' => auth()->id(),
+                'notes' => $request->input('notes'),
+                'result' => $result,
+            ]);
+
+            $payload = [
+                'success' => true,
+                'message' => $message,
+                'loan_id' => $loanId,
+                'data' => $result,
+            ];
+
+            if ($request->wantsJson()) {
+                return response()->json($payload);
+            }
+
+            return redirect()->back()->with('success', $message);
+        } catch (\Throwable $e) {
+            Log::error('Manual loan closure failed', [
+                'loan_id' => $loanId,
+                'user_id' => auth()->id(),
+                'message' => $e->getMessage(),
+            ]);
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+
+            return redirect()->back()->with('error', $e->getMessage());
         }
     }
 }

@@ -41,26 +41,24 @@ class CheckDisbursements extends Command
         
         // Get pending disbursements with mobile money transactions
         $disbursements = DB::table('disbursements')
-            ->join('raw_payments', function($join) {
-                $join->on('disbursements.id', '=', 'raw_payments.disbursement_id')
-                     ->where('raw_payments.type', '=', 'disbursement');
+            ->join('disbursement_txn', function($join) {
+                $join->on('disbursements.id', '=', 'disbursement_txn.disbursement_id')
+                     ->where('disbursement_txn.status', '=', '00');
             })
             ->where('disbursements.status', 0) // Only pending disbursements
             ->where('disbursements.payment_type', 1) // Mobile money only
-            ->where('raw_payments.pay_status', '00') // Pending status
             ->select(
                 'disbursements.id as disbursement_id',
                 'disbursements.loan_id',
                 'disbursements.loan_type',
                 'disbursements.amount',
-                'disbursements.code',
-                'raw_payments.id as payment_id',
-                'raw_payments.txn_id as trans_id'
+                'disbursement_txn.id as payment_id',
+                'disbursement_txn.txnref as trans_id'
             );
 
         // If specific transaction specified
         if ($this->option('txn')) {
-            $disbursements->where('raw_payments.txn_id', $this->option('txn'));
+            $disbursements->where('disbursement_txn.txnref', $this->option('txn'));
         }
 
         $disbursements = $disbursements->get();

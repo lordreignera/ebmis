@@ -583,6 +583,13 @@ class RepaymentController extends Controller
                 $act_bal = 0; // Show 0 balance for this schedule (not negative)
             }
             
+            // 8b. Adjust arrears period for cleared or waived schedules
+            // If schedule is fully paid/waived OR late fees were waived, show 0 arrears
+            // This prevents late fees from continuing to accumulate on waived schedules
+            if ($act_bal == 0 || $totalWaivedAmount > 0) {
+                $dd = 0; // No arrears if fully cleared or late fees waived
+            }
+            
             // 9. Attach calculated values to schedule
             $schedule->pricipalcalIntrest = $pricipalcalIntrest;
             $schedule->globalprincipal = $globalprincipal;
