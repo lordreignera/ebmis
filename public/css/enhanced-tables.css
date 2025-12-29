@@ -268,6 +268,37 @@ table.table .badge {
     font-weight: 500 !important;
 }
 
+/* Payment Method Badge Styles */
+.payment-method-badge {
+    font-size: 0.75rem !important;
+    padding: 0.4rem 0.8rem !important;
+    border-radius: 20px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    display: inline-block !important;
+}
+
+.method-cash { 
+    background: #047857 !important; 
+    color: #ffffff !important; 
+}
+
+.method-mobile { 
+    background: #f59e0b !important; 
+    color: #ffffff !important; 
+}
+
+.method-bank { 
+    background: #0284c7 !important; 
+    color: #ffffff !important; 
+}
+
+/* Ensure payment method badges stay visible on hover */
+.table tbody tr:hover .payment-method-badge,
+table.table tbody tr:hover .payment-method-badge {
+    color: #ffffff !important;
+}
+
 /* Profile Images in Tables */
 .table .rounded-circle,
 table.table .rounded-circle {

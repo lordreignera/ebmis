@@ -2192,44 +2192,7 @@ class LoanController extends Controller
      */
     public function viewAgreement($id, $type)
     {
-        try {
-            // Get loan with related data
-            if ($type === 'personal') {
-                $loan = PersonalLoan::with(['member', 'product', 'branch'])->findOrFail($id);
-                if (!$loan->member) {
-                    abort(404, 'Member not found for this loan');
-                }
-                $borrower = $loan->member;
-            } else {
-                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->findOrFail($id);
-                if (!$loan->group) {
-                    abort(404, 'Group not found for this loan');
-                }
-                $borrower = $loan->group;
-            }
-
-            // Use DOMPDF directly
-            $options = new \Dompdf\Options();
-            $options->set('isHtml5ParserEnabled', true);
-            $options->set('isRemoteEnabled', true);
-            
-            $dompdf = new \Dompdf\Dompdf($options);
-            
-            // Load HTML from view
-            $html = view('admin.loans.agreement-pdf', compact('loan', 'borrower', 'type'))->render();
-            $dompdf->loadHtml($html);
-            $dompdf->setPaper('A4', 'portrait');
-            $dompdf->render();
-            
-            // Stream the PDF
-            return response($dompdf->output(), 200)
-                ->header('Content-Type', 'application/pdf')
-                ->header('Content-Disposition', 'inline; filename="loan-agreement-' . $loan->code . '.pdf"');
-
-        } catch (\Exception $e) {
-            \Log::error('Agreement viewing error: ' . $e->getMessage());
-            return back()->with('error', 'Error generating agreement: ' . $e->getMessage());
-        }
+        return $this->generateAgreementPDF($id, $type, false);
     }
 
     /**
@@ -2598,17 +2561,32 @@ class LoanController extends Controller
      */
     public function downloadSignedAgreement($id, $type)
     {
+        return $this->generateAgreementPDF($id, $type, true);
+    }
+
+    /**
+     * Helper method to generate agreement PDF (view or download)
+     */
+    private function generateAgreementPDF($id, $type, $isDownload = false)
+    {
         try {
-            // Get loan
+            // Get loan with related data
             if ($type === 'personal') {
-                $loan = PersonalLoan::with(['member', 'product', 'branch'])->find($id);
+                $loan = PersonalLoan::with(['member', 'product', 'branch'])->findOrFail($id);
+                if (!$loan->member) {
+                    abort(404, 'Member not found for this loan');
+                }
                 $borrower = $loan->member;
             } else {
-                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->find($id);
+                $loan = GroupLoan::with(['group.members', 'product', 'branch'])->findOrFail($id);
+                if (!$loan->group) {
+                    abort(404, 'Group not found for this loan');
+                }
                 $borrower = $loan->group;
             }
 
-            if (!$loan || $loan->signature_status !== 'signed') {
+            // For downloads, check if agreement is signed
+            if ($isDownload && $loan->signature_status !== 'signed') {
                 abort(404, 'Signed agreement not found');
             }
 
@@ -2619,20 +2597,25 @@ class LoanController extends Controller
             
             $dompdf = new \Dompdf\Dompdf($options);
             
-            // Load HTML from view
-            $html = view('admin.loans.signed-agreement-pdf', compact('loan', 'borrower', 'type'))->render();
+            // Load HTML from view (use signed agreement view for downloads)
+            $viewName = $isDownload ? 'admin.loans.signed-agreement-pdf' : 'admin.loans.agreement-pdf';
+            $html = view($viewName, compact('loan', 'borrower', 'type'))->render();
             $dompdf->loadHtml($html);
             $dompdf->setPaper('A4', 'portrait');
             $dompdf->render();
             
-            // Download the PDF
+            // Determine disposition (inline for view, attachment for download)
+            $disposition = $isDownload ? 'attachment' : 'inline';
+            $filenamePrefix = $isDownload ? 'signed-agreement-' : 'loan-agreement-';
+            
+            // Stream the PDF
             return response($dompdf->output(), 200)
                 ->header('Content-Type', 'application/pdf')
-                ->header('Content-Disposition', 'attachment; filename="signed-agreement-' . $loan->code . '.pdf"');
+                ->header('Content-Disposition', $disposition . '; filename="' . $filenamePrefix . $loan->code . '.pdf"');
 
         } catch (\Exception $e) {
-            \Log::error('Signed agreement download error: ' . $e->getMessage());
-            return back()->with('error', 'Error downloading signed agreement: ' . $e->getMessage());
+            \Log::error('Agreement PDF generation error: ' . $e->getMessage());
+            return back()->with('error', 'Error generating agreement: ' . $e->getMessage());
         }
     }
 
@@ -2817,14 +2800,9 @@ class LoanController extends Controller
      */
     public function printSchedule($id)
     {
-        $loan = PersonalLoan::with(['member', 'product', 'branch'])
-            ->findOrFail($id);
-        
-        $schedules = LoanSchedule::where('loan_id', $id)
-            ->orderBy('installment')
-            ->get();
-        
-        return view('admin.loans.print.schedule', compact('loan', 'schedules'));
+        return $this->printLoanDocument($id, 'schedule', function($query) {
+            return $query->orderBy('installment');
+        });
     }
 
     /**
@@ -2832,16 +2810,32 @@ class LoanController extends Controller
      */
     public function printNotice($id)
     {
+        return $this->printLoanDocument($id, 'notice', function($query) {
+            return $query->where('status', 0)
+                ->where('installment_date', '<', now())
+                ->orderBy('installment');
+        });
+    }
+
+    /**
+     * Helper method to print loan documents
+     */
+    private function printLoanDocument($id, $viewType, $scheduleFilter = null)
+    {
         $loan = PersonalLoan::with(['member', 'product', 'branch'])
             ->findOrFail($id);
         
-        $schedules = LoanSchedule::where('loan_id', $id)
-            ->where('status', 0)
-            ->where('installment_date', '<', now())
-            ->orderBy('installment')
-            ->get();
+        $schedulesQuery = LoanSchedule::where('loan_id', $id);
         
-        return view('admin.loans.print.notice', compact('loan', 'schedules'));
+        if ($scheduleFilter) {
+            $schedulesQuery = $scheduleFilter($schedulesQuery);
+        } else {
+            $schedulesQuery = $schedulesQuery->orderBy('installment');
+        }
+        
+        $schedules = $schedulesQuery->get();
+        
+        return view('admin.loans.print.' . $viewType, compact('loan', 'schedules'));
     }
 
     /**
@@ -3020,6 +3014,12 @@ class LoanController extends Controller
         $pendingCount = $schedules->where('status', 0)->count();
         $overdueCount = $schedules->where('periods_in_arrears', '>', 0)->count();
 
+        // Get active late fees from late_fees table
+        $totalLateFees = DB::table('late_fees')
+            ->where('loan_id', $id)
+            ->where('status', '!=', 2) // Exclude waived fees
+            ->sum('amount');
+
         // Prepare loan summary data
         $loanData = (object)[
             'id' => $loan->id,
@@ -3034,7 +3034,7 @@ class LoanController extends Controller
             'total_payable' => $schedules->sum('payment'),
             'amount_paid' => $schedules->sum('paid'),
             'outstanding_balance' => $schedules->sum('payment') - $schedules->sum('paid'),
-            'total_late_fees' => $schedules->sum('penalty'),
+            'total_late_fees' => $totalLateFees, // Use late_fees table data
             'days_overdue' => $this->calculateDaysOverdue($loan),
         ];
 
@@ -3054,18 +3054,17 @@ class LoanController extends Controller
         $validated = $request->validate([
             'reason' => 'required|string',
             'comments' => 'required|string|min:20',
-            'new_principal' => 'required|numeric|min:1000',
             'new_interest' => 'required|numeric|min:0|max:100',
             'new_period' => 'required|integer|min:1|max:260',
             'grace_period' => 'nullable|integer|min:0|max:12',
-            'waive_late_fees' => 'nullable|boolean',
+            'include_late_fees' => 'nullable|boolean',
             'confirm' => 'required|accepted',
         ]);
 
         try {
             DB::beginTransaction();
 
-            $originalLoan = PersonalLoan::with(['member', 'product'])->findOrFail($id);
+            $originalLoan = PersonalLoan::with(['member', 'product', 'schedules'])->findOrFail($id);
 
             // Verify loan can be restructured
             if ($originalLoan->status != 2) {
@@ -3076,6 +3075,29 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', 'This loan has already been restructured.');
             }
 
+            // Calculate outstanding balance automatically
+            $schedules = $originalLoan->schedules;
+            $totalPayable = $schedules->sum('payment');
+            $totalPaid = $schedules->sum('paid');
+            $outstandingBalance = $totalPayable - $totalPaid;
+            
+            // Get total late fees (from late_fees table for accuracy)
+            $totalLateFees = DB::table('late_fees')
+                ->where('loan_id', $originalLoan->id)
+                ->where('status', '!=', 2) // Exclude waived fees
+                ->sum('amount'); // Column is 'amount' not 'late_fee'
+            
+            // Calculate new principal (include late fees if requested)
+            $newPrincipal = $outstandingBalance;
+            if (isset($validated['include_late_fees']) && $validated['include_late_fees']) {
+                $newPrincipal += $totalLateFees;
+            }
+            
+            // Ensure minimum principal
+            if ($newPrincipal < 1000) {
+                return redirect()->back()->with('error', 'Calculated principal is too low. Outstanding balance: ' . number_format($outstandingBalance) . ' UGX');
+            }
+
             // Create restructured loan
             $restructuredLoan = new PersonalLoan();
             $restructuredLoan->member_id = $originalLoan->member_id;
@@ -3084,15 +3106,15 @@ class LoanController extends Controller
             $restructuredLoan->interest = $validated['new_interest'];
             $restructuredLoan->interest_method = $originalLoan->interest_method;
             $restructuredLoan->period = $validated['new_period'];
-            $restructuredLoan->principal = $validated['new_principal'];
+            $restructuredLoan->principal = $newPrincipal;
             
-            // Calculate new installment (simplified)
-            $totalInterest = $validated['new_principal'] * ($validated['new_interest'] / 100);
-            $totalPayable = $validated['new_principal'] + $totalInterest;
-            $restructuredLoan->installment = $totalPayable / $validated['new_period'];
+            // Use LoanScheduleService to calculate installment
+            $scheduleService = app(\App\Services\LoanScheduleService::class);
             
-            $restructuredLoan->status = 0; // Pending approval
-            $restructuredLoan->verified = 0;
+            // Temporarily save loan to generate schedules (LoanScheduleService needs a saved loan)
+            $restructuredLoan->status = 2; // Active/Disbursed (restructured loans are immediately active)
+            $restructuredLoan->verified = 1; // Automatically verified
+            $restructuredLoan->date_approved = now()->format('Y-m-d H:i:s'); // Set approval date
             $restructuredLoan->added_by = auth()->id();
             $restructuredLoan->branch_id = $originalLoan->branch_id;
             $restructuredLoan->repay_strategy = $originalLoan->repay_strategy;
@@ -3101,28 +3123,55 @@ class LoanController extends Controller
             $restructuredLoan->charge_type = $originalLoan->charge_type;
             $restructuredLoan->restructured = 1;
             $restructuredLoan->OLoanID = $originalLoan->code;
-            $restructuredLoan->Rcomments = "Restructured Loan. Reason: {$validated['reason']}. Comments: {$validated['comments']}";
+            $restructuredLoan->sign_code = $originalLoan->sign_code ?? 'RESTRUCTURED';
+            $restructuredLoan->Rcomments = "Restructured Loan. Reason: {$validated['reason']}. Comments: {$validated['comments']}. Outstanding: " . number_format($outstandingBalance) . " UGX" . ((isset($validated['include_late_fees']) && $validated['include_late_fees']) ? ", Late Fees: " . number_format($totalLateFees) . " UGX" : ", Late Fees Waived");
             $restructuredLoan->datecreated = now();
+            
+            // Calculate a simple installment for now (will be recalculated by schedules)
+            $totalInterest = $newPrincipal * ($validated['new_interest'] / 100);
+            $totalPayable = $newPrincipal + $totalInterest;
+            $restructuredLoan->installment = $totalPayable / $validated['new_period'];
+            
             $restructuredLoan->save();
+            
+            // Now generate proper schedules using LoanScheduleService
+            $schedules = $scheduleService->generateSchedule($restructuredLoan);
+            
+            // Insert schedules
+            foreach ($schedules as $schedule) {
+                LoanSchedule::create([
+                    'loan_id' => $restructuredLoan->id,
+                    'payment_date' => $schedule['payment_date'],
+                    'principal' => $schedule['principal'],
+                    'interest' => $schedule['interest'],
+                    'payment' => $schedule['payment'],
+                    'balance' => $schedule['balance'],
+                    'paid' => 0,
+                    'status' => 0, // Unpaid
+                ]);
+            }
 
             // Update original loan
-            $originalLoan->status = 3; // Closed/Restructured
+            $originalLoan->status = 5; // Restructured (status 5: 0=Pending, 1=Approved, 2=Disbursed, 3=Closed, 4=Rejected, 5=Restructured)
             $originalLoan->restructured = 1;
-            $originalLoan->Rcomments = "Loan restructured to {$restructuredLoan->code} on " . now()->format('Y-m-d H:i:s');
+            $originalLoan->Rcomments = "Loan restructured to {$restructuredLoan->code} on " . now()->format('Y-m-d H:i:s') . ". New Principal: " . number_format($newPrincipal) . " UGX";
             $originalLoan->date_closed = now();
             $originalLoan->save();
 
-            // If waive late fees is checked, mark penalties as waived
-            if ($validated['waive_late_fees']) {
-                DB::table('loan_schedules')
+            // Waive late fees on old loan if not included in new principal
+            if (!(isset($validated['include_late_fees']) && $validated['include_late_fees'])) {
+                DB::table('late_fees')
                     ->where('loan_id', $originalLoan->id)
-                    ->update(['penalty' => 0]);
+                    ->update(['status' => 2]); // Mark as waived
             }
 
             DB::commit();
 
-            return redirect()->route('admin.loans.show', ['id' => $restructuredLoan->id, 'type' => 'personal'])
-                ->with('success', 'Loan restructured successfully! New loan code: ' . $restructuredLoan->code . '. The loan is pending approval.');
+            return redirect()->route('admin.loans.active')
+                ->with('success', 'Loan restructured successfully! New loan code: ' . $restructuredLoan->code . 
+                       '. Outstanding balance: ' . number_format($outstandingBalance) . ' UGX' .
+                       ((isset($validated['include_late_fees']) && $validated['include_late_fees']) ? ' + Late Fees: ' . number_format($totalLateFees) . ' UGX' : ' (Late fees waived)') .
+                       ' = New Principal: ' . number_format($newPrincipal) . ' UGX. New loan is now active and schedules have been generated.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -3162,7 +3211,8 @@ class LoanController extends Controller
             ->first();
 
         if ($overdueSchedule) {
-            $dueDate = \Carbon\Carbon::createFromFormat('d-m-Y', $overdueSchedule->payment_date);
+            // payment_date is stored as 'Y-m-d' in database, not 'd-m-Y'
+            $dueDate = \Carbon\Carbon::parse($overdueSchedule->payment_date);
             return now()->diffInDays($dueDate, false) * -1;
         }
 

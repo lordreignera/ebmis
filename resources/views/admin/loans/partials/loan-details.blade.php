@@ -42,8 +42,12 @@
                     <span class="badge bg-primary">Disbursed</span>
                 @elseif($loan->status == 3)
                     <span class="badge bg-success">Completed</span>
-                @else
+                @elseif($loan->status == 4)
                     <span class="badge bg-danger">Rejected</span>
+                @elseif($loan->status == 5)
+                    <span class="badge bg-secondary">Restructured</span>
+                @else
+                    <span class="badge bg-secondary">Unknown</span>
                 @endif
             </div>
         </div>

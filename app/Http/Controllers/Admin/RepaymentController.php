@@ -328,14 +328,14 @@ class RepaymentController extends Controller
     {
         // Try to find loan in personal_loans first, then group_loans
         $loan = PersonalLoan::with(['member', 'branch', 'product', 'schedules.repayments', 'repayments'])
-                   ->whereIn('status', [2, 3]) // Disbursed or Completed
+                   ->whereIn('status', [2, 3, 5]) // Disbursed, Completed, or Restructured
                    ->find($loanId);
         
         $loanType = 'personal';
         
         if (!$loan) {
             $loan = GroupLoan::with(['group', 'branch', 'product', 'schedules.repayments', 'repayments'])
-                       ->whereIn('status', [2, 3]) // Disbursed or Completed
+                       ->whereIn('status', [2, 3, 5]) // Disbursed, Completed, or Restructured
                        ->find($loanId);
             $loanType = 'group';
         }

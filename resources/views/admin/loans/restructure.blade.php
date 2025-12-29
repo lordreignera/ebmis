@@ -1,4 +1,4 @@
-@extends('admin.layout')
+@extends('layouts.admin')
 
 @section('title', 'Restructure Loan - ' . $loan->code)
 
@@ -54,6 +54,35 @@
                     </h5>
                 </div>
                 <div class="card-body">
+                    <!-- Display any errors -->
+                    @if ($errors->any())
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <h6 class="alert-heading"><i class="mdi mdi-alert-circle-outline me-2"></i>Validation Errors:</h6>
+                            <ul class="mb-0">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    @endif
+
+                    <!-- Display success message -->
+                    @if (session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <i class="mdi mdi-check-circle-outline me-2"></i>{{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    @endif
+
+                    <!-- Display error message -->
+                    @if (session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="mdi mdi-alert-circle-outline me-2"></i>{{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    @endif
+
                     <div class="info-box">
                         <h6><i class="mdi mdi-information-outline me-2"></i>What is Loan Restructuring?</h6>
                         <p class="mb-0">Loan restructuring allows you to modify the terms of an existing loan for borrowers experiencing financial difficulties. This creates a new loan with adjusted terms while maintaining a link to the original loan.</p>
@@ -93,19 +122,31 @@
                         <h5 class="mb-3">New Loan Terms</h5>
 
                         <div class="row">
-                            <!-- New Principal Amount -->
-                            <div class="col-md-6 mb-3">
-                                <label for="new_principal" class="form-label">New Principal Amount <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control @error('new_principal') is-invalid @enderror" 
-                                       id="new_principal" name="new_principal" 
-                                       value="{{ old('new_principal', $loan->outstanding_balance) }}" 
-                                       min="1000" step="100" required>
-                                <small class="form-text text-muted">Current outstanding: UGX {{ number_format($loan->outstanding_balance, 0) }}</small>
-                                @error('new_principal')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                            <!-- Calculated Principal (Read-only display) -->
+                            <div class="col-md-12 mb-3">
+                                <div class="alert alert-info">
+                                    <h6 class="mb-2"><i class="mdi mdi-calculator me-2"></i>Automatic Principal Calculation</h6>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <strong>Outstanding Balance:</strong><br>
+                                            <span class="h5 text-primary">UGX {{ number_format($loan->outstanding_balance, 0) }}</span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <strong>Total Late Fees:</strong><br>
+                                            <span class="h5 text-danger">UGX {{ number_format($loan->total_late_fees ?? 0, 0) }}</span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <strong>New Principal:</strong><br>
+                                            <span class="h5 text-success" id="calculated_principal">
+                                                UGX {{ number_format($loan->outstanding_balance, 0) }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
+                        </div>
 
+                        <div class="row">
                             <!-- New Interest Rate -->
                             <div class="col-md-6 mb-3">
                                 <label for="new_interest" class="form-label">New Interest Rate (%) <span class="text-danger">*</span></label>
@@ -118,9 +159,7 @@
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
-                        </div>
 
-                        <div class="row">
                             <!-- New Loan Period -->
                             <div class="col-md-6 mb-3">
                                 <label for="new_period" class="form-label">New Loan Period <span class="text-danger">*</span></label>
@@ -133,22 +172,15 @@
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
-
-                            <!-- Grace Period (Optional) -->
-                            <div class="col-md-6 mb-3">
-                                <label for="grace_period" class="form-label">Grace Period (Optional)</label>
-                                <input type="number" class="form-control" id="grace_period" name="grace_period" 
-                                       value="{{ old('grace_period', 0) }}" min="0" max="12">
-                                <small class="form-text text-muted">Number of periods before first payment (0 = no grace period)</small>
-                            </div>
                         </div>
 
-                        <!-- Waive Late Fees -->
+                        <!-- Include Late Fees Option -->
                         <div class="mb-3">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="waive_late_fees" name="waive_late_fees" value="1" {{ old('waive_late_fees') ? 'checked' : '' }}>
-                                <label class="form-check-label" for="waive_late_fees">
-                                    Waive all accumulated late fees (UGX {{ number_format($loan->total_late_fees ?? 0, 0) }})
+                                <input class="form-check-input" type="checkbox" id="include_late_fees" name="include_late_fees" value="1" {{ old('include_late_fees') ? 'checked' : '' }}>
+                                <label class="form-check-label" for="include_late_fees">
+                                    <strong>Include late fees in new principal</strong> (UGX {{ number_format($loan->total_late_fees ?? 0, 0) }})
+                                    <br><small class="text-muted">If checked, late fees will be added to the outstanding balance. If unchecked, late fees will be waived.</small>
                                 </label>
                             </div>
                         </div>
@@ -271,40 +303,38 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
-    // Calculate new installment on input change
-    $('#new_principal, #new_interest, #new_period').on('input', function() {
-        calculateNewInstallment();
+    const outstandingBalance = {{ $loan->outstanding_balance }};
+    const lateFees = {{ $loan->total_late_fees ?? 0 }};
+    
+    // Update calculated principal when late fees checkbox changes
+    $('#include_late_fees').on('change', function() {
+        updateCalculatedPrincipal();
     });
 
-    function calculateNewInstallment() {
-        const principal = parseFloat($('#new_principal').val()) || 0;
-        const rate = parseFloat($('#new_interest').val()) || 0;
-        const period = parseInt($('#new_period').val()) || 1;
-
-        if (principal > 0 && period > 0) {
-            // Simple calculation: (Principal + Interest) / Period
-            const totalInterest = principal * (rate / 100);
-            const totalPayable = principal + totalInterest;
-            const installment = totalPayable / period;
-
-            // Show preview (you can add a preview section if needed)
-            console.log('Estimated installment:', installment);
-        }
+    function updateCalculatedPrincipal() {
+        const includeFees = $('#include_late_fees').is(':checked');
+        const newPrincipal = includeFees ? (outstandingBalance + lateFees) : outstandingBalance;
+        
+        $('#calculated_principal').text('UGX ' + newPrincipal.toLocaleString('en-US', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }));
     }
 
     // Form validation
     $('#restructureForm').on('submit', function(e) {
-        const newPrincipal = parseFloat($('#new_principal').val());
-        const outstanding = {{ $loan->outstanding_balance }};
+        const includeFees = $('#include_late_fees').is(':checked');
+        const calculatedPrincipal = includeFees ? (outstandingBalance + lateFees) : outstandingBalance;
 
-        if (newPrincipal < outstanding * 0.5) {
-            if (!confirm('The new principal is significantly lower than the outstanding balance. Continue?')) {
-                e.preventDefault();
-                return false;
-            }
+        if (calculatedPrincipal < 1000) {
+            alert('Calculated principal is too low (minimum 1,000 UGX)');
+            e.preventDefault();
+            return false;
         }
 
         $('#submitBtn').prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Processing...');
+    });
+});
     });
 });
 </script>

@@ -69,9 +69,23 @@
         text-transform: uppercase;
     }
     
-    .method-cash { background: #e6fffa; color: #047857; }
-    .method-mobile { background: #fef3e2; color: #92400e; }
-    .method-bank { background: #e0f2fe; color: #0c4a6e; }
+    .method-cash { 
+        background: #047857 !important; 
+        color: #ffffff !important; 
+    }
+    .method-mobile { 
+        background: #f59e0b !important; 
+        color: #ffffff !important; 
+    }
+    .method-bank { 
+        background: #0284c7 !important; 
+        color: #ffffff !important; 
+    }
+    
+    /* Override enhanced-tables.css badge color on hover */
+    .table tbody tr:hover .payment-method-badge {
+        color: #ffffff !important;
+    }
 </style>
 @endpush
 
@@ -265,21 +279,16 @@
                             </td>
                             <td>
                                 @php
-                                    $methodClass = match($repayment->type) {
-                                        1 => 'method-cash',
-                                        2 => 'method-mobile', 
-                                        3 => 'method-bank',
-                                        default => 'method-cash'
-                                    };
-                                    $methodName = match($repayment->type) {
-                                        1 => 'Cash',
-                                        2 => 'Mobile Money',
-                                        3 => 'Bank Transfer',
-                                        default => 'Unknown'
+                                    $methodStyles = match($repayment->type) {
+                                        1 => ['class' => 'method-cash', 'bg' => '#047857', 'name' => 'Cash'],
+                                        2 => ['class' => 'method-mobile', 'bg' => '#f59e0b', 'name' => 'Mobile Money'], 
+                                        3 => ['class' => 'method-bank', 'bg' => '#0284c7', 'name' => 'Bank Transfer'],
+                                        default => ['class' => 'method-cash', 'bg' => '#6c757d', 'name' => 'Unknown']
                                     };
                                 @endphp
-                                <span class="badge payment-method-badge {{ $methodClass }}">
-                                    {{ $methodName }}
+                                <span class="badge payment-method-badge {{ $methodStyles['class'] }}" 
+                                      style="background: {{ $methodStyles['bg'] }} !important; color: #ffffff !important; display: inline-block !important; padding: 0.4rem 0.8rem !important; border-radius: 20px !important; font-weight: 600 !important; text-transform: uppercase !important; font-size: 0.75rem !important;">
+                                    {{ $methodStyles['name'] }}
                                 </span>
                             </td>
                             <td>

@@ -198,6 +198,8 @@
                                                 <option value="1" {{ request('status') === '1' ? 'selected' : '' }}>Approved</option>
                                                 <option value="2" {{ request('status') === '2' ? 'selected' : '' }}>Disbursed</option>
                                                 <option value="3" {{ request('status') === '3' ? 'selected' : '' }}>Completed</option>
+                                                <option value="4" {{ request('status') === '4' ? 'selected' : '' }}>Rejected</option>
+                                                <option value="5" {{ request('status') === '5' ? 'selected' : '' }}>Restructured</option>
                                             </select>
                                         </div>
                                         <div class="col-md-2">

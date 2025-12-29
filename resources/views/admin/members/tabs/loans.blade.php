@@ -36,6 +36,7 @@
                                     'running' => '<span class="badge bg-success">Running</span>',
                                     'closed' => '<span class="badge bg-secondary">Closed</span>',
                                     'rejected' => '<span class="badge bg-danger">Rejected</span>',
+                                    'restructured' => '<span class="badge bg-dark">Restructured</span>',
                                 ];
                             @endphp
                             {!! $badges[$actualStatus] ?? '<span class="badge bg-light text-dark">Unknown</span>' !!}

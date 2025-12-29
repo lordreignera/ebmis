@@ -243,6 +243,11 @@ class PersonalLoan extends Model
             return 'rejected';
         }
 
+        // If restructured, return restructured
+        if ($this->status == 5) {
+            return 'restructured';
+        }
+
         // If pending, return pending
         if ($this->status == 0) {
             return 'pending';
