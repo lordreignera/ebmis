@@ -5,10 +5,14 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\SchoolRegistrationController;
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\CronController;
 
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+// Cron endpoint for external scheduling (secured with token)
+Route::get('/cron/run', [CronController::class, 'runScheduler'])->name('cron.run');
 
 // Custom Logout Route (with success message)
 Route::post('/logout', [LogoutController::class, 'logout'])->name('logout');
