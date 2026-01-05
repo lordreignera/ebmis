@@ -93,6 +93,22 @@ body.modal-open {
                             <h4>{{ $member->fname }} {{ $member->mname }} {{ $member->lname }}</h4>
                             <p class="text-muted">{{ $member->code ?? 'No Code Assigned' }}</p>
                             
+                            <!-- Account Numbers -->
+                            @if($member->cash_security_account_number || $member->savings_account_number)
+                                <div class="mb-3">
+                                    @if($member->cash_security_account_number)
+                                        <div class="badge bg-info text-dark mb-1" style="display: block;">
+                                            <i class="mdi mdi-shield-account"></i> CS: {{ $member->cash_security_account_number }}
+                                        </div>
+                                    @endif
+                                    @if($member->savings_account_number)
+                                        <div class="badge bg-success mb-1" style="display: block;">
+                                            <i class="mdi mdi-piggy-bank"></i> SAV: {{ $member->savings_account_number }}
+                                        </div>
+                                    @endif
+                                </div>
+                            @endif
+                            
                             <!-- Status Badges -->
                             <div class="mb-3">
                                 <span class="badge {{ $member->status_badge }} fs-6 mb-2">
@@ -944,6 +960,8 @@ body.modal-open {
                                                         'running' => '<span class="badge bg-success">Running</span>',
                                                         'closed' => '<span class="badge bg-secondary">Closed</span>',
                                                         'rejected' => '<span class="badge bg-danger">Rejected</span>',
+                                                        'restructured' => '<span class="badge bg-primary">Restructured</span>',
+                                                        'stopped' => '<span class="badge bg-dark">Stopped</span>',
                                                     ];
                                                 @endphp
                                                 {!! $badges[$actualStatus] ?? '<span class="badge bg-light text-dark">Unknown</span>' !!}
@@ -1102,6 +1120,13 @@ body.modal-open {
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <h6><i class="mdi mdi-shield-check text-success"></i> Cash Security History</h6>
+                                    @if($member->cash_security_account_number)
+                                    <div class="mt-2">
+                                        <span class="badge bg-info text-white fs-6">
+                                            <i class="mdi mdi-shield-account"></i> Account: {{ $member->cash_security_account_number }}
+                                        </span>
+                                    </div>
+                                    @endif
                                 </div>
                                 <div class="col-md-6 text-end">
                                     <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addCashSecurityModal">
@@ -1227,6 +1252,13 @@ body.modal-open {
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <h6><i class="mdi mdi-piggy-bank text-info"></i> Savings Accounts</h6>
+                                    @if($member->savings_account_number)
+                                    <div class="mt-2">
+                                        <span class="badge bg-success text-white fs-6">
+                                            <i class="mdi mdi-piggy-bank"></i> Account: {{ $member->savings_account_number }}
+                                        </span>
+                                    </div>
+                                    @endif
                                 </div>
                                 <div class="col-md-6 text-end">
                                     <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#addSavingsModal">

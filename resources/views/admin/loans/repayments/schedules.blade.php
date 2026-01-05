@@ -182,14 +182,6 @@
                         @endif
                         
                         <div class="col-md-3">
-                            <button type="button" class="btn btn-primary w-100" onclick="$('#partialPaymentModal').modal('show')">
-                                <i class="mdi mdi-cash-multiple me-1"></i>
-                                Partial Payment
-                                <br><small>Any amount</small>
-                            </button>
-                        </div>
-                        
-                        <div class="col-md-3">
                             <button type="button" class="btn btn-success w-100" onclick="$('#payBalanceModal').modal('show')">
                                 <i class="mdi mdi-cash-check me-1"></i>
                                 Pay Balance
@@ -313,6 +305,7 @@
                                     <th style="width: 6%;">Late fees Paid</th>
                                     <th style="width: 6%;">Total Amount Paid</th>
                                     <th style="width: 6%;">Total Balance</th>
+                                    <th style="width: 6%;">Excess Amount</th>
                                     <th style="width: 5%;">Status</th>
                                     <th style="width: 5%;">Action</th>
                                 </tr>
@@ -401,39 +394,76 @@
                                                 <span class="text-success">0</span>
                                             @endif
                                         </td>
+                                        <td class="text-center">
+                                            @php
+                                                $excessAmount = $schedule->excess_amount ?? 0;
+                                            @endphp
+                                            @if($excessAmount > 1)
+                                                <span class="text-success fw-bold">{{ number_format($excessAmount, 0) }}</span>
+                                                <br>
+                                                @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                                    <button type="button" class="btn btn-info btn-sm px-2 py-1 mt-1" 
+                                                            onclick="openCarryOverModal({{ $schedule->id }}, {{ $excessAmount }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}')"
+                                                            title="Carry Over Excess to Next Schedule">
+                                                        <i class="fas fa-arrow-right"></i> Carry Over
+                                                    </button>
+                                                @endif
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </td>
                                         <td class="text-center">{!! $statusBadge !!}</td>
                                         <td class="text-center">
                                             @if($schedule->status == 1)
-                                                {{-- Paid - Show Receipt Button --}}
+                                                {{-- Paid - Show Receipt Button + View All Payments --}}
                                                 @php
-                                                    $repayment = \App\Models\Repayment::where('schedule_id', $schedule->id)
+                                                    $allPayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
                                                         ->where(function($query) {
                                                             $query->where('status', 1)
                                                                   ->orWhere('payment_status', 'Completed');
                                                         })
                                                         ->orderBy('id', 'desc')
-                                                        ->first();
+                                                        ->get();
+                                                    $repayment = $allPayments->first();
+                                                    $paymentCount = $allPayments->count();
                                                 @endphp
                                                 @if($repayment)
-                                                    <a href="{{ route('admin.repayments.receipt', $repayment->id) }}" 
-                                                       class="btn btn-primary btn-sm px-2 py-1" 
-                                                       target="_blank"
-                                                       title="View Receipt">
-                                                        <i class="fas fa-receipt"></i> Receipt
-                                                    </a>
+                                                    <div class="btn-group btn-group-sm">
+                                                        <a href="{{ route('admin.repayments.receipt', $repayment->id) }}" 
+                                                           class="btn btn-primary btn-sm px-2 py-1" 
+                                                           target="_blank"
+                                                           title="View Latest Receipt">
+                                                            <i class="fas fa-receipt"></i> Receipt
+                                                        </a>
+                                                        @if($paymentCount > 1)
+                                                            <button type="button" 
+                                                                    class="btn btn-info btn-sm px-2 py-1" 
+                                                                    onclick="showAllPayments({{ $schedule->id }})"
+                                                                    title="View All {{ $paymentCount }} Payments">
+                                                                <i class="fas fa-list"></i> ({{ $paymentCount }})
+                                                            </button>
+                                                        @endif
+                                                    </div>
                                                 @else
                                                     <span class="text-muted">Paid</span>
                                                 @endif
                                             @elseif($schedule->status == 0 && $schedule->pending_count == 0)
-                                                {{-- Not Paid - Show Repay Button --}}
+                                                {{-- Not Paid - Show Repay Button only if balance > 1 (allow for rounding) --}}
                                                 @php
-                                                    $scheduleRemaining = ($schedule->total_payment ?? $schedule->payment) - $schedule->paid;
+                                                    // Use the balance calculated by controller, with rounding tolerance
+                                                    $scheduleRemaining = $schedule->balance ?? 0;
+                                                    // If balance is less than 1 UGX, consider it paid (rounding tolerance)
+                                                    $shouldShowRepay = $scheduleRemaining > 1;
                                                 @endphp
-                                                <button type="button" class="btn btn-success btn-sm px-2 py-1" 
-                                                        onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRemaining }})"
-                                                        title="Repay">
-                                                    Repay
-                                                </button>
+                                                @if($shouldShowRepay)
+                                                    <button type="button" class="btn btn-success btn-sm px-2 py-1" 
+                                                            onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRemaining }})"
+                                                            title="Repay">
+                                                        Repay
+                                                    </button>
+                                                @else
+                                                    <span class="text-muted">Paid</span>
+                                                @endif
                                             @elseif($schedule->pending_count > 0)
                                                 {{-- Pending - Show Check Progress and Retry Buttons --}}
                                                 <div class="btn-group" role="group">
@@ -546,7 +576,8 @@
 
                     <div class="mb-3">
                         <label class="form-label text-dark">Payment Amount</label>
-                        <input type="text" class="form-control bg-white" id="payment_amount" name="amount" required>
+                        <input type="text" class="form-control bg-white" id="payment_amount" name="amount" required readonly>
+                        <small class="text-muted">Auto-calculated based on schedule balance</small>
                     </div>
                     
                     <div class="mb-3">
@@ -603,49 +634,6 @@
     </div>
 </div>
 
-<!-- Partial Payment Modal -->
-<div class="modal fade" id="partialPaymentModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content bg-white">
-            <div class="modal-header bg-white">
-                <h5 class="modal-title">Partial Payment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="partialPaymentForm">
-                <div class="modal-body bg-white">
-                    <div class="alert alert-info">
-                        <small>Partial payments will be applied to the oldest outstanding installment first.</small>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Payment Amount <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control" name="amount" step="0.01" min="1" required>
-                        <div class="form-text">Outstanding Balance: UGX {{ number_format($loan->outstanding_balance, 0) }}</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Payment Method <span class="text-danger">*</span></label>
-                        <select class="form-select" name="payment_method" required>
-                            <option value="">Select Method</option>
-                            <option value="mobile_money">Mobile Money</option>
-                            <option value="cash">Cash</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                        </select>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Notes</label>
-                        <textarea class="form-control" name="notes" rows="2"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer bg-white">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Process Partial Payment</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 
 <!-- Waive Late Fees Modal -->
 <div class="modal fade" id="waiveLateFeeModal" tabindex="-1">
@@ -766,6 +754,69 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-warning" id="processWaiverBtn" disabled>
                         <i class="mdi mdi-check me-1"></i> Waive Selected Fees
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Carry Over Excess Modal -->
+<div class="modal fade" id="carryOverModal" tabindex="-1" aria-labelledby="carryOverModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="carryOverModalLabel">
+                    <i class="fas fa-arrow-right me-2"></i>Carry Over Excess Payment
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="carryOverForm" action="{{ route('admin.loans.carry-over') }}" method="POST">
+                @csrf
+                <input type="hidden" name="schedule_id" id="carry_schedule_id">
+                <input type="hidden" name="loan_id" value="{{ $loan->id }}">
+                
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Schedule:</strong> <span id="carry_schedule_date"></span><br>
+                        <strong>Excess Amount:</strong> UGX <span id="carry_excess_amount"></span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Apply To</label>
+                        <select class="form-select" name="target_action" id="carry_target_action" required>
+                            <option value="">-- Select Action --</option>
+                            <option value="next_schedule">Next Unpaid Schedule</option>
+                            <option value="late_fees">Late Fees on This Schedule</option>
+                            <option value="specific">Specific Schedule</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3" id="specific_schedule_group" style="display: none;">
+                        <label class="form-label">Select Schedule</label>
+                        <select class="form-select" name="target_schedule_id" id="target_schedule_id">
+                            <option value="">-- Select Schedule --</option>
+                            @foreach($schedules as $sch)
+                                @if($sch->status == 0 && $sch->balance > 1)
+                                    <option value="{{ $sch->id }}">
+                                        {{ date('M d, Y', strtotime($sch->payment_date)) }} - 
+                                        Balance: UGX {{ number_format($sch->balance, 0) }}
+                                    </option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Note/Reason</label>
+                        <textarea class="form-control" name="carry_note" rows="2" placeholder="Optional note about this carry-over">Manual carry-over of excess payment</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-info">
+                        <i class="fas fa-arrow-right me-1"></i> Apply Excess
                     </button>
                 </div>
             </form>
@@ -933,6 +984,30 @@
     </div>
 </div>
 
+{{-- All Payments Modal --}}
+<div class="modal fade" id="allPaymentsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-white">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="fas fa-list"></i> All Payments for Schedule</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-white">
+                <div id="allPaymentsContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -1015,9 +1090,9 @@ function openRepayModal(scheduleId, dueDate, amount) {
     $('#payment_amount').val(amount.toFixed(0));
     $('#payment_amount').attr('max', amount.toFixed(0));
     
-    // Add helper text showing remaining balance
-    const helperText = 'Remaining balance: UGX ' + amount.toLocaleString('en-US', {maximumFractionDigits: 0});
-    $('#payment_amount').next('.form-text').text(helperText);
+    // Update helper text to show this is the exact amount owed (no more, no less)
+    const helperText = 'Total amount owed: UGX ' + amount.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' (exact amount required - no overpayments allowed)';
+    $('#payment_amount').next('small').text(helperText);
     
     $('#repaymentModal').modal('show');
 }
@@ -1041,6 +1116,20 @@ $(document).ready(function() {
         e.preventDefault();
         console.log('Form submitted!');
         
+        // Validate payment amount doesn't exceed schedule balance
+        const paymentAmount = parseFloat($('#payment_amount').val());
+        const maxAmount = parseFloat($('#payment_amount').attr('max'));
+        
+        if (paymentAmount > maxAmount) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Excess Payment Not Allowed',
+                html: 'Payment amount <strong>UGX ' + paymentAmount.toLocaleString() + '</strong> exceeds the schedule balance of <strong>UGX ' + maxAmount.toLocaleString() + '</strong>.<br><br>Please pay the exact amount due. Overpayments are not permitted.',
+                confirmButtonText: 'OK'
+            });
+            return false;
+        }
+        
         const paymentType = $('#payment_type').val();
         const formData = $(this).serialize();
         
@@ -1058,36 +1147,6 @@ $(document).ready(function() {
         }
     });
     
-    // Handle partial payment form submission
-    $('#partialPaymentForm').on('submit', function(e) {
-        e.preventDefault();
-        
-        var formData = new FormData(this);
-        formData.append('loan_id', {{ $loan->id }});
-        formData.append('_token', '{{ csrf_token() }}');
-        
-        $.ajax({
-            url: '{{ route("admin.loans.repayments.partial") }}',
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.success) {
-                    $('#partialPaymentModal').modal('hide');
-                    Swal.fire('Success!', response.message, 'success').then(() => {
-                        window.location.reload();
-                    });
-                } else {
-                    Swal.fire('Error!', response.message, 'error');
-                }
-            },
-            error: function(xhr) {
-                var message = xhr.responseJSON?.message || 'An error occurred';
-                Swal.fire('Error!', message, 'error');
-            }
-        });
-    });
     
     // Handle Pay Balance checkbox selection
     function updateBalanceSelection() {
@@ -1326,7 +1385,84 @@ $(document).ready(function() {
         $('#confirmWaiver').prop('checked', false);
         updateLateFeeSelection();
     });
+    
+    // Carry Over functionality
+    $('#carry_target_action').on('change', function() {
+        if ($(this).val() === 'specific') {
+            $('#specific_schedule_group').show();
+            $('#target_schedule_id').prop('required', true);
+        } else {
+            $('#specific_schedule_group').hide();
+            $('#target_schedule_id').prop('required', false);
+        }
+    });
 });
+
+function openCarryOverModal(scheduleId, excessAmount, scheduleDate) {
+    $('#carry_schedule_id').val(scheduleId);
+    $('#carry_schedule_date').text(scheduleDate);
+    $('#carry_excess_amount').text(excessAmount.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}));
+    $('#carry_target_action').val('').trigger('change');
+    $('#carryOverModal').modal('show');
+}
+
+function showAllPayments(scheduleId) {
+    // Show modal
+    $('#allPaymentsModal').modal('show');
+    
+    // Load payments via AJAX
+    $.ajax({
+        url: '/admin/loans/schedules/' + scheduleId + '/payments',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                let html = '<div class="table-responsive">';
+                html += '<table class="table table-bordered table-hover">';
+                html += '<thead class="table-light">';
+                html += '<tr>';
+                html += '<th>#</th>';
+                html += '<th>Date</th>';
+                html += '<th>Amount</th>';
+                html += '<th>Status</th>';
+                html += '<th>Receipt</th>';
+                html += '</tr>';
+                html += '</thead>';
+                html += '<tbody>';
+                
+                if (response.payments && response.payments.length > 0) {
+                    response.payments.forEach((payment, index) => {
+                        html += '<tr>';
+                        html += '<td>' + (index + 1) + '</td>';
+                        html += '<td>' + payment.date + '</td>';
+                        html += '<td class="text-end"><strong>' + payment.amount_formatted + '</strong></td>';
+                        html += '<td>' + payment.status_badge + '</td>';
+                        html += '<td><a href="/admin/repayments/' + payment.id + '/receipt" class="btn btn-sm btn-primary" target="_blank"><i class="fas fa-receipt"></i> View</a></td>';
+                        html += '</tr>';
+                    });
+                    
+                    html += '<tr class="table-info">';
+                    html += '<td colspan="2" class="text-end"><strong>Total:</strong></td>';
+                    html += '<td class="text-end"><strong>' + response.total_formatted + '</strong></td>';
+                    html += '<td colspan="2"></td>';
+                    html += '</tr>';
+                } else {
+                    html += '<tr><td colspan="5" class="text-center text-muted">No payments found</td></tr>';
+                }
+                
+                html += '</tbody>';
+                html += '</table>';
+                html += '</div>';
+                
+                $('#allPaymentsContent').html(html);
+            } else {
+                $('#allPaymentsContent').html('<div class="alert alert-danger">Error loading payments</div>');
+            }
+        },
+        error: function() {
+            $('#allPaymentsContent').html('<div class="alert alert-danger">Failed to load payments. Please try again.</div>');
+        }
+    });
+}
 
 function handleMobileMoneyPayment(formData) {
     const memberPhone = $('#member_phone').val();

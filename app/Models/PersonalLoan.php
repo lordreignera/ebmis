@@ -237,6 +237,8 @@ class PersonalLoan extends Model
         // 2 = Disbursed (Money given out)
         // 3 = Fully Paid/Closed
         // 4 = Rejected
+        // 5 = Restructured
+        // 6 = Stopped (Cancelled/Mistaken loan)
 
         // If rejected, return rejected
         if ($this->status == 4) {
@@ -246,6 +248,11 @@ class PersonalLoan extends Model
         // If restructured, return restructured
         if ($this->status == 5) {
             return 'restructured';
+        }
+
+        // If stopped, return stopped
+        if ($this->status == 6) {
+            return 'stopped';
         }
 
         // If pending, return pending
@@ -329,6 +336,10 @@ class PersonalLoan extends Model
                 return '<span class="badge bg-secondary">Closed</span>';
             case 'rejected':
                 return '<span class="badge bg-danger">Rejected</span>';
+            case 'restructured':
+                return '<span class="badge bg-primary">Restructured</span>';
+            case 'stopped':
+                return '<span class="badge bg-dark">Stopped</span>';
             default:
                 return '<span class="badge bg-light text-dark">Unknown</span>';
         }

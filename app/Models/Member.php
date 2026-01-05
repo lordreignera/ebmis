@@ -49,6 +49,8 @@ class Member extends Model
         'added_by',
         'password',
         'mobile_pin',
+        'cash_security_account_number',
+        'savings_account_number',
         'datecreated' // Old database column
     ];
 
@@ -63,6 +65,51 @@ class Member extends Model
     protected $hidden = [
         'password',
     ];
+
+    /**
+     * Boot method to auto-generate account numbers
+     */
+    protected static function boot()
+    {
+        parent::boot();
+        
+        static::creating(function ($member) {
+            // Generate account numbers if not already set
+            if (!$member->cash_security_account_number) {
+                $member->cash_security_account_number = static::generateCashSecurityAccountNumber();
+            }
+            
+            if (!$member->savings_account_number) {
+                $member->savings_account_number = static::generateSavingsAccountNumber();
+            }
+        });
+    }
+    
+    /**
+     * Generate unique cash security account number
+     * Format: CS{YYMMDDHHmm}{DailyCount} e.g., CS260105103047001
+     * Same pattern as loan codes - no limit on member count
+     */
+    public static function generateCashSecurityAccountNumber()
+    {
+        $currentTime = now();
+        $dailyCount = static::whereDate('datecreated', today())->count() + 1;
+        
+        return 'CS' . $currentTime->format('ymdHi') . sprintf('%03d', $dailyCount);
+    }
+    
+    /**
+     * Generate unique savings account number
+     * Format: SAV{YYMMDDHHmm}{DailyCount} e.g., SAV260105103047001
+     * Same pattern as loan codes - no limit on member count
+     */
+    public static function generateSavingsAccountNumber()
+    {
+        $currentTime = now();
+        $dailyCount = static::whereDate('datecreated', today())->count() + 1;
+        
+        return 'SAV' . $currentTime->format('ymdHi') . sprintf('%03d', $dailyCount);
+    }
 
     /**
      * Get the country that owns the member

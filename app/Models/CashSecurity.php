@@ -25,6 +25,12 @@ class CashSecurity extends Model
         'transaction_reference',
         'added_by',
         'datecreated',
+        'returned',
+        'returned_at',
+        'return_transaction_reference',
+        'return_payment_raw',
+        'return_payment_status',
+        'returned_by',
     ];
 
     protected $casts = [

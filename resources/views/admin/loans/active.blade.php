@@ -2,6 +2,10 @@
 
 @section('title', 'Active Loans')
 
+@push('styles')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+@endpush
+
 @section('content')
 <div class="container-fluid">
     <div class="row">
@@ -275,10 +279,13 @@
                                                 $loanTypeLabel = 'Daily';
                                             }
                                         @endphp
-                                        <tr>
+                                        <tr class="{{ ($loan->is_potential_duplicate ?? false) ? 'table-warning' : '' }}">
                                             <td>{{ $loans->firstItem() + $index }}</td>
                                             <td>
                                                 <div class="fw-medium">{{ $loan->borrower_name }}</div>
+                                                @if($loan->is_potential_duplicate ?? false)
+                                                    <small class="badge bg-warning text-dark">{{ $loan->duplicate_loans_count ?? 0 }} loans in 2025</small>
+                                                @endif
                                             </td>
                                             <td>
                                                 <small class="text-muted">{{ $loan->branch_name ?? 'No Branch' }}</small>
@@ -302,10 +309,25 @@
                                                 @endif
                                             </td>
                                             <td>
-                                                <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
-                                                   class="btn btn-sm btn-primary">
-                                                    <i class="mdi mdi-calendar-clock"></i> View Schedules
-                                                </a>
+                                                <div class="d-flex gap-1">
+                                                    <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
+                                                       class="btn btn-sm btn-primary">
+                                                        <i class="mdi mdi-calendar-clock"></i> View Schedules
+                                                    </a>
+                                                    
+                                                    @if(($loan->is_potential_duplicate ?? false) && (auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator'])))
+                                                        <button type="button" 
+                                                                class="btn btn-sm btn-danger btn-stop-loan"
+                                                                data-loan-id="{{ $loan->id }}"
+                                                                data-borrower-name="{{ $loan->borrower_name }}"
+                                                                data-loan-code="{{ $loan->loan_code }}"
+                                                                data-disbursement-date="{{ date('Y-m-d', strtotime($loan->disbursement_date)) }}"
+                                                                data-duplicate-count="{{ $loan->duplicate_loans_count ?? 0 }}"
+                                                                title="Stop this loan (Client has {{ $loan->duplicate_loans_count ?? 0 }} loans from 2025)">
+                                                            <i class="mdi mdi-stop-circle"></i> Stop
+                                                        </button>
+                                                    @endif
+                                                </div>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -531,6 +553,8 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 @push('scripts')
 <script>
 $(document).ready(function() {
@@ -568,6 +592,22 @@ $(document).ready(function() {
             window.location.reload();
         }
     }, 300000);
+
+    // Handle stop loan button click
+    $(document).on('click', '.btn-stop-loan', function() {
+        var loanId = $(this).data('loan-id');
+        var borrowerName = $(this).data('borrower-name');
+        var loanCode = $(this).data('loan-code');
+        var disbursementDate = $(this).data('disbursement-date');
+        var duplicateCount = $(this).data('duplicate-count');
+        
+        console.log('Stop button clicked', {loanId, borrowerName, loanCode, disbursementDate, duplicateCount});
+        
+        confirmStopLoan(loanId, borrowerName, loanCode, disbursementDate, duplicateCount);
+    });
+    
+    // Debug: Check if buttons exist
+    console.log('Stop loan buttons found:', $('.btn-stop-loan').length);
 });
 
 function quickRepay(loanId, loanCode, dueAmount, phone) {
@@ -757,6 +797,78 @@ $('#rescheduleForm').on('submit', function(e) {
         }
     });
 });
+
+// Confirm and stop loan
+function confirmStopLoan(loanId, borrowerName, loanCode, disbursementDate, duplicateCount) {
+    Swal.fire({
+        title: 'Stop This Loan?',
+        html: `
+            <div class="text-start">
+                <p><strong>Borrower:</strong> ${borrowerName}</p>
+                <p><strong>Loan Code:</strong> ${loanCode}</p>
+                <p><strong>Disbursed:</strong> ${disbursementDate}</p>
+                <p class="text-warning"><strong>⚠️ Client has ${duplicateCount} loans from 2025</strong></p>
+                <hr>
+                <p class="text-danger"><strong>Warning:</strong> This will mark the loan as STOPPED.</p>
+                <p class="text-muted">The loan will no longer appear in active loans and no further payments can be made.</p>
+                <p class="text-muted"><small>Note: This action can be reversed by updating the loan status in the database if needed.</small></p>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, Stop This Loan',
+        cancelButtonText: 'Cancel',
+        input: 'textarea',
+        inputPlaceholder: 'Enter reason for stopping this loan (required)',
+        inputAttributes: {
+            'aria-label': 'Enter reason for stopping',
+            'rows': 3
+        },
+        inputValidator: (value) => {
+            if (!value || value.trim().length < 10) {
+                return 'Please provide a detailed reason (at least 10 characters)'
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Show loading
+            Swal.fire({
+                title: 'Processing...',
+                text: 'Stopping loan...',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            $.ajax({
+                url: '/admin/loans/' + loanId + '/stop',
+                method: 'POST',
+                data: {
+                    reason: result.value,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    Swal.fire({
+                        title: 'Success!',
+                        text: response.message || 'Loan stopped successfully',
+                        icon: 'success',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                },
+                error: function(xhr) {
+                    var message = xhr.responseJSON?.message || 'Failed to stop loan';
+                    Swal.fire('Error!', message, 'error');
+                }
+            });
+        }
+    });
+}
 
 // Show restructure modal (placeholder for future implementation)
 function showRestructureModal(loanId, loanCode) {
