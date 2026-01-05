@@ -79,11 +79,22 @@ class AutomateRepayments extends Command
         
         $schedules = $this->getDueSchedules(3); // Daily = period_type 3
         
+        // Process only ONE schedule per member (oldest first)
+        $processedMembers = [];
+        $processedCount = 0;
+        
         foreach ($schedules as $schedule) {
+            // Skip if we already processed a schedule for this member
+            if (in_array($schedule->member_id, $processedMembers)) {
+                continue;
+            }
+            
             $this->initiatePayment($schedule, 'daily');
+            $processedMembers[] = $schedule->member_id;
+            $processedCount++;
         }
         
-        $this->info("Processed " . count($schedules) . " daily loan schedules");
+        $this->info("Processed {$processedCount} daily loan schedules (1 per member)");
     }
     
     /**
@@ -100,11 +111,22 @@ class AutomateRepayments extends Command
         
         $schedules = $this->getDueSchedules(1); // Weekly = period_type 1
         
+        // Process only ONE schedule per member (oldest first)
+        $processedMembers = [];
+        $processedCount = 0;
+        
         foreach ($schedules as $schedule) {
+            // Skip if we already processed a schedule for this member
+            if (in_array($schedule->member_id, $processedMembers)) {
+                continue;
+            }
+            
             $this->initiatePayment($schedule, 'weekly');
+            $processedMembers[] = $schedule->member_id;
+            $processedCount++;
         }
         
-        $this->info("Processed " . count($schedules) . " weekly loan schedules");
+        $this->info("Processed {$processedCount} weekly loan schedules (1 per member)");
     }
     
     /**
@@ -116,11 +138,22 @@ class AutomateRepayments extends Command
         
         $schedules = $this->getDueSchedules(2); // Monthly = period_type 2
         
+        // Process only ONE schedule per member (oldest first)
+        $processedMembers = [];
+        $processedCount = 0;
+        
         foreach ($schedules as $schedule) {
+            // Skip if we already processed a schedule for this member
+            if (in_array($schedule->member_id, $processedMembers)) {
+                continue;
+            }
+            
             $this->initiatePayment($schedule, 'monthly');
+            $processedMembers[] = $schedule->member_id;
+            $processedCount++;
         }
         
-        $this->info("Processed " . count($schedules) . " monthly loan schedules");
+        $this->info("Processed {$processedCount} monthly loan schedules (1 per member)");
     }
     
     /**
@@ -132,7 +165,7 @@ class AutomateRepayments extends Command
         
         return DB::table('loan_schedules as ls')
             ->join('personal_loans as pl', 'ls.loan_id', '=', 'pl.id')
-            ->join('products as p', 'pl.product_id', '=', 'p.id')
+            ->join('products as p', 'pl.product_type', '=', 'p.id') // Fixed: product_type not product_id
             ->join('members as m', 'pl.member_id', '=', 'm.id')
             ->where('p.period_type', $periodType)
             ->where('pl.status', 2) // Disbursed loans only
