@@ -461,6 +461,16 @@ class RepaymentController extends Controller
             ->pluck('total_paid', 'schedule_id')
             ->toArray();
         
+        // Get late fees paid per schedule (separately tracked in late_fees table)
+        // CRITICAL FIX: Include late fees paid in the total paid calculation
+        $lateFeesPaidPerSchedule = DB::table('late_fees')
+            ->whereIn('schedule_id', $scheduleIds)
+            ->where('status', 1) // STATUS_PAID
+            ->groupBy('schedule_id')
+            ->select('schedule_id', DB::raw('SUM(amount) as total_late_fees_paid'))
+            ->pluck('total_late_fees_paid', 'schedule_id')
+            ->toArray();
+        
         // Get pending count per schedule (single query)
         $pendingPerSchedule = DB::table('repayments')
             ->whereIn('schedule_id', $scheduleIds)
@@ -476,7 +486,7 @@ class RepaymentController extends Controller
         $globalprincipal = floatval($loan->principal); // Global principal for interest calculation
         $carryOverPayment = 0; // Track overpayments to distribute to next schedules
         
-        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $pendingPerSchedule, &$carryOverPayment) {
+        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $lateFeesPaidPerSchedule, $pendingPerSchedule, &$carryOverPayment) {
             // 1. Calculate "Principal cal Interest" (reducing balance per period)
             $period = floor($loan->period / 2);
             $pricipalcalIntrest = $period > 0 ? ($loan->principal / $period) : 0;
@@ -513,6 +523,8 @@ class RepaymentController extends Controller
             }
             
             // 4. Calculate late fees using helper method
+            // Late fees should ALWAYS be calculated for ANY schedule with overdue days
+            // regardless of payment status - late fees are only waived by admin action
             $lateFeeData = $this->calculateLateFee($schedule, $loan);
             $latepaymentOriginal = $lateFeeData['original'];
             $totalWaivedAmount = $lateFeeData['waived'];
@@ -526,34 +538,41 @@ class RepaymentController extends Controller
             // 5. Get total paid from pre-loaded data (optimized - no N+1 queries)
             // Fallback to schedule.paid if no repayments found (for cash payments not recorded in repayments table)
             $paidFromRepayments = floatval($paidPerSchedule[$schedule->id] ?? 0);
-            $totalPaid = $paidFromRepayments > 0 ? $paidFromRepayments : floatval($schedule->paid ?? 0);
+            $paidFromLateFees = floatval($lateFeesPaidPerSchedule[$schedule->id] ?? 0); // Include late fees paid separately
+            $totalPaid = ($paidFromRepayments + $paidFromLateFees) > 0 ? ($paidFromRepayments + $paidFromLateFees) : floatval($schedule->paid ?? 0);
             
             // 5a. Apply carry-over payment from previous overpaid schedule
             // This distributes excess payments to reduce future schedules' balances
             $totalPaid += $carryOverPayment;
             $carryOverPayment = 0; // Reset after applying
-            
             // 6. Get pending count from pre-loaded data (optimized - no N+1 queries)
             $pendingCount = intval($pendingPerSchedule[$schedule->id] ?? 0);
             
             // 7. Allocate payments - BIMSADMIN ORDER: Late Fees → Interest → Principal
-            // CRITICAL FIX: If late fees were waived, skip them in payment allocation!
-            // Waived late fees should NOT consume client payments
+            // CRITICAL FIX: Late fees should only be marked as paid if payment EXCEEDS P+I
+            // Don't auto-allocate to late fees unless payment amount proves they were paid
+            
+            $scheduleDueWithoutLateFees = $schedule->principal + $intrestamtpayable;
             
             if ($totalWaivedAmount > 0 && $latepayment == 0) {
                 // All late fees were waived - skip late fee allocation entirely
                 // Payment goes directly to Interest → Principal
                 $pafterlatepayment = 0; // No late fees paid (they were waived!)
                 $afterlatepayment = $totalPaid; // Full payment available for interest/principal
-            } else {
-                // Normal allocation: Late fees must be paid first
-                $afterlatepayment = $totalPaid - $latepayment;
-                if ($afterlatepayment > 0) {
-                    $pafterlatepayment = $latepayment; // Full late payment covered
+            } elseif ($totalPaid > $scheduleDueWithoutLateFees) {
+                // Payment EXCEEDS principal + interest, so excess goes to late fees
+                $excessPayment = $totalPaid - $scheduleDueWithoutLateFees;
+                if ($excessPayment >= $latepayment) {
+                    $pafterlatepayment = $latepayment; // Full late fee paid
+                    $afterlatepayment = $scheduleDueWithoutLateFees; // P+I fully available
                 } else {
-                    $pafterlatepayment = $totalPaid; // Partial payment
-                    $afterlatepayment = 0;
+                    $pafterlatepayment = $excessPayment; // Partial late fee paid
+                    $afterlatepayment = $scheduleDueWithoutLateFees; // P+I fully available
                 }
+            } else {
+                // Payment does NOT exceed P+I, so NO late fees were paid
+                $pafterlatepayment = 0; // Late fees NOT paid
+                $afterlatepayment = $totalPaid; // All payment goes to P+I
             }
             
             // Interest paid
@@ -1150,14 +1169,28 @@ class RepaymentController extends Controller
                     if ($nextSchedule && $overpayment > 0) {
                         $nextSchedule->increment('paid', $overpayment);
                         
-                        // Check if next schedule is now fully paid
-                        if ($nextSchedule->paid >= $nextSchedule->payment) {
+                        // Check if next schedule is now fully paid (including late fees)
+                        $nextLateFees = DB::table('late_fees')
+                            ->where('schedule_id', $nextSchedule->id)
+                            ->where('status', 0)
+                            ->sum('amount');
+                        $nextTotalDue = $nextSchedule->payment + $nextLateFees;
+                        
+                        if ($nextSchedule->paid >= $nextTotalDue) {
                             $nextSchedule->update(['status' => 1]);
                         }
                     }
                 } elseif ($schedule->paid >= $schedule->payment) {
-                    // Exact or just enough payment - mark as fully paid
-                    $schedule->update(['status' => 1]);
+                    // Check if late fees are also paid before marking as fully paid
+                    $pendingLateFees = DB::table('late_fees')
+                        ->where('schedule_id', $schedule->id)
+                        ->where('status', 0)
+                        ->sum('amount');
+                    $totalDue = $schedule->payment + $pendingLateFees;
+                    
+                    if ($schedule->paid >= $totalDue) {
+                        $schedule->update(['status' => 1]);
+                    }
                 }
                 
                 // Check if loan is fully paid by checking ALL schedules
@@ -2232,14 +2265,28 @@ class RepaymentController extends Controller
                                 if ($nextSchedule && $overpayment > 0) {
                                     $nextSchedule->increment('paid', $overpayment);
                                     
-                                    // Check if next schedule is now fully paid
-                                    if ($nextSchedule->paid >= $nextSchedule->payment) {
+                                    // Check if next schedule is now fully paid (including late fees)
+                                    $nextLateFees = DB::table('late_fees')
+                                        ->where('schedule_id', $nextSchedule->id)
+                                        ->where('status', 0)
+                                        ->sum('amount');
+                                    $nextTotalDue = $nextSchedule->payment + $nextLateFees;
+                                    
+                                    if ($nextSchedule->paid >= $nextTotalDue) {
                                         $nextSchedule->update(['status' => 1]);
                                     }
                                 }
                             } elseif ($schedule->paid >= $schedule->payment) {
-                                // Exact or just enough payment - mark as fully paid
-                                $schedule->update(['status' => 1]);
+                                // Check if late fees are also paid before marking as fully paid
+                                $pendingLateFees = DB::table('late_fees')
+                                    ->where('schedule_id', $schedule->id)
+                                    ->where('status', 0)
+                                    ->sum('amount');
+                                $totalDue = $schedule->payment + $pendingLateFees;
+                                
+                                if ($schedule->paid >= $totalDue) {
+                                    $schedule->update(['status' => 1]);
+                                }
                             }
                             
                             // Check if loan is fully paid by checking ALL schedules

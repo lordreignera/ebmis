@@ -520,7 +520,16 @@ class AutomateRepayments extends Command
                         $schedule = DB::table('loan_schedules')->find($scheduleId);
                         if ($schedule) {
                             $newPaid = ($schedule->paid ?? 0) + $repayment->amount;
-                            $isFullyPaid = $newPaid >= $schedule->payment;
+                            
+                            // CRITICAL FIX: Check if late fees exist for this schedule
+                            // Schedule should only be marked as PAID if late fees are also paid/waived
+                            $lateFees = DB::table('late_fees')
+                                ->where('schedule_id', $scheduleId)
+                                ->where('status', 0) // Pending late fees
+                                ->sum('amount');
+                            
+                            $totalDue = $schedule->payment + $lateFees;
+                            $isFullyPaid = $newPaid >= $totalDue;
                             
                             DB::table('loan_schedules')
                                 ->where('id', $scheduleId)
