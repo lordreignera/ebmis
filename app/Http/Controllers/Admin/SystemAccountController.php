@@ -9,6 +9,44 @@ use Illuminate\Http\Request;
 class SystemAccountController extends Controller
 {
     /**
+     * Get suggested sub code for a parent account
+     * Used when creating child accounts via AJAX
+     */
+    public function getSuggestedSubCode(Request $request)
+    {
+        $parentId = $request->query('parent_id');
+        
+        if (!$parentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parent account ID is required'
+            ], 400);
+        }
+
+        try {
+            $suggestedSubCode = SystemAccount::getSuggestedSubCode($parentId);
+            
+            if (!$suggestedSubCode) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Parent account not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'sub_code' => $suggestedSubCode
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error generating sub code: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Store a newly created system account
      */
     public function store(Request $request)
