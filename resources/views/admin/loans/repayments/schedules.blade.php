@@ -140,7 +140,8 @@
                     <div class="flex-shrink-0">
                         @if($nextDue)
                             @php
-                                $nextDueRemaining = ($nextDue->total_payment ?? $nextDue->payment) - $nextDue->paid;
+                                // Use total_balance which includes P+I+Late Fees
+                                $nextDueRemaining = $nextDue->total_balance ?? (($nextDue->total_payment ?? $nextDue->payment) - $nextDue->paid);
                             @endphp
                             <button type="button" class="btn btn-light btn-sm" 
                                     onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDueRemaining }})">
@@ -167,16 +168,13 @@
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
-                        @if($nextDue)
-                            @php
-                                $nextDueRemaining2 = ($nextDue->total_payment ?? $nextDue->payment) - $nextDue->paid;
-                            @endphp
+                        @if($nextDue && isset($nextDueRemaining))
                             <div class="col-md-3">
                                 <button type="button" class="btn btn-success w-100" 
-                                        onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDueRemaining2 }})">
+                                        onclick="openRepayModal({{ $nextDue->id }}, '{{ $nextDue->due_date }}', {{ $nextDueRemaining }})">
                                     <i class="mdi mdi-cash-fast me-1"></i>
                                     Record Payment
-                                    <br><small>UGX {{ number_format($nextDueRemaining2, 0) }}</small>
+                                    <br><small>UGX {{ number_format($nextDueRemaining, 0) }}</small>
                                 </button>
                             </div>
                         @endif
@@ -448,38 +446,86 @@
                                                     <span class="text-muted">Paid</span>
                                                 @endif
                                             @elseif($schedule->status == 0 && $schedule->pending_count == 0)
-                                                {{-- Not Paid - Show Repay Button only if balance > 1 (allow for rounding) --}}
+                                                {{-- Not Paid - Show Repay Button only if balance > 1 AND no earlier unpaid schedules --}}
                                                 @php
-                                                    // Use the balance calculated by controller, with rounding tolerance
-                                                    $scheduleRemaining = $schedule->balance ?? 0;
+                                                    // Use total_balance (includes P+I+Late Fees) calculated by controller
+                                                    $scheduleRemaining = $schedule->total_balance ?? 0;
                                                     // If balance is less than 1 UGX, consider it paid (rounding tolerance)
                                                     $shouldShowRepay = $scheduleRemaining > 1;
+                                                    
+                                                    // SEQUENTIAL PAYMENT ENFORCEMENT: Check if any earlier schedule is unpaid
+                                                    $hasEarlierUnpaid = false;
+                                                    $earlierUnpaidDate = null;
+                                                    $earlierUnpaidBalance = 0;
+                                                    
+                                                    if ($shouldShowRepay) {
+                                                        foreach ($schedules as $earlierSchedule) {
+                                                            // Check if this is an earlier schedule (by date)
+                                                            if ($earlierSchedule->payment_date < $schedule->payment_date) {
+                                                                $earlierBalance = $earlierSchedule->total_balance ?? 0;
+                                                                // If earlier schedule has balance > 1, it's unpaid
+                                                                if ($earlierBalance > 1) {
+                                                                    $hasEarlierUnpaid = true;
+                                                                    $earlierUnpaidDate = date('d-M-Y', strtotime($earlierSchedule->payment_date));
+                                                                    $earlierUnpaidBalance = $earlierBalance;
+                                                                    break; // Found first unpaid earlier schedule
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 @endphp
-                                                @if($shouldShowRepay)
+                                                @if($shouldShowRepay && !$hasEarlierUnpaid)
                                                     <button type="button" class="btn btn-success btn-sm px-2 py-1" 
                                                             onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRemaining }})"
                                                             title="Repay">
                                                         Repay
                                                     </button>
+                                                @elseif($shouldShowRepay && $hasEarlierUnpaid)
+                                                    <button type="button" class="btn btn-secondary btn-sm px-2 py-1" 
+                                                            disabled
+                                                            title="Cannot pay this schedule. Please pay the earlier schedule due on {{ $earlierUnpaidDate }} first (Balance: UGX {{ number_format($earlierUnpaidBalance, 0) }})">
+                                                        <i class="fas fa-lock"></i> Locked
+                                                    </button>
                                                 @else
                                                     <span class="text-muted">Paid</span>
                                                 @endif
                                             @elseif($schedule->pending_count > 0)
-                                                {{-- Pending - Show Check Progress and Retry Buttons --}}
+                                                {{-- Pending - Show Check Progress and Retry Buttons (with sequential check) --}}
+                                                @php
+                                                    // Use total_balance for retry as well
+                                                    $scheduleRetryRemaining = $schedule->total_balance ?? (($schedule->total_payment ?? $schedule->payment) - $schedule->paid);
+                                                    
+                                                    // Check if any earlier schedule is unpaid (same logic as above)
+                                                    $hasEarlierUnpaidForRetry = false;
+                                                    foreach ($schedules as $earlierSchedule) {
+                                                        if ($earlierSchedule->payment_date < $schedule->payment_date) {
+                                                            $earlierBalance = $earlierSchedule->total_balance ?? 0;
+                                                            if ($earlierBalance > 1) {
+                                                                $hasEarlierUnpaidForRetry = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                @endphp
                                                 <div class="btn-group" role="group">
                                                     <button type="button" class="btn btn-info btn-sm px-2 py-1" 
                                                             onclick="checkScheduleProgress({{ $schedule->id }})"
                                                             title="Check Payment Status">
                                                         <i class="fas fa-sync"></i> Check
                                                     </button>
-                                                    @php
-                                                        $scheduleRetryRemaining = ($schedule->total_payment ?? $schedule->payment) - $schedule->paid;
-                                                    @endphp
-                                                    <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
-                                                            onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRetryRemaining }})"
-                                                            title="Retry Payment">
-                                                        <i class="fas fa-redo"></i> Retry
-                                                    </button>
+                                                    @if(!$hasEarlierUnpaidForRetry)
+                                                        <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
+                                                                onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRetryRemaining }})"
+                                                                title="Retry Payment">
+                                                            <i class="fas fa-redo"></i> Retry
+                                                        </button>
+                                                    @else
+                                                        <button type="button" class="btn btn-secondary btn-sm px-2 py-1" 
+                                                                disabled
+                                                                title="Cannot retry - pay earlier schedule first">
+                                                            <i class="fas fa-lock"></i> Locked
+                                                        </button>
+                                                    @endif
                                                 </div>
                                             @else
                                                 <span class="text-muted">-</span>

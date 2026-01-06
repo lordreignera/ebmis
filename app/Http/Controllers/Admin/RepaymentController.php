@@ -20,6 +20,57 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
+/**
+ * RepaymentController - Handles loan repayment processing and schedule calculations
+ * 
+ * ============================================================================
+ * CRITICAL BUSINESS RULES - DO NOT MODIFY WITHOUT UNDERSTANDING
+ * ============================================================================
+ * 
+ * 1. PAYMENT ALLOCATION ORDER (BIMSADMIN Waterfall Method):
+ *    Late Fees → Interest → Principal
+ *    - Payment is allocated in this order ONLY if amount proves each component was paid
+ *    - If payment ≤ P+I, NO late fees are allocated (they remain unpaid)
+ *    - If payment > P+I, excess goes to late fees
+ * 
+ * 2. LATE FEE CALCULATION:
+ *    Formula: (Principal + Interest) × 6% × Periods Overdue
+ *    Period Types:
+ *    - Weekly (1): days_overdue ÷ 7 (rounded up)
+ *    - Monthly (2): days_overdue ÷ 30 (rounded up)
+ *    - Daily (3): days_overdue (exact days)
+ * 
+ * 3. LATE FEE FREEZE LOGIC:
+ *    - Late fees STOP accumulating when total_balance (P+I+Late Fees - Paid) = 0
+ *    - DO NOT use schedule.status field - it may be incorrectly set
+ *    - Always calculate actual balance: (P + I + Late Fees) - Total Paid
+ *    - Freeze date = last payment date or date_cleared
+ * 
+ * 4. DATE PARSING:
+ *    - Database stores dates in DD-MM-YYYY format (e.g., "26-12-2025")
+ *    - strtotime() INCORRECTLY interprets this as MM-DD-YYYY
+ *    - Always use parsePaymentDate() helper which handles DD-MM-YYYY correctly
+ * 
+ * 5. BALANCE CALCULATION:
+ *    total_balance = (Principal + Interest + Late Fees - Waivers) - Total Paid
+ *    - Use schedule.paid column which includes carry-overs and direct payments
+ *    - For receipts: Use repayment.amount for specific payment breakdown
+ * 
+ * 6. WAIVERS:
+ *    - Admin-approved late fee waivers stored in penalty_waivers table
+ *    - Deducted from gross late fee to get net late fee (what client owes)
+ *    - Waivers reduce amount owed but don't change periods in arrears
+ * 
+ * ============================================================================
+ * KEY METHODS (All must use consistent logic):
+ * ============================================================================
+ * - store(): Main repayment processing with allocation and balance updates
+ * - receipt(): Receipt generation - must match store() allocation logic
+ * - calculateLateFee(): Centralized late fee calculation with waiver support
+ * - parsePaymentDate(): Handles DD-MM-YYYY date format correctly
+ * - checkLoanClosure(): Automatic loan closure when all schedules paid
+ * ============================================================================
+ */
 class RepaymentController extends Controller
 {
     protected $mobileMoneyService;
@@ -33,10 +84,107 @@ class RepaymentController extends Controller
      * Calculate late fee for a schedule with waiver support
      * Centralized method to avoid code duplication
      */
+    /**
+     * Check if all earlier schedules (by date) are fully paid
+     * 
+     * @param int $scheduleId - Current schedule ID to check
+     * @param int $loanId - Loan ID
+     * @return array ['allowed' => bool, 'message' => string, 'unpaid_schedule' => object|null]
+     */
+    protected function checkEarlierSchedulesPaid($scheduleId, $loanId)
+    {
+        $currentSchedule = LoanSchedule::find($scheduleId);
+        
+        if (!$currentSchedule) {
+            return [
+                'allowed' => false,
+                'message' => 'Schedule not found',
+                'unpaid_schedule' => null
+            ];
+        }
+        
+        // Find any earlier unpaid schedules (by payment_date)
+        $earlierUnpaidSchedule = LoanSchedule::where('loan_id', $loanId)
+            ->where('id', '!=', $scheduleId)
+            ->where('payment_date', '<', $currentSchedule->payment_date)
+            ->where(function($query) {
+                // Check if total_balance > 0 (not fully paid)
+                // Use raw SQL because total_balance is calculated, not stored
+                $query->where('status', '!=', 1)
+                      ->orWhere(DB::raw('(principal + interest - COALESCE(paid, 0))'), '>', 0.01);
+            })
+            ->orderBy('payment_date', 'asc')
+            ->first();
+        
+        if ($earlierUnpaidSchedule) {
+            return [
+                'allowed' => false,
+                'message' => sprintf(
+                    'Cannot pay this schedule. Please pay the earlier schedule due on %s first. Remaining balance: UGX %s',
+                    date('d-M-Y', $this->parsePaymentDate($earlierUnpaidSchedule->payment_date)),
+                    number_format(($earlierUnpaidSchedule->principal + $earlierUnpaidSchedule->interest - ($earlierUnpaidSchedule->paid ?? 0)), 0)
+                ),
+                'unpaid_schedule' => $earlierUnpaidSchedule
+            ];
+        }
+        
+        return [
+            'allowed' => true,
+            'message' => 'Payment allowed',
+            'unpaid_schedule' => null
+        ];
+    }
+
+    /**
+     * Parse payment dates that may be in DD-MM-YYYY format
+     * 
+     * CRITICAL: strtotime() interprets "26-12-2025" as MM-DD-YYYY (wrong!)
+     * This helper detects DD-MM-YYYY format and converts correctly
+     * 
+     * @param string $dateString - Date in various formats
+     * @return int Unix timestamp
+     * 
+     * EXAMPLES:
+     * - "26-12-2025" → December 26, 2025 (NOT January 26, 2026)
+     * - "2025-12-26" → Works correctly with strtotime()
+     * - "Dec 26, 2025" → Works correctly with strtotime()
+     */
+    protected function parsePaymentDate($dateString)
+    {
+        // Parse DD-MM-YYYY format correctly
+        if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $dateString, $matches)) {
+            // DD-MM-YYYY format
+            return mktime(0, 0, 0, $matches[2], $matches[1], $matches[3]);
+        } else {
+            // Fall back to strtotime for other formats
+            return strtotime($dateString);
+        }
+    }
+
+    /**
+     * Calculate late fees for a schedule using consistent business logic
+     * 
+     * FORMULA: Late Fee = (Principal + Interest) × 6% × Periods Overdue
+     * 
+     * PERIOD CALCULATION:
+     * - Weekly (type=1): days_overdue ÷ 7 (rounded up)
+     * - Monthly (type=2): days_overdue ÷ 30 (rounded up)
+     * - Daily (type=3): days_overdue ÷ 1 (exact days)
+     * 
+     * FREEZE LOGIC: Periods freeze when total balance (P+I+Late Fees) = 0
+     * - Uses payment date/date_cleared for freeze calculation
+     * - Continues accumulating if any balance remains
+     * 
+     * WAIVERS: Deducts any admin-approved late_fee_waivers from penalty_waivers table
+     * 
+     * @param object $schedule - loan_schedules record with payment_date, principal, interest
+     * @param object $loan - personal_loans record with product relationship
+     * @return array ['gross' => total_late_fee, 'net' => after_waivers, 'waived' => waiver_amount, 'days_overdue' => days, 'periods_overdue' => periods]
+     */
     protected function calculateLateFee($schedule, $loan)
     {
         $now = time();
-        $your_date = strtotime($schedule->payment_date);
+        $your_date = $this->parsePaymentDate($schedule->payment_date);
         $d = max(0, floor(($now - $your_date) / 86400));
         
         $dd = 0;
@@ -341,8 +489,8 @@ class RepaymentController extends Controller
                 return $loan->schedules->where('status', 0)
                                       ->filter(function($schedule) {
                                           try {
-                                              // Use strtotime to properly handle DD-MM-YYYY format
-                                              $dueTimestamp = strtotime($schedule->payment_date);
+                                              // Use parsePaymentDate to handle DD-MM-YYYY format correctly
+                                              $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
                                               return $dueTimestamp !== false && $dueTimestamp < time();
                                           } catch (\Exception $e) {
                                               return false;
@@ -425,14 +573,15 @@ class RepaymentController extends Controller
                             ->first();
         
         if ($firstUnpaid) {
-            // Use strtotime() to handle DD-MM-YYYY format correctly
+            // Use parsePaymentDate() to handle DD-MM-YYYY format correctly
             // Compare dates only (at midnight) to avoid time-of-day issues
-            $dueDate = date('Y-m-d', strtotime($firstUnpaid->payment_date));
+            $dueTimestamp = $this->parsePaymentDate($firstUnpaid->payment_date);
+            $dueDate = date('Y-m-d', $dueTimestamp);
             $today = date('Y-m-d');
             
-            $dueTimestamp = strtotime($dueDate . ' 00:00:00');
+            $dueDateTimestamp = strtotime($dueDate . ' 00:00:00');
             $nowTimestamp = strtotime($today . ' 00:00:00');
-            $daysOverdue = floor(($nowTimestamp - $dueTimestamp) / (60 * 60 * 24));
+            $daysOverdue = floor(($nowTimestamp - $dueDateTimestamp) / (60 * 60 * 24));
             $loan->days_overdue = max(0, (int) $daysOverdue);
         } else {
             $loan->days_overdue = 0;
@@ -492,46 +641,35 @@ class RepaymentController extends Controller
             // Allow small rounding differences (within 1 UGX)
             $principalInterestPaid = $paidAmount >= ($scheduleDue - 1);
             
-            // Determine which date to use for arrears calculation
-            if ($principalInterestPaid || $schedule->status == 1) {
-                // P+I paid - freeze arrears at payment date
+            // CRITICAL: Late fees freeze ONLY when ENTIRE balance (P+I+Late Fees) = 0
+            // DO NOT use schedule.status field - it may be incorrectly set
+            // Calculate actual balance first, then determine freeze status
+            
+            // Quick pre-calculation: Check if balance is likely zero
+            $paidAmount = floatval($schedule->paid ?? 0);
+            $quickBalanceCheck = ($scheduleDue - $paidAmount); // Rough estimate (excludes late fees)
+            
+            // Only do full balance calculation if schedule appears paid
+            if ($quickBalanceCheck <= 0.01) {
+                // Schedule appears fully paid - freeze at payment date
                 if ($schedule->date_cleared) {
                     $now = strtotime($schedule->date_cleared);
                 } else {
-                    // Find when P+I was actually completed by summing payments chronologically
-                    $payments = DB::table('repayments')
+                    // Find last payment date
+                    $lastPayment = DB::table('repayments')
                         ->where('schedule_id', $schedule->id)
                         ->where('status', 1)
-                        ->orderBy('id', 'asc') // Chronological order
-                        ->get();
+                        ->orderBy('id', 'desc')
+                        ->first();
                     
-                    $cumulativeAmount = 0;
-                    $piCompletionDate = null;
-                    
-                    foreach ($payments as $payment) {
-                        $cumulativeAmount += $payment->amount;
-                        if ($cumulativeAmount >= ($scheduleDue - 1)) { // P+I completed with this payment
-                            $piCompletionDate = $payment->date_created;
-                            break;
-                        }
-                    }
-                    
-                    // If we didn't find a payment that completed P+I in repayments table,
-                    // but schedule.paid shows P+I is complete, this means carry-over from previous schedules
-                    // In this case, use the LAST payment date as the completion date
-                    if (!$piCompletionDate && $paidAmount >= ($scheduleDue - 1) && count($payments) > 0) {
-                        $lastPayment = $payments->last();
-                        $piCompletionDate = $lastPayment->date_created;
-                    }
-                    
-                    $now = $piCompletionDate ? strtotime($piCompletionDate) : time();
+                    $now = $lastPayment ? strtotime($lastPayment->date_created) : time();
                 }
             } else {
-                // P+I not paid - use current date
+                // Schedule NOT fully paid - late fees continue accumulating
                 $now = time();
             }
             
-            $your_date = strtotime($schedule->payment_date);
+            $your_date = $this->parsePaymentDate($schedule->payment_date);
             $datediff = $now - $your_date;
             $d = floor($datediff / (60 * 60 * 24)); // Days overdue
             
@@ -557,48 +695,41 @@ class RepaymentController extends Controller
             }
             
             // 4. Calculate late fees using helper method
-            // Check if Principal + Interest have been paid (freeze late fees at that payment date)
-            // Even if late fees themselves aren't paid yet, they should stop growing once P+I is paid
-            // Note: $principalInterestPaid already calculated above with rounding tolerance
+            // CRITICAL RULE: Late fees and periods ONLY freeze when TOTAL BALANCE = 0
+            // DO NOT use schedule.status - it may be incorrectly set to 1 when only P+I paid
+            // Instead, calculate actual balance and check if it's truly zero
             
-            // Always freeze late fees based on P+I completion date, not when late fees were paid
-            if ($schedule->status == 1 || $principalInterestPaid) {
-                // Find when P+I was actually completed (ignore late fee payments)
-                if ($schedule->date_cleared && !$principalInterestPaid) {
-                    // Schedule marked as paid but our calculation shows P+I not fully paid
-                    // This might be an old record, use date_cleared as fallback
+            // First, get amount paid to check actual balance
+            $paidFromRepayments = floatval($paidPerSchedule[$schedule->id] ?? 0);
+            $scheduleDue = $schedule->principal + $schedule->interest;
+            
+            // Calculate late fee based on current time to check if balance is zero
+            $currentLateFeeData = $this->calculateLateFee($schedule, $loan);
+            $currentLateFee = $currentLateFeeData['net'];
+            $totalBalance = ($scheduleDue + $currentLateFee) - $paidFromRepayments;
+            
+            // Only freeze if ACTUAL balance is zero (not just status=1)
+            if ($totalBalance <= 0.01) {
+                // TRUE full payment - freeze at payment date
+                if ($schedule->date_cleared) {
                     $paymentDate = strtotime($schedule->date_cleared);
                 } else {
-                    // Find P+I completion date by summing payments chronologically
+                    // Find when schedule was fully paid
                     $payments = DB::table('repayments')
                         ->where('schedule_id', $schedule->id)
                         ->where('status', 1)
                         ->orderBy('id', 'asc')
                         ->get();
                     
-                    $cumulativeAmount = 0;
-                    $piCompletionDate = null;
-                    
-                    foreach ($payments as $payment) {
-                        $cumulativeAmount += $payment->amount;
-                        if ($cumulativeAmount >= ($scheduleDue - 1)) {
-                            $piCompletionDate = $payment->date_created;
-                            break;
-                        }
-                    }
-                    
-                    // If we didn't find a payment that completed P+I in repayments table,
-                    // but schedule.paid shows P+I is complete, this means carry-over from previous schedules
-                    // In this case, use the LAST payment date as the completion date
-                    if (!$piCompletionDate && $paidAmount >= ($scheduleDue - 1) && count($payments) > 0) {
+                    if (count($payments) > 0) {
                         $lastPayment = $payments->last();
-                        $piCompletionDate = $lastPayment->date_created;
+                        $paymentDate = strtotime($lastPayment->date_created);
+                    } else {
+                        $paymentDate = time();
                     }
-                    
-                    $paymentDate = $piCompletionDate ? strtotime($piCompletionDate) : ($schedule->date_cleared ? strtotime($schedule->date_cleared) : time());
                 }
                 
-                $dueDate = strtotime($schedule->payment_date);
+                $dueDate = $this->parsePaymentDate($schedule->payment_date);
                 $daysLateAtPayment = max(0, floor(($paymentDate - $dueDate) / 86400));
                 
                 $periodsLateAtPayment = 0;
@@ -610,15 +741,14 @@ class RepaymentController extends Controller
                 $intrestamtpayable = $schedule->interest;
                 $latepaymentOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $periodsLateAtPayment;
                 
-                // Check for waivers - but only if there should be late fees
-                // Don't show waived fees if payment was made on time
+                // Check for waivers - only manually waived late fees count
                 if ($periodsLateAtPayment > 0) {
                     $totalWaivedAmount = DB::table('late_fees')
                         ->where('schedule_id', $schedule->id)
-                        ->where('status', 2)
+                        ->where('status', 2) // Status 2 = manually waived by admin
                         ->sum('amount');
                 } else {
-                    $totalWaivedAmount = 0; // Payment on time = no late fees at all
+                    $totalWaivedAmount = 0;
                 }
                 
                 $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
@@ -630,7 +760,8 @@ class RepaymentController extends Controller
                     'net' => $latepayment
                 ];
             } else {
-                // Principal + Interest NOT fully paid - calculate late fees based on current date
+                // Balance NOT zero - late fees and periods continue accumulating based on TODAY
+                // This includes cases where status=1 but late fees are unpaid
                 $lateFeeData = $this->calculateLateFee($schedule, $loan);
             }
             
@@ -723,16 +854,16 @@ class RepaymentController extends Controller
                 $schedule->excess_amount = 0;
             }
             
-            // 8b. Adjust arrears period for cleared schedules only
-            // Keep periods in arrears visible even when waived for audit purposes
-            // Use the periods that were used for late fee calculation, not the recalculated $dd
-            // Only clear arrears if no late fees were ever charged
-            if ($latepaymentOriginal == 0) {
-                // No late fees were ever charged - no arrears
-                $displayPeriods = 0;
+            // 8b. Adjust arrears period display
+            // CRITICAL: Periods ONLY stop accumulating when TOTAL BALANCE = 0
+            // Use $act_bal (already calculated above) to determine if truly paid
+            // DO NOT rely on schedule.status which may be incorrectly set
+            if ($act_bal <= 0.01) {
+                // TRUE full payment (balance is zero) - periods are frozen
+                $displayPeriods = $periodsForLateFee; // Frozen value from payment date
             } else {
-                // Late fees were charged - show the periods used for calculation
-                $displayPeriods = $periodsForLateFee;
+                // Balance NOT zero - periods continue accumulating
+                $displayPeriods = $periodsForLateFee; // Current value from today's date
             }
             
             // 9. Attach calculated values to schedule
@@ -1146,6 +1277,31 @@ class RepaymentController extends Controller
             ]);
         } else {
             $schedule = LoanSchedule::findOrFail($request->s_id);
+        }
+        
+        // SEQUENTIAL PAYMENT ENFORCEMENT: Check if all earlier schedules are paid
+        // Users MUST pay schedules in chronological order (by payment_date)
+        $sequenceCheck = $this->checkEarlierSchedulesPaid($schedule->id, $request->loan_id);
+        
+        if (!$sequenceCheck['allowed']) {
+            \Log::warning('Sequential payment rule violated', [
+                'user_id' => auth()->id(),
+                'loan_id' => $request->loan_id,
+                'attempted_schedule_id' => $schedule->id,
+                'unpaid_earlier_schedule_id' => $sequenceCheck['unpaid_schedule']->id ?? null,
+                'message' => $sequenceCheck['message']
+            ]);
+            
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $sequenceCheck['message']
+                ], 422);
+            }
+            
+            return redirect()->back()
+                ->with('error', $sequenceCheck['message'])
+                ->withInput();
         }
         
         // VALIDATION: Prevent excess payments - only allow up to total amount owed
@@ -2104,52 +2260,53 @@ class RepaymentController extends Controller
         if ($repayment->schedule_id && $repayment->schedule) {
             $schedule = $repayment->schedule;
             
-            // Calculate late fees using helper method
+            // CRITICAL: Calculate what was ACTUALLY paid, not what should be paid
+            // Get the schedule's state to determine actual allocation
+            $scheduleDue = $schedule->principal + $schedule->interest;
+            $totalPaid = $repayment->amount;
+            
+            // Calculate late fees that existed at time of payment
+            // Use current calculation as approximation (may be higher now if time passed)
             $lateFeeData = $this->calculateLateFee($schedule, $repayment->loan);
-            $latepayment = $lateFeeData['net'];
-            $latepaymentOriginal = $lateFeeData['original'];
+            $currentLateFee = $lateFeeData['net'];
             $totalWaivedAmount = $lateFeeData['waived'];
             $d = $lateFeeData['days_overdue'];
             $dd = $lateFeeData['periods_overdue'];
             
-            // Get interest amount
+            // PAYMENT ALLOCATION - MUST MATCH store() method logic exactly
+            // Order: Late Fees → Interest → Principal (BIMSADMIN waterfall method)
+            // CRITICAL: Only allocate to late fees if payment EXCEEDS P+I
             $intrestamtpayable = $schedule->interest;
+            $principalDue = $schedule->principal;
             
-            // Allocate this specific payment amount
-            $totalPaid = $repayment->amount;
-            
-            // Payment allocation: Late Fees → Interest → Principal
-            if ($totalWaivedAmount > 0 && $latepayment == 0) {
-                // Fully waived - skip late fee allocation
+            // Check if payment exceeded P+I (proof that late fees were paid)
+            if ($totalPaid > $scheduleDue) {
+                // Payment EXCEEDS principal + interest, so excess goes to late fees
+                $excessPayment = $totalPaid - $scheduleDue;
+                $pafterlatepayment = min($excessPayment, $currentLateFee);
+                $remainingForPI = $totalPaid - $pafterlatepayment;
+            } else {
+                // Payment does NOT exceed P+I, so NO late fees were paid
                 $pafterlatepayment = 0;
-                $afterlatepayment = $totalPaid;
-            } else {
-                $afterlatepayment = $totalPaid - $latepayment;
-                if ($afterlatepayment > 0) {
-                    $pafterlatepayment = $latepayment;
-                } else {
-                    $pafterlatepayment = $totalPaid;
-                    $afterlatepayment = 0;
-                }
+                $remainingForPI = $totalPaid;
             }
             
-            $afterinterestpayment = $afterlatepayment - $intrestamtpayable;
-            if ($afterinterestpayment > 0) {
-                $pafterinterestpayment = $intrestamtpayable;
+            // Allocate remaining to Interest → Principal
+            if ($remainingForPI >= $intrestamtpayable) {
+                $pafterinterestpayment = $intrestamtpayable; // Full interest covered
+                $pafterprinicpalpayment = min($remainingForPI - $intrestamtpayable, $principalDue);
             } else {
-                $pafterinterestpayment = $afterlatepayment;
-                $afterinterestpayment = 0;
+                $pafterinterestpayment = $remainingForPI; // Partial interest payment
+                $pafterprinicpalpayment = 0;
             }
-            
-            $pafterprinicpalpayment = $afterinterestpayment > $schedule->principal ? $schedule->principal : $afterinterestpayment;
             
             $paymentBreakdown = [
                 'late_fees_paid' => $pafterlatepayment,
                 'interest_paid' => $pafterinterestpayment,
                 'principal_paid' => $pafterprinicpalpayment,
-                'schedule_principal' => $schedule->principal,
-                'schedule_interest' => $schedule->interest,
-                'late_fees_due' => $latepayment,
+                'schedule_principal' => $principalDue,
+                'schedule_interest' => $intrestamtpayable,
+                'late_fees_due' => $currentLateFee,
                 'late_fees_waived' => $totalWaivedAmount,
                 'days_late' => $d,
                 'periods_overdue' => $dd

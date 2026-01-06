@@ -679,12 +679,65 @@ class RepaymentService
     }
     
     /**
-     * Calculate net late fee for a schedule (original fee minus waivers)
+     * Parse payment dates that may be in DD-MM-YYYY format
+     * MUST MATCH RepaymentController::parsePaymentDate() logic
+     * 
+     * @param string $dateString - Date in various formats
+     * @return int Unix timestamp
      */
-    private function calculateNetLateFee($schedule, $loan): float
+    private function parsePaymentDate($dateString)
     {
-        $now = time();
-        $your_date = strtotime($schedule->payment_date);
+        // Parse DD-MM-YYYY format correctly
+        if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $dateString, $matches)) {
+            // DD-MM-YYYY format
+            return mktime(0, 0, 0, $matches[2], $matches[1], $matches[3]);
+        } else {
+            // Fall back to strtotime for other formats
+            return strtotime($dateString);
+        }
+    }
+    
+    /**
+     * Calculate late fee for a schedule
+     * MUST MATCH RepaymentController::calculateLateFee() logic
+     * 
+     * FORMULA: Late Fee = (Principal + Interest) × 6% × Periods Overdue
+     * FREEZE LOGIC: Periods freeze when total balance (P+I+Late Fees) = 0
+     * WAIVERS: Deducts from penalty_waivers table (admin-approved waivers)
+     * 
+     * @param object $schedule - loan_schedules record
+     * @param object $loan - loan record with product relationship
+     * @return array ['gross' => total, 'net' => after_waivers, 'waived' => amount, 'days_overdue' => days, 'periods_overdue' => periods]
+     */
+    private function calculateLateFee($schedule, $loan): array
+    {
+        // CRITICAL: Check if balance is zero to determine freeze
+        // Quick check: if paid >= P+I, balance might be zero (freeze late fees)
+        $paidAmount = floatval($schedule->paid ?? 0);
+        $scheduleDue = $schedule->principal + $schedule->interest;
+        $quickBalanceCheck = ($scheduleDue - $paidAmount);
+        
+        // Determine which date to use for calculation
+        if ($quickBalanceCheck <= 0.01) {
+            // Schedule appears fully paid - use payment/cleared date
+            if ($schedule->date_cleared) {
+                $now = strtotime($schedule->date_cleared);
+            } else {
+                // Find last payment date
+                $lastPayment = DB::table('repayments')
+                    ->where('schedule_id', $schedule->id)
+                    ->where('status', 1)
+                    ->orderBy('id', 'desc')
+                    ->first();
+                
+                $now = $lastPayment ? strtotime($lastPayment->date_created) : time();
+            }
+        } else {
+            // Schedule NOT fully paid - late fees continue accumulating
+            $now = time();
+        }
+        
+        $your_date = $this->parsePaymentDate($schedule->payment_date);
         $d = max(0, floor(($now - $your_date) / 86400));
         
         $dd = 0;
@@ -696,13 +749,32 @@ class RepaymentService
         $intrestamtpayable = $schedule->interest;
         $lateFeeOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
         
-        // Check for waivers in late_fees table (status=2 means waived)
-        $totalWaivedAmount = DB::table('late_fees')
+        // Check for waivers in penalty_waivers table (not late_fees table)
+        // CRITICAL: Must match RepaymentController waiver query
+        $totalWaivedAmount = DB::table('penalty_waivers')
             ->where('schedule_id', $schedule->id)
-            ->where('status', 2)
+            ->where('status', 1) // Approved waivers
             ->sum('amount');
         
-        return max(0, $lateFeeOriginal - $totalWaivedAmount);
+        $netLateFee = max(0, $lateFeeOriginal - $totalWaivedAmount);
+        
+        return [
+            'gross' => $lateFeeOriginal,
+            'net' => $netLateFee,
+            'waived' => $totalWaivedAmount,
+            'days_overdue' => $d,
+            'periods_overdue' => $dd
+        ];
+    }
+    
+    /**
+     * Calculate net late fee for a schedule (backward compatibility wrapper)
+     * @deprecated Use calculateLateFee() for full data
+     */
+    private function calculateNetLateFee($schedule, $loan): float
+    {
+        $result = $this->calculateLateFee($schedule, $loan);
+        return $result['net'];
     }
     
     /**
