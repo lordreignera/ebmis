@@ -218,9 +218,10 @@ class RepaymentController extends Controller
      */
     public function activeLoans(Request $request)
     {
-        // Get active loans from both personal and group loans tables (status = 2 = Disbursed)
-        // Optimize by only loading necessary relationships
-        $personalLoansQuery = PersonalLoan::where('status', 2)
+        // Get active loans from both personal and group loans tables
+        // Include status 2 (Disbursed) AND status 3 (marked as closed but may have unpaid schedules)
+        // We'll filter out truly closed loans later using getActualStatus()
+        $personalLoansQuery = PersonalLoan::whereIn('status', [2, 3])
             ->with([
                 'member:id,fname,lname,contact', 
                 'branch:id,name', 
@@ -229,7 +230,7 @@ class RepaymentController extends Controller
                 'repayments'
             ]);
 
-        $groupLoansQuery = GroupLoan::where('status', 2)
+        $groupLoansQuery = GroupLoan::whereIn('status', [2, 3])
             ->with([
                 'group:id,name', 
                 'branch:id,name', 
@@ -300,6 +301,52 @@ class RepaymentController extends Controller
             }
             $allLoans = $personalLoans->concat($groupLoans)->sortByDesc('datecreated')->values();
         }
+
+        // Filter out truly closed loans (status = 3 with all schedules paid)
+        // Keep ONLY loans that are actually running:
+        // - Status 2 (Disbursed) with unpaid schedules = Active loans
+        // - Status 3 (marked closed) but with unpaid schedules = Incorrectly closed
+        // Exclude: pending, approved, rejected, stopped, restructured, and truly closed
+        $beforeFilterCount = $allLoans->count();
+        
+        $allLoans = $allLoans->filter(function($loan) {
+            $actualStatus = $loan->getActualStatus();
+            
+            // Debug: Log what we're checking
+            $schedules = $loan->schedules ?? collect();
+            $unpaidCount = $schedules->where('status', '!=', 1)->count();
+            
+            \Log::info("Active Loans Filter - Loan {$loan->id} | Code: {$loan->code}", [
+                'database_status' => $loan->status,
+                'actual_status' => $actualStatus,
+                'schedules_count' => $schedules->count(),
+                'unpaid_schedules' => $unpaidCount,
+                'included' => $actualStatus === 'running' && $unpaidCount > 0 ? 'YES' : 'NO'
+            ]);
+            
+            // ONLY include loans that are 'running' (disbursed + unpaid schedules)
+            if ($actualStatus !== 'running') {
+                return false;
+            }
+            
+            // Double-check: Must have unpaid schedules
+            if ($schedules->isEmpty()) {
+                return false; // No schedules = not active
+            }
+            
+            return $unpaidCount > 0; // Only include if has unpaid schedules
+        })->values();
+        
+        $afterFilterCount = $allLoans->count();
+        \Log::info("Active Loans Filter Complete", [
+            'before_filter' => $beforeFilterCount,
+            'after_filter' => $afterFilterCount,
+            'filtered_out' => $beforeFilterCount - $afterFilterCount
+        ]);
+        
+        \Log::info("Active Loans IDs after filter", [
+            'loan_ids' => $allLoans->pluck('id')->toArray()
+        ]);
 
         // Pre-calculate schedule totals with single query per loan type (huge performance boost!)
         $loanIds = $allLoans->pluck('id')->toArray();
@@ -441,17 +488,46 @@ class RepaymentController extends Controller
         });
 
         // Filter loans with outstanding balance (include overpayments as they need refunds)
+        $beforeBalanceFilter = $loans->count();
         $loans = $loans->filter(function($loan) {
-            return isset($loan->outstanding_balance) && $loan->outstanding_balance != 0;
+            $hasBalance = isset($loan->outstanding_balance) && $loan->outstanding_balance != 0;
+            
+            if (!$hasBalance && in_array($loan->id, [119, 116, 118, 120, 121, 123, 125, 126])) {
+                \Log::warning("Loan {$loan->id} filtered out by outstanding_balance", [
+                    'database_status' => $loan->status,
+                    'outstanding_balance' => $loan->outstanding_balance ?? 'not set',
+                    'total_paid' => $loan->repayments ? $loan->repayments->where('status', 1)->sum('amount') : 0
+                ]);
+            }
+            
+            return $hasBalance;
         });
+        
+        \Log::info("Outstanding balance filter complete", [
+            'before' => $beforeBalanceFilter,
+            'after' => $loans->count(),
+            'filtered_out' => $beforeBalanceFilter - $loans->count()
+        ]);
+
+        // Store the full collection for stats calculation
+        $allActiveLoansForStats = $loans;
 
         // Paginate manually
         $currentPage = \Illuminate\Pagination\Paginator::resolveCurrentPage();
         $perPage = 20;
+        $totalLoans = $loans->count();
         $currentItems = $loans->slice(($currentPage - 1) * $perPage, $perPage)->all();
+        
+        \Log::info("Active Loans Pagination", [
+            'total_loans' => $totalLoans,
+            'current_page' => $currentPage,
+            'per_page' => $perPage,
+            'current_page_loan_ids' => collect($currentItems)->pluck('id')->toArray()
+        ]);
+        
         $loans = new \Illuminate\Pagination\LengthAwarePaginator(
             $currentItems,
-            $loans->count(),
+            $totalLoans,
             $perPage,
             $currentPage,
             ['path' => request()->url(), 'query' => request()->query()]
@@ -461,31 +537,11 @@ class RepaymentController extends Controller
         $branches = Branch::active()->orderBy('name')->get();
         $products = Product::loanProducts()->active()->orderBy('name')->get();
 
-        // Calculate stats from both loan types
-        $allPersonalLoans = PersonalLoan::where('status', 2)->with('repayments', 'schedules')->get();
-        $allGroupLoans = GroupLoan::where('status', 2)->with('repayments', 'schedules')->get();
-        $allActiveLoans = $allPersonalLoans->concat($allGroupLoans);
-        
+        // Calculate stats from the SAME filtered loans we're displaying
         $stats = [
-            'total_active' => $allActiveLoans->count(),
-            'outstanding_amount' => $allActiveLoans->sum(function($loan) {
-                $totalPaid = (float) $loan->repayments->where('status', 1)->sum('amount');
-                
-                // Calculate total payable using DECLINING BALANCE (not doubled interest!)
-                $interestRate = (float) $loan->interest / 100;
-                $principalPerPeriod = (float) $loan->principal / (float) $loan->period;
-                $remainingPrincipal = (float) $loan->principal;
-                $totalInterest = 0.0;
-                
-                for ($i = 0; $i < $loan->period; $i++) {
-                    $totalInterest += $remainingPrincipal * $interestRate;
-                    $remainingPrincipal -= $principalPerPeriod;
-                }
-                
-                $totalPayable = (float) $loan->principal + $totalInterest;
-                return $totalPayable - $totalPaid;
-            }),
-            'overdue_count' => $allActiveLoans->filter(function($loan) {
+            'total_active' => $totalLoans, // Use the actual count of filtered loans
+            'outstanding_amount' => $allActiveLoansForStats->sum('outstanding_balance'), // Use pre-calculated values
+            'overdue_count' => $allActiveLoansForStats->filter(function($loan) {
                 return $loan->schedules->where('status', 0)
                                       ->filter(function($schedule) {
                                           try {
@@ -1257,6 +1313,25 @@ class RepaymentController extends Controller
                 ->withInput();
         }
         
+        // SECURITY: Prevent payments on stopped loans
+        if ($loan->status == 6) {
+            \Log::warning('Attempted payment on stopped loan', [
+                'loan_id' => $loan->id,
+                'user_id' => auth()->id()
+            ]);
+            
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This loan has been stopped and cannot receive payments. Please contact management for assistance.'
+                ], 403);
+            }
+            
+            return redirect()->back()
+                ->with('error', 'This loan has been stopped and cannot receive payments. Please contact management for assistance.')
+                ->withInput();
+        }
+        
         // Auto-find schedule if not provided (for old loans)
         if (!$request->s_id) {
             // Find first unpaid schedule
@@ -1929,6 +2004,14 @@ class RepaymentController extends Controller
             DB::beginTransaction();
 
             $loan = Loan::find($validated['loan_id']);
+            
+            // SECURITY: Prevent payments on stopped loans
+            if ($loan && $loan->status == 6) {
+                DB::rollBack();
+                return redirect()->back()->withErrors([
+                    'error' => 'This loan has been stopped and cannot receive payments. Please contact management for assistance.'
+                ]);
+            }
 
             // Prepare repayment data for old structure
             $repaymentData = [
@@ -1951,14 +2034,7 @@ class RepaymentController extends Controller
             // NOTE: personal_loans table doesn't have 'paid' column
             // Payment tracking is done via loan_schedules.paid only
             if ($validated['status']) {
-                // Check if loan has balance field, if not calculate from paid amount
-                if (method_exists($loan, 'outstanding_balance')) {
-                    if ($loan->outstanding_balance <= 0) {
-                        $loan->update(['status' => 3]); // Completed
-                    }
-                }
-                
-                // Check if loan is fully paid
+                // Check if loan is fully paid - validates ALL schedules before closing
                 $this->checkAndCloseLoanIfComplete($validated['loan_id']);
             }
 
@@ -2059,16 +2135,7 @@ class RepaymentController extends Controller
             // NOTE: personal_loans table doesn't have 'paid' column
             // Payment tracking is done via loan_schedules.paid only
             if ($validated['status']) {
-                // Check loan status
-                if (method_exists($loan, 'outstanding_balance')) {
-                    if ($loan->outstanding_balance <= 0) {
-                        $loan->update(['status' => 3]); // Completed
-                    } else {
-                        $loan->update(['status' => 2]); // Active
-                    }
-                }
-                
-                // Check if loan is fully paid
+                // Check if loan is fully paid - validates ALL schedules before closing
                 $this->checkAndCloseLoanIfComplete($repayment->loan_id);
             }
 
@@ -2566,6 +2633,21 @@ class RepaymentController extends Controller
             DB::beginTransaction();
 
             $loan = Loan::findOrFail($validated['loan_id']);
+            
+            // SECURITY: Prevent payments on stopped loans
+            if ($loan->status == 6) {
+                DB::rollBack();
+                
+                \Log::warning('Attempted mobile money payment on stopped loan', [
+                    'loan_id' => $loan->id,
+                    'user_id' => auth()->id()
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This loan has been stopped and cannot receive payments. Please contact management for assistance.'
+                ], 403);
+            }
             
             // Auto-find schedule if not provided (for old loans)
             if (!$validated['s_id']) {

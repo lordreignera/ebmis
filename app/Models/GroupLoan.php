@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\HasLoanStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class GroupLoan extends Model
 {
-    use HasFactory;
+    use HasFactory, HasLoanStatus;
 
     protected $table = 'group_loans';
     
@@ -204,6 +205,9 @@ class GroupLoan extends Model
 
         return $statuses[$this->status] ?? 'Unknown';
     }
+
+    /**
+    // getActualStatus() and related methods now provided by HasLoanStatus trait
 
     /**
      * Get total amount paid

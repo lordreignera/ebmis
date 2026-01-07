@@ -92,16 +92,21 @@ class AdminController extends Controller
             ->where('verified', '1')
             ->count();
 
-        // Active loans (status = 2 = Disbursed)
-        $activePersonalLoans = DB::table($loansInfo['table'])
-            ->where('status', '2')
-            ->count();
+        // Active loans (status = 2 = Disbursed OR status = 3 with unpaid schedules)
+        // Get all potential active loans first
+        $potentialActivePersonalLoans = PersonalLoan::whereIn('status', [2, 3])
+            ->with('schedules')
+            ->get();
+        
+        // Filter to only truly active loans using getActualStatus()
+        $activePersonalLoansFiltered = $potentialActivePersonalLoans->filter(function($loan) {
+            return $loan->getActualStatus() === 'running';
+        });
+        
+        $activePersonalLoans = $activePersonalLoansFiltered->count();
 
-        // Outstanding amount - use principal for active loans
-        $activePersonalLoansValue = DB::table($loansInfo['table'])
-            ->where('status', '2')
-            ->selectRaw('SUM(CAST(principal as DECIMAL(15,2))) as total_principal')
-            ->value('total_principal') ?? 0;
+        // Outstanding amount - sum of principal for active loans
+        $activePersonalLoansValue = $activePersonalLoansFiltered->sum('principal');
 
         // === GROUP LOANS STATISTICS ===
         $groupLoansCount = DB::table('group_loans')
@@ -124,16 +129,21 @@ class AdminController extends Controller
             ->where('verified', '1')
             ->count();
 
-        // Active group loans (status = 2 = Disbursed)
-        $activeGroupLoans = DB::table('group_loans')
-            ->where('status', '2')
-            ->count();
+        // Active group loans (status = 2 = Disbursed OR status = 3 with unpaid schedules)
+        // Get all potential active group loans first
+        $potentialActiveGroupLoans = GroupLoan::whereIn('status', [2, 3])
+            ->with('schedules')
+            ->get();
+        
+        // Filter to only truly active loans using getActualStatus()
+        $activeGroupLoansFiltered = $potentialActiveGroupLoans->filter(function($loan) {
+            return $loan->getActualStatus() === 'running';
+        });
+        
+        $activeGroupLoans = $activeGroupLoansFiltered->count();
 
-        // Outstanding amount for group loans - use principal for active loans
-        $activeGroupLoansValue = DB::table('group_loans')
-            ->where('status', '2')
-            ->selectRaw('SUM(CAST(principal as DECIMAL(15,2))) as total_principal')
-            ->value('total_principal') ?? 0;
+        // Outstanding amount for group loans - sum of principal for active loans
+        $activeGroupLoansValue = $activeGroupLoansFiltered->sum('principal');
 
         // === TOTAL LOANS (Personal + Group) ===
         $totalLoansCount = $personalLoansCount + $groupLoansCount;
@@ -144,16 +154,19 @@ class AdminController extends Controller
         $totalActiveLoansValue = $activePersonalLoansValue + $activeGroupLoansValue;
 
         // === REPAYMENTS DUE (Overdue) ===
+        // Count unique LOANS (not schedules) that have overdue payments
         // payment_date is stored as DD-MM-YYYY format, need to convert for comparison
         $repaymentsDue = DB::table('loan_schedules')
             ->where('status', '0')
             ->whereRaw("STR_TO_DATE(payment_date, '%d-%m-%Y') < ?", [$today])
             ->sum('payment');
 
+        // Count unique loans with overdue schedules
         $repaymentsDueCount = DB::table('loan_schedules')
             ->where('status', '0')
             ->whereRaw("STR_TO_DATE(payment_date, '%d-%m-%Y') < ?", [$today])
-            ->count();
+            ->distinct('loan_id')
+            ->count('loan_id');
 
         // === REPAYMENTS DUE TODAY ===
         // payment_date is stored as DD-MM-YYYY format, need to convert for comparison
@@ -168,17 +181,36 @@ class AdminController extends Controller
             ->where('payment_date', $todayFormatted)
             ->count();
 
-        // === CASH SECURITIES (SAVINGS) ===
-        $totalSavingsCount = DB::table('savings')
+        // === CASH SECURITIES ===
+        // Use cash_securities table (new system) + savings table (legacy/fallback)
+        // Cash Securities are loan collateral deposits from members
+        $cashSecuritiesCount = DB::table('cash_securities')
+            ->where('status', 1) // Only paid/confirmed securities
             ->count();
 
-        $totalSavingsValue = DB::table('savings')
-            ->sum('value');
+        $cashSecuritiesValue = DB::table('cash_securities')
+            ->where('status', 1)
+            ->sum('amount') ?? 0;
 
-        $savingsThisMonth = DB::table('savings')
+        $cashSecuritiesThisMonth = DB::table('cash_securities')
+            ->where('status', 1)
+            ->whereMonth('datecreated', $currentMonth)
+            ->whereYear('datecreated', $currentYear)
+            ->sum('amount') ?? 0;
+
+        // Legacy savings table (for backwards compatibility)
+        $legacySavingsCount = DB::table('savings')->count();
+        $legacySavingsValue = DB::table('savings')->sum('value') ?? 0;
+        
+        $legacySavingsThisMonth = DB::table('savings')
             ->whereMonth($savingsTimestamp, $currentMonth)
             ->whereYear($savingsTimestamp, $currentYear)
-            ->sum('value');
+            ->sum('value') ?? 0;
+
+        // TOTAL = New cash_securities + Legacy savings
+        $totalCashSecuritiesCount = $cashSecuritiesCount + $legacySavingsCount;
+        $totalCashSecuritiesValue = $cashSecuritiesValue + $legacySavingsValue;
+        $totalCashSecuritiesThisMonth = $cashSecuritiesThisMonth + $legacySavingsThisMonth;
 
         // === INVESTMENTS ===
         $totalInvestors = DB::table('members')
@@ -266,10 +298,10 @@ class AdminController extends Controller
             'repayments_due_today' => $repaymentsDueToday,
             'repayments_due_today_count' => $repaymentsDueTodayCount,
 
-            // Savings
-            'savings_count' => $totalSavingsCount,
-            'savings_value' => $totalSavingsValue,
-            'savings_month' => $savingsThisMonth,
+            // Cash Securities (Savings)
+            'savings_count' => $totalCashSecuritiesCount,
+            'savings_value' => $totalCashSecuritiesValue,
+            'savings_month' => $totalCashSecuritiesThisMonth,
 
             // Investments
             'investors_count' => $totalInvestors,

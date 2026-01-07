@@ -977,6 +977,9 @@ body.modal-open {
                                                     } elseif ($actualStatus === 'running') {
                                                         // For running loans, go directly to repayment schedules
                                                         $viewUrl = route('admin.loans.repayments.schedules', ['id' => $loan->id]);
+                                                    } elseif ($actualStatus === 'closed') {
+                                                        // For closed loans, go directly to repayment schedules (all paid)
+                                                        $viewUrl = route('admin.loans.repayments.schedules', ['id' => $loan->id]);
                                                     } else {
                                                         $viewUrl = route('admin.loans.show', ['id' => $loan->id]) . '?type=' . $loanType;
                                                     }
