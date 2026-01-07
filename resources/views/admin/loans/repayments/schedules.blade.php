@@ -282,6 +282,16 @@
                         </div>
                     </div>
                 </div>
+                @php
+                    // Check if any schedule has excess amount > 0
+                    $hasExcessAmounts = false;
+                    foreach($schedules as $s) {
+                        if(isset($s->excess_amount) && $s->excess_amount > 1) {
+                            $hasExcessAmounts = true;
+                            break;
+                        }
+                    }
+                @endphp
                 <div class="card-body">
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered table-hover" id="schedulesTable" style="font-size: 0.875rem;">
@@ -290,11 +300,11 @@
                                     <th style="width: 3%;">#</th>
                                     <th style="width: 7%;">Installment Date</th>
                                     <th style="width: 6%;">Principal</th>
-                                    <th style="width: 6%;">Original Interest</th>
-                                    <th style="width: 6%;">Principal cal Intrest</th>
-                                    <th style="width: 6%;">Principal Bal</th>
-                                    <th style="width: 6%;">Principal for Intrest payable</th>
-                                    <th style="width: 6%;">Intrest payable</th>
+                                    {{-- <th style="width: 6%;">Original Interest</th> --}}
+                                    {{-- <th style="width: 6%;">Principal cal Intrest</th> --}}
+                                    {{-- <th style="width: 6%;">Principal Bal</th> --}}
+                                    {{-- <th style="width: 6%;">Principal for Intrest payable</th> --}}
+                                    <th style="width: 6%;">Interest Payable</th>
                                     <th style="width: 5%;">Periods in Arrears</th>
                                     <th style="width: 6%;">Late Fees</th>
                                     <th style="width: 6%;">Total Payment</th>
@@ -303,7 +313,9 @@
                                     <th style="width: 6%;">Late fees Paid</th>
                                     <th style="width: 6%;">Total Amount Paid</th>
                                     <th style="width: 6%;">Total Balance</th>
-                                    <th style="width: 6%;">Excess Amount</th>
+                                    @if($hasExcessAmounts)
+                                        <th style="width: 6%;">Excess Amount</th>
+                                    @endif
                                     <th style="width: 5%;">Status</th>
                                     <th style="width: 5%;">Action</th>
                                 </tr>
@@ -336,10 +348,10 @@
                                         <td class="text-center">{{ $loop->iteration }}</td>
                                         <td class="text-center">{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</td>
                                         <td class="text-end">{{ number_format($schedule->principal, 0) }}</td>
-                                        <td class="text-end">{{ number_format($schedule->interest, 0) }}</td>
-                                        <td class="text-end">{{ number_format($schedule->pricipalcalIntrest, 0) }}</td>
-                                        <td class="text-end">{{ number_format($schedule->principal_balance, 0) }}</td>
-                                        <td class="text-end">{{ number_format($schedule->globalprincipal, 0) }}</td>
+                                        {{-- <td class="text-end">{{ number_format($schedule->interest, 0) }}</td> --}}
+                                        {{-- <td class="text-end">{{ number_format($schedule->pricipalcalIntrest, 0) }}</td> --}}
+                                        {{-- <td class="text-end">{{ number_format($schedule->principal_balance, 0) }}</td> --}}
+                                        {{-- <td class="text-end">{{ number_format($schedule->globalprincipal, 0) }}</td> --}}
                                         <td class="text-end">{{ number_format($schedule->intrestamtpayable, 0) }}</td>
                                         <td class="text-center">{{ number_format($schedule->periods_in_arrears, 0) }}</td>
                                         <td class="text-end">
@@ -392,24 +404,26 @@
                                                 <span class="text-success">0</span>
                                             @endif
                                         </td>
-                                        <td class="text-center">
-                                            @php
-                                                $excessAmount = $schedule->excess_amount ?? 0;
-                                            @endphp
-                                            @if($excessAmount > 1)
-                                                <span class="text-success fw-bold">{{ number_format($excessAmount, 0) }}</span>
-                                                <br>
-                                                @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
-                                                    <button type="button" class="btn btn-info btn-sm px-2 py-1 mt-1" 
-                                                            onclick="openCarryOverModal({{ $schedule->id }}, {{ $excessAmount }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}')"
-                                                            title="Carry Over Excess to Next Schedule">
-                                                        <i class="fas fa-arrow-right"></i> Carry Over
-                                                    </button>
+                                        @if($hasExcessAmounts)
+                                            <td class="text-center">
+                                                @php
+                                                    $excessAmount = $schedule->excess_amount ?? 0;
+                                                @endphp
+                                                @if($excessAmount > 1)
+                                                    <span class="text-success fw-bold">{{ number_format($excessAmount, 0) }}</span>
+                                                    <br>
+                                                    @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                                        <button type="button" class="btn btn-info btn-sm px-2 py-1 mt-1" 
+                                                                onclick="openCarryOverModal({{ $schedule->id }}, {{ $excessAmount }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}')"
+                                                                title="Carry Over Excess to Next Schedule">
+                                                            <i class="fas fa-arrow-right"></i> Carry Over
+                                                        </button>
+                                                    @endif
+                                                @else
+                                                    <span class="text-muted">-</span>
                                                 @endif
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </td>
+                                            </td>
+                                        @endif
                                         <td class="text-center">{!! $statusBadge !!}</td>
                                         <td class="text-center">
                                             @if($schedule->status == 1)
@@ -541,10 +555,10 @@
                                     <th class="text-end">
                                         <strong>{{ number_format($schedules->sum('principal'), 0) }}</strong>
                                     </th>
-                                    <th></th>
-                                    <th></th>
-                                    <th></th>
-                                    <th></th>
+                                    {{-- <th></th> --}}
+                                    {{-- <th></th> --}}
+                                    {{-- <th></th> --}}
+                                    {{-- <th></th> --}}
                                     <th class="text-end">
                                         <strong>{{ number_format($schedules->sum('intrestamtpayable'), 0) }}</strong>
                                     </th>
