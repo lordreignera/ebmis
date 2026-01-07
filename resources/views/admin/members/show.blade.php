@@ -974,6 +974,9 @@ body.modal-open {
                                                         $viewUrl = route('admin.loans.show', ['id' => $loan->id]) . '?type=' . $loanType;
                                                     } elseif ($actualStatus === 'rejected') {
                                                         $viewUrl = route('admin.loans.rejected') . '?loan_id=' . $loan->id;
+                                                    } elseif ($actualStatus === 'running') {
+                                                        // For running loans, go directly to repayment schedules
+                                                        $viewUrl = route('admin.loans.repayments.schedules', ['id' => $loan->id]);
                                                     } else {
                                                         $viewUrl = route('admin.loans.show', ['id' => $loan->id]) . '?type=' . $loanType;
                                                     }
