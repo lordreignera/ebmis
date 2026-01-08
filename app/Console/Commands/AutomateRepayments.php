@@ -500,7 +500,8 @@ class AutomateRepayments extends Command
     }
     
     /**
-     * Poll payment status after initiation (like manual payments)
+     * Poll payment status after initiation (EXACT COPY of manual repay button logic)
+     * This matches RepaymentController::checkRepaymentMmStatus()
      */
     protected function pollPaymentStatus($transactionRef, $requestId, $scheduleId, $maxAttempts = 12)
     {
@@ -508,18 +509,20 @@ class AutomateRepayments extends Command
         
         while ($attempt < $maxAttempts) {
             $attempt++;
-            sleep(5); // Wait 5 seconds between checks
+            sleep(5); // Wait 5 seconds between checks (manual polls every 10s, we use 5s for faster response)
             
-            // Check repayment status in database
-            $repayment = DB::table('repayments')
-                ->where('txn_id', $transactionRef)
-                ->orWhere('transaction_reference', $transactionRef)
-                ->first();
+            // Find the repayment record
+            $repayment = \App\Models\Repayment::where('transaction_reference', $transactionRef)->first();
             
-            if ($repayment && $repayment->status == 1) {
-                $this->info("  → ✓ Payment confirmed in database!");
+            if (!$repayment) {
+                $this->error("  → Repayment not found for ref: {$transactionRef}");
+                return false;
+            }
+            
+            // If already approved, we're done
+            if ($repayment->status == 1) {
+                $this->info("  → ✓ Payment already approved!");
                 
-                // Update auto_payment_requests
                 DB::table('auto_payment_requests')
                     ->where('id', $requestId)
                     ->update([
@@ -530,72 +533,93 @@ class AutomateRepayments extends Command
                 return true;
             }
             
-            // Check status with FlexiPay/Stanbic API
+            // Check status with API (EXACT SAME as manual button)
             $statusResult = $this->mobileMoneyService->checkTransactionStatus($transactionRef);
             
+            Log::info("Auto repayment status check", [
+                'attempt' => $attempt,
+                'transaction_ref' => $transactionRef,
+                'status' => $statusResult['status'] ?? 'unknown',
+                'full_result' => $statusResult
+            ]);
+            
+            // If payment completed, use EXACT SAME logic as manual button
             if ($statusResult['success'] && $statusResult['status'] === 'completed') {
-                $this->info("  → ✓ Payment confirmed by FlexiPay!");
+                $this->info("  → ✓ Payment confirmed by gateway!");
                 
-                // Update repayment if not already updated by callback
-                if ($repayment && $repayment->status == 0) {
-                    DB::beginTransaction();
-                    try {
-                        DB::table('repayments')
-                            ->where('id', $repayment->id)
-                            ->update([
-                                'status' => '1',
-                                'pay_status' => 'SUCCESS',
-                                'pay_message' => 'Payment completed (auto-polling)',
-                                'updated_at' => Carbon::now()
-                            ]);
-                        
-                        // Update schedule
-                        $schedule = DB::table('loan_schedules')->find($scheduleId);
-                        if ($schedule) {
-                            $newPaid = ($schedule->paid ?? 0) + $repayment->amount;
-                            
-                            // CRITICAL FIX: Check if late fees exist for this schedule
-                            // Schedule should only be marked as PAID if late fees are also paid/waived
-                            $lateFees = DB::table('late_fees')
-                                ->where('schedule_id', $scheduleId)
-                                ->where('status', 0) // Pending late fees
-                                ->sum('amount');
-                            
-                            $totalDue = $schedule->payment + $lateFees;
-                            $isFullyPaid = $newPaid >= $totalDue;
-                            
-                            DB::table('loan_schedules')
-                                ->where('id', $scheduleId)
-                                ->update([
-                                    'paid' => $newPaid,
-                                    'status' => $isFullyPaid ? 1 : 0,
-                                    'date_cleared' => $isFullyPaid ? Carbon::now() : null
-                                ]);
-                            
-                            $this->info("  → ✓ Updated schedule #{$scheduleId}");
-                        }
-                        
-                        // Update auto_payment_requests
-                        DB::table('auto_payment_requests')
-                            ->where('id', $requestId)
-                            ->update([
-                                'status' => 'completed',
-                                'completed_at' => Carbon::now()
-                            ]);
-                        
-                        DB::commit();
-                    } catch (\Exception $e) {
-                        DB::rollBack();
-                        Log::error("Failed to update payment status", [
-                            'transaction_ref' => $transactionRef,
-                            'error' => $e->getMessage()
-                        ]);
+                DB::beginTransaction();
+                
+                try {
+                    $schedule = \App\Models\LoanSchedule::find($repayment->schedule_id);
+                    $loan = \App\Models\Loan::find($repayment->loan_id);
+                    
+                    // Update repayment status (EXACT SAME as manual)
+                    $repayment->update([
+                        'payment_status' => 'Completed',
+                        'status' => 1, // Mark as confirmed/completed
+                        'pay_status' => 'SUCCESS',
+                        'pay_message' => 'Payment completed (auto-polling)',
+                        'payment_raw' => json_encode($statusResult)
+                    ]);
+                    
+                    // Decrement pending_count on the schedule (EXACT SAME as manual)
+                    if ($schedule->pending_count > 0) {
+                        $schedule->decrement('pending_count');
                     }
+                    
+                    // Update schedule paid amount (EXACT SAME as manual)
+                    $schedule->increment('paid', $repayment->amount);
+                    
+                    // Check if schedule is fully paid (EXACT SAME as manual - with 1 UGX rounding tolerance)
+                    $difference = abs($schedule->payment - $schedule->paid);
+                    if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
+                        $schedule->update([
+                            'status' => 1, // Fully paid
+                            'paid' => $schedule->payment, // Ensure exact match to prevent rounding issues
+                            'date_cleared' => Carbon::now()
+                        ]);
+                        
+                        $this->info("  → ✓ Schedule #{$scheduleId} marked as PAID!");
+                    } else {
+                        $this->info("  → ✓ Schedule #{$scheduleId} partially paid: " . number_format($schedule->paid, 2) . " / " . number_format($schedule->payment, 2));
+                    }
+                    
+                    // Update auto_payment_requests
+                    DB::table('auto_payment_requests')
+                        ->where('id', $requestId)
+                        ->update([
+                            'status' => 'completed',
+                            'completed_at' => Carbon::now()
+                        ]);
+                    
+                    DB::commit();
+                    
+                    $this->info("  → ✓ REPAYMENT SAVED & SCHEDULE UPDATED (exactly like manual button)!");
+                    
+                    // Check if loan should be closed (all schedules paid)
+                    $this->checkAndCloseLoanIfComplete($loan->id);
+                    
+                    return true;
+                    
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    Log::error("Auto repayment status update failed", [
+                        'transaction_ref' => $transactionRef,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    
+                    $this->error("  → ✗ Failed to update: {$e->getMessage()}");
+                    return false;
                 }
-                
-                return true;
             } elseif ($statusResult['success'] && $statusResult['status'] === 'failed') {
                 $this->warn("  → ✗ Payment failed: {$statusResult['message']}");
+                
+                $repayment->update([
+                    'status' => 2, // Failed
+                    'pay_status' => 'FAILED',
+                    'pay_message' => $statusResult['message'] ?? 'Payment failed'
+                ]);
                 
                 DB::table('auto_payment_requests')
                     ->where('id', $requestId)
@@ -606,11 +630,71 @@ class AutomateRepayments extends Command
             
             // Still pending...
             if ($attempt % 3 == 0) { // Show progress every 15 seconds
-                $this->info("  → [{$attempt}/{$maxAttempts}] Still pending...");
+                $this->info("  → [{$attempt}/{$maxAttempts}] Waiting for customer approval...");
             }
         }
         
-        $this->warn("  → Timeout after 60 seconds - will retry later");
+        $this->warn("  → Timeout after 60 seconds - payment still pending (customer may approve later)");
         return false;
+    }
+    
+    /**
+     * Check if all loan schedules are paid and close the loan if complete
+     * This matches RepaymentController::checkAndCloseLoanIfComplete()
+     */
+    private function checkAndCloseLoanIfComplete(int $loanId): bool
+    {
+        try {
+            $loan = \App\Models\Loan::find($loanId);
+            
+            if (!$loan) {
+                Log::warning("Loan {$loanId} not found in checkAndCloseLoanIfComplete");
+                return false;
+            }
+            
+            // Only check disbursed loans (status = 2)
+            if ($loan->status != 2) {
+                return false;
+            }
+            
+            // Get all schedules
+            $schedules = \App\Models\LoanSchedule::where('loan_id', $loanId)->get();
+            
+            if ($schedules->isEmpty()) {
+                return false;
+            }
+            
+            // Check if all schedules are paid (status = 1)
+            $unpaidSchedules = $schedules->where('status', '!=', 1);
+            
+            if ($unpaidSchedules->count() === 0) {
+                // All schedules paid - close the loan
+                $loan->status = 3; // Closed
+                $loan->date_closed = Carbon::now();
+                $loan->save();
+                
+                $this->info("  → ✓ Loan #{$loanId} CLOSED (all schedules paid)!");
+                
+                Log::info("Loan auto-closed after auto-repayment", [
+                    'loan_id' => $loanId,
+                    'member_id' => $loan->member_id,
+                    'total_schedules' => $schedules->count(),
+                    'date_closed' => $loan->date_closed
+                ]);
+                
+                return true;
+            }
+            
+            return false;
+            
+        } catch (\Exception $e) {
+            Log::error("Error in checkAndCloseLoanIfComplete", [
+                'loan_id' => $loanId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return false;
+        }
     }
 }

@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
+use App\Helpers\LoanScheduleHelper;
 
 class DisbursementController extends Controller
 {
@@ -498,33 +499,73 @@ class DisbursementController extends Controller
                              strpos($mobileMoneyResult['message'], 'timed out') !== false ||
                              strpos($mobileMoneyResult['message'], 'Operation timed out') !== false);
 
-                if ($mobileMoneyResult['success']) {
-                    // If mobile money API call succeeded, complete the disbursement immediately
-                    // This updates loan status and generates schedules
-                    $disbursement->update(['status' => 1]); // Processing
-                    $this->completeDisbursement($disbursement); // Updates to status 2 and completes
-                } elseif ($isTimeout) {
-                    // Timeout doesn't mean failure - money likely sent successfully
-                    // Complete the disbursement but mark as "pending confirmation"
-                    $disbursement->update([
-                        'status' => 1, // Processing (will be confirmed by webhook/cron)
-                        'notes' => ($disbursement->notes ? $disbursement->notes . "\n" : '') . 
-                                  'Payment initiated but API timed out. Awaiting confirmation.'
-                    ]);
-                    $this->completeDisbursement($disbursement); // Complete anyway - money was likely sent
-                    
-                    DB::commit();
-                    
-                    Log::warning('Disbursement completed despite timeout', [
-                        'loan_id' => $loan->id,
-                        'disbursement_id' => $disbursement->id,
-                        'message' => $mobileMoneyResult['message']
-                    ]);
-                    
-                    return redirect()->route('admin.loans.active')
-                        ->with('warning', 'Loan disbursed successfully. Mobile money payment initiated but confirmation pending due to slow network response. Check disbursement transactions for confirmation.');
+                // CRITICAL: Check if money was sent (success OR timeout means money likely sent)
+                $moneySent = $mobileMoneyResult['success'] || $isTimeout;
+
+                if ($moneySent) {
+                    // MONEY HAS LEFT - MUST complete disbursement no matter what
+                    // Wrap in try-catch to force completion even if there are DB errors
+                    try {
+                        $disbursement->update(['status' => 1]); // Processing
+                        $this->completeDisbursement($disbursement); // Creates schedules
+                        
+                        DB::commit();
+                        
+                        if ($isTimeout) {
+                            Log::warning('Disbursement completed despite timeout', [
+                                'loan_id' => $loan->id,
+                                'disbursement_id' => $disbursement->id,
+                                'message' => $mobileMoneyResult['message']
+                            ]);
+                            
+                            return redirect()->route('admin.loans.active')
+                                ->with('warning', 'Loan disbursed successfully. Mobile money payment initiated but confirmation pending due to slow network response.');
+                        }
+                    } catch (\Exception $completionError) {
+                        // CRITICAL: Money was sent but completion failed
+                        // Force schedule creation in a separate transaction
+                        Log::error('Money sent but disbursement completion failed - forcing schedule creation', [
+                            'loan_id' => $loan->id,
+                            'disbursement_id' => $disbursement->id,
+                            'error' => $completionError->getMessage()
+                        ]);
+                        
+                        // Commit what we have so far
+                        try {
+                            DB::commit();
+                        } catch (\Exception $commitError) {
+                            // Transaction may already be rolled back
+                        }
+                        
+                        // Force schedule creation in new transaction
+                        try {
+                            DB::beginTransaction();
+                            $this->forceCompleteDisbursement($disbursement);
+                            DB::commit();
+                            
+                            Log::info('Successfully forced disbursement completion after error', [
+                                'loan_id' => $loan->id,
+                                'disbursement_id' => $disbursement->id
+                            ]);
+                            
+                            return redirect()->route('admin.loans.active')
+                                ->with('warning', 'Loan disbursed successfully. Money was sent but there were some database issues. Schedules have been created.');
+                        } catch (\Exception $forceError) {
+                            // Last resort failed - log for manual intervention
+                            Log::critical('MANUAL INTERVENTION REQUIRED: Money sent but could not create schedules', [
+                                'loan_id' => $loan->id,
+                                'disbursement_id' => $disbursement->id,
+                                'phone' => $request->account_number,
+                                'amount' => $disbursement->amount,
+                                'error' => $forceError->getMessage()
+                            ]);
+                            
+                            return redirect()->route('admin.loans.active')
+                                ->with('error', 'CRITICAL: Money was sent to customer but schedules could not be created. Please create schedules manually for loan ' . $loan->code);
+                        }
+                    }
                 } else {
-                    // Actual failure - rollback
+                    // Actual failure - money NOT sent - safe to rollback
                     DB::rollBack();
                     return redirect()->back()
                         ->with('error', 'Mobile money disbursement failed: ' . $mobileMoneyResult['message'])
@@ -1184,6 +1225,68 @@ class DisbursementController extends Controller
     }
 
     /**
+     * Force complete disbursement - MUST succeed even if there are errors
+     * This is called when money has already been sent to customer
+     */
+    private function forceCompleteDisbursement(Disbursement $disbursement)
+    {
+        Log::info('Forcing disbursement completion (money already sent)', [
+            'disbursement_id' => $disbursement->id,
+            'loan_id' => $disbursement->loan_id
+        ]);
+
+        // Step 1: Update disbursement status (most important)
+        try {
+            DB::table('disbursements')->where('id', $disbursement->id)->update(['status' => 2]);
+        } catch (\Exception $e) {
+            Log::error('Failed to update disbursement status but continuing', ['error' => $e->getMessage()]);
+        }
+
+        // Step 2: Update loan status to disbursed
+        try {
+            $loanTable = $disbursement->loan_type == 1 ? 'personal_loans' : 'group_loans';
+            DB::table($loanTable)->where('id', $disbursement->loan_id)->update(['status' => 2]);
+        } catch (\Exception $e) {
+            Log::error('Failed to update loan status but continuing', ['error' => $e->getMessage()]);
+        }
+
+        // Step 3: Get loan for schedule generation
+        $loan = $disbursement->loan_type == 1 
+            ? PersonalLoan::with('product')->find($disbursement->loan_id)
+            : GroupLoan::with('product')->find($disbursement->loan_id);
+
+        if (!$loan) {
+            Log::critical('Cannot find loan for forced completion', ['loan_id' => $disbursement->loan_id]);
+            throw new \Exception('Loan not found');
+        }
+
+        // Step 4: Generate schedules - CRITICAL STEP
+        try {
+            $this->generateRepaymentSchedules($loan, $disbursement);
+            Log::info('Successfully generated schedules during forced completion');
+        } catch (\Exception $e) {
+            Log::critical('Failed to generate schedules even with force completion', [
+                'error' => $e->getMessage(),
+                'loan_id' => $loan->id
+            ]);
+            throw $e;
+        }
+
+        // Step 5: Deduct from investment (optional - not critical)
+        try {
+            if ($disbursement->inv_id) {
+                DB::table('investment')
+                    ->where('id', $disbursement->inv_id)
+                    ->decrement('amount', $disbursement->amount);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to deduct from investment but disbursement complete', ['error' => $e->getMessage()]);
+        }
+
+        Log::info('Force disbursement completion successful');
+    }
+
+    /**
      * Generate repayment schedules for disbursed loan
      */
     private function generateRepaymentSchedules($loan, $disbursement)
@@ -1352,63 +1455,11 @@ class DisbursementController extends Controller
 
     /**
      * Calculate payment date based on period type
+     * Uses centralized helper to avoid code duplication
      */
     private function calculatePaymentDate($startDate, $periodNumber, $periodType)
     {
-        switch ($periodType) {
-            case 1: // Weekly - every Friday
-                // Get the first Friday after disbursement
-                $firstFriday = $startDate->copy();
-                if (!$firstFriday->isFriday()) {
-                    $firstFriday->next(\Carbon\Carbon::FRIDAY);
-                } else {
-                    // If disbursement is on Friday, first payment is next Friday
-                    $firstFriday->addWeek();
-                }
-                // Add weeks for subsequent payments (period 1 = 0 weeks, period 2 = 1 week, etc.)
-                return $firstFriday->addWeeks($periodNumber - 1);
-                
-            case 2: // Monthly - 25th of each month
-                $paymentDate = $startDate->copy();
-                
-                // For first payment, get 25th of current or next month
-                if ($periodNumber == 1) {
-                    if ($paymentDate->day < 25) {
-                        $paymentDate->day(25);
-                    } else {
-                        $paymentDate->addMonth()->day(25);
-                    }
-                } else {
-                    // For subsequent payments, add months from first payment
-                    if ($paymentDate->day < 25) {
-                        $paymentDate->day(25);
-                    } else {
-                        $paymentDate->addMonth()->day(25);
-                    }
-                    $paymentDate->addMonths($periodNumber - 1);
-                }
-                
-                return $paymentDate;
-                
-            case 3: // Daily - each day after disbursement, skip Sundays
-                $date = $startDate->copy();
-                $daysAdded = 0;
-                
-                // Add days for each period, skipping Sundays
-                while ($daysAdded < $periodNumber) {
-                    $date->addDay();
-                    
-                    // Skip Sundays
-                    if (!$date->isSunday()) {
-                        $daysAdded++;
-                    }
-                }
-                
-                return $date;
-                
-            default:
-                return $startDate->copy()->addDays($periodNumber);
-        }
+        return LoanScheduleHelper::calculatePaymentDate($startDate, $periodNumber, $periodType);
     }
 
     /**

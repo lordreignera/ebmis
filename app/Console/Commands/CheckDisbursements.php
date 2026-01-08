@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use App\Models\Disbursement;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
+use App\Helpers\LoanScheduleHelper;
 
 class CheckDisbursements extends Command
 {
@@ -358,20 +359,10 @@ class CheckDisbursements extends Command
 
     /**
      * Calculate payment date based on period type
+     * Uses centralized helper to avoid code duplication
      */
     private function calculatePaymentDate($startDate, $periodNumber, $periodType)
     {
-        $date = $startDate->copy();
-        
-        if ($periodType == 1) {
-            // Weekly
-            return $date->addWeeks($periodNumber);
-        } elseif ($periodType == 2) {
-            // Monthly
-            return $date->addMonths($periodNumber);
-        } else {
-            // Daily (default)
-            return $date->addDays($periodNumber);
-        }
+        return LoanScheduleHelper::calculatePaymentDate($startDate, $periodNumber, $periodType);
     }
 }
