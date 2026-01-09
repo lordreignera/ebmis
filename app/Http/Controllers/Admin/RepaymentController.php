@@ -81,6 +81,24 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Get actual disbursement date for a loan
+     * Centralized method to avoid code duplication
+     * 
+     * @param object $loan - Loan model with disbursements relationship loaded
+     * @return string|null - Disbursement date or null
+     */
+    protected function getDisbursementDate($loan)
+    {
+        // Prioritize actual disbursement record from disbursements table
+        if (isset($loan->disbursements) && $loan->disbursements->isNotEmpty()) {
+            return $loan->disbursements->first()->created_at;
+        }
+        
+        // Fallback for old loans without disbursement records
+        return $loan->datecreated ?? $loan->created_at ?? null;
+    }
+
+    /**
      * Calculate late fee for a schedule with waiver support
      * Centralized method to avoid code duplication
      */
@@ -227,7 +245,10 @@ class RepaymentController extends Controller
                 'branch:id,name', 
                 'product:id,name,period_type',
                 'schedules',
-                'repayments'
+                'repayments',
+                'disbursements' => function($query) {
+                    $query->where('status', 2)->orderBy('created_at', 'desc');
+                }
             ]);
 
         $groupLoansQuery = GroupLoan::whereIn('status', [2, 3])
@@ -236,7 +257,10 @@ class RepaymentController extends Controller
                 'branch:id,name', 
                 'product:id,name,period_type',
                 'schedules',
-                'repayments'
+                'repayments',
+                'disbursements' => function($query) {
+                    $query->where('status', 2)->orderBy('created_at', 'desc');
+                }
             ]);
 
         // Apply search filter
@@ -415,8 +439,8 @@ class RepaymentController extends Controller
             $loan->loan_code = $loan->code;
             $loan->principal_amount = (float) $loan->principal;
             
-            // Set disbursement date (fallback chain for migrated loans)
-            $loan->disbursement_date = $loan->date_approved ?? $loan->datecreated ?? null;
+            // Set disbursement date using centralized helper method
+            $loan->disbursement_date = $this->getDisbursementDate($loan);
             
             // Check if this loan is a potential duplicate
             $loan->is_potential_duplicate = false;
@@ -568,14 +592,18 @@ class RepaymentController extends Controller
     public function schedules($loanId)
     {
         // Try to find loan in personal_loans first, then group_loans
-        $loan = PersonalLoan::with(['member', 'branch', 'product', 'schedules.repayments', 'repayments'])
+        $loan = PersonalLoan::with(['member', 'branch', 'product', 'schedules.repayments', 'repayments', 'disbursements' => function($query) {
+                    $query->where('status', 2)->orderBy('created_at', 'desc');
+                }])
                    ->whereIn('status', [2, 3, 5]) // Disbursed, Completed, or Restructured
                    ->find($loanId);
         
         $loanType = 'personal';
         
         if (!$loan) {
-            $loan = GroupLoan::with(['group', 'branch', 'product', 'schedules.repayments', 'repayments'])
+            $loan = GroupLoan::with(['group', 'branch', 'product', 'schedules.repayments', 'repayments', 'disbursements' => function($query) {
+                        $query->where('status', 2)->orderBy('created_at', 'desc');
+                    }])
                        ->whereIn('status', [2, 3, 5]) // Disbursed, Completed, or Restructured
                        ->find($loanId);
             $loanType = 'group';
@@ -616,11 +644,8 @@ class RepaymentController extends Controller
             $loan->period_type_name = 'installments';
         }
         
-        // Get disbursement date (might be in different columns depending on table)
-        $loan->disbursement_date = $loan->disbursement_date 
-            ?? $loan->datecreated 
-            ?? $loan->created_at 
-            ?? null;
+        // Get disbursement date using centralized helper method
+        $loan->disbursement_date = $this->getDisbursementDate($loan);
         
         // Calculate days overdue - find first unpaid schedule and check if it's past due
         $firstUnpaid = $loan->schedules()

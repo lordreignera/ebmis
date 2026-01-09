@@ -337,14 +337,14 @@
                                                        class="btn-modern btn-warning" title="Edit">
                                                         <i class="mdi mdi-pencil"></i>
                                                     </a>
-                                                    <button type="button" class="btn-modern btn-process" 
+                                                    {{-- <button type="button" class="btn-modern btn-process" 
                                                             onclick="approveLoan({{ $loan->id }})" title="Approve">
                                                         <i class="mdi mdi-check"></i>
                                                     </button>
                                                     <button type="button" class="btn-modern btn-delete" 
                                                             onclick="rejectLoan({{ $loan->id }})" title="Reject">
                                                         <i class="mdi mdi-close"></i>
-                                                    </button>
+                                                    </button> --}}
                                                 @endif
                                                 @if($loan->status == 1 && $loan->member->isApproved())
                                                     @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
