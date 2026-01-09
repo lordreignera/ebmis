@@ -136,7 +136,7 @@ class AccessControlController extends Controller
     
     public function users(Request $request)
     {
-        $query = User::with('roles', 'school');
+        $query = User::with('roles', 'school', 'branch');
         
         // Apply filters
         if ($request->filter) {
@@ -177,7 +177,8 @@ class AccessControlController extends Controller
     public function createUser()
     {
         $roles = Role::all();
-        return view('admin.access-control.users.create', compact('roles'));
+        $branches = \App\Models\Branch::active()->orderBy('name')->get();
+        return view('admin.access-control.users.create', compact('roles', 'branches'));
     }
 
     public function storeUser(Request $request)
@@ -190,6 +191,7 @@ class AccessControlController extends Controller
             'phone' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'designation' => 'nullable|string|max:100',
+            'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
             'roles' => 'array',
         ]);
 
@@ -201,6 +203,7 @@ class AccessControlController extends Controller
             'phone' => $request->phone,
             'address' => $request->address,
             'designation' => $request->designation,
+            'branch_id' => $request->user_type === 'branch' ? $request->branch_id : null,
             'status' => 'active', // Super admin created users are active by default
             'approved_by' => auth()->id(),
             'approved_at' => now(),
@@ -216,7 +219,8 @@ class AccessControlController extends Controller
     public function editUser(User $user)
     {
         $roles = Role::all();
-        return view('admin.access-control.users.edit', compact('user', 'roles'));
+        $branches = \App\Models\Branch::active()->orderBy('name')->get();
+        return view('admin.access-control.users.edit', compact('user', 'roles', 'branches'));
     }
 
     public function updateUser(Request $request, User $user)
@@ -228,6 +232,7 @@ class AccessControlController extends Controller
             'phone' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'designation' => 'nullable|string|max:100',
+            'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
             'status' => 'required|in:pending,active,suspended,rejected',
             'roles' => 'array',
         ]);
@@ -235,6 +240,7 @@ class AccessControlController extends Controller
         $user->update([
             'name' => $request->name,
             'email' => $request->email,
+            'branch_id' => $request->user_type === 'branch' ? $request->branch_id : null,
             'user_type' => $request->user_type,
             'phone' => $request->phone,
             'address' => $request->address,

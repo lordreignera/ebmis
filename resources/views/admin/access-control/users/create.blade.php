@@ -116,6 +116,21 @@
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
+                            <div class="col-md-6 mb-3" id="branch_field" style="display: none;">
+                                <label for="branch_id" class="form-label">Branch *</label>
+                                <select class="form-control @error('branch_id') is-invalid @enderror" 
+                                        id="branch_id" name="branch_id">
+                                    <option value="">Select Branch</option>
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}" {{ old('branch_id') == $branch->id ? 'selected' : '' }}>
+                                            {{ $branch->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('branch_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
                         </div>
 
                         <!-- Role Assignment -->
@@ -208,6 +223,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     const password = document.getElementById('password');
     const confirmPassword = document.getElementById('password_confirmation');
+    const userType = document.getElementById('user_type');
+    const branchField = document.getElementById('branch_field');
+    const branchSelect = document.getElementById('branch_id');
 
     function validatePassword() {
         if (password.value != confirmPassword.value) {
@@ -217,8 +235,24 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Show/hide branch field based on user type
+    function toggleBranchField() {
+        if (userType.value === 'branch') {
+            branchField.style.display = 'block';
+            branchSelect.required = true;
+        } else {
+            branchField.style.display = 'none';
+            branchSelect.required = false;
+            branchSelect.value = '';
+        }
+    }
+
     password.addEventListener('change', validatePassword);
     confirmPassword.addEventListener('keyup', validatePassword);
+    userType.addEventListener('change', toggleBranchField);
+    
+    // Initialize on page load
+    toggleBranchField();
 });
 </script>
 @endpush

@@ -116,8 +116,8 @@
                                     <td>
                                         @if($user->school)
                                             <small class="text-info">{{ $user->school->school_name ?? 'School #' . $user->school_id }}</small>
-                                        @elseif($user->branch_id)
-                                            <small class="text-warning">Branch #{{ $user->branch_id }}</small>
+                                        @elseif($user->branch)
+                                            <small class="text-warning">{{ $user->branch->name }}</small>
                                         @else
                                             <small class="text-muted">-</small>
                                         @endif
