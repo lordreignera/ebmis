@@ -1205,8 +1205,11 @@ class RepaymentController extends Controller
                     ], 400);
                 }
             } else {
-                // For cash/bank transfers/cheque, mark as confirmed - generate FlexiPay-format reference
-                $reference = 'EbP' . str_pad(rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
+                // For cash/bank transfers/cheque, mark as confirmed - generate truly unique reference
+                // Format: CASH/BANK + timestamp (microseconds) + random suffix
+                $microtime = (int)(microtime(true) * 10000);
+                $random = mt_rand(1000, 9999);
+                $reference = 'EbP' . str_pad($microtime, 8, '0', STR_PAD_LEFT) . str_pad($random, 4, '0', STR_PAD_LEFT);
                 
                 $repaymentData['status'] = 1;
                 $repaymentData['pay_status'] = 'SUCCESS';
@@ -1575,8 +1578,9 @@ class RepaymentController extends Controller
                 }
             } else {
                 // Cash (type=1) or Bank Transfer (type=3) - immediately confirmed by Super Admin/Administrator
-                // Generate proper reference matching FlexiPay format: EbP##########
-                $reference = 'EbP' . str_pad(rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
+                // Generate truly unique reference using microtime + random + schedule ID
+                $microFraction = intval((microtime(true) - intval(microtime(true))) * 1000000);
+                $reference = 'EbP' . str_pad((time() % 1000000000) . str_pad($microFraction % 1000, 4, '0', STR_PAD_LEFT), 10, '0', STR_PAD_LEFT);
                 
                 $paymentMethodName = $request->type == 1 ? 'Cash' : 'Bank Transfer';
                 
@@ -1872,7 +1876,27 @@ class RepaymentController extends Controller
                 } else {
                     // Cash or Bank Transfer - confirmed immediately
                     $paymentMethodName = $paymentTypeCode == 1 ? 'Cash' : 'Bank Transfer';
-                    $reference = $request->txn_reference ?: ('BAL-' . time() . '-' . $scheduleId);
+                    
+                    // Generate truly unique reference
+                    if ($request->txn_reference) {
+                        // User provided reference - verify it's unique
+                        $existing = DB::table('repayments')
+                            ->where('transaction_reference', $request->txn_reference)
+                            ->exists();
+                        if ($existing) {
+                            DB::rollBack();
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Transaction reference already exists. Please use a unique reference.'
+                            ], 400);
+                        }
+                        $reference = $request->txn_reference;
+                    } else {
+                        // Auto-generate unique reference: BAL + timestamp (microseconds) + random suffix
+                        $microtime = (int)(microtime(true) * 10000);
+                        $random = mt_rand(1000, 9999);
+                        $reference = 'BAL' . str_pad($microtime, 8, '0', STR_PAD_LEFT) . str_pad($random, 4, '0', STR_PAD_LEFT);
+                    }
                     
                     $repaymentData['status'] = 1; // Confirmed immediately
                     $repaymentData['txn_id'] = $reference;
