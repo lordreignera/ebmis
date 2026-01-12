@@ -520,10 +520,13 @@
                         <label class="form-label" style="color: #000; font-weight: 500;">Payment Method <span class="text-danger">*</span></label>
                         <select class="form-select" id="modal_payment_method" required>
                             <option value="">Select Payment Method</option>
-                            <option value="2">Mobile Money</option>
-                            <option value="1">Cash</option>
-                            <option value="3">Bank Transfer</option>
-                            <option value="3">Cheque</option>
+                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                <option value="2">Mobile Money</option>
+                                <option value="1">Cash</option>
+                                <option value="3">Bank Transfer</option>
+                            @else
+                                <option value="2">Mobile Money</option>
+                            @endif
                         </select>
                     </div>
                     

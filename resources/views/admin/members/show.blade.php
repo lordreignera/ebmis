@@ -1545,9 +1545,13 @@ body.modal-open {
                         <label for="payment_type" class="form-label" style="color: #000;">Payment Method <span class="text-danger">*</span></label>
                         <select name="payment_type" id="payment_type" class="form-select" required>
                             <option value="">Select Payment Method</option>
-                            <option value="1">Mobile Money</option>
-                            <option value="2">Cash</option>
-                            <option value="3">Bank Transfer</option>
+                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                <option value="1">Mobile Money</option>
+                                <option value="2">Cash</option>
+                                <option value="3">Bank Transfer</option>
+                            @else
+                                <option value="1">Mobile Money</option>
+                            @endif
                         </select>
                     </div>
                     
@@ -1617,9 +1621,13 @@ body.modal-open {
                         <label for="cash_payment_type" class="form-label" style="color: #000;">Payment Method <span class="text-danger">*</span></label>
                         <select name="payment_type" id="cash_payment_type" class="form-select" required>
                             <option value="">Select Payment Method</option>
-                            <option value="1">Mobile Money</option>
-                            <option value="2">Cash</option>
-                            <option value="3">Bank Transfer</option>
+                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                <option value="1">Mobile Money</option>
+                                <option value="2">Cash</option>
+                                <option value="3">Bank Transfer</option>
+                            @else
+                                <option value="1">Mobile Money</option>
+                            @endif
                         </select>
                     </div>
                     
@@ -2086,9 +2094,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         </label>
                         <select class="form-select" id="savings_payment_type" name="payment_type" required>
                             <option value="">Select Payment Method</option>
-                            <option value="1">Mobile Money</option>
-                            <option value="2">Cash</option>
-                            <option value="3">Bank Transfer</option>
+                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                <option value="1">Mobile Money</option>
+                                <option value="2">Cash</option>
+                                <option value="3">Bank Transfer</option>
+                            @else
+                                <option value="1">Mobile Money</option>
+                            @endif
                         </select>
                     </div>
 

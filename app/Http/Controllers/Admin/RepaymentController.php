@@ -1497,6 +1497,31 @@ class RepaymentController extends Controller
                     // Use FlexiPay-generated reference (format: EbP########## or transactionReferenceNumber)
                     $flexipayReference = $mobileMoneyResult['reference'];
                     
+                    // CRITICAL VALIDATION: Never save mobile money payment without valid FlexiPay reference
+                    if (empty($flexipayReference)) {
+                        \Log::error('FlexiPay returned empty reference in storeRepayment', [
+                            'loan_id' => $request->loan_id,
+                            'amount' => $request->amount,
+                            'result' => $mobileMoneyResult
+                        ]);
+                        DB::rollBack();
+                        if ($request->ajax() || $request->wantsJson()) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Invalid transaction reference from FlexiPay. Payment not saved. Please try again.'
+                            ], 400);
+                        }
+                        return redirect()->back()
+                            ->with('error', 'Invalid transaction reference from FlexiPay. Payment not saved. Please try again.');
+                    }
+                    
+                    // Log the reference format for debugging
+                    \Log::info('FlexiPay reference received in storeRepayment', [
+                        'reference' => $flexipayReference,
+                        'length' => strlen($flexipayReference),
+                        'loan_id' => $request->loan_id
+                    ]);
+                    
                     $repaymentData['status'] = 0; // Pending
                     $repaymentData['txn_id'] = $flexipayReference;
                     $repaymentData['transaction_reference'] = $flexipayReference; // Also set this for consistency
@@ -1687,6 +1712,7 @@ class RepaymentController extends Controller
             'schedules' => 'required|string',
             'txn_reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
+            'medium' => 'nullable|integer|in:1,2', // 1=Airtel, 2=MTN (required for mobile money)
         ]);
 
         if ($validator->fails()) {
@@ -1699,8 +1725,10 @@ class RepaymentController extends Controller
 
         // Find loan from either table
         $loan = PersonalLoan::find($request->loan_id);
+        $loanType = 'personal';
         if (!$loan) {
             $loan = GroupLoan::find($request->loan_id);
+            $loanType = 'group';
         }
         if (!$loan) {
             return response()->json([
@@ -1716,6 +1744,77 @@ class RepaymentController extends Controller
                 'success' => false,
                 'message' => 'Invalid schedules data'
             ], 422);
+        }
+
+        // Get payment type code
+        $paymentTypeCode = $this->getPaymentTypeCode($request->payment_method);
+
+        // For mobile money, get member's phone number and initiate collection first
+        if ($paymentTypeCode == 2) {
+            // Get member/group phone number
+            if ($loanType === 'personal') {
+                $member = $loan->member;
+                $phoneNumber = $member->contact ?? '';
+                $memberName = $member->fname . ' ' . $member->lname;
+            } else {
+                $member = $loan->group;
+                $phoneNumber = $member->contact ?? '';
+                $memberName = $member->name;
+            }
+
+            if (empty($phoneNumber)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Member phone number not found'
+                ], 400);
+            }
+
+            // Determine network from medium (required for mobile money)
+            if (!$request->medium) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Mobile money network not specified'
+                ], 400);
+            }
+            $network = $request->medium == 1 ? 'AIRTEL' : 'MTN';
+
+            // Initiate mobile money collection
+            $mobileMoneyResult = $this->processMobileMoneyCollection(
+                $loan,
+                $request->amount,
+                $phoneNumber,
+                $network
+            );
+
+            if (!$mobileMoneyResult['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Mobile money collection failed: ' . $mobileMoneyResult['message']
+                ], 400);
+            }
+
+            // Use FlexiPay-generated reference
+            $flexipayReference = $mobileMoneyResult['reference'];
+
+            // CRITICAL VALIDATION: Never save mobile money payment without valid FlexiPay reference
+            if (empty($flexipayReference)) {
+                \Log::error('FlexiPay returned empty reference', [
+                    'loan_id' => $loan->id,
+                    'amount' => $request->amount,
+                    'result' => $mobileMoneyResult
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid transaction reference from FlexiPay. Payment not saved. Please try again.'
+                ], 400);
+            }
+
+            // Log the reference format for debugging
+            \Log::info('FlexiPay reference received', [
+                'reference' => $flexipayReference,
+                'length' => strlen($flexipayReference),
+                'loan_id' => $loan->id
+            ]);
         }
 
         DB::beginTransaction();
@@ -1736,7 +1835,7 @@ class RepaymentController extends Controller
                 $scheduleBalance = floatval($scheduleData['balance']);
 
                 // Get the actual schedule from database
-                $schedule = DB::table('loan_schedules')->where('id', $scheduleId)->first();
+                $schedule = LoanSchedule::find($scheduleId);
                 if (!$schedule) {
                     continue;
                 }
@@ -1746,59 +1845,113 @@ class RepaymentController extends Controller
 
                 // Create repayment record
                 $repaymentData = [
-                    'type' => $this->getPaymentTypeCode($request->payment_method),
+                    'type' => $paymentTypeCode,
                     'details' => 'Balance payment: ' . ($request->notes ?: 'Schedule balance cleared'),
                     'loan_id' => $request->loan_id,
                     'schedule_id' => $scheduleId,
                     'amount' => $paymentAmount,
                     'date_created' => now(),
                     'added_by' => auth()->id(),
-                    'status' => 1, // Confirmed
                     'platform' => 'Web',
-                    'txn_id' => $request->txn_reference ?: ('BAL-' . time() . '-' . $scheduleId),
-                    'pay_status' => 'SUCCESS',
-                    'pay_message' => 'Balance payment confirmed',
                 ];
+
+                // Handle mobile money vs cash/bank differently
+                if ($paymentTypeCode == 2) {
+                    // Mobile money - pending until callback confirms
+                    $repaymentData['status'] = 0; // Pending
+                    $repaymentData['txn_id'] = $flexipayReference;
+                    $repaymentData['transaction_reference'] = $flexipayReference;
+                    $repaymentData['pay_status'] = 'PENDING';
+                    $repaymentData['pay_message'] = 'Mobile money collection initiated';
+                    $repaymentData['network'] = $network;
+                    $repaymentData['phone_number'] = $phoneNumber;
+
+                    // Increment pending_count on the schedule
+                    $schedule->increment('pending_count');
+
+                } else {
+                    // Cash or Bank Transfer - confirmed immediately
+                    $paymentMethodName = $paymentTypeCode == 1 ? 'Cash' : 'Bank Transfer';
+                    $reference = $request->txn_reference ?: ('BAL-' . time() . '-' . $scheduleId);
+                    
+                    $repaymentData['status'] = 1; // Confirmed immediately
+                    $repaymentData['txn_id'] = $reference;
+                    $repaymentData['transaction_reference'] = $reference;
+                    $repaymentData['pay_status'] = 'SUCCESS';
+                    $repaymentData['pay_message'] = $paymentMethodName . ' payment confirmed by ' . auth()->user()->name;
+                }
 
                 $repayment = Repayment::create($repaymentData);
                 $paymentsCreated++;
 
-                // Calculate new total paid for this schedule
-                $totalPaid = DB::table('repayments')
-                    ->where('schedule_id', $scheduleId)
-                    ->where('status', 1)
-                    ->sum('amount');
+                // For cash/bank, update schedule payment status immediately
+                if ($paymentTypeCode != 2) {
+                    // Calculate new total paid for this schedule
+                    $totalPaid = DB::table('repayments')
+                        ->where('schedule_id', $scheduleId)
+                        ->where('status', 1)
+                        ->sum('amount');
 
-                $totalDue = $schedule->principal + $schedule->interest;
+                    $totalDue = $schedule->principal + $schedule->interest;
 
-                // Mark schedule as paid if fully paid (with 0.99 tolerance for rounding)
-                if ($totalPaid >= ($totalDue - 0.99)) {
-                    DB::table('loan_schedules')
-                        ->where('id', $scheduleId)
-                        ->update(['status' => 1]);
-                    
-                    $schedulesPaid[] = $scheduleData['due_date'];
+                    // Mark schedule as paid if fully paid (with 0.99 tolerance for rounding)
+                    if ($totalPaid >= ($totalDue - 0.99)) {
+                        $schedule->update(['status' => 1]);
+                        $schedulesPaid[] = $scheduleData['due_date'];
+                    }
                 }
 
                 $remainingAmount -= $paymentAmount;
             }
+
+            // For mobile money, create raw_payments record for tracking
+            if ($paymentTypeCode == 2) {
+                \App\Models\RawPayment::create([
+                    'trans_id' => $flexipayReference,
+                    'phone' => $phoneNumber,
+                    'amount' => $request->amount,
+                    'ref' => '',
+                    'message' => 'Balance payment initiated',
+                    'status' => 'Processed',
+                    'pay_status' => '00', // Pending
+                    'pay_message' => 'Completed successfully',
+                    'date_created' => now(),
+                    'type' => 'repayment',
+                    'direction' => 'cash_in',
+                    'added_by' => auth()->id(),
+                    'raw_message' => serialize(['loan_id' => $request->loan_id, 'payment_type' => 'balance_payment']),
+                ]);
+            }
             
-            // Check if loan is fully paid after balance payment
-            $this->checkAndCloseLoanIfComplete($loan->id);
+            // Check if loan is fully paid after balance payment (only for cash/bank)
+            if ($paymentTypeCode != 2) {
+                $this->checkAndCloseLoanIfComplete($loan->id);
+            }
 
             DB::commit();
 
-            $message = "Successfully processed payment for {$paymentsCreated} schedule(s).";
-            if (count($schedulesPaid) > 0) {
-                $message .= "<br>Schedules marked as paid: " . implode(', ', $schedulesPaid);
-            }
+            // Return appropriate message based on payment type
+            if ($paymentTypeCode == 2) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Mobile money collection initiated for ' . $paymentsCreated . ' schedule(s). Awaiting customer confirmation.',
+                    'transaction_id' => $flexipayReference,
+                    'payments_created' => $paymentsCreated,
+                    'payment_type' => 'mobile_money'
+                ]);
+            } else {
+                $message = "Successfully processed payment for {$paymentsCreated} schedule(s).";
+                if (count($schedulesPaid) > 0) {
+                    $message .= "<br>Schedules marked as paid: " . implode(', ', $schedulesPaid);
+                }
 
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'payments_created' => $paymentsCreated,
-                'schedules_paid' => count($schedulesPaid)
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'payments_created' => $paymentsCreated,
+                    'schedules_paid' => count($schedulesPaid)
+                ]);
+            }
 
         } catch (\Exception $e) {
             DB::rollBack();

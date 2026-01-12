@@ -1566,9 +1566,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <label class="form-label">Payment Method <span class="text-danger">*</span></label>
                         <select class="form-select" name="payment_method" id="loanFeePaymentMethod" required>
                             <option value="">Select Payment Method</option>
-                            <option value="1">Mobile Money</option>
-                            <option value="2">Cash</option>
-                            <option value="3">Bank Transfer</option>
+                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                                <option value="1">Mobile Money</option>
+                                <option value="2">Cash</option>
+                                <option value="3">Bank Transfer</option>
+                            @else
+                                <option value="1">Mobile Money</option>
+                            @endif
                         </select>
                     </div>
 
