@@ -57,7 +57,7 @@ class Member extends Model
     protected $casts = [
         'verified' => 'boolean',
         'soft_delete' => 'boolean',
-        'dob' => 'date',
+        // Don't auto-cast dob - handle it manually in accessor due to DD/MM/YYYY format in legacy data
         'approved_at' => 'datetime',
         'datecreated' => 'datetime', // Cast old column to datetime
     ];
@@ -337,6 +337,38 @@ class Member extends Model
         }
         
         return null;
+    }
+
+    /**
+     * Get dob attribute - parse DD/MM/YYYY format from legacy data
+     */
+    public function getDobAttribute($value)
+    {
+        if (!$value) {
+            return null;
+        }
+        
+        try {
+            // If it's already a Carbon instance, return it
+            if ($value instanceof \Carbon\Carbon) {
+                return $value;
+            }
+            
+            // Check if it's DD/MM/YYYY format (legacy)
+            if (preg_match('/^\d{1,2}\/\d{1,2}\/\d{4}$/', $value)) {
+                return \Carbon\Carbon::createFromFormat('d/m/Y', $value);
+            }
+            
+            // Try to parse as standard date format (YYYY-MM-DD)
+            return $this->asDateTime($value);
+        } catch (\Exception $e) {
+            // If parsing fails, log it and return null
+            \Log::warning("Failed to parse DOB for member {$this->id}", [
+                'dob_value' => $value,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 
     /**
