@@ -339,9 +339,9 @@ class LoanScheduleService
         $totalInterest = 0;
         $totalPrincipal = 0;
         
-        foreach ($schedules as $schedule) {
+        foreach ($schedules as $index => $schedule) {
             $html .= '<tr>';
-            $html .= '<td>' . $schedule['payment_number'] . '</td>';
+            $html .= '<td>' . ($index + 1) . '</td>';
             $html .= '<td>' . Carbon::parse($schedule['payment_date'])->format('D-d-M-Y') . '</td>';
             $html .= '<td>' . number_format($schedule['payment'], 2) . '</td>';
             $html .= '<td>' . number_format($schedule['interest'], 2) . '</td>';
@@ -380,13 +380,14 @@ class LoanScheduleService
             $periodType = $loanData['period_type'];
             
             $schedules = LoanSchedule::where('loan_id', $loanData['id'])
-                                  ->orderBy('payment_number')
+                                  ->orderBy('id')
                                   ->get();
             
             $currentDate = $disbursementDate;
             
-            foreach ($schedules as $schedule) {
-                $paymentDate = $this->calculatePaymentDate($currentDate, $periodType, $schedule->payment_number);
+            foreach ($schedules as $index => $schedule) {
+                $paymentNumber = $index + 1;
+                $paymentDate = $this->calculatePaymentDate($currentDate, $periodType, $paymentNumber);
                 
                 $schedule->update([
                     'payment_date' => $paymentDate

@@ -1,29 +1,30 @@
 @if(session('show_password_change_reminder'))
-<div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-    <div class="flex items-center justify-between">
-        <div class="flex items-center">
-            <div class="flex-shrink-0">
-                <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+<div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4" style="border-left-width:4px;">
+    <div class="flex items-center justify-between" style="display:flex;align-items:flex-start;gap:12px;">
+        <div class="flex items-start" style="display:flex;align-items:flex-start;gap:12px;">
+            <div class="flex-shrink-0" style="flex:0 0 auto;">
+                <svg class="h-5 w-5 text-yellow-400" style="width:20px;height:20px;color:#f59e0b;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
                 </svg>
             </div>
-            <div class="ml-3">
-                <p class="text-sm font-medium text-yellow-800">
-                    <strong>⚠️ Security Notice:</strong> You are using a temporary password. 
-                    <a href="{{ route('profile.show') }}" class="font-bold underline text-yellow-900 hover:text-yellow-700">
+            <div class="ml-3" style="margin-left:0;">
+                <p class="text-sm font-medium text-yellow-800" style="margin:0;color:#92400e;font-weight:600;line-height:1.4;">
+                    <strong>Security Notice:</strong> You are using a temporary password.
+                    <a href="{{ route('profile.show') }}" class="font-bold underline text-yellow-900 hover:text-yellow-700" style="color:#78350f;text-decoration:underline;font-weight:700;">
                         Click here to change your password
                     </a> 
                     and secure your account.
                 </p>
             </div>
         </div>
-        <div class="ml-auto pl-3">
+        <div class="ml-auto pl-3" style="margin-left:auto;">
             <div class="-mx-1.5 -my-1.5">
                 <button type="button" 
                         onclick="this.closest('.bg-yellow-50').remove()" 
-                        class="inline-flex rounded-md p-1.5 text-yellow-500 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-yellow-50 focus:ring-yellow-600">
+                        class="inline-flex rounded-md p-1.5 text-yellow-500 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-yellow-50 focus:ring-yellow-600"
+                        style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;background:transparent;border-radius:6px;color:#b45309;cursor:pointer;">
                     <span class="sr-only">Dismiss</span>
-                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <svg class="h-5 w-5" style="width:18px;height:18px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
                     </svg>
                 </button>
