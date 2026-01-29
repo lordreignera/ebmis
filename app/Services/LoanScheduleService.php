@@ -176,10 +176,10 @@ class LoanScheduleService
     private function calculatePaymentDate(Carbon $currentDate, string $periodType, int $paymentNumber): Carbon
     {
         switch ($periodType) {
-            case '1': // Weekly loans - every Friday
+            case '1': // Weekly loans - every 7 days from disbursement
                 if ($paymentNumber == 1) {
-                    // First payment: Get next Friday from loan creation date
-                    return $this->getNextFriday($currentDate);
+                    // First payment: 7 days after disbursement date
+                    return $this->getNextWeeklyDate($currentDate);
                 }
                 // Subsequent payments: Add 1 week (7 days) to previous payment date
                 return $currentDate->copy()->addWeek();
@@ -206,21 +206,11 @@ class LoanScheduleService
     }
     
     /**
-     * Get next Friday from given date
+     * Get next weekly date (7 days after given date)
      */
-    private function getNextFriday(Carbon $date): Carbon
+    private function getNextWeeklyDate(Carbon $date): Carbon
     {
-        $nextFriday = $date->copy();
-        
-        // If today is Friday, get next Friday
-        if ($nextFriday->isFriday()) {
-            $nextFriday->addWeek();
-        } else {
-            // Get next Friday
-            $nextFriday->next(Carbon::FRIDAY);
-        }
-        
-        return $nextFriday;
+        return $date->copy()->addWeek();
     }
     
     /**
