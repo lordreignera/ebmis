@@ -57,7 +57,7 @@ use Carbon\Carbon;
  *    - For receipts: Use repayment.amount for specific payment breakdown
  * 
  * 6. WAIVERS:
- *    - Admin-approved late fee waivers stored in penalty_waivers table
+ *    - Admin-approved late fee waivers stored in late_fees table (status = 2)
  *    - Deducted from gross late fee to get net late fee (what client owes)
  *    - Waivers reduce amount owed but don't change periods in arrears
  * 
@@ -100,8 +100,57 @@ class RepaymentController extends Controller
 
     /**
      * Calculate late fee for a schedule with waiver support
-     * Centralized method to avoid code duplication
+     * CRITICAL: Late fees MULTIPLY while balance > 0, FREEZE when balance = 0
+     * 
+     * FORMULA: (P + I) × 6% × Periods Overdue
+     * FREEZE LOGIC: Controlled by date_cleared field
+     *   - date_cleared = NULL → balance > 0 → late fees continue multiplying (use TODAY)
+     *   - date_cleared = [date] → balance = 0 → late fees frozen at that date
+     * 
+     * @param object $schedule - loan_schedules record
+     * @param object $loan - loan record with product relationship
+     * @return array ['gross' => total, 'net' => after_waivers, 'waived' => amount, 'days_overdue' => days, 'periods_overdue' => periods]
      */
+    protected function calculateLateFee($schedule, $loan)
+    {
+        // CRITICAL: Check date_cleared to determine if we freeze or continue multiplying
+        if ($schedule->date_cleared) {
+            // Balance = 0 at this date → FREEZE late fees at this point
+            $now = strtotime($schedule->date_cleared);
+        } else {
+            // Balance > 0 → late fees continue MULTIPLYING using TODAY
+            $now = time();
+        }
+        
+        $your_date = $this->parsePaymentDate($schedule->payment_date);
+        $d = max(0, floor(($now - $your_date) / 86400));
+        
+        $dd = 0;
+        if ($d > 0) {
+            $period_type = $loan->product ? $loan->product->period_type : '1';
+            $dd = $period_type == '1' ? ceil($d / 7) : ($period_type == '2' ? ceil($d / 30) : $d);
+        }
+        
+        $intrestamtpayable = $schedule->interest;
+        $latepaymentOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+        
+        // Check for waivers in late_fees table (status = 2 means waived)
+        $totalWaivedAmount = DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', 2)
+            ->sum('amount');
+        
+        $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
+        
+        return [
+            'gross' => $latepaymentOriginal,
+            'net' => $latepayment,
+            'waived' => $totalWaivedAmount,
+            'days_overdue' => $d,
+            'periods_overdue' => $dd
+        ];
+    }
+
     /**
      * Check if all earlier schedules (by date) are fully paid
      * 
@@ -177,58 +226,6 @@ class RepaymentController extends Controller
             // Fall back to strtotime for other formats
             return strtotime($dateString);
         }
-    }
-
-    /**
-     * Calculate late fees for a schedule using consistent business logic
-     * 
-     * FORMULA: Late Fee = (Principal + Interest) × 6% × Periods Overdue
-     * 
-     * PERIOD CALCULATION:
-     * - Weekly (type=1): days_overdue ÷ 7 (rounded up)
-     * - Monthly (type=2): days_overdue ÷ 30 (rounded up)
-     * - Daily (type=3): days_overdue ÷ 1 (exact days)
-     * 
-     * FREEZE LOGIC: Periods freeze when total balance (P+I+Late Fees) = 0
-     * - Uses payment date/date_cleared for freeze calculation
-     * - Continues accumulating if any balance remains
-     * 
-     * WAIVERS: Deducts any admin-approved late_fee_waivers from penalty_waivers table
-     * 
-     * @param object $schedule - loan_schedules record with payment_date, principal, interest
-     * @param object $loan - personal_loans record with product relationship
-     * @return array ['gross' => total_late_fee, 'net' => after_waivers, 'waived' => waiver_amount, 'days_overdue' => days, 'periods_overdue' => periods]
-     */
-    protected function calculateLateFee($schedule, $loan)
-    {
-        $now = time();
-        $your_date = $this->parsePaymentDate($schedule->payment_date);
-        $d = max(0, floor(($now - $your_date) / 86400));
-        
-        $dd = 0;
-        if ($d > 0) {
-            $period_type = $loan->product ? $loan->product->period_type : '1';
-            $dd = $period_type == '1' ? ceil($d / 7) : ($period_type == '2' ? ceil($d / 30) : $d);
-        }
-        
-        $intrestamtpayable = $schedule->interest;
-        $latepaymentOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
-        
-        // Check for waivers
-        $totalWaivedAmount = DB::table('late_fees')
-            ->where('schedule_id', $schedule->id)
-            ->where('status', 2)
-            ->sum('amount');
-        
-        $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
-        
-        return [
-            'days_overdue' => $d,
-            'periods_overdue' => $dd,
-            'original' => $latepaymentOriginal,
-            'waived' => $totalWaivedAmount,
-            'net' => $latepayment
-        ];
     }
 
     /**
@@ -836,7 +833,7 @@ class RepaymentController extends Controller
                 $lateFeeData = [
                     'days_overdue' => $daysLateAtPayment,
                     'periods_overdue' => $periodsLateAtPayment,
-                    'original' => $latepaymentOriginal,
+                    'gross' => $latepaymentOriginal,
                     'waived' => $totalWaivedAmount,
                     'net' => $latepayment
                 ];
@@ -846,7 +843,7 @@ class RepaymentController extends Controller
                 $lateFeeData = $this->calculateLateFee($schedule, $loan);
             }
             
-            $latepaymentOriginal = $lateFeeData['original'];
+            $latepaymentOriginal = $lateFeeData['gross'];
             $totalWaivedAmount = $lateFeeData['waived'];
             $latepayment = $lateFeeData['net'];
             
@@ -1614,10 +1611,23 @@ class RepaymentController extends Controller
                     $overpayment = $schedule->paid - $schedule->payment;
                     
                     // Cap the current schedule paid amount to its required payment
-                    $schedule->update([
+                    // CRITICAL: Only set date_cleared if late fees are also paid
+                    $pendingLateFees = DB::table('late_fees')
+                        ->where('schedule_id', $schedule->id)
+                        ->where('status', 0)
+                        ->sum('amount');
+                    
+                    $updateData = [
                         'paid' => $schedule->payment,
                         'status' => 1
-                    ]);
+                    ];
+                    
+                    // Only freeze if total balance (including late fees) is zero
+                    if ($pendingLateFees <= 0.01) {
+                        $updateData['date_cleared'] = now();
+                    }
+                    
+                    $schedule->update($updateData);
                     
                     // Apply overpayment to next unpaid schedule
                     $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $loan->id)
@@ -1637,7 +1647,14 @@ class RepaymentController extends Controller
                         $nextTotalDue = $nextSchedule->payment + $nextLateFees;
                         
                         if ($nextSchedule->paid >= $nextTotalDue) {
-                            $nextSchedule->update(['status' => 1]);
+                            $updateData = ['status' => 1];
+                            
+                            // Only freeze if TOTAL balance is zero (late fees also paid)
+                            if ($nextLateFees <= 0.01) {
+                                $updateData['date_cleared'] = now();
+                            }
+                            
+                            $nextSchedule->update($updateData);
                         }
                     }
                 } elseif ($schedule->paid >= $schedule->payment) {
@@ -1649,7 +1666,14 @@ class RepaymentController extends Controller
                     $totalDue = $schedule->payment + $pendingLateFees;
                     
                     if ($schedule->paid >= $totalDue) {
-                        $schedule->update(['status' => 1]);
+                        $updateData = ['status' => 1];
+                        
+                        // CRITICAL: Only freeze late fees if they're paid too
+                        if ($pendingLateFees <= 0.01) {
+                            $updateData['date_cleared'] = now();
+                        }
+                        
+                        $schedule->update($updateData);
                     }
                 }
                 
@@ -1920,7 +1944,20 @@ class RepaymentController extends Controller
 
                     // Mark schedule as paid if fully paid (with 0.99 tolerance for rounding)
                     if ($totalPaid >= ($totalDue - 0.99)) {
-                        $schedule->update(['status' => 1]);
+                        // Check if late fees are also paid before freezing
+                        $pendingLateFees = DB::table('late_fees')
+                            ->where('schedule_id', $scheduleId)
+                            ->where('status', 0)
+                            ->sum('amount');
+                        
+                        $updateData = ['status' => 1];
+                        
+                        // Only freeze if total balance (P+I+Late Fees) is zero
+                        if ($totalPaid >= ($totalDue + $pendingLateFees - 0.99)) {
+                            $updateData['date_cleared'] = now();
+                        }
+                        
+                        $schedule->update($updateData);
                         $schedulesPaid[] = $scheduleData['due_date'];
                     }
                 }
@@ -2466,11 +2503,24 @@ class RepaymentController extends Controller
             
             if ($remainingAmount >= $totalDue) {
                 // Full payment for this schedule
-                $schedule->update([
+                // CRITICAL: Only set date_cleared if TOTAL balance (including late fees) is zero
+                $pendingLateFees = DB::table('late_fees')
+                    ->where('schedule_id', $schedule->id)
+                    ->where('status', 0)
+                    ->sum('amount');
+                
+                $updateData = [
                     'status' => 1, // Paid
                     'paid_amount' => $totalDue,
                     'payment_date' => $repayment->date
-                ]);
+                ];
+                
+                // Only freeze late fees if they're also paid
+                if ($pendingLateFees <= 0.01) {
+                    $updateData['date_cleared'] = now();
+                }
+                
+                $schedule->update($updateData);
                 $remainingAmount -= $totalDue;
             } else {
                 // Partial payment
@@ -2758,7 +2808,14 @@ class RepaymentController extends Controller
                                     $nextTotalDue = $nextSchedule->payment + $nextLateFees;
                                     
                                     if ($nextSchedule->paid >= $nextTotalDue) {
-                                        $nextSchedule->update(['status' => 1]);
+                                        $updateData = ['status' => 1];
+                                        
+                                        // Only freeze if late fees are also covered
+                                        if ($nextLateFees <= 0.01) {
+                                            $updateData['date_cleared'] = now();
+                                        }
+                                        
+                                        $nextSchedule->update($updateData);
                                     }
                                 }
                             } elseif ($schedule->paid >= $schedule->payment) {
@@ -2770,7 +2827,14 @@ class RepaymentController extends Controller
                                 $totalDue = $schedule->payment + $pendingLateFees;
                                 
                                 if ($schedule->paid >= $totalDue) {
-                                    $schedule->update(['status' => 1]);
+                                    $updateData = ['status' => 1];
+                                    
+                                    // CRITICAL: Only freeze when late fees are zero
+                                    if ($pendingLateFees <= 0.01) {
+                                        $updateData['date_cleared'] = now();
+                                    }
+                                    
+                                    $schedule->update($updateData);
                                 }
                             }
                             
@@ -3013,10 +3077,23 @@ class RepaymentController extends Controller
                     // Check if schedule is fully paid (with 1 UGX rounding tolerance)
                     $difference = abs($schedule->payment - $schedule->paid);
                     if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
-                        $schedule->update([
+                        // Check if late fees are also cleared before freezing
+                        $pendingLateFees = DB::table('late_fees')
+                            ->where('schedule_id', $schedule->id)
+                            ->where('status', 0)
+                            ->sum('amount');
+                        
+                        $updateData = [
                             'status' => 1, // Fully paid
                             'paid' => $schedule->payment // Ensure exact match to prevent rounding issues
-                        ]);
+                        ];
+                        
+                        // CRITICAL: Only freeze if TOTAL balance (P+I+Late Fees) is zero
+                        if ($pendingLateFees <= 0.01) {
+                            $updateData['date_cleared'] = now();
+                        }
+                        
+                        $schedule->update($updateData);
                     }
 
                     // Calculate and apply late fees if payment is overdue

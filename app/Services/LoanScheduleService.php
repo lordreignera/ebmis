@@ -184,13 +184,13 @@ class LoanScheduleService
                 // Subsequent payments: Add 1 week (7 days) to previous payment date
                 return $currentDate->copy()->addWeek();
                 
-            case '2': // Monthly loans - 25th of each month
+            case '2': // Monthly loans - same day next month
                 if ($paymentNumber == 1) {
-                    // First payment: Get 25th of current or next month
-                    return $this->getNext25th($currentDate);
+                    // First payment: Same day next month (no overflow)
+                    return $this->getNextMonthlySameDay($currentDate);
                 }
-                // Subsequent payments: Add 1 month to previous payment date
-                return $currentDate->copy()->addMonth();
+                // Subsequent payments: Add 1 month to previous payment date (no overflow)
+                return $currentDate->copy()->addMonthNoOverflow();
                 
             case '3': // Daily loans - every working day (skip Sundays)
                 if ($paymentNumber == 1) {
@@ -226,17 +226,9 @@ class LoanScheduleService
     /**
      * Get 25th of current or next month
      */
-    private function getNext25th(Carbon $date): Carbon
+    private function getNextMonthlySameDay(Carbon $date): Carbon
     {
-        $day = $date->day;
-        
-        if ($day < 25) {
-            // Same month, 25th
-            return $date->copy()->day(25);
-        } else {
-            // Next month, 25th
-            return $date->copy()->addMonth()->day(25);
-        }
+        return $date->copy()->addMonthNoOverflow();
     }
     
     /**
@@ -260,31 +252,46 @@ class LoanScheduleService
     private function extractLoanData($loan): array
     {
         if ($loan instanceof PersonalLoan) {
+            $disbursement = $loan->disbursements()
+                ->orderBy('created_at', 'asc')
+                ->first();
+
             return [
                 'id' => $loan->id,
                 'principal' => $loan->principal,
                 'interest' => $loan->interest,
                 'period' => $loan->period,
                 'period_type' => $loan->product ? $loan->product->period_type : '2', // Default to monthly
-                'created_at' => $loan->datecreated ?? $loan->created_at
+                'created_at' => $loan->datecreated ?? $loan->created_at,
+                'disbursement_date' => $disbursement ? $disbursement->created_at : null
             ];
         } elseif ($loan instanceof GroupLoan) {
+            $disbursement = $loan->disbursements()
+                ->orderBy('created_at', 'asc')
+                ->first();
+
             return [
                 'id' => $loan->id,
                 'principal' => $loan->principal,
                 'interest' => $loan->interest,
                 'period' => $loan->period,
                 'period_type' => $loan->product ? $loan->product->period_type : '2',
-                'created_at' => $loan->datecreated ?? $loan->created_at
+                'created_at' => $loan->datecreated ?? $loan->created_at,
+                'disbursement_date' => $disbursement ? $disbursement->created_at : null
             ];
         } elseif ($loan instanceof Loan) {
+            $disbursement = $loan->disbursements()
+                ->orderBy('created_at', 'asc')
+                ->first();
+
             return [
                 'id' => $loan->id,
                 'principal' => $loan->principal,
                 'interest' => $loan->interest,
                 'period' => $loan->period,
                 'period_type' => $loan->product ? $loan->product->period_type : '2',
-                'created_at' => $loan->created_at
+                'created_at' => $loan->created_at,
+                'disbursement_date' => $disbursement ? $disbursement->created_at : null
             ];
         } else {
             throw new \InvalidArgumentException('Invalid loan model provided');
@@ -296,6 +303,16 @@ class LoanScheduleService
      */
     private function getStartDate(array $loanData): Carbon
     {
+        if (!empty($loanData['disbursement_date'])) {
+            $disbursementDate = $loanData['disbursement_date'];
+            if ($disbursementDate instanceof Carbon) {
+                return $disbursementDate;
+            }
+            if (is_string($disbursementDate)) {
+                return Carbon::parse($disbursementDate);
+            }
+        }
+
         $createdAt = $loanData['created_at'];
         
         if ($createdAt instanceof Carbon) {

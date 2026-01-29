@@ -640,49 +640,102 @@ class AutomateRepayments extends Command
     
     /**
      * Check if all loan schedules are paid and close the loan if complete
+     * CRITICAL: Must check TOTAL balance (P+I+Late Fees) not just schedule status
      * This matches RepaymentController::checkAndCloseLoanIfComplete()
      */
     private function checkAndCloseLoanIfComplete(int $loanId): bool
     {
         try {
-            $loan = \App\Models\Loan::find($loanId);
+            // Try PersonalLoan first, then GroupLoan
+            $loan = \App\Models\PersonalLoan::find($loanId);
+            $loanType = 'personal';
+            
+            if (!$loan) {
+                $loan = \App\Models\GroupLoan::find($loanId);
+                $loanType = 'group';
+            }
+            
+            if (!$loan) {
+                $loan = \App\Models\Loan::find($loanId);
+                $loanType = 'other';
+            }
             
             if (!$loan) {
                 Log::warning("Loan {$loanId} not found in checkAndCloseLoanIfComplete");
                 return false;
             }
             
-            // Only check disbursed loans (status = 2)
-            if ($loan->status != 2) {
-                return false;
-            }
-            
-            // Get all schedules
+            // Get all schedules with product for late fee calculation
             $schedules = \App\Models\LoanSchedule::where('loan_id', $loanId)->get();
             
             if ($schedules->isEmpty()) {
                 return false;
             }
             
-            // Check if all schedules are paid (status = 1)
-            $unpaidSchedules = $schedules->where('status', '!=', 1);
+            // Load product for late fee calculation
+            $loan->load('product');
             
-            if ($unpaidSchedules->count() === 0) {
-                // All schedules paid - close the loan
-                $loan->status = 3; // Closed
-                $loan->date_closed = Carbon::now();
-                $loan->save();
+            // Calculate total amount due (principal + interest + late fees - waivers)
+            $totalDue = 0;
+            $allSchedulesPaid = true;
+            
+            foreach ($schedules as $schedule) {
+                $scheduleDue = $schedule->principal + $schedule->interest;
                 
-                $this->info("  → ✓ Loan #{$loanId} CLOSED (all schedules paid)!");
+                // Calculate late fee with freeze/multiply logic
+                $lateFee = $this->calculateLateFee($schedule, $loan);
                 
-                Log::info("Loan auto-closed after auto-repayment", [
+                // Calculate total paid for this schedule
+                $totalPaidFromRepayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
+                    ->where('status', 1)
+                    ->sum('amount');
+                
+                // Use the greater of: repayments table sum OR schedule.paid column
+                $totalPaid = max($totalPaidFromRepayments, $schedule->paid ?? 0);
+                
+                $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
+                $totalDue += max(0, $scheduleBalance);
+                
+                if ($scheduleBalance > 0.01) {
+                    $allSchedulesPaid = false;
+                } else if ($scheduleBalance <= 0.01 && $schedule->status != 1) {
+                    // Mark schedule as paid and freeze late fees
+                    $schedule->update([
+                        'status' => 1,
+                        'date_cleared' => Carbon::now()
+                    ]);
+                }
+            }
+            
+            // If total due is <= 0 (fully paid including late fees), close the loan
+            if ($totalDue <= 0.01 && $allSchedulesPaid) {
+                if ($loan->status != 3) {
+                    $loan->update([
+                        'status' => 3, // Closed/Completed
+                        'date_closed' => Carbon::now()
+                    ]);
+                    
+                    $this->info("  → ✓ Loan #{$loanId} CLOSED (all schedules + late fees paid)!");
+                    
+                    Log::info("Loan auto-closed after auto-repayment", [
+                        'loan_id' => $loanId,
+                        'loan_code' => $loan->code ?? 'N/A',
+                        'loan_type' => $loanType,
+                        'total_due' => $totalDue,
+                        'date_closed' => $loan->date_closed
+                    ]);
+                    
+                    return true;
+                } else {
+                    Log::info("Loan already closed", ['loan_id' => $loanId]);
+                }
+            } else {
+                Log::info("Loan not ready to close - balance remaining", [
                     'loan_id' => $loanId,
-                    'member_id' => $loan->member_id,
-                    'total_schedules' => $schedules->count(),
-                    'date_closed' => $loan->date_closed
+                    'total_due' => $totalDue,
+                    'all_schedules_paid' => $allSchedulesPaid,
+                    'schedules_count' => $schedules->count()
                 ]);
-                
-                return true;
             }
             
             return false;
@@ -695,6 +748,66 @@ class AutomateRepayments extends Command
             ]);
             
             return false;
+        }
+    }
+    
+    /**
+     * Calculate net late fee for a schedule (after waivers)
+     * CRITICAL: Uses date_cleared to determine freeze vs multiply
+     * 
+     * @param object $schedule
+     * @param object $loan
+     * @return float
+     */
+    private function calculateLateFee($schedule, $loan): float
+    {
+        // CRITICAL: Check date_cleared to determine if we freeze or continue multiplying
+        if ($schedule->date_cleared) {
+            // Balance = 0 at this date → FREEZE late fees at this point
+            $now = strtotime($schedule->date_cleared);
+        } else {
+            // Balance > 0 → late fees continue MULTIPLYING using TODAY
+            $now = time();
+        }
+        
+        $your_date = $this->parsePaymentDate($schedule->payment_date);
+        $d = max(0, floor(($now - $your_date) / 86400));
+        
+        $dd = 0;
+        if ($d > 0) {
+            $period_type = $loan->product ? $loan->product->period_type : '1';
+            $dd = $period_type == '1' ? ceil($d / 7) : ($period_type == '2' ? ceil($d / 30) : $d);
+        }
+        
+        $intrestamtpayable = $schedule->interest;
+        $lateFeeOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
+        
+        // Check for waivers in late_fees table (status = 2 means waived)
+        $totalWaivedAmount = DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', 2)
+            ->sum('amount');
+        
+        $netLateFee = max(0, $lateFeeOriginal - $totalWaivedAmount);
+        
+        return $netLateFee;
+    }
+    
+    /**
+     * Parse payment dates that may be in DD-MM-YYYY format
+     * 
+     * @param string $dateString
+     * @return int Unix timestamp
+     */
+    private function parsePaymentDate($dateString)
+    {
+        // Parse DD-MM-YYYY format correctly
+        if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $dateString, $matches)) {
+            // DD-MM-YYYY format
+            return mktime(0, 0, 0, $matches[2], $matches[1], $matches[3]);
+        } else {
+            // Fall back to strtotime for other formats
+            return strtotime($dateString);
         }
     }
 }

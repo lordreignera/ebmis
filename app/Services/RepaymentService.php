@@ -699,11 +699,13 @@ class RepaymentService
     
     /**
      * Calculate late fee for a schedule
-     * MUST MATCH RepaymentController::calculateLateFee() logic
+     * CRITICAL: Late fees MULTIPLY while balance > 0, FREEZE when balance = 0
      * 
-     * FORMULA: Late Fee = (Principal + Interest) × 6% × Periods Overdue
-     * FREEZE LOGIC: Periods freeze when total balance (P+I+Late Fees) = 0
-     * WAIVERS: Deducts from penalty_waivers table (admin-approved waivers)
+     * FORMULA: (P + I) × 6% × Periods Overdue
+     * FREEZE LOGIC: Controlled by date_cleared field
+     *   - date_cleared = NULL → balance > 0 → late fees continue multiplying (use TODAY)
+     *   - date_cleared = [date] → balance = 0 → late fees frozen at that date
+     * WAIVERS: Deducts from late_fees table where status = 2 (waived)
      * 
      * @param object $schedule - loan_schedules record
      * @param object $loan - loan record with product relationship
@@ -711,29 +713,12 @@ class RepaymentService
      */
     private function calculateLateFee($schedule, $loan): array
     {
-        // CRITICAL: Check if balance is zero to determine freeze
-        // Quick check: if paid >= P+I, balance might be zero (freeze late fees)
-        $paidAmount = floatval($schedule->paid ?? 0);
-        $scheduleDue = $schedule->principal + $schedule->interest;
-        $quickBalanceCheck = ($scheduleDue - $paidAmount);
-        
-        // Determine which date to use for calculation
-        if ($quickBalanceCheck <= 0.01) {
-            // Schedule appears fully paid - use payment/cleared date
-            if ($schedule->date_cleared) {
-                $now = strtotime($schedule->date_cleared);
-            } else {
-                // Find last payment date
-                $lastPayment = DB::table('repayments')
-                    ->where('schedule_id', $schedule->id)
-                    ->where('status', 1)
-                    ->orderBy('id', 'desc')
-                    ->first();
-                
-                $now = $lastPayment ? strtotime($lastPayment->date_created) : time();
-            }
+        // CRITICAL: Check date_cleared to determine if we freeze or continue multiplying
+        if ($schedule->date_cleared) {
+            // Balance = 0 at this date → FREEZE late fees at this point
+            $now = strtotime($schedule->date_cleared);
         } else {
-            // Schedule NOT fully paid - late fees continue accumulating
+            // Balance > 0 → late fees continue MULTIPLYING using TODAY
             $now = time();
         }
         
@@ -749,11 +734,10 @@ class RepaymentService
         $intrestamtpayable = $schedule->interest;
         $lateFeeOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
         
-        // Check for waivers in penalty_waivers table (not late_fees table)
-        // CRITICAL: Must match RepaymentController waiver query
-        $totalWaivedAmount = DB::table('penalty_waivers')
+        // Check for waivers in late_fees table (status = 2 means waived)
+        $totalWaivedAmount = DB::table('late_fees')
             ->where('schedule_id', $schedule->id)
-            ->where('status', 1) // Approved waivers
+            ->where('status', 2) // Status 2 = waived
             ->sum('amount');
         
         $netLateFee = max(0, $lateFeeOriginal - $totalWaivedAmount);

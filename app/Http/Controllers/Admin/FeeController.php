@@ -759,14 +759,20 @@ class FeeController extends Controller
                 $originalAmount = $fee->original_amount;
             }
 
-            // Reset fee to pending status
+            // CRITICAL: Invalidate old transaction reference before retry to prevent conflicts
+            // This ensures the old failed/pending transaction doesn't block the new one
+            $oldPayRef = $fee->pay_ref;
+            
+            // Reset fee to pending status with cleared reference
             $fee->update([
                 'status' => 0, // Pending
-                'payment_status' => 'Pending',
-                'payment_description' => 'Retry payment - ' . now()->format('Y-m-d H:i:s'),
+                'payment_status' => 'Pending - Retry Initiated',
+                'payment_description' => 'Retry payment (Old ref: ' . ($oldPayRef ?? 'none') . ') - ' . now()->format('Y-m-d H:i:s'),
                 'original_amount' => $originalAmount,
                 'amount' => $validated['amount'], // Update to new amount if changed
-                'payment_phone' => $validated['member_phone'] // Store actual phone used
+                'payment_phone' => $validated['member_phone'], // Store actual phone used
+                'pay_ref' => null, // Clear old reference before generating new one
+                'payment_raw' => null // Clear old payment data
             ]);
 
             // Call Mobile Money Service
