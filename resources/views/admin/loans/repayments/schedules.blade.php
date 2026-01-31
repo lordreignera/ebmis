@@ -1319,12 +1319,33 @@ $(document).ready(function() {
             return;
         }
         
+        var paymentMethod = $('#balance_payment_method').val();
+        
+        // Validate mobile money fields if mobile money is selected
+        if (paymentMethod === 'mobile_money') {
+            var medium = $('#balance_medium').val();
+            var phone = $('#balance_member_phone').val();
+            
+            if (!medium || medium === '0') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Network Not Detected',
+                    html: 'Mobile money network could not be detected.<br><br>Phone: ' + phone + '<br><br>Please ensure the member has a valid mobile money phone number (MTN or Airtel).',
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+            
+            if (!phone) {
+                Swal.fire('Error!', 'Member phone number is required for mobile money payments', 'error');
+                return;
+            }
+        }
+        
         var formData = new FormData(this);
         formData.append('loan_id', {{ $loan->id }});
         formData.append('schedules', JSON.stringify(selectedSchedules));
         formData.append('_token', '{{ csrf_token() }}');
-        
-        var paymentMethod = $('#balance_payment_method').val();
         
         // Show loading state
         $('#processBalancePaymentBtn').prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Processing...');
@@ -1337,19 +1358,58 @@ $(document).ready(function() {
             contentType: false,
             success: function(response) {
                 if (response.success) {
-                    $('#payBalanceModal').modal('hide');
-                    
                     // Different handling for mobile money vs cash/bank
                     if (response.payment_type === 'mobile_money') {
+                        $('#payBalanceModal').modal('hide');
+                        
+                        // Show USSD prompt sent notification with 30s + 120s polling flow
+                        const phone = $('#balance_member_phone').val();
+                        const amount = $('#balancePaymentAmount').val();
+                        const transactionRef = response.transaction_id;
+                        const scheduleCount = response.payments_created || 1;
+                        
+                        // Start the 30s + 120s flow
                         Swal.fire({
-                            icon: 'info',
-                            title: 'Mobile Money Collection Initiated',
-                            html: response.message + '<br><br><strong>Transaction ID:</strong> ' + response.transaction_id,
-                            confirmButtonText: 'OK'
-                        }).then(() => {
-                            window.location.reload();
+                            title: 'USSD Prompt Sent!',
+                            html: `
+                                <div class="text-center">
+                                    <div class="mb-3">
+                                        <i class="fas fa-mobile-alt fa-3x text-primary"></i>
+                                    </div>
+                                    <p>Phone: <strong>${phone}</strong></p>
+                                    <p>Amount: <strong>UGX ${parseFloat(amount).toLocaleString()}</strong></p>
+                                    <p>Schedules: <strong>${scheduleCount}</strong></p>
+                                    <hr>
+                                    <p class="text-info">
+                                        <i class="fas fa-check-circle"></i> 
+                                        Please check your phone for the USSD prompt
+                                    </p>
+                                    <p class="text-muted mt-3">
+                                        Waiting <span id="balance_wait_countdown">30</span> seconds before checking status...
+                                    </p>
+                                </div>
+                            `,
+                            allowOutsideClick: false,
+                            showConfirmButton: false,
+                            didOpen: () => {
+                                let waitSeconds = 30;
+                                const waitCountdownElement = document.getElementById('balance_wait_countdown');
+                                
+                                const waitTimer = setInterval(() => {
+                                    waitSeconds--;
+                                    if (waitCountdownElement) {
+                                        waitCountdownElement.textContent = waitSeconds;
+                                    }
+                                    
+                                    if (waitSeconds <= 0) {
+                                        clearInterval(waitTimer);
+                                        startBalancePaymentPolling(transactionRef, phone, amount, scheduleCount);
+                                    }
+                                }, 1000);
+                            }
                         });
                     } else {
+                        $('#payBalanceModal').modal('hide');
                         Swal.fire({
                             icon: 'success',
                             title: 'Payment Successful!',
@@ -1380,6 +1440,19 @@ $(document).ready(function() {
         $('#balance_medium_div').hide();
         $('#balance_phone_div').hide();
         updateBalanceSelection();
+    });
+    
+    // Auto-detect network when modal opens
+    $('#payBalanceModal').on('shown.bs.modal', function() {
+        // If mobile money is the only option or is selected, trigger network detection
+        var paymentMethod = $('#balance_payment_method').val();
+        if (paymentMethod === 'mobile_money' || $('#balance_payment_method option').length === 2) {
+            // Only one payment option (mobile money) or already selected
+            if (!paymentMethod) {
+                $('#balance_payment_method').val('mobile_money');
+            }
+            toggleBalanceMedium();
+        }
     });
     
     // ==================== WAIVE LATE FEES FUNCTIONALITY ====================
@@ -2091,6 +2164,202 @@ function submitRepayment(formData) {
         error: function(xhr) {
             var message = xhr.responseJSON?.message || 'An error occurred';
             Swal.fire('Error!', message, 'error');
+        }
+    });
+}
+
+// Balance payment polling function
+function startBalancePaymentPolling(transactionRef, phone, amount, scheduleCount) {
+    let pollAttempts = 0;
+    const maxPolls = 24; // 24 × 5 seconds = 120 seconds
+    
+    // Countdown timer
+    let secondsRemaining = 120;
+    
+    const countdownTimer = setInterval(() => {
+        secondsRemaining--;
+        const countdownElement = document.getElementById('balance_polling_countdown');
+        if (countdownElement) {
+            countdownElement.textContent = secondsRemaining;
+        }
+        
+        if (secondsRemaining <= 0) {
+            clearInterval(countdownTimer);
+            clearInterval(pollingTimer);
+            handleBalancePaymentTimeout(transactionRef);
+        }
+    }, 1000);
+    
+    // Update Swal to show polling status
+    Swal.update({
+        title: 'Verifying Payment...',
+        html: `
+            <div class="text-center">
+                <div class="mb-3">
+                    <i class="fas fa-sync fa-spin fa-3x text-primary"></i>
+                </div>
+                <p>Phone: <strong>${phone}</strong></p>
+                <p>Amount: <strong>UGX ${parseFloat(amount).toLocaleString()}</strong></p>
+                <p>Schedules: <strong>${scheduleCount}</strong></p>
+                <hr>
+                <p class="text-info">
+                    <i class="fas fa-hourglass-half"></i> 
+                    Waiting for payment confirmation...
+                </p>
+                <p class="text-muted mt-3">
+                    Time remaining: <span id="balance_polling_countdown">${secondsRemaining}</span>s
+                    <br><small>Attempt <span id="balance_poll_attempt">1</span>/${maxPolls}</small>
+                </p>
+            </div>
+        `,
+        allowOutsideClick: false,
+        showConfirmButton: false
+    });
+    
+    // Poll every 5 seconds
+    const pollingTimer = setInterval(() => {
+        pollAttempts++;
+        const attemptElement = document.getElementById('balance_poll_attempt');
+        if (attemptElement) {
+            attemptElement.textContent = pollAttempts;
+        }
+        checkBalancePaymentStatus(transactionRef, pollingTimer, countdownTimer, pollAttempts, maxPolls);
+    }, 5000);
+    
+    // First immediate check
+    checkBalancePaymentStatus(transactionRef, pollingTimer, countdownTimer, 1, maxPolls);
+}
+
+function checkBalancePaymentStatus(transactionRef, pollingTimer, countdownTimer, attempt, maxAttempts) {
+    $.ajax({
+        url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+        method: 'GET',
+        success: function(response) {
+            if (response.status === 'completed') {
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Payment Successful!',
+                    html: '<i class="fas fa-check-circle"></i> ' + (response.message || 'Balance payment completed successfully'),
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    window.location.reload();
+                });
+                
+            } else if (response.status === 'failed') {
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Payment Failed',
+                    html: '<i class="fas fa-times-circle"></i> ' + (response.message || 'Payment failed'),
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    window.location.reload();
+                });
+                
+            } else if (attempt >= maxAttempts) {
+                // Max attempts reached
+                clearInterval(pollingTimer);
+                clearInterval(countdownTimer);
+                handleBalancePaymentTimeout(transactionRef);
+            }
+            // If pending, continue polling
+        },
+        error: function() {
+            console.log('Polling error, retrying...');
+            // Continue polling on network errors
+        }
+    });
+}
+
+function handleBalancePaymentTimeout(transactionRef) {
+    Swal.fire({
+        icon: 'warning',
+        title: 'Payment Verification Timeout',
+        html: `
+            <p>The 2-minute verification period has expired.</p>
+            <p>If you completed the payment, it may still be processing.</p>
+            <p class="mt-3"><strong>What would you like to do?</strong></p>
+            <p class="text-muted"><small>Transaction ID: ${transactionRef}</small></p>
+        `,
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: '<i class="fas fa-sync"></i> Check Status',
+        denyButtonText: '<i class="fas fa-redo"></i> Retry Payment',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#3085d6',
+        denyButtonColor: '#f0ad4e',
+        cancelButtonColor: '#6c757d'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Manual status check
+            Swal.fire({
+                title: 'Checking Status...',
+                html: '<i class="fas fa-spinner fa-spin"></i> Please wait...',
+                allowOutsideClick: false,
+                showConfirmButton: false
+            });
+            
+            $.ajax({
+                url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+                method: 'GET',
+                success: function(response) {
+                    if (response.status === 'completed') {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Payment Confirmed!',
+                            html: response.message || 'Balance payment completed successfully',
+                            confirmButtonText: 'OK'
+                        }).then(() => {
+                            window.location.reload();
+                        });
+                    } else if (response.status === 'failed') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Payment Failed',
+                            html: (response.message || 'Payment failed') + '<br><br><small>You can retry the payment using the Pay Balance button.</small>',
+                            confirmButtonText: 'OK'
+                        }).then(() => {
+                            window.location.reload();
+                        });
+                    } else {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Still Processing',
+                            html: 'Payment is still being processed. FlexiPay retries 3 times if customer cancelled.<br><br>Please check again in a few moments.',
+                            confirmButtonText: 'OK'
+                        }).then(() => {
+                            window.location.reload();
+                        });
+                    }
+                },
+                error: function() {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Could not check payment status. Please try again.',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                }
+            });
+        } else if (result.isDenied) {
+            // User wants to retry - reload page to start fresh
+            Swal.fire({
+                icon: 'info',
+                title: 'Retry Payment',
+                html: 'Please use the <strong>Pay Balance</strong> button again to retry the payment.',
+                confirmButtonText: 'OK'
+            }).then(() => {
+                window.location.reload();
+            });
+        } else {
+            window.location.reload();
         }
     });
 }

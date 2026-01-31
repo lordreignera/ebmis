@@ -13,6 +13,7 @@ use App\Models\LoanSchedule;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\RawPayment;
+use App\Models\Fee;
 use App\Services\MobileMoneyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -149,6 +150,114 @@ class RepaymentController extends Controller
             'days_overdue' => $d,
             'periods_overdue' => $dd
         ];
+    }
+
+    /**
+     * Calculate late fee at a specific payment date (for KPI allocation)
+     */
+    protected function calculateLateFeeAtDate($schedule, $loan, $paymentDate)
+    {
+        $now = $paymentDate ? strtotime($paymentDate) : time();
+
+        $your_date = $this->parsePaymentDate($schedule->payment_date);
+        $d = max(0, floor(($now - $your_date) / 86400));
+
+        $dd = 0;
+        if ($d > 0) {
+            $period_type = $loan->product ? $loan->product->period_type : '1';
+            $dd = $period_type == '1' ? ceil($d / 7) : ($period_type == '2' ? ceil($d / 30) : $d);
+        }
+
+        $latepaymentOriginal = (($schedule->principal + $schedule->interest) * 0.06) * $dd;
+
+        $totalWaivedAmount = DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', 2)
+            ->sum('amount');
+
+        $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
+
+        return [
+            'gross' => $latepaymentOriginal,
+            'net' => $latepayment,
+            'waived' => $totalWaivedAmount,
+            'days_overdue' => $d,
+            'periods_overdue' => $dd
+        ];
+    }
+
+    /**
+     * Calculate KPI totals (principal/interest/penalties/fees) from repayments
+     */
+    protected function calculateRepaymentKpiTotals($repayments, $kpiStart = null, $kpiEnd = null)
+    {
+        $totals = [
+            'total_amount' => 0,
+            'total_principal' => 0,
+            'total_interest' => 0,
+            'total_penalty' => 0,
+            'total_fees' => 0,
+        ];
+
+        $state = [];
+
+        foreach ($repayments as $repayment) {
+            if ((float) $repayment->amount <= 0) {
+                continue;
+            }
+
+            $totals['total_amount'] += (float) $repayment->amount;
+
+            if (!$repayment->schedule || !$repayment->loan) {
+                continue;
+            }
+
+            $schedule = $repayment->schedule;
+            $loan = $repayment->loan;
+            $scheduleId = $schedule->id;
+
+            if (!isset($state[$scheduleId])) {
+                $state[$scheduleId] = [
+                    'remaining_interest' => (float) $schedule->interest,
+                    'remaining_principal' => (float) $schedule->principal,
+                    'late_fees_paid' => 0.0,
+                ];
+            }
+
+            $repaymentDate = $repayment->date_created ?? $repayment->created_at ?? $repayment->datecreated ?? null;
+            $lateFeeData = $this->calculateLateFeeAtDate($schedule, $loan, $repaymentDate);
+            $remainingLateFees = max(0, (float) $lateFeeData['net'] - $state[$scheduleId]['late_fees_paid']);
+
+            $remainingPI = $state[$scheduleId]['remaining_interest'] + $state[$scheduleId]['remaining_principal'];
+            $paymentAmount = (float) $repayment->amount;
+
+            if ($paymentAmount > $remainingPI) {
+                $lateFeesPaid = min($paymentAmount - $remainingPI, $remainingLateFees);
+                $amountForPI = $paymentAmount - $lateFeesPaid;
+            } else {
+                $lateFeesPaid = 0;
+                $amountForPI = $paymentAmount;
+            }
+
+            $interestPaid = min($amountForPI, $state[$scheduleId]['remaining_interest']);
+            $principalPaid = min($amountForPI - $interestPaid, $state[$scheduleId]['remaining_principal']);
+
+            $state[$scheduleId]['remaining_interest'] -= $interestPaid;
+            $state[$scheduleId]['remaining_principal'] -= $principalPaid;
+            $state[$scheduleId]['late_fees_paid'] += $lateFeesPaid;
+
+            $totals['total_interest'] += $interestPaid;
+            $totals['total_principal'] += $principalPaid;
+            $totals['total_penalty'] += $lateFeesPaid;
+        }
+
+        $feesQuery = Fee::paid();
+        if ($kpiStart && $kpiEnd) {
+            $feesQuery->whereBetween('datecreated', [$kpiStart, $kpiEnd]);
+        }
+        $totals['total_fees'] = (float) $feesQuery->sum('amount');
+
+        return $totals;
     }
 
     /**
@@ -1791,6 +1900,10 @@ class RepaymentController extends Controller
             }
 
             if (empty($phoneNumber)) {
+                \Log::error('Balance Payment - Phone number missing', [
+                    'loan_id' => $loan->id,
+                    'loan_type' => $loanType
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Member phone number not found'
@@ -1799,17 +1912,32 @@ class RepaymentController extends Controller
 
             // Determine network from medium (required for mobile money)
             if (!$request->medium) {
+                \Log::error('Balance Payment - Network medium missing', [
+                    'loan_id' => $loan->id,
+                    'request_data' => $request->all()
+                ]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Mobile money network not specified'
+                    'message' => 'Mobile money network not specified. Please ensure network is detected.'
                 ], 400);
             }
             $network = $request->medium == 1 ? 'AIRTEL' : 'MTN';
 
+            \Log::info('Balance Payment - Initiating mobile money collection', [
+                'loan_id' => $loan->id,
+                'amount' => $request->amount,
+                'phone' => $phoneNumber,
+                'network' => $network,
+                'medium' => $request->medium
+            ]);
+
+            // Round amount to whole number (FlexiPay doesn't accept decimals)
+            $roundedAmount = round(floatval($request->amount));
+
             // Initiate mobile money collection
             $mobileMoneyResult = $this->processMobileMoneyCollection(
                 $loan,
-                $request->amount,
+                $roundedAmount,
                 $phoneNumber,
                 $network
             );
@@ -2147,12 +2275,12 @@ class RepaymentController extends Controller
                 ->with('info', 'Repayment tracking for ' . ucfirst($loanType) . ' loans will be available once loans are disbursed and repayments begin. The system is ready to track repayments for school, student, and staff loans.');
         }
 
-        // Default behavior: show personal and group loan repayments only
-        // Filter to show only successful repayments
-        $query->where(function($q) {
-            $q->where('status', 1) // Traditional successful payments
-              ->orWhere('payment_status', 'Completed'); // Mobile money completed payments
-        });
+                // Default behavior: show personal and group loan repayments only
+                // Filter to show only successful repayments and exclude negative/zero amounts
+                $query->where(function($q) {
+                        $q->where('status', 1) // Traditional successful payments
+                            ->orWhere('payment_status', 'Completed'); // Mobile money completed payments
+                })->where('amount', '>', 0);
         
         // Search functionality
         if ($request->has('search')) {
@@ -2187,17 +2315,29 @@ class RepaymentController extends Controller
 
         $branches = Branch::active()->get() ?? collect();
 
-        // Calculate totals for current filter
-        $totalQuery = clone $query;
-        $totals = [
-            'total_amount' => $totalQuery->sum('amount'),
-            'total_principal' => 0, // We don't separate these in old structure
-            'total_interest' => 0,
-            'total_fees' => 0,
-            'total_penalty' => 0,
-        ];
+        // KPI totals (optionally by month)
+        $kpiMonth = $request->get('kpi_month');
+        $kpiStart = null;
+        $kpiEnd = null;
+        if ($kpiMonth) {
+            try {
+                $kpiStart = Carbon::createFromFormat('Y-m', $kpiMonth)->startOfMonth();
+                $kpiEnd = Carbon::createFromFormat('Y-m', $kpiMonth)->endOfMonth();
+            } catch (\Exception $e) {
+                $kpiStart = null;
+                $kpiEnd = null;
+            }
+        }
 
-        return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType'));
+        $kpiQuery = clone $query;
+        if ($kpiStart && $kpiEnd) {
+            $kpiQuery->whereBetween('date_created', [$kpiStart, $kpiEnd]);
+        }
+
+        $kpiRepayments = $kpiQuery->where('amount', '>', 0)->with(['schedule', 'loan.product'])->orderBy('date_created', 'asc')->get();
+        $totals = $this->calculateRepaymentKpiTotals($kpiRepayments, $kpiStart, $kpiEnd);
+
+        return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType', 'kpiMonth'));
     }
 
     /**
@@ -3021,10 +3161,10 @@ class RepaymentController extends Controller
                 'transaction_ref' => $transactionRef
             ]);
             
-            // Find the repayment by transaction reference
-            $repayment = Repayment::where('transaction_reference', $transactionRef)->first();
+            // Find ALL repayments by transaction reference (balance payments can have multiple)
+            $repayments = Repayment::where('transaction_reference', $transactionRef)->get();
             
-            if (!$repayment) {
+            if ($repayments->isEmpty()) {
                 return response()->json([
                     'success' => false,
                     'status' => 'error',
@@ -3033,7 +3173,8 @@ class RepaymentController extends Controller
             }
 
             // If already completed, return success
-            if ($repayment->payment_status === 'Completed') {
+            $firstRepayment = $repayments->first();
+            if ($firstRepayment->payment_status === 'Completed') {
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
@@ -3048,7 +3189,8 @@ class RepaymentController extends Controller
             \Log::info("FlexiPay Repayment Status Result", [
                 'transaction_ref' => $transactionRef,
                 'status' => $statusResult['status'] ?? 'unknown',
-                'full_result' => $statusResult
+                'full_result' => $statusResult,
+                'repayments_count' => $repayments->count()
             ]);
 
             // Update repayment based on status
@@ -3056,108 +3198,121 @@ class RepaymentController extends Controller
                 DB::beginTransaction();
                 
                 try {
-                    $schedule = LoanSchedule::find($repayment->schedule_id);
-                    $loan = Loan::find($repayment->loan_id);
-                    
-                    // Update repayment status
-                    $repayment->update([
-                        'payment_status' => 'Completed',
-                        'status' => 1, // Mark as confirmed/completed
-                        'payment_raw' => json_encode($statusResult)
-                    ]);
-
-                    // Decrement pending_count on the schedule
-                    if ($schedule->pending_count > 0) {
-                        $schedule->decrement('pending_count');
-                    }
-
-                    // Update schedule paid amount
-                    $schedule->increment('paid', $repayment->amount);
-                    
-                    // Check if schedule is fully paid (with 1 UGX rounding tolerance)
-                    $difference = abs($schedule->payment - $schedule->paid);
-                    if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
-                        // Check if late fees are also cleared before freezing
-                        $pendingLateFees = DB::table('late_fees')
-                            ->where('schedule_id', $schedule->id)
-                            ->where('status', 0)
-                            ->sum('amount');
+                    // Process ALL repayments with this transaction reference
+                    foreach ($repayments as $repayment) {
+                        $schedule = LoanSchedule::find($repayment->schedule_id);
+                        $loan = Loan::find($repayment->loan_id);
                         
-                        $updateData = [
-                            'status' => 1, // Fully paid
-                            'paid' => $schedule->payment // Ensure exact match to prevent rounding issues
-                        ];
-                        
-                        // CRITICAL: Only freeze if TOTAL balance (P+I+Late Fees) is zero
-                        if ($pendingLateFees <= 0.01) {
-                            $updateData['date_cleared'] = now();
+                        // Update repayment status
+                        $repayment->update([
+                            'payment_status' => 'Completed',
+                            'status' => 1, // Mark as confirmed/completed
+                            'payment_raw' => json_encode($statusResult)
+                        ]);
+
+                        // Decrement pending_count on the schedule
+                        if ($schedule && $schedule->pending_count > 0) {
+                            $schedule->decrement('pending_count');
+                        }
+
+                        // Update schedule paid amount
+                        if ($schedule) {
+                            $schedule->increment('paid', $repayment->amount);
+                            
+                            // Check if schedule is fully paid (with 1 UGX rounding tolerance)
+                            $difference = abs($schedule->payment - $schedule->paid);
+                            if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
+                                // Check if late fees are also cleared before freezing
+                                $pendingLateFees = DB::table('late_fees')
+                                    ->where('schedule_id', $schedule->id)
+                                    ->where('status', 0)
+                                    ->sum('amount');
+                                
+                                $updateData = [
+                                    'status' => 1, // Fully paid
+                                    'paid' => $schedule->payment // Ensure exact match to prevent rounding issues
+                                ];
+                                
+                                // CRITICAL: Only freeze if TOTAL balance (P+I+Late Fees) is zero
+                                if ($pendingLateFees <= 0.01) {
+                                    $updateData['date_cleared'] = now();
+                                }
+                                
+                                $schedule->update($updateData);
+                            }
+
+                            // Calculate and apply late fees if payment is overdue
+                            $dueDate = \Carbon\Carbon::parse($schedule->payment_date);
+                            $paymentDate = now();
+                            
+                            if ($paymentDate->isAfter($dueDate)) {
+                                $daysLate = $dueDate->diffInDays($paymentDate);
+                                
+                                // Get late fee rate from product or use default
+                                $lateFeePerDay = $loan->product->late_fee_per_day ?? 1000; // UGX per day
+                                $lateFeeAmount = $daysLate * $lateFeePerDay;
+                                
+                                // Find or get late fee type
+                                $lateFeeType = \App\Models\FeeType::where('name', 'LIKE', '%late%')
+                                                                 ->orWhere('name', 'LIKE', '%penalty%')
+                                                                 ->first();
+                                
+                                if ($lateFeeType && $lateFeeAmount > 0) {
+                                    // Get member_id from loan
+                                    $member_id = $loan->member_id;
+                                    
+                                    // Create late fee record
+                                    \App\Models\Fee::create([
+                                        'member_id' => $member_id,
+                                        'loan_id' => $loan->id,
+                                        'fees_type_id' => $lateFeeType->id,
+                                        'amount' => $lateFeeAmount,
+                                        'description' => "Late payment fee: {$daysLate} days overdue for Schedule #{$schedule->id}",
+                                        'status' => 0, // Unpaid
+                                        'payment_type' => 2, // Mobile Money
+                                        'added_by' => auth()->id(),
+                                        'datecreated' => now()
+                                    ]);
+                                    
+                                    // Update schedule with late fees
+                                    $schedule->update([
+                                        'penalty_amount' => ($schedule->penalty_amount ?? 0) + $lateFeeAmount
+                                    ]);
+                                    
+                                    \Log::info("Late fee applied", [
+                                        'repayment_id' => $repayment->id,
+                                        'days_late' => $daysLate,
+                                        'late_fee_amount' => $lateFeeAmount
+                                    ]);
+                                }
+                            }
                         }
                         
-                        $schedule->update($updateData);
-                    }
-
-                    // Calculate and apply late fees if payment is overdue
-                    $dueDate = \Carbon\Carbon::parse($schedule->payment_date);
-                    $paymentDate = now();
-                    
-                    if ($paymentDate->isAfter($dueDate)) {
-                        $daysLate = $dueDate->diffInDays($paymentDate);
-                        
-                        // Get late fee rate from product or use default
-                        $lateFeePerDay = $loan->product->late_fee_per_day ?? 1000; // UGX per day
-                        $lateFeeAmount = $daysLate * $lateFeePerDay;
-                        
-                        // Find or get late fee type
-                        $lateFeeType = \App\Models\FeeType::where('name', 'LIKE', '%late%')
-                                                         ->orWhere('name', 'LIKE', '%penalty%')
-                                                         ->first();
-                        
-                        if ($lateFeeType && $lateFeeAmount > 0) {
-                            // Get member_id from loan
-                            $member_id = $loan->member_id;
+                        // Check if loan is fully paid
+                        if ($loan) {
+                            $totalPaid = Repayment::where('loan_id', $loan->id)
+                                                 ->where('payment_status', 'Completed')
+                                                 ->sum('amount');
                             
-                            // Create late fee record
-                            \App\Models\Fee::create([
-                                'member_id' => $member_id,
-                                'loan_id' => $loan->id,
-                                'fees_type_id' => $lateFeeType->id,
-                                'amount' => $lateFeeAmount,
-                                'description' => "Late payment fee: {$daysLate} days overdue for Schedule #{$schedule->id}",
-                                'status' => 0, // Unpaid
-                                'payment_type' => 2, // Mobile Money
-                                'added_by' => auth()->id(),
-                                'datecreated' => now()
-                            ]);
+                            $totalDue = $loan->principal + $loan->interest;
                             
-                            // Update schedule with late fees
-                            $schedule->update([
-                                'penalty_amount' => ($schedule->penalty_amount ?? 0) + $lateFeeAmount
-                            ]);
-                            
-                            \Log::info("Late fee applied", [
-                                'repayment_id' => $repayment->id,
-                                'days_late' => $daysLate,
-                                'late_fee_amount' => $lateFeeAmount
-                            ]);
+                            if ($totalPaid >= $totalDue) {
+                                $loan->update(['status' => 3]); // Completed
+                            }
                         }
-                    }
-                    
-                    // Check if loan is fully paid
-                    $totalPaid = Repayment::where('loan_id', $loan->id)
-                                         ->where('payment_status', 'Completed')
-                                         ->sum('amount');
-                    
-                    $totalDue = $loan->principal + $loan->interest;
-                    
-                    if ($totalPaid >= $totalDue) {
-                        $loan->update(['status' => 3]); // Completed
                     }
                     
                     DB::commit();
+                    
+                    \Log::info("All repayments updated successfully", [
+                        'transaction_ref' => $transactionRef,
+                        'repayments_updated' => $repayments->count()
+                    ]);
+                    
                 } catch (\Exception $e) {
                     DB::rollBack();
                     \Log::error("Repayment status update failed", [
-                        'repayment_id' => $repayment->id,
+                        'transaction_ref' => $transactionRef,
                         'error' => $e->getMessage()
                     ]);
                 }
@@ -3170,13 +3325,13 @@ class RepaymentController extends Controller
                 
             } elseif ($statusResult['status'] === 'failed') {
                 // Check if payment is recent (within 2 minutes) - FlexiPay retries 3 times
-                $createdAt = \Carbon\Carbon::parse($repayment->date_created);
+                $createdAt = \Carbon\Carbon::parse($firstRepayment->date_created);
                 $ageInMinutes = $createdAt->diffInMinutes(now());
                 
                 if ($ageInMinutes < 2) {
                     // Payment is recent - don't mark as failed yet
                     \Log::info("Repayment marked as pending - still within retry window", [
-                        'repayment_id' => $repayment->id,
+                        'repayment_count' => $repayments->count(),
                         'age_minutes' => $ageInMinutes,
                         'transaction_ref' => $transactionRef
                     ]);
@@ -3188,15 +3343,18 @@ class RepaymentController extends Controller
                     ]);
                 }
                 
-                // Payment is old enough - mark as failed
-                $repayment->update([
-                    'payment_status' => 'Failed',
-                    'payment_raw' => json_encode($statusResult)
-                ]);
+                // Payment is old enough - mark all as failed
+                foreach ($repayments as $repayment) {
+                    $repayment->update([
+                        'payment_status' => 'Failed',
+                        'payment_raw' => json_encode($statusResult)
+                    ]);
 
-                // Decrement pending_count on the schedule since payment failed
-                if ($schedule->pending_count > 0) {
-                    $schedule->decrement('pending_count');
+                    // Decrement pending_count on the schedule since payment failed
+                    $schedule = LoanSchedule::find($repayment->schedule_id);
+                    if ($schedule && $schedule->pending_count > 0) {
+                        $schedule->decrement('pending_count');
+                    }
                 }
 
                 return response()->json([
