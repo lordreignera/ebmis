@@ -105,6 +105,24 @@ class CashSecurityController extends Controller
                     'datecreated' => now()
                 ]);
                 
+                // 🆕 POST TO GENERAL LEDGER for Cash/Bank payments
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postCashSecurityEntry($cashSecurity);
+                    
+                    if ($journal) {
+                        Log::info('GL entry posted for cash security', [
+                            'cash_security_id' => $cashSecurity->id,
+                            'journal_number' => $journal->journal_number
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    Log::error('GL posting failed for cash security', [
+                        'cash_security_id' => $cashSecurity->id,
+                        'gl_error' => $glError->getMessage()
+                    ]);
+                }
+                
                 DB::commit();
 
                 if ($request->expectsJson()) {
@@ -200,6 +218,24 @@ class CashSecurityController extends Controller
                     ]);
 
                     Log::info("Cash security payment marked as paid", ['cash_security_id' => $cashSecurity->id]);
+
+                    // 🆕 POST TO GENERAL LEDGER
+                    try {
+                        $accountingService = new \App\Services\AccountingService();
+                        $journal = $accountingService->postCashSecurityEntry($cashSecurity);
+                        
+                        if ($journal) {
+                            Log::info('GL entry posted for cash security', [
+                                'cash_security_id' => $cashSecurity->id,
+                                'journal_number' => $journal->journal_number
+                            ]);
+                        }
+                    } catch (\Exception $glError) {
+                        Log::error('GL posting failed for cash security', [
+                            'cash_security_id' => $cashSecurity->id,
+                            'gl_error' => $glError->getMessage()
+                        ]);
+                    }
 
                     return response()->json([
                         'success' => true,

@@ -29,7 +29,7 @@
     </li>
 
     <li class="nav-item menu-items">
-      <a class="nav-link" href="{{ url('admin/schools/dashboard') }}">
+      <a class="nav-link" href="{{ route('admin.schools.index') }}">
         <span class="menu-icon">
           <i class="mdi mdi-school"></i>
         </span>
@@ -588,6 +588,49 @@
 
 @endif
 <!-- END ADMIN ONLY: REPORTS & SETTINGS -->
+
+@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin') || auth()->user()->hasRole('Branch Manager') || auth()->user()->hasRole('Administrator'))
+    <!-- ACCOUNTING & GL SECTION -->
+    <li class="nav-item nav-category">
+      <span class="nav-link">ACCOUNTING & GENERAL LEDGER</span>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#accounting-gl" aria-expanded="false" aria-controls="accounting-gl">
+        <span class="menu-icon">
+          <i class="mdi mdi-book-open-variant"></i>
+        </span>
+        <span class="menu-title">General Ledger</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="accounting-gl">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.journal-entries') }}">Journal Entries</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.chart-of-accounts') }}">Chart of Accounts</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.trial-balance') }}">Trial Balance</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#accounting-reports" aria-expanded="false" aria-controls="accounting-reports">
+        <span class="menu-icon">
+          <i class="mdi mdi-file-chart"></i>
+        </span>
+        <span class="menu-title">Financial Reports</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="accounting-reports">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.balance-sheet') }}">Balance Sheet</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.income-statement') }}">Income Statement (P&L)</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.trial-balance') }}">Trial Balance</a></li>
+        </ul>
+      </div>
+    </li>
+
+@endif
+<!-- END ACCOUNTING & GL SECTION -->
 
 @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
         <!-- ACCESS CONTROL SECTION - ADMIN ONLY -->

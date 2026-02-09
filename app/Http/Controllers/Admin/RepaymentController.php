@@ -1334,6 +1334,24 @@ class RepaymentController extends Controller
                 
                 // Check if loan is fully paid by checking ALL schedules
                 $this->checkAndCloseLoanIfComplete($loan->id);
+                
+                // 🆕 POST JOURNAL ENTRY TO GENERAL LEDGER
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postRepaymentEntry($repayment, $loan);
+                    
+                    if ($journal) {
+                        Log::info('GL entry posted for repayment', [
+                            'repayment_id' => $repayment->id,
+                            'journal_number' => $journal->journal_number
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    Log::error('GL posting failed but repayment will continue', [
+                        'repayment_id' => $repayment->id,
+                        'gl_error' => $glError->getMessage()
+                    ]);
+                }
             }
 
             DB::commit();
@@ -2415,6 +2433,27 @@ class RepaymentController extends Controller
             if ($validated['status']) {
                 // Check if loan is fully paid - validates ALL schedules before closing
                 $this->checkAndCloseLoanIfComplete($validated['loan_id']);
+                
+                // 🆕 POST JOURNAL ENTRY TO GENERAL LEDGER
+                try {
+                    $loan = PersonalLoan::with(['member', 'product'])->find($validated['loan_id']);
+                    if ($loan) {
+                        $accountingService = new \App\Services\AccountingService();
+                        $journal = $accountingService->postRepaymentEntry($repayment, $loan);
+                        
+                        if ($journal) {
+                            Log::info('GL entry posted for repayment', [
+                                'repayment_id' => $repayment->id,
+                                'journal_number' => $journal->journal_number
+                            ]);
+                        }
+                    }
+                } catch (\Exception $glError) {
+                    Log::error('GL posting failed but repayment will continue', [
+                        'repayment_id' => $repayment->id,
+                        'gl_error' => $glError->getMessage()
+                    ]);
+                }
             }
 
             DB::commit();
@@ -3299,6 +3338,26 @@ class RepaymentController extends Controller
                             if ($totalPaid >= $totalDue) {
                                 $loan->update(['status' => 3]); // Completed
                             }
+                        }
+
+                        // 🆕 POST JOURNAL ENTRY TO GENERAL LEDGER for mobile money confirmed payment
+                        try {
+                            $accountingService = new \App\Services\AccountingService();
+                            $journal = $accountingService->postRepaymentEntry($repayment, $loan);
+                            
+                            if ($journal) {
+                                \Log::info('GL entry posted for mobile money repayment', [
+                                    'repayment_id' => $repayment->id,
+                                    'journal_number' => $journal->journal_number,
+                                    'transaction_ref' => $transactionRef
+                                ]);
+                            }
+                        } catch (\Exception $glError) {
+                            \Log::error('GL posting failed for mobile money repayment', [
+                                'repayment_id' => $repayment->id,
+                                'error' => $glError->getMessage()
+                            ]);
+                            // Continue - don't fail payment confirmation if GL posting fails
                         }
                     }
                     

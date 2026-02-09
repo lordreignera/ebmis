@@ -438,6 +438,9 @@ Route::middleware([
     Route::get('/access-control', [\App\Http\Controllers\Admin\AccessControlController::class, 'index'])->name('access-control.index');
     
     // School Management Routes
+    Route::get('/schools/dashboard', function () {
+        return redirect()->route('admin.schools.index');
+    })->name('schools.dashboard');
     Route::resource('schools', \App\Http\Controllers\Admin\SchoolsController::class);
     Route::post('/schools/{school}/approve', [\App\Http\Controllers\Admin\SchoolsController::class, 'approve'])->name('schools.approve');
     Route::post('/schools/{school}/reject', [\App\Http\Controllers\Admin\SchoolsController::class, 'reject'])->name('schools.reject');
@@ -526,7 +529,10 @@ Route::middleware([
     Route::prefix('settings')->name('settings.')->group(function () {
         
         // System Accounts CRUD - using specific route names to avoid conflicts
+        Route::get('/system-accounts/create', [\App\Http\Controllers\Admin\SystemAccountController::class, 'create'])->name('system-accounts.create');
+        Route::get('/system-accounts/{system_account}/edit', [\App\Http\Controllers\Admin\SystemAccountController::class, 'edit'])->where('system_account', '[0-9]+')->name('system-accounts.edit');
         Route::post('/system-accounts', [\App\Http\Controllers\Admin\SystemAccountController::class, 'store'])->name('system-accounts.store');
+        Route::get('/system-accounts/suggest-sub-code', [\App\Http\Controllers\Admin\SystemAccountController::class, 'getSuggestedSubCode'])->name('system-accounts.suggest-sub-code');
         Route::get('/system-accounts/view', [\App\Http\Controllers\Admin\SystemAccountController::class, 'show'])->name('system-accounts.show');
         Route::post('/system-accounts/update/{system_account}', [\App\Http\Controllers\Admin\SystemAccountController::class, 'update'])->where('system_account', '[0-9]+')->name('system-accounts.update');
         Route::post('/system-accounts/delete/{system_account}', [\App\Http\Controllers\Admin\SystemAccountController::class, 'destroy'])->where('system_account', '[0-9]+')->name('system-accounts.destroy');
@@ -538,8 +544,8 @@ Route::middleware([
         Route::post('/fees-products/delete/{fee_type}', [\App\Http\Controllers\Admin\FeeTypeController::class, 'destroy'])->where('fee_type', '[0-9]+')->name('fees-products.destroy');
     });
     
-    // Fees Management Routes (outside settings prefix)
-    Route::prefix('admin')->name('admin.')->middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', 'ebims_module'])->group(function () {
+    // Fees Management Routes (outside settings prefix, but still in main admin group)
+    Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified', 'ebims_module'])->group(function () {
         // Check Current User (Diagnostic)
         Route::get('/check-user', function () {
             return view('admin.check-current-user');
@@ -557,6 +563,19 @@ Route::middleware([
         Route::post('/fees/mobile-money/retry', [\App\Http\Controllers\Admin\FeeController::class, 'retryMobileMoneyPayment'])->name('fees.mobile-money.retry');
         Route::get('/fees/types/ajax', [\App\Http\Controllers\Admin\FeeController::class, 'getFeeTypes'])->name('fees.types.ajax');
         Route::get('/fees/members/search', [\App\Http\Controllers\Admin\FeeController::class, 'getMembers'])->name('fees.members.search');
+        
+        // Accounting & GL Routes
+        Route::get('/accounting/journal-entries', [\App\Http\Controllers\Admin\AccountingController::class, 'journalEntries'])->name('accounting.journal-entries');
+        Route::get('/accounting/journal-entries/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadJournalEntries'])->name('accounting.journal-entries.download');
+        Route::get('/accounting/journal-entries/{entry}', [\App\Http\Controllers\Admin\AccountingController::class, 'showJournalEntry'])->name('accounting.journal-entry');
+        Route::get('/accounting/trial-balance', [\App\Http\Controllers\Admin\AccountingController::class, 'trialBalance'])->name('accounting.trial-balance');
+        Route::get('/accounting/trial-balance/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadTrialBalance'])->name('accounting.trial-balance.download');
+        Route::get('/accounting/balance-sheet', [\App\Http\Controllers\Admin\AccountingController::class, 'balanceSheet'])->name('accounting.balance-sheet');
+        Route::get('/accounting/balance-sheet/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadBalanceSheet'])->name('accounting.balance-sheet.download');
+        Route::get('/accounting/income-statement', [\App\Http\Controllers\Admin\AccountingController::class, 'incomeStatement'])->name('accounting.income-statement');
+        Route::get('/accounting/income-statement/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadIncomeStatement'])->name('accounting.income-statement.download');
+        Route::get('/accounting/chart-of-accounts', [\App\Http\Controllers\Admin\AccountingController::class, 'chartOfAccounts'])->name('accounting.chart-of-accounts');
+        Route::get('/accounting/chart-of-accounts/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadChartOfAccounts'])->name('accounting.chart-of-accounts.download');
     });
     
     Route::prefix('settings')->name('settings.')->group(function () {
