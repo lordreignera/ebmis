@@ -1862,7 +1862,7 @@ class RepaymentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'loan_id' => 'required|integer',
-            'amount' => 'required|numeric|min:1',
+            'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'required|in:mobile_money,cash,bank_transfer',
             'schedules' => 'required|string',
             'txn_reference' => 'nullable|string|max:100',
@@ -2047,25 +2047,19 @@ class RepaymentController extends Controller
                     // Cash or Bank Transfer - confirmed immediately
                     $paymentMethodName = $paymentTypeCode == 1 ? 'Cash' : 'Bank Transfer';
                     
-                    // Generate truly unique reference
-                    if ($request->txn_reference) {
-                        // User provided reference - verify it's unique
-                        $existing = DB::table('repayments')
-                            ->where('transaction_reference', $request->txn_reference)
-                            ->exists();
-                        if ($existing) {
-                            DB::rollBack();
-                            return response()->json([
-                                'success' => false,
-                                'message' => 'Transaction reference already exists. Please use a unique reference.'
-                            ], 400);
-                        }
-                        $reference = $request->txn_reference;
-                    } else {
-                        // Auto-generate unique reference: BAL + timestamp (microseconds) + random suffix
-                        $microtime = (int)(microtime(true) * 10000);
+                    // Auto-generate unique reference with appropriate prefix
+                    // CH- for Cash, BT- for Bank Transfer
+                    $prefix = $paymentTypeCode == 1 ? 'CH-' : 'BT-';
+                    $microtime = (int)(microtime(true) * 1000); // milliseconds timestamp
+                    $random = mt_rand(1000, 9999);
+                    $reference = $prefix . $microtime . '-' . $random;
+                    
+                    // Verify uniqueness (should be extremely rare to have collision)
+                    $attempts = 0;
+                    while (DB::table('repayments')->where('transaction_reference', $reference)->exists() && $attempts < 5) {
                         $random = mt_rand(1000, 9999);
-                        $reference = 'BAL' . str_pad($microtime, 8, '0', STR_PAD_LEFT) . str_pad($random, 4, '0', STR_PAD_LEFT);
+                        $reference = $prefix . $microtime . '-' . $random;
+                        $attempts++;
                     }
                     
                     $repaymentData['status'] = 1; // Confirmed immediately
@@ -2088,8 +2082,8 @@ class RepaymentController extends Controller
 
                     $totalDue = $schedule->principal + $schedule->interest;
 
-                    // Mark schedule as paid if fully paid (with 0.99 tolerance for rounding)
-                    if ($totalPaid >= ($totalDue - 0.99)) {
+                    // Mark schedule as paid if balance is less than 1 UGX (negligible)
+                    if ($totalPaid >= ($totalDue - 1)) {
                         // Check if late fees are also paid before freezing
                         $pendingLateFees = DB::table('late_fees')
                             ->where('schedule_id', $scheduleId)
@@ -2098,8 +2092,8 @@ class RepaymentController extends Controller
                         
                         $updateData = ['status' => 1];
                         
-                        // Only freeze if total balance (P+I+Late Fees) is zero
-                        if ($totalPaid >= ($totalDue + $pendingLateFees - 0.99)) {
+                        // Only freeze if total balance (P+I+Late Fees) is less than 1 UGX
+                        if ($totalPaid >= ($totalDue + $pendingLateFees - 1)) {
                             $updateData['date_cleared'] = now();
                         }
                         
@@ -3260,7 +3254,7 @@ class RepaymentController extends Controller
                             
                             // Check if schedule is fully paid (with 1 UGX rounding tolerance)
                             $difference = abs($schedule->payment - $schedule->paid);
-                            if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
+                            if ($schedule->paid >= $schedule->payment || $difference < 1.0) {
                                 // Check if late fees are also cleared before freezing
                                 $pendingLateFees = DB::table('late_fees')
                                     ->where('schedule_id', $schedule->id)
@@ -3272,8 +3266,8 @@ class RepaymentController extends Controller
                                     'paid' => $schedule->payment // Ensure exact match to prevent rounding issues
                                 ];
                                 
-                                // CRITICAL: Only freeze if TOTAL balance (P+I+Late Fees) is zero
-                                if ($pendingLateFees <= 0.01) {
+                                // CRITICAL: Only freeze if TOTAL balance (P+I+Late Fees) is less than 1 UGX
+                                if ($pendingLateFees < 1) {
                                     $updateData['date_cleared'] = now();
                                 }
                                 
@@ -3980,10 +3974,11 @@ class RepaymentController extends Controller
                 $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
                 $totalDue += max(0, $scheduleBalance);
                 
-                if ($scheduleBalance > 0.01) {
+                // Consider schedule paid if balance is less than 1 UGX (negligible amount)
+                if ($scheduleBalance >= 1) {
                     $allSchedulesPaid = false;
-                } else if ($scheduleBalance <= 0.01 && $schedule->status != 1) {
-                    // Mark schedule as paid
+                } else if ($scheduleBalance < 1 && $schedule->status != 1) {
+                    // Mark schedule as paid if balance is negligible (< 1 UGX)
                     $schedule->update([
                         'status' => 1,
                         'date_cleared' => now()
@@ -3991,8 +3986,8 @@ class RepaymentController extends Controller
                 }
             }
             
-            // If total due is <= 0 (fully paid), close the loan
-            if ($totalDue <= 0.01 && $allSchedulesPaid) {
+            // If total due is < 1 UGX (negligible), close the loan
+            if ($totalDue < 1 && $allSchedulesPaid) {
                 if ($loan->status != 3) {
                     $loan->update([
                         'status' => 3, // Closed/Completed

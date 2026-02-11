@@ -895,16 +895,14 @@
             <form id="payBalanceForm">
                 <div class="modal-body bg-white">
                     <div class="alert alert-info">
-                        <small><i class="mdi mdi-information me-1"></i> Select schedules to pay their outstanding balances. You can pay multiple schedules at once.</small>
+                        <small><i class="mdi mdi-information me-1"></i> Select ONE schedule to pay its outstanding balance at a time.</small>
                     </div>
                     
                     <div class="table-responsive mb-3" style="max-height: 300px; overflow-y: auto;">
                         <table class="table table-sm table-hover">
                             <thead class="sticky-top bg-white">
                                 <tr>
-                                    <th width="40">
-                                        <input type="checkbox" id="selectAllBalances" class="form-check-input">
-                                    </th>
+                                    <th width="40">Select</th>
                                     <th>Date</th>
                                     <th class="text-end">Balance</th>
                                 </tr>
@@ -912,16 +910,18 @@
                             <tbody id="balanceList">
                                 @foreach($schedules as $schedule)
                                     @php
-                                        $totalDue = $schedule->total_payment ?? ($schedule->principal + $schedule->interest);
+                                        $totalDue = ($schedule->principal + $schedule->interest);
                                         $totalPaid = $schedule->paid ?? 0;
-                                        $balance = $schedule->total_balance ?? ($totalDue - $totalPaid);
+                                        $balance = $totalDue - $totalPaid;
+                                        // Round to 2 decimal places to avoid floating point issues
+                                        $balance = round($balance, 2);
                                     @endphp
-                                    @if($balance > 0.01)
+                                    @if($balance >= 1)
                                         <tr>
                                             <td>
-                                                <input type="checkbox" 
-                                                       class="form-check-input balance-checkbox" 
-                                                       name="schedule_ids[]" 
+                                                <input type="radio" 
+                                                       class="form-check-input balance-radio" 
+                                                       name="schedule_id" 
                                                        value="{{ $schedule->id }}"
                                                        data-balance="{{ $balance }}"
                                                        data-due-date="{{ date('d-m-Y', strtotime($schedule->payment_date)) }}">
@@ -938,18 +938,18 @@
                     <div class="alert alert-secondary mb-3">
                         <div class="row">
                             <div class="col-md-6">
-                                <strong>Selected Schedules:</strong> <span id="selectedCount">0</span>
+                                <strong>Selected Schedule:</strong> <span id="selectedCount">None</span>
                             </div>
                             <div class="col-md-6 text-end">
-                                <strong>Total to Pay:</strong> UGX <span id="totalToPay">0</span>
+                                <strong>Amount to Pay:</strong> UGX <span id="totalToPay">0</span>
                             </div>
                         </div>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Payment Amount <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control" id="balancePaymentAmount" name="amount" step="0.01" min="1" required readonly>
-                        <div class="form-text">This will be distributed across selected schedules to clear their balances</div>
+                        <input type="number" class="form-control" id="balancePaymentAmount" name="amount" step="0.01" min="0" required readonly>
+                        <div class="form-text">Amount to pay for the selected schedule</div>
                     </div>
                     
                     <div class="mb-3">
@@ -976,12 +976,6 @@
                     <div class="mb-3" id="balance_phone_div" style="display: none;">
                         <label class="form-label">Phone Number</label>
                         <input type="text" class="form-control" id="balance_member_phone" name="member_phone" readonly value="{{ $loan->member->contact ?? ($loan->group->contact ?? '') }}">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Transaction Reference</label>
-                        <input type="text" class="form-control" id="balance_txn_reference" name="txn_reference" placeholder="Optional (for cash/bank only)">
-                        <small class="text-muted">Only for cash/bank payments. Mobile money reference is auto-generated.</small>
                     </div>
                     
                     <div class="mb-3">
@@ -1167,17 +1161,11 @@ function toggleBalanceMedium() {
     var mediumInput = document.getElementById('balance_medium');
     var networkDisplay = document.getElementById('balance_detected_network');
     var memberPhone = document.getElementById('balance_member_phone').value;
-    var txnReferenceInput = document.getElementById('balance_txn_reference');
     
     if(paymentMethod == 'mobile_money') {
         mediumDiv.style.display = 'block';
         phoneDiv.style.display = 'block';
         mediumInput.required = true;
-        
-        // Disable transaction reference for mobile money (auto-generated)
-        txnReferenceInput.disabled = true;
-        txnReferenceInput.value = '';
-        txnReferenceInput.placeholder = 'Auto-generated by FlexiPay';
         
         // Auto-detect network
         const network = detectNetwork(memberPhone);
@@ -1196,10 +1184,6 @@ function toggleBalanceMedium() {
         mediumDiv.style.display = 'none';
         phoneDiv.style.display = 'none';
         mediumInput.required = false;
-        
-        // Enable transaction reference for cash/bank
-        txnReferenceInput.disabled = false;
-        txnReferenceInput.placeholder = 'Optional (for cash/bank only)';
     }
 }
 
@@ -1267,37 +1251,28 @@ $(document).ready(function() {
     });
     
     
-    // Handle Pay Balance checkbox selection
+    // Handle Pay Balance radio button selection
     function updateBalanceSelection() {
-        var total = 0;
-        var count = 0;
+        var selectedRadio = $('.balance-radio:checked');
         
-        $('.balance-checkbox:checked').each(function() {
-            var balance = parseFloat($(this).data('balance'));
-            total += balance;
-            count++;
-        });
-        
-        $('#selectedCount').text(count);
-        $('#totalToPay').text(total.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}));
-        $('#balancePaymentAmount').val(total.toFixed(2));
-        
-        // Enable/disable submit button
-        if (count > 0) {
+        if (selectedRadio.length > 0) {
+            var balance = parseFloat(selectedRadio.data('balance'));
+            var dueDate = selectedRadio.data('due-date');
+            
+            $('#selectedCount').text(dueDate);
+            $('#totalToPay').text(balance.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}));
+            $('#balancePaymentAmount').val(balance.toFixed(2));
             $('#processBalancePaymentBtn').prop('disabled', false);
         } else {
+            $('#selectedCount').text('None');
+            $('#totalToPay').text('0');
+            $('#balancePaymentAmount').val('');
             $('#processBalancePaymentBtn').prop('disabled', true);
         }
     }
     
-    // Handle individual checkbox clicks
-    $(document).on('change', '.balance-checkbox', function() {
-        updateBalanceSelection();
-    });
-    
-    // Handle select all checkbox
-    $('#selectAllBalances').on('change', function() {
-        $('.balance-checkbox').prop('checked', $(this).prop('checked'));
+    // Handle individual radio button clicks
+    $(document).on('change', '.balance-radio', function() {
         updateBalanceSelection();
     });
     
@@ -1305,19 +1280,18 @@ $(document).ready(function() {
     $('#payBalanceForm').on('submit', function(e) {
         e.preventDefault();
         
-        var selectedSchedules = [];
-        $('.balance-checkbox:checked').each(function() {
-            selectedSchedules.push({
-                schedule_id: $(this).val(),
-                balance: parseFloat($(this).data('balance')),
-                due_date: $(this).data('due-date')
-            });
-        });
+        var selectedRadio = $('.balance-radio:checked');
         
-        if (selectedSchedules.length === 0) {
-            Swal.fire('Error!', 'Please select at least one schedule to pay', 'error');
+        if (selectedRadio.length === 0) {
+            Swal.fire('Error!', 'Please select a schedule to pay', 'error');
             return;
         }
+        
+        var selectedSchedules = [{
+            schedule_id: selectedRadio.val(),
+            balance: parseFloat(selectedRadio.data('balance')),
+            due_date: selectedRadio.data('due-date')
+        }];
         
         var paymentMethod = $('#balance_payment_method').val();
         
@@ -1435,8 +1409,7 @@ $(document).ready(function() {
     // Reset modal when closed
     $('#payBalanceModal').on('hidden.bs.modal', function() {
         $('#payBalanceForm')[0].reset();
-        $('.balance-checkbox').prop('checked', false);
-        $('#selectAllBalances').prop('checked', false);
+        $('.balance-radio').prop('checked', false);
         $('#balance_medium_div').hide();
         $('#balance_phone_div').hide();
         updateBalanceSelection();
