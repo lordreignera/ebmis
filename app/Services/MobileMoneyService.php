@@ -78,6 +78,17 @@ class MobileMoneyService
                 
                 if ($responseData && isset($responseData['statusCode'])) {
                     return $this->processApiResponse($responseData, $formattedPhone, $amount);
+                } else if ($responseData && isset($responseData['httpCode'])) {
+                    // API returned an error with httpCode format (like auth failures)
+                    $errorMessage = $responseData['httpMessage'] ?? 'API Error';
+                    $moreInfo = isset($responseData['moreInformation']) ? ': ' . $responseData['moreInformation'] : '';
+                    
+                    return [
+                        'success' => false,
+                        'status_code' => 'API_ERROR',
+                        'message' => $errorMessage . $moreInfo,
+                        'raw_response' => $responseBody
+                    ];
                 } else {
                     return [
                         'success' => false,
@@ -193,12 +204,23 @@ class MobileMoneyService
                     'provider' => 'stanbic'
                 ];
             } else {
-                // HTTP request failed
+                // HTTP request failed - check for detailed error in response
+                $errorMessage = 'Disbursement failed';
+                
+                if (isset($result['response']['moreInformation'])) {
+                    $errorMessage = $result['response']['httpMessage'] . ': ' . $result['response']['moreInformation'];
+                } elseif (isset($result['response']['httpMessage'])) {
+                    $errorMessage = $result['response']['httpMessage'];
+                } elseif (isset($result['error'])) {
+                    $errorMessage = $result['error'];
+                }
+                
                 return [
                     'success' => false,
                     'status_code' => 'ERROR',
-                    'message' => $result['error'] ?? 'Disbursement failed',
-                    'provider' => 'stanbic'
+                    'message' => $errorMessage,
+                    'provider' => 'stanbic',
+                    'raw_response' => json_encode($result['response'] ?? [])
                 ];
             }
             
@@ -223,6 +245,14 @@ class MobileMoneyService
      */
     public function sendMoney(string $recipientName, string $phone, float $amount, ?string $description = null): array
     {
+        // Use Stanbic FlexiPay if configured
+        if ($this->provider === 'stanbic' && config('stanbic_flexipay.enabled')) {
+            // Use the existing disburseViaStanbic method with appropriate parameters
+            // Pass null for requestId to let Stanbic generate proper format (EbP...)
+            return $this->disburseViaStanbic($phone, $amount, null, $recipientName, null);
+        }
+        
+        // Fallback to Emuria FlexiPay
         try {
             // Format phone number
             $formattedPhone = $this->formatPhoneNumber($phone);
@@ -233,7 +263,7 @@ class MobileMoneyService
             // Sanitize recipient name for API requirements
             $sanitizedName = $this->sanitizeName($recipientName);
             
-            Log::info("Mobile Money Send Request", [
+            Log::info("Mobile Money Send Request (Emuria)", [
                 'recipient_original' => $recipientName,
                 'recipient_sanitized' => $sanitizedName,
                 'phone' => $formattedPhone,
@@ -272,6 +302,18 @@ class MobileMoneyService
                     $result = $this->processApiResponse($responseData, $formattedPhone, $amount, 'disbursement');
                     $result['reference'] = $responseData['flexipayReferenceNumber'] ?? 'REF-' . time();
                     return $result;
+                } else if ($responseData && isset($responseData['httpCode'])) {
+                    // API returned an error with httpCode format (like auth failures)
+                    $errorMessage = $responseData['httpMessage'] ?? 'API Error';
+                    $moreInfo = isset($responseData['moreInformation']) ? ': ' . $responseData['moreInformation'] : '';
+                    
+                    return [
+                        'success' => false,
+                        'status_code' => 'API_ERROR',
+                        'message' => $errorMessage . $moreInfo,
+                        'raw_response' => $responseBody,
+                        'type' => 'disbursement'
+                    ];
                 } else {
                     return [
                         'success' => false,
@@ -488,9 +530,19 @@ class MobileMoneyService
     
     /**
      * Check transaction status
+     * 
+     * @param string $transactionReference FlexiPay transaction reference
+     * @param string|null $network Network code (MTN, AIRTEL) - required for Stanbic
+     * @return array Status information
      */
-    public function checkTransactionStatus(string $transactionReference): array
+    public function checkTransactionStatus(string $transactionReference, ?string $network = null): array
     {
+        // Use Stanbic FlexiPay if configured
+        if ($this->provider === 'stanbic' && config('stanbic_flexipay.enabled')) {
+            return $this->checkStatusViaStanbic($transactionReference, $network);
+        }
+        
+        // Fallback to Emuria FlexiPay
         try {
             $statusEndpoint = 'https://emuria.net/flexipay/checkFromMMStatusProd.php';
             
@@ -547,6 +599,97 @@ class MobileMoneyService
             
             return [
                 'success' => false,
+                'message' => 'Status check failed: ' . $e->getMessage(),
+                'transaction_reference' => $transactionReference
+            ];
+        }
+    }
+    
+    /**
+     * Check transaction status via Stanbic FlexiPay
+     */
+    private function checkStatusViaStanbic(string $transactionReference, ?string $network = null): array
+    {
+        try {
+            // If network not provided, try to detect it from the transaction reference
+            // For now, we'll try both networks since Stanbic requires network for status check
+            if (!$network) {
+                Log::warning("Network not provided for Stanbic status check, will try MTN first", [
+                    'reference' => $transactionReference
+                ]);
+                $network = 'MTN'; // Default to MTN, will try AIRTEL if MTN fails
+            }
+            
+            Log::info("Checking Stanbic transaction status", [
+                'reference' => $transactionReference,
+                'network' => $network
+            ]);
+            
+            $result = $this->stanbicService->checkStatus($transactionReference, $network);
+            
+            if (!$result['success']) {
+                // If MTN fails and we defaulted to it, try AIRTEL
+                if ($network === 'MTN' && !$result['success']) {
+                    Log::info("MTN status check failed, trying AIRTEL", [
+                        'reference' => $transactionReference
+                    ]);
+                    $result = $this->stanbicService->checkStatus($transactionReference, 'AIRTEL');
+                }
+            }
+            
+            if (!$result['success']) {
+                return [
+                    'success' => false,
+                    'status' => 'error',
+                    'message' => $result['error'] ?? 'Status check failed',
+                    'transaction_reference' => $transactionReference,
+                    'raw_response' => $result['response'] ?? []
+                ];
+            }
+            
+            // Parse Stanbic response
+            $response = $result['response'] ?? [];
+            $statusCode = $response['statusCode'] ?? '';
+            $statusDescription = $response['statusDescription'] ?? 'Unknown status';
+            
+            // Map Stanbic status to our internal status
+            $status = 'pending';
+            $descriptionUpper = strtoupper($statusDescription);
+            
+            // Stanbic status codes: 
+            // 00 = Success/Completed
+            // 01 = Pending/Processing  
+            // 02 = Failed
+            // 03 = User cancelled
+            if ($statusCode === '00' || str_contains($descriptionUpper, 'SUCCESS') || str_contains($descriptionUpper, 'COMPLETED')) {
+                $status = 'completed';
+            } elseif (in_array($statusCode, ['02', '03']) || 
+                      str_contains($descriptionUpper, 'FAILED') || 
+                      str_contains($descriptionUpper, 'DECLINED') || 
+                      str_contains($descriptionUpper, 'CANCELLED') || 
+                      str_contains($descriptionUpper, 'REJECTED')) {
+                $status = 'failed';
+            }
+            
+            return [
+                'success' => true,
+                'status' => $status,
+                'status_code' => $statusCode,
+                'message' => $statusDescription,
+                'transaction_reference' => $transactionReference,
+                'raw_response' => $response
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error("Stanbic status check error", [
+                'reference' => $transactionReference,
+                'network' => $network,
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'status' => 'error',
                 'message' => 'Status check failed: ' . $e->getMessage(),
                 'transaction_reference' => $transactionReference
             ];

@@ -1141,10 +1141,9 @@ class RepaymentController extends Controller
     {
         try {
             // Find loan from either table
-            $loan = PersonalLoan::find($loanId);
-            if (!$loan) {
-                $loan = GroupLoan::find($loanId);
-            }
+            $result = $this->findLoanById($loanId);
+            $loan = $result['loan'];
+            
             if (!$loan) {
                 return response()->json([
                     'success' => false,
@@ -1569,15 +1568,9 @@ class RepaymentController extends Controller
         }
         
         // Get member/group for contact details
-        if ($loanType === 'personal') {
-            $member = $loan->member;
-            $phoneNumber = $member->contact;
-            $memberName = $member->fname . ' ' . $member->lname;
-        } else {
-            $member = $loan->group;
-            $phoneNumber = $member->contact ?? '';
-            $memberName = $member->name;
-        }
+        $contactDetails = $this->getLoanContactDetails($loan, $loanType);
+        $phoneNumber = $contactDetails['phone'];
+        $memberName = $contactDetails['name'];
 
         DB::beginTransaction();
 
@@ -1585,7 +1578,7 @@ class RepaymentController extends Controller
             // Determine network name from medium (for mobile money)
             $network = null;
             if ($request->type == 2 && $request->medium) {
-                $network = $request->medium == 1 ? 'AIRTEL' : 'MTN';
+                $network = $this->getNetworkFromMedium($request->medium);
             }
 
             $repaymentData = [
@@ -1625,29 +1618,18 @@ class RepaymentController extends Controller
                     $flexipayReference = $mobileMoneyResult['reference'];
                     
                     // CRITICAL VALIDATION: Never save mobile money payment without valid FlexiPay reference
-                    if (empty($flexipayReference)) {
-                        \Log::error('FlexiPay returned empty reference in storeRepayment', [
-                            'loan_id' => $request->loan_id,
-                            'amount' => $request->amount,
-                            'result' => $mobileMoneyResult
-                        ]);
+                    try {
+                        $this->validateFlexiPayReference($flexipayReference, $request->loan_id);
+                    } catch (\Exception $e) {
                         DB::rollBack();
                         if ($request->ajax() || $request->wantsJson()) {
                             return response()->json([
                                 'success' => false,
-                                'message' => 'Invalid transaction reference from FlexiPay. Payment not saved. Please try again.'
+                                'message' => $e->getMessage()
                             ], 400);
                         }
-                        return redirect()->back()
-                            ->with('error', 'Invalid transaction reference from FlexiPay. Payment not saved. Please try again.');
+                        return redirect()->back()->with('error', $e->getMessage());
                     }
-                    
-                    // Log the reference format for debugging
-                    \Log::info('FlexiPay reference received in storeRepayment', [
-                        'reference' => $flexipayReference,
-                        'length' => strlen($flexipayReference),
-                        'loan_id' => $request->loan_id
-                    ]);
                     
                     $repaymentData['status'] = 0; // Pending
                     $repaymentData['txn_id'] = $flexipayReference;
@@ -1655,7 +1637,7 @@ class RepaymentController extends Controller
                     $repaymentData['pay_status'] = 'PENDING';
                     $repaymentData['pay_message'] = 'Mobile money collection initiated';
                     $repaymentData['network'] = $network;
-                    $repaymentData['phone_number'] = $phoneNumber;
+                    $repaymentData['payment_phone'] = $phoneNumber;
                     
                     // Increment pending_count on the schedule (bimsadmin style)
                     $schedule->increment('pending_count');
@@ -1879,12 +1861,10 @@ class RepaymentController extends Controller
         }
 
         // Find loan from either table
-        $loan = PersonalLoan::find($request->loan_id);
-        $loanType = 'personal';
-        if (!$loan) {
-            $loan = GroupLoan::find($request->loan_id);
-            $loanType = 'group';
-        }
+        $result = $this->findLoanById($request->loan_id);
+        $loan = $result['loan'];
+        $loanType = $result['type'];
+        
         if (!$loan) {
             return response()->json([
                 'success' => false,
@@ -1907,15 +1887,9 @@ class RepaymentController extends Controller
         // For mobile money, get member's phone number and initiate collection first
         if ($paymentTypeCode == 2) {
             // Get member/group phone number
-            if ($loanType === 'personal') {
-                $member = $loan->member;
-                $phoneNumber = $member->contact ?? '';
-                $memberName = $member->fname . ' ' . $member->lname;
-            } else {
-                $member = $loan->group;
-                $phoneNumber = $member->contact ?? '';
-                $memberName = $member->name;
-            }
+            $contactDetails = $this->getLoanContactDetails($loan, $loanType);
+            $phoneNumber = $contactDetails['phone'];
+            $memberName = $contactDetails['name'];
 
             if (empty($phoneNumber)) {
                 \Log::error('Balance Payment - Phone number missing', [
@@ -1939,7 +1913,7 @@ class RepaymentController extends Controller
                     'message' => 'Mobile money network not specified. Please ensure network is detected.'
                 ], 400);
             }
-            $network = $request->medium == 1 ? 'AIRTEL' : 'MTN';
+            $network = $this->getNetworkFromMedium($request->medium);
 
             \Log::info('Balance Payment - Initiating mobile money collection', [
                 'loan_id' => $loan->id,
@@ -1971,24 +1945,14 @@ class RepaymentController extends Controller
             $flexipayReference = $mobileMoneyResult['reference'];
 
             // CRITICAL VALIDATION: Never save mobile money payment without valid FlexiPay reference
-            if (empty($flexipayReference)) {
-                \Log::error('FlexiPay returned empty reference', [
-                    'loan_id' => $loan->id,
-                    'amount' => $request->amount,
-                    'result' => $mobileMoneyResult
-                ]);
+            try {
+                $this->validateFlexiPayReference($flexipayReference, $loan->id);
+            } catch (\Exception $e) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid transaction reference from FlexiPay. Payment not saved. Please try again.'
+                    'message' => $e->getMessage()
                 ], 400);
             }
-
-            // Log the reference format for debugging
-            \Log::info('FlexiPay reference received', [
-                'reference' => $flexipayReference,
-                'length' => strlen($flexipayReference),
-                'loan_id' => $loan->id
-            ]);
         }
 
         DB::beginTransaction();
@@ -2038,7 +2002,7 @@ class RepaymentController extends Controller
                     $repaymentData['pay_status'] = 'PENDING';
                     $repaymentData['pay_message'] = 'Mobile money collection initiated';
                     $repaymentData['network'] = $network;
-                    $repaymentData['phone_number'] = $phoneNumber;
+                    $repaymentData['payment_phone'] = $phoneNumber;
 
                     // Increment pending_count on the schedule
                     $schedule->increment('pending_count');
@@ -3215,9 +3179,20 @@ class RepaymentController extends Controller
                 ]);
             }
 
-            // Check status with FlexiPay
-            $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
-            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef);
+            // Detect network from payment phone for Stanbic status check
+            $network = null;
+            if ($firstRepayment->payment_phone) {
+                $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
+                $network = $mobileMoneyService->detectNetwork($firstRepayment->payment_phone);
+                
+                \Log::info("Network detected from payment phone", [
+                    'phone' => $firstRepayment->payment_phone,
+                    'network' => $network
+                ]);
+            }
+
+            // Check status with FlexiPay (will auto-select Stanbic or Emuria)
+            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef, $network);
 
             \Log::info("FlexiPay Repayment Status Result", [
                 'transaction_ref' => $transactionRef,
@@ -4386,5 +4361,88 @@ class RepaymentController extends Controller
                 'message' => 'Failed to load payments'
             ], 500);
         }
+    }
+
+    /**
+     * Get contact details (phone number and name) from loan
+     * 
+     * @param PersonalLoan|GroupLoan $loan
+     * @param string $loanType
+     * @return array ['phone' => string, 'name' => string]
+     */
+    protected function getLoanContactDetails($loan, $loanType)
+    {
+        if ($loanType === 'personal') {
+            $member = $loan->member;
+            return [
+                'phone' => $member->contact ?? '',
+                'name' => $member->fname . ' ' . $member->lname
+            ];
+        } else {
+            $member = $loan->group;
+            return [
+                'phone' => $member->contact ?? '',
+                'name' => $member->name
+            ];
+        }
+    }
+
+    /**
+     * Convert medium code to network name
+     * 
+     * @param int $medium 1=AIRTEL, 2=MTN
+     * @return string|null
+     */
+    protected function getNetworkFromMedium($medium)
+    {
+        if (!$medium) {
+            return null;
+        }
+        return $medium == 1 ? 'AIRTEL' : 'MTN';
+    }
+
+    /**
+     * Validate FlexiPay transaction reference
+     * 
+     * @param string|null $reference
+     * @param int $loanId
+     * @throws \Exception if reference is empty
+     */
+    protected function validateFlexiPayReference($reference, $loanId)
+    {
+        if (empty($reference)) {
+            \Log::error('FlexiPay returned empty reference', [
+                'loan_id' => $loanId,
+                'reference' => $reference
+            ]);
+            throw new \Exception('Invalid transaction reference from FlexiPay. Payment not saved. Please try again.');
+        }
+        
+        \Log::info('FlexiPay reference received', [
+            'reference' => $reference,
+            'length' => strlen($reference),
+            'loan_id' => $loanId
+        ]);
+    }
+
+    /**
+     * Find loan by ID from either PersonalLoan or GroupLoan table
+     * 
+     * @param int $loanId
+     * @return array ['loan' => PersonalLoan|GroupLoan|null, 'type' => 'personal'|'group'|null]
+     */
+    protected function findLoanById($loanId)
+    {
+        $loan = PersonalLoan::find($loanId);
+        if ($loan) {
+            return ['loan' => $loan, 'type' => 'personal'];
+        }
+        
+        $loan = GroupLoan::find($loanId);
+        if ($loan) {
+            return ['loan' => $loan, 'type' => 'group'];
+        }
+        
+        return ['loan' => null, 'type' => null];
     }
 }

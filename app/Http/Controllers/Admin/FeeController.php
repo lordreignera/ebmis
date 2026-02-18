@@ -181,6 +181,24 @@ class FeeController extends Controller
                 
                 $fee = Fee::create($validated);
                 
+                // Post to General Ledger
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postFeeCollectionEntry($fee, $validated['fee_type']);
+                    if ($journal) {
+                        \Log::info('Fee GL entry posted', [
+                            'fee_id' => $fee->id,
+                            'journal_number' => $journal->journal_number
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    \Log::error('Fee GL posting failed', [
+                        'fee_id' => $fee->id,
+                        'error' => $glError->getMessage()
+                    ]);
+                    // Continue - don't fail fee recording if GL posting fails
+                }
+                
                 DB::commit();
                 
                 return redirect()->route('admin.fees.show', $fee)
@@ -269,6 +287,24 @@ class FeeController extends Controller
             'payment_status' => 'Paid',
             'status' => 1,
         ]);
+
+        // Post to General Ledger
+        try {
+            $accountingService = new \App\Services\AccountingService();
+            $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fee_type);
+            if ($journal) {
+                \Log::info('Fee GL entry posted', [
+                    'fee_id' => $fee->id,
+                    'journal_number' => $journal->journal_number
+                ]);
+            }
+        } catch (\Exception $glError) {
+            \Log::error('Fee GL posting failed', [
+                'fee_id' => $fee->id,
+                'error' => $glError->getMessage()
+            ]);
+            // Continue - don't fail fee marking if GL posting fails
+        }
 
         return redirect()->back()
                         ->with('success', 'Fee marked as paid successfully.');
@@ -644,7 +680,19 @@ class FeeController extends Controller
             // Call Mobile Money Service to check status
             \Log::info("Calling FlexiPay to check status");
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
-            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef);
+            
+            // Detect network from payment phone for Stanbic status check
+            $network = null;
+            if ($fee->payment_phone) {
+                $network = $mobileMoneyService->detectNetwork($fee->payment_phone);
+                
+                \Log::info("Network detected from payment phone", [
+                    'phone' => $fee->payment_phone,
+                    'network' => $network
+                ]);
+            }
+            
+            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef, $network);
             
             \Log::info("FlexiPay status result", [
                 'status_result' => $statusResult
@@ -658,6 +706,24 @@ class FeeController extends Controller
                     'payment_description' => 'Payment completed via mobile money',
                     'payment_raw' => json_encode($statusResult)
                 ]);
+
+                // Post to General Ledger
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fee_type);
+                    if ($journal) {
+                        \Log::info('Fee GL entry posted for mobile money payment', [
+                            'fee_id' => $fee->id,
+                            'journal_number' => $journal->journal_number
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    \Log::error('Fee GL posting failed for mobile money payment', [
+                        'fee_id' => $fee->id,
+                        'error' => $glError->getMessage()
+                    ]);
+                    // Continue - don't fail payment confirmation if GL posting fails
+                }
 
                 return response()->json([
                     'success' => true,

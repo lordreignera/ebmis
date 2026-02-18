@@ -891,6 +891,26 @@ class LoanController extends Controller
                     'datecreated' => now()
                 ]);
 
+                // Post to General Ledger
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postFeeCollectionEntry($fee, $charge->name);
+                    if ($journal) {
+                        \Log::info('Upfront fee GL entry posted', [
+                            'fee_id' => $fee->id,
+                            'loan_id' => $loan->id,
+                            'journal_number' => $journal->journal_number
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    \Log::error('Upfront fee GL posting failed', [
+                        'fee_id' => $fee->id,
+                        'loan_id' => $loan->id,
+                        'error' => $glError->getMessage()
+                    ]);
+                    // Continue - don't fail fee recording if GL posting fails
+                }
+
                 $totalAmount += $chargeAmount;
                 $paidFeesCount++;
             }
@@ -1142,7 +1162,19 @@ class LoanController extends Controller
 
             // Check status with FlexiPay
             $mobileMoneyService = app(\App\Services\MobileMoneyService::class);
-            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef);
+            
+            // Detect network from payment phone for Stanbic status check
+            $network = null;
+            if ($fee->payment_phone) {
+                $network = $mobileMoneyService->detectNetwork($fee->payment_phone);
+                
+                \Log::info("Network detected from payment phone", [
+                    'phone' => $fee->payment_phone,
+                    'network' => $network
+                ]);
+            }
+            
+            $statusResult = $mobileMoneyService->checkTransactionStatus($transactionRef, $network);
 
             \Log::info("FlexiPay Status Result", [
                 'transaction_ref' => $transactionRef,
