@@ -186,27 +186,56 @@ class AccountingController extends Controller
      */
     public function chartOfAccounts(Request $request)
     {
-        $startDate = $request->input('start_date');
-        $endDate = $request->input('end_date', date('Y-m-d'));
+        try {
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date', date('Y-m-d'));
 
-        $accounts = SystemAccount::with('parent')
-            ->orderBy('category')
-            ->orderBy('code')
-            ->orderBy('sub_code')
-            ->get();
-
-        // If end date filter is applied, calculate balances as of that date
-        // Chart of Accounts shows cumulative balances AS OF a date, not period activity
-        if ($endDate) {
-            foreach ($accounts as $account) {
-                $account->running_balance = $this->calculateAccountBalance($account->Id, $endDate);
+            // Check if system_accounts table exists
+            if (!DB::getSchemaBuilder()->hasTable('system_accounts')) {
+                return response()->view('errors.custom', [
+                    'title' => 'Database Error',
+                    'message' => 'System accounts table does not exist. Please run migrations.',
+                    'details' => 'Run: php artisan migrate'
+                ], 500);
             }
+
+            $accounts = SystemAccount::with('parent')
+                ->orderBy('category')
+                ->orderBy('code')
+                ->orderBy('sub_code')
+                ->get();
+
+            // If end date filter is applied, calculate balances as of that date
+            // Chart of Accounts shows cumulative balances AS OF a date, not period activity
+            if ($endDate) {
+                foreach ($accounts as $account) {
+                    $account->running_balance = $this->calculateAccountBalance($account->Id, $endDate);
+                }
+            }
+            // If no dates provided, use the current running_balance from database
+
+            $accounts = $accounts->groupBy('category');
+
+            return view('admin.accounting.chart-of-accounts', compact('accounts', 'startDate', 'endDate'));
+            
+        } catch (\Exception $e) {
+            \Log::error('Chart of Accounts Error: ' . $e->getMessage(), [
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            // Show detailed error in development, generic in production
+            if (config('app.debug')) {
+                throw $e;
+            }
+            
+            return response()->view('errors.custom', [
+                'title' => 'Error Loading Chart of Accounts',
+                'message' => 'An error occurred while loading the chart of accounts.',
+                'details' => config('app.debug') ? $e->getMessage() : 'Please contact support.'
+            ], 500);
         }
-        // If no dates provided, use the current running_balance from database
-
-        $accounts = $accounts->groupBy('category');
-
-        return view('admin.accounting.chart-of-accounts', compact('accounts', 'startDate', 'endDate'));
     }
 
     /**
@@ -214,23 +243,36 @@ class AccountingController extends Controller
      */
     private function calculateAccountBalance($accountId, $asOfDate)
     {
-        $account = SystemAccount::find($accountId);
-        if (!$account) return 0;
+        try {
+            $account = SystemAccount::find($accountId);
+            if (!$account) return 0;
 
-        // Get all journal lines for this account up to the date
-        $debits = JournalLine::whereHas('journalEntry', function ($q) use ($asOfDate) {
-                $q->where('transaction_date', '<=', $asOfDate)
-                  ->where('status', 'posted');
-            })
-            ->where('account_id', $accountId)
-            ->sum('debit_amount');
+            // Get all journal lines for this account up to the date
+            $debits = JournalLine::whereHas('journalEntry', function ($q) use ($asOfDate) {
+                    $q->where('transaction_date', '<=', $asOfDate)
+                      ->where('status', 'posted');
+                })
+                ->where('account_id', $accountId)
+                ->sum('debit_amount');
 
-        $credits = JournalLine::whereHas('journalEntry', function ($q) use ($asOfDate) {
-                $q->where('transaction_date', '<=', $asOfDate)
-                  ->where('status', 'posted');
-            })
-            ->where('account_id', $accountId)
-            ->sum('credit_amount');
+            $credits = JournalLine::whereHas('journalEntry', function ($q) use ($asOfDate) {
+                    $q->where('transaction_date', '<=', $asOfDate)
+                      ->where('status', 'posted');
+                })
+                ->where('account_id', $accountId)
+                ->sum('credit_amount');
+
+            // Normal balance based on category
+            if (in_array($account->category, ['Asset', 'Expense'])) {
+                return $debits - $credits; // Debit increases
+            } else {
+                return $credits - $debits; // Credit increases
+            }
+        } catch (\Exception $e) {
+            \Log::error("Error calculating balance for account {$accountId}: " . $e->getMessage());
+            return 0; // Return 0 on error to prevent page crash
+        }
+    }
 
         // Normal balance based on category
         if (in_array($account->category, ['Asset', 'Expense'])) {
