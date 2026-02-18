@@ -27,37 +27,41 @@ $response = json_decode(curl_exec($curl),true);
 
 curl_close($curl);
 
-//converted private key from https://8gwifi.org/pemconvert.jsp by PKCS#8/PKCS#1 RSA,DSA,EC Converter
+//Converted emuria.key from PKCS#8 to PKCS#1 format using convert_emuria_key.php (February 2026)
 $privkeyfile = "-----BEGIN RSA PRIVATE KEY-----
-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
+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
 -----END RSA PRIVATE KEY-----
 ";
 
-$private_key = $privkeyfile;
+$private_key = openssl_pkey_get_private($privkeyfile);
+
+if ($private_key === false) {
+    die(json_encode(['error' => 'Failed to load private key', 'details' => openssl_error_string()]));
+}
 
 $payload = [
     "requestId" => $_POST['reference'], //pass the transactionrefNumber

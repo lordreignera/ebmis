@@ -204,6 +204,11 @@
                             <option value="3" {{ request('method') == '3' ? 'selected' : '' }}>Bank Transfer</option>
                         </select>
                     </div>
+                    <div class="col-md-2">
+                        <label class="form-label text-white">KPI Month</label>
+                        <input type="month" class="form-control" name="kpi_month" 
+                               value="{{ $kpiMonth ?? request('kpi_month') }}">
+                    </div>
                     <div class="col-md-3 d-flex align-items-end">
                         <button type="submit" class="btn btn-light me-2">
                             <i class="fas fa-search me-1"></i>Filter

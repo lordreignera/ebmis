@@ -102,8 +102,8 @@
             </div>
         </div>
 
-                        <!-- Page Header Actions -->
-        <div class="row mb-3">
+        <!-- Page Header Actions -->
+        <div class="row mb-4">
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -111,14 +111,16 @@
                         <p class="text-muted mb-0">Manage your chart of accounts and system accounts</p>
                     </div>
                     <div>
-                        <button type="button" class="btn btn-primary" id="addAccountBtn">
+                        <a href="{{ route('admin.settings.system-accounts.create') }}" class="btn btn-primary">
                             <i class="mdi mdi-plus"></i> Add Account
-                        </button>
+                        </a>
                     </div>
                 </div>
             </div>
-        </div>        <!-- Filters -->
-        <div class="filter-card">
+        </div>
+        
+        <!-- Filters -->
+        <div class="filter-card mb-4">
             <form method="GET" action="{{ route('admin.settings.system-accounts') }}" id="filterForm">
                 <div class="row align-items-end">
                     <div class="col-md-4">
@@ -190,8 +192,11 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Account Code</th>
+                                        <th>Sub Code</th>
+                                        <th>Parent Account</th>
                                         <th>Account Name</th>
                                         <th>Account Type</th>
+                                        <th>Category</th>
                                         <th>Account Sub Type</th>
                                         <th>Currency</th>
                                         <th>Running Balance</th>
@@ -201,11 +206,28 @@
                                 </thead>
                                 <tbody>
                                     @forelse($systemAccounts as $account)
-                                    <tr>
+                                    <tr class="{{ $account->parent_account ? 'child-row' : 'parent-row' }}">
                                         <td>{{ ($systemAccounts->currentPage() - 1) * $systemAccounts->perPage() + $loop->iteration }}</td>
                                         <td class="font-weight-bold">{{ $account->code }}</td>
-                                        <td>{{ $account->name }}</td>
+                                        <td class="font-weight-bold">{{ $account->sub_code ?? '' }}</td>
+                                        <td>{{ $account->parent ? $account->parent->name : $account->name }}</td>
+                                        <td style="padding-left: {{ $account->parent_account ? '18px' : '0' }};">{{ $account->parent_account ? $account->name : '' }}</td>
                                         <td>{{ $account->accountType ?? 'N/A' }}</td>
+                                        <td>
+                                            @if($account->category == 'Asset')
+                                                <span class="badge badge-info">Asset</span>
+                                            @elseif($account->category == 'Liability')
+                                                <span class="badge badge-warning">Liability</span>
+                                            @elseif($account->category == 'Equity')
+                                                <span class="badge badge-primary">Equity</span>
+                                            @elseif($account->category == 'Income')
+                                                <span class="badge badge-success">Income</span>
+                                            @elseif($account->category == 'Expense')
+                                                <span class="badge badge-danger">Expense</span>
+                                            @else
+                                                <span class="badge badge-secondary">{{ $account->category ?? 'N/A' }}</span>
+                                            @endif
+                                        </td>
                                         <td>{{ $account->accountSubType ?? 'N/A' }}</td>
                                         <td>{{ $account->currency ?? 'UGX' }}</td>
                                         <td class="text-right">{{ number_format($account->running_balance ?? 0, 2) }}</td>
@@ -218,23 +240,14 @@
                                         </td>
                                         <td>
                                             <div class="action-buttons">
-                                                <button class="btn btn-sm btn-outline-info btn-view-account" title="View" data-id="{{ $account->id }}">
+                                                <button class="btn btn-sm btn-outline-info btn-view-account" title="View" data-id="{{ $account->Id }}">
                                                     <i class="mdi mdi-eye"></i>
                                                 </button>
-                                                <button class="btn btn-sm btn-outline-primary btn-edit-account" title="Edit" 
-                                                    data-id="{{ $account->id }}"
-                                                    data-code="{{ $account->code }}"
-                                                    data-name="{{ $account->name }}"
-                                                    data-accounttype="{{ $account->accountType }}"
-                                                    data-accountsubtype="{{ $account->accountSubType }}"
-                                                    data-currency="{{ $account->currency }}"
-                                                    data-description="{{ $account->description }}"
-                                                    data-parent_account="{{ $account->parent_account }}"
-                                                    data-status="{{ $account->status }}">
+                                                <a href="{{ route('admin.settings.system-accounts.edit', $account->Id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
                                                     <i class="mdi mdi-pencil"></i>
-                                                </button>
+                                                </a>
                                                 <button class="btn btn-sm btn-outline-danger btn-delete-account" title="Delete" 
-                                                    data-id="{{ $account->id }}"
+                                                    data-id="{{ $account->Id }}"
                                                     data-name="{{ $account->name }}">
                                                     <i class="mdi mdi-delete"></i>
                                                 </button>
@@ -243,7 +256,7 @@
                                     </tr>
                                     @empty
                                     <tr>
-                                        <td colspan="9" class="text-center py-4">
+                                        <td colspan="11" class="text-center py-4">
                                             <div class="text-muted">
                                                 <i class="mdi mdi-bank mdi-48px"></i>
                                                 <h5 class="mt-2">No system accounts found</h5>
@@ -346,13 +359,25 @@
                 @csrf
                 <div class="modal-body" style="background-color: white;">
                     <div class="form-group mb-3">
-                        <label for="code" class="form-label" style="color: #000;">Account Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="code" name="code" required style="background-color: white; color: #000;">
+                        <label for="parent_account" class="form-label" style="color: #000;">Parent Account <span class="text-danger">*</span></label>
+                        <select class="form-control" id="parent_account" name="parent_account" required style="background-color: white; color: #000;">
+                            <option value="">-- Select parent or add new --</option>
+                            <option value="add_new">+ Add new parent account</option>
+                            @foreach(\App\Models\SystemAccount::whereNull('sub_code')->where('status', 1)->orderBy('code')->get() as $acc)
+                                <option value="{{ $acc->id }}" data-code="{{ $acc->code }}">{{ $acc->code }} - {{ $acc->name }}</option>
+                            @endforeach
+                        </select>
+                        <small class="form-text text-muted">Choose an existing parent to add a sub-account, or select "Add new parent account" to create a parent.</small>
                     </div>
-                    
+
+                    <div class="form-group mb-3">
+                        <label for="code" class="form-label" style="color: #000;">Account Code <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="code" name="code" required style="background-color: white; color: #000;" placeholder="If adding a parent, enter its code here.">
+                    </div>
+
                     <div class="form-group mb-3">
                         <label for="name" class="form-label" style="color: #000;">Account Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="name" name="name" required style="background-color: white; color: #000;">
+                        <input type="text" class="form-control" id="name" name="name" required style="background-color: white; color: #000;" placeholder="Parent name (if adding parent) or Sub-account name">
                     </div>
 
                     <div class="form-group mb-3">
@@ -384,14 +409,12 @@
                         </select>
                     </div>
 
+                    
+
                     <div class="form-group mb-3">
-                        <label for="parent_account" class="form-label" style="color: #000;">Parent Account</label>
-                        <select class="form-control" id="parent_account" name="parent_account" style="background-color: white; color: #000;">
-                            <option value="">None</option>
-                            @foreach(\App\Models\SystemAccount::where('status', 1)->get() as $acc)
-                                <option value="{{ $acc->id }}">{{ $acc->code }} - {{ $acc->name }}</option>
-                            @endforeach
-                        </select>
+                        <label for="sub_code" class="form-label" style="color: #000;">Sub Code</label>
+                        <input type="text" class="form-control" id="sub_code" name="sub_code" style="background-color: white; color: #000;" placeholder="Leave empty to auto-generate">
+                        <small class="form-text text-muted">Optional. Leave empty to auto-generate a sub code.</small>
                     </div>
 
                     <div class="form-group mb-3">
@@ -493,10 +516,16 @@
                         <label for="edit_parent_account" class="form-label" style="color: #000;">Parent Account</label>
                         <select class="form-control" id="edit_parent_account" name="parent_account" style="background-color: white; color: #000;">
                             <option value="">None</option>
-                            @foreach(\App\Models\SystemAccount::where('status', 1)->get() as $acc)
+                            @foreach(\App\Models\SystemAccount::whereNull('sub_code')->where('status', 1)->orderBy('code')->get() as $acc)
                                 <option value="{{ $acc->id }}">{{ $acc->code }} - {{ $acc->name }}</option>
                             @endforeach
                         </select>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="edit_sub_code" class="form-label" style="color: #000;">Sub Code</label>
+                        <input type="text" class="form-control" id="edit_sub_code" name="sub_code" style="background-color: white; color: #000;" placeholder="Leave empty to auto-generate">
+                        <small class="form-text text-muted">Optional. Leave empty to auto-generate a sub code.</small>
                     </div>
 
                     <div class="form-group mb-3">
@@ -536,6 +565,10 @@
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 System Accounts page JavaScript initializing...');
+    
+    // Version: 2025-02-07 15:00 - Wrapped in DOMContentLoaded
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
     // Auto-submit filter form when select changes
@@ -545,174 +578,40 @@
         });
     });
 
+    // Fetch suggested sub_code when parent account is selected
+    function fetchSuggestedSubCode(parentId, targetInput) {
+        if (!parentId) {
+            targetInput.value = '';
+            return;
+        }
+
+        fetch(`/admin/settings/system-accounts/suggest-sub-code?parent_id=${parentId}`, {
+            method: 'GET',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json'
+            }
+        })
+        .then(resp => resp.json())
+        .then(json => {
+            if (json.success && json.sub_code) {
+                targetInput.value = json.sub_code;
+            } else {
+                targetInput.value = '';
+            }
+        })
+        .catch(err => {
+            console.error('Failed to fetch suggested sub code', err);
+            targetInput.value = '';
+        });
+    }
+
     // Search on enter key
     document.querySelector('input[name="search"]').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             document.getElementById('filterForm').submit();
         }
-    });
-
-    // ============= ADD ACCOUNT =============
-    document.getElementById('addAccountBtn').addEventListener('click', function(e) {
-        e.preventDefault();
-        new bootstrap.Modal(document.getElementById('addAccountModal')).show();
-    });
-
-    document.getElementById('addAccountForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const formData = new FormData(this);
-        const data = {};
-        formData.forEach((value, key) => {
-            data[key] = value || null;
-        });
-        
-        fetch('/admin/settings/system-accounts', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Success!',
-                    text: data.message,
-                    showConfirmButton: false,
-                    timer: 1500
-                }).then(() => {
-                    location.reload();
-                });
-            } else {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error!',
-                    text: data.message || 'Failed to create account'
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            Swal.fire({
-                icon: 'error',
-                title: 'Error!',
-                text: 'An error occurred while creating the account'
-            });
-        });
-    });
-
-    // ============= EDIT ACCOUNT =============
-    document.querySelectorAll('.btn-edit-account').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            const id = this.getAttribute('data-id');
-            const code = this.getAttribute('data-code');
-            const name = this.getAttribute('data-name');
-            const accountType = this.getAttribute('data-accounttype');
-            const accountSubType = this.getAttribute('data-accountsubtype');
-            const currency = this.getAttribute('data-currency');
-            const description = this.getAttribute('data-description');
-            const parentAccount = this.getAttribute('data-parent_account');
-            const status = this.getAttribute('data-status');
-            
-            // Populate current values display
-            const currentDetails = `
-                <div style="font-size: 0.9rem;">
-                    <p class="mb-1"><strong>Code:</strong> ${code || 'N/A'}</p>
-                    <p class="mb-1"><strong>Name:</strong> ${name || 'N/A'}</p>
-                    <p class="mb-1"><strong>Account Type:</strong> ${accountType || 'N/A'}</p>
-                    <p class="mb-1"><strong>Sub Type:</strong> ${accountSubType || 'N/A'}</p>
-                    <p class="mb-1"><strong>Currency:</strong> ${currency || 'N/A'}</p>
-                    <p class="mb-1"><strong>Status:</strong> ${status == '1' ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Inactive</span>'}</p>
-                </div>
-            `;
-            document.getElementById('currentAccountDetails').innerHTML = currentDetails;
-            
-            // Populate form fields
-            document.getElementById('edit_account_id').value = id || '';
-            document.getElementById('edit_code').value = code || '';
-            document.getElementById('edit_name').value = name || '';
-            document.getElementById('edit_accountType').value = accountType || '';
-            document.getElementById('edit_accountSubType').value = accountSubType || '';
-            document.getElementById('edit_currency').value = currency || 'UGX';
-            document.getElementById('edit_description').value = description || '';
-            document.getElementById('edit_parent_account').value = parentAccount || '';
-            document.getElementById('edit_status').value = status || '1';
-            
-            new bootstrap.Modal(document.getElementById('editAccountModal')).show();
-        });
-    });
-
-    document.getElementById('editAccountForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const accountId = document.getElementById('edit_account_id').value;
-        const formData = new FormData(this);
-        
-        fetch(`/admin/settings/system-accounts/update/${accountId}`, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken,
-                'Accept': 'application/json'
-            },
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                return response.json().then(err => {
-                    throw new Error(err.message || 'Server error');
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Success!',
-                    text: data.message,
-                    showConfirmButton: false,
-                    timer: 1500
-                }).then(() => {
-                    location.reload();
-                });
-            } else {
-                // Check if there are validation errors
-                let errorMessage = data.message || 'Failed to update account';
-                if (data.errors) {
-                    errorMessage += '\n\n';
-                    Object.values(data.errors).forEach(errors => {
-                        errorMessage += errors.join('\n') + '\n';
-                    });
-                }
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error!',
-                    text: errorMessage,
-                    customClass: {
-                        popup: 'swal-wide'
-                    }
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            Swal.fire({
-                icon: 'error',
-                title: 'Error!',
-                text: error.message || 'An error occurred while updating the account',
-                customClass: {
-                    popup: 'swal-wide'
-                }
-            });
-        });
     });
 
     // ============= VIEW ACCOUNT ============= (Using event delegation)
@@ -769,19 +668,60 @@
                 }
                 return response.json();
             })
-            .then(data => {
+                    .then(data => {
                 if (data.success && data.account) {
                     const account = data.account;
+                    
+                    // Category badge
+                    let categoryBadge = 'N/A';
+                    if (account.category) {
+                        const badgeClass = {
+                            'Asset': 'badge-info',
+                            'Liability': 'badge-warning',
+                            'Equity': 'badge-primary',
+                            'Income': 'badge-success',
+                            'Expense': 'badge-danger'
+                        }[account.category] || 'badge-secondary';
+                        categoryBadge = `<span class="badge ${badgeClass}">${account.category}</span>`;
+                    }
+                    
+                    // Control flags
+                    const cashBankFlag = account.is_cash_bank ? '<span class="badge badge-info">Cash/Bank</span>' : '';
+                    const clearingFlag = account.is_clearing ? '<span class="badge badge-warning">Clearing</span>' : '';
+                    const loanReceivableFlag = account.is_loan_receivable ? '<span class="badge badge-primary">Loan Receivable</span>' : '';
+                    const manualPostingFlag = account.allow_manual_posting ? '<span class="badge badge-success">Manual Posting Allowed</span>' : '<span class="badge badge-secondary">System-Controlled</span>';
+                    
                     const html = `
                         <div class="mb-3" style="background-color: #ffffff; color: #333333;">
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Code:</strong> ${account.code || 'N/A'}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Name:</strong> ${account.name || 'N/A'}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Type:</strong> ${account.accountType || 'N/A'}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Sub Type:</strong> ${account.accountSubType || 'N/A'}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Currency:</strong> ${account.currency || 'UGX'}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Running Balance:</strong> ${parseFloat(account.running_balance || 0).toLocaleString()}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Description:</strong> ${account.description || 'N/A'}</p>
-                            <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Status:</strong> <span class="badge ${account.status == 1 ? 'badge-success' : 'badge-danger'}">${account.status == 1 ? 'Active' : 'Inactive'}</span></p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Code:</strong> ${account.code || 'N/A'}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Sub Code:</strong> ${account.sub_code || '-'}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Name:</strong> ${account.name || 'N/A'}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Parent Account:</strong> ${account.parent && account.parent.name ? account.parent.name : '-'}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Type:</strong> ${account.accountType || 'N/A'}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Category:</strong> ${categoryBadge}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Sub Type:</strong> ${account.accountSubType || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Currency:</strong> ${account.currency || 'UGX'}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Running Balance:</strong> ${parseFloat(account.running_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Status:</strong> <span class="badge ${account.status == 1 ? 'badge-success' : 'badge-danger'}">${account.status == 1 ? 'Active' : 'Inactive'}</span></p>
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Description:</strong> ${account.description || 'N/A'}</p>
+                                </div>
+                            </div>
+                            <hr>
+                            <div class="row">
+                                <div class="col-12">
+                                    <p class="mb-2" style="color: #333333;"><strong style="color: #000000;">Account Flags:</strong></p>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        ${cashBankFlag}
+                                        ${clearingFlag}
+                                        ${loanReceivableFlag}
+                                        ${manualPostingFlag}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     `;
                     viewContent.innerHTML = html;
@@ -796,12 +736,24 @@
         }
     });
 
-    // ============= DELETE ACCOUNT =============
-    document.querySelectorAll('.btn-delete-account').forEach(button => {
-        button.addEventListener('click', function(e) {
+    // ============= DELETE ACCOUNT ============= (Using event delegation)
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.btn-delete-account')) {
             e.preventDefault();
-            const accountId = this.getAttribute('data-id');
-            const accountName = this.getAttribute('data-name');
+            const button = e.target.closest('.btn-delete-account');
+            const accountId = button.getAttribute('data-id');
+            const accountName = button.getAttribute('data-name');
+            
+            console.log('Delete button clicked, Account ID:', accountId);
+            
+            if (!accountId || accountId === 'undefined') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error!',
+                    text: 'Account ID is missing. Please refresh the page and try again.'
+                });
+                return;
+            }
             
             Swal.fire({
                 title: 'Are you sure?',
@@ -851,7 +803,10 @@
                     });
                 }
             });
-        });
+        }
     });
+    
+    console.log('✅ All event listeners attached successfully!');
+});  // End DOMContentLoaded
 </script>
 @endpush

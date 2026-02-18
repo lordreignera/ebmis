@@ -122,13 +122,13 @@ class StanbicFlexiPayService
 
     /**
      * Generate request signature using RSA private key
+     * Note: Payload should already be sorted before calling this method
      */
-    protected function generateSignature(array $payload): string
+    protected function generateSignature(array $sortedPayload): string
     {
         try {
-            // Convert payload to JSON and remove whitespace
-            $message = json_encode($payload);
-            $message = preg_replace('/\s+/', '', $message);
+            // Convert sorted payload to JSON (json_encode already produces compact JSON)
+            $message = json_encode($sortedPayload);
 
             // Sign the message
             $signature = '';
@@ -146,7 +146,9 @@ class StanbicFlexiPayService
             // Encode signature
             $encodedSignature = base64_encode($signature);
 
-            $this->log('debug', 'Signature generated successfully');
+            $this->log('debug', 'Signature generated successfully', [
+                'message_to_sign' => $message
+            ]);
 
             return $encodedSignature;
 
@@ -159,6 +161,22 @@ class StanbicFlexiPayService
     }
 
     /**
+     * Sort array keys alphabetically (recursive)
+     */
+    private function sortKeysRecursive(array $array): array
+    {
+        ksort($array);
+        
+        foreach ($array as $key => $value) {
+            if (is_array($value)) {
+                $array[$key] = $this->sortKeysRecursive($value);
+            }
+        }
+        
+        return $array;
+    }
+
+    /**
      * Make authenticated API request to Stanbic
      */
     protected function makeRequest(string $endpoint, array $payload): array
@@ -167,19 +185,21 @@ class StanbicFlexiPayService
             // Get access token
             $accessToken = $this->getAccessToken();
 
-            // Generate signature
-            $signature = $this->generateSignature($payload);
+            // Sort payload keys alphabetically (must match signature)
+            $sortedPayload = $this->sortKeysRecursive($payload);
 
-            // Prepare message
-            $message = json_encode($payload);
-            $message = preg_replace('/\s+/', '', $message);
+            // Generate signature from sorted payload
+            $signature = $this->generateSignature($sortedPayload);
+
+            // Prepare message from sorted payload (must match signature exactly)
+            $message = json_encode($sortedPayload);
 
             // Make request
             $url = $this->baseUrl . $endpoint;
             
             $this->log('info', 'Making Stanbic API request', [
                 'url' => $url,
-                'payload' => $payload,
+                'payload' => $sortedPayload,
             ]);
 
             $response = Http::timeout($this->timeout)
@@ -306,7 +326,7 @@ class StanbicFlexiPayService
                 'network' => $network,
                 'narrative' => $narrative ?? 'Disbursement',
                 'beneficiaryAccount' => $phone,
-                'beneficiaryName' => $beneficiaryName,
+                'beneficiaryName' => trim($beneficiaryName),
                 'mobileNumber' => $phone,
             ];
 

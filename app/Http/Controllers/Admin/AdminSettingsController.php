@@ -195,9 +195,15 @@ class AdminSettingsController extends Controller
             $query->where('currency', $request->currency);
         }
 
-        // Get paginated results
-        $perPage = $request->get('per_page', 25);
-        $systemAccounts = $query->orderBy('name')->paginate($perPage);
+          // Order: group by `code` and show parent (sub_code IS NULL) first, then children
+          $query->with('parent')
+              ->orderBy('code')
+              ->orderByRaw('sub_code IS NULL DESC')
+              ->orderBy('sub_code');
+
+          // Get paginated results
+          $perPage = $request->get('per_page', 25);
+          $systemAccounts = $query->paginate($perPage)->withQueryString();
 
         return view('admin.settings.system-accounts', compact('systemAccounts'));
     }

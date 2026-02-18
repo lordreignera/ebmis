@@ -1207,6 +1207,25 @@ class DisbursementController extends Controller
                     ->decrement('amount', $disbursement->amount);
             }
 
+            // 🆕 POST JOURNAL ENTRY TO GENERAL LEDGER
+            try {
+                $accountingService = new \App\Services\AccountingService();
+                $journal = $accountingService->postDisbursementEntry($disbursement);
+                
+                if ($journal) {
+                    Log::info('GL entry posted for disbursement', [
+                        'disbursement_id' => $disbursement->id,
+                        'journal_number' => $journal->journal_number
+                    ]);
+                }
+            } catch (\Exception $glError) {
+                // Don't fail disbursement if GL posting fails - can be corrected later
+                Log::error('GL posting failed but disbursement will continue', [
+                    'disbursement_id' => $disbursement->id,
+                    'gl_error' => $glError->getMessage()
+                ]);
+            }
+
             Log::info('Disbursement completed successfully', [
                 'disbursement_id' => $disbursement->id,
                 'loan_id' => $loan->id,
