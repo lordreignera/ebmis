@@ -274,14 +274,6 @@ class AccountingController extends Controller
         }
     }
 
-        // Normal balance based on category
-        if (in_array($account->category, ['Asset', 'Expense'])) {
-            return $debits - $credits; // Debit increases
-        } else {
-            return $credits - $debits; // Credit increases
-        }
-    }
-
     /**
      * Calculate account balance for a period
      */
