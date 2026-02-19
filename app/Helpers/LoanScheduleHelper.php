@@ -11,8 +11,8 @@ class LoanScheduleHelper
      * 
      * BUSINESS RULES:
      * - Weekly loans (type 1): First payment 7 days after disbursement, then every 7 days
-     * - Monthly loans (type 2): First payment same day next month, then monthly on same day
-     * - Daily loans (type 3): First payment after 1 day release (skip Sundays), then daily (skip Sundays)
+     * - Monthly loans (type 2): First payment 30 days after disbursement, then every 30 days
+     * - Daily loans (type 3): 7-day grace period, then daily payments (skip Sundays)
      * 
      * @param Carbon $startDate Disbursement date
      * @param int $periodNumber Payment period number (1 = first payment, 2 = second payment, etc.)
@@ -29,22 +29,22 @@ class LoanScheduleHelper
                 // Subsequent payments are every 7 days after that
                 return $date->addDays(7 * $periodNumber);
                 
-            case 2: // Monthly - same day next month
-                // First payment is same day next month
-                // Subsequent payments are monthly on same day
-                return $date->addMonths($periodNumber);
+            case 2: // Monthly - 30 days after disbursement
+                // First payment is 30 days after disbursement
+                // Subsequent payments are every 30 days after that
+                return $date->addDays(30 * $periodNumber);
                 
-            case 3: // Daily - skip 1 day (release) then daily payments (skip Sundays only)
-                // Business rule: Skip 1 day after disbursement (client release day)
-                // Then subsequent payments are daily, NO payments on Sunday
-                // Example: Disbursed Friday → Skip Saturday (release) → Skip Sunday → First payment Monday
-                // Example: Disbursed Monday → Skip Tuesday (release) → First payment Wednesday
+            case 3: // Daily - 7-day grace period, then daily (skip Sundays)
+                // Business rule: 7-day grace period after disbursement
+                // Then daily payments (NO payments on Sunday)
+                // Example: Disbursed Thursday Feb 19 → First payment Thursday Feb 26 (7 days)
+                //          Then: Friday Feb 27, Saturday Feb 28, Monday Mar 2 (Sunday skipped), etc.
                 
-                // First skip 1 day (release day)
-                $date->addDay();
+                // Start with 7-day grace period
+                $date->addDays(7);
                 
-                // Add payment days, skipping Sundays only
-                for ($i = 0; $i < $periodNumber; $i++) {
+                // Add remaining payment days (periodNumber - 1), skipping Sundays
+                for ($i = 1; $i < $periodNumber; $i++) {
                     $date->addDay();
                     
                     // Skip Sundays - if we land on Sunday, move to Monday

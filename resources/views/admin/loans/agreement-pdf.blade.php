@@ -180,8 +180,8 @@
         <li>Installment amount: <strong>UGX {{ number_format($loan->installment, 0) }}</strong></li>
         <li>Payment frequency: 
             @if($loan->product)
-                @if($loan->product->period_type == 1) <strong>Weekly (Every Friday)</strong>
-                @elseif($loan->product->period_type == 2) <strong>Monthly (25th of each month)</strong>
+                @if($loan->product->period_type == 1) <strong>Weekly (Every 7 days)</strong>
+                @elseif($loan->product->period_type == 2) <strong>Monthly (Every 30 days)</strong>
                 @elseif($loan->product->period_type == 3) <strong>Daily (Monday to Saturday, excluding Sundays)</strong>
                 @endif
             @endif

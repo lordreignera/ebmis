@@ -271,7 +271,7 @@ $(document).ready(function() {
                             principal: amount,
                             interest: interest + '%',
                             period: period + ' weeks',
-                            installment: response.installment + ' per week (every Friday)',
+                            installment: response.installment + ' per week (every 7 days)',
                             total_payable: response.total_payable,
                             total_interest: response.total_interest
                         });

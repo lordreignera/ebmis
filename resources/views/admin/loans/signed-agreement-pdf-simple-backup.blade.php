@@ -216,8 +216,8 @@
                 <td>Repayment Frequency:</td>
                 <td>
                     @if($loan->product)
-                        @if($loan->product->period_type == 1) Weekly (Every Friday)
-                        @elseif($loan->product->period_type == 2) Monthly (25th of each month)
+                        @if($loan->product->period_type == 1) Weekly (Every 7 days)
+                        @elseif($loan->product->period_type == 2) Monthly (Every 30 days)
                         @elseif($loan->product->period_type == 3) Daily (Monday to Saturday, excluding Sundays)
                         @else As per schedule
                         @endif

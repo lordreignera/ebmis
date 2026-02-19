@@ -176,26 +176,26 @@ class LoanScheduleService
     private function calculatePaymentDate(Carbon $currentDate, string $periodType, int $paymentNumber): Carbon
     {
         switch ($periodType) {
-            case '1': // Weekly loans - every 7 days from disbursement
+            case '1': // Weekly loans - 7 days after disbursement
                 if ($paymentNumber == 1) {
-                    // First payment: 7 days after disbursement date
-                    return $this->getNextWeeklyDate($currentDate);
+                    // First payment: 7 days after disbursement
+                    return $currentDate->copy()->addDays(7);
                 }
-                // Subsequent payments: Add 1 week (7 days) to previous payment date
-                return $currentDate->copy()->addWeek();
+                // Subsequent payments: Add 7 days to previous payment date
+                return $currentDate->copy()->addDays(7);
                 
-            case '2': // Monthly loans - same day next month
+            case '2': // Monthly loans - 30 days after disbursement
                 if ($paymentNumber == 1) {
-                    // First payment: Same day next month (no overflow)
-                    return $this->getNextMonthlySameDay($currentDate);
+                    // First payment: 30 days after disbursement
+                    return $currentDate->copy()->addDays(30);
                 }
-                // Subsequent payments: Add 1 month to previous payment date (no overflow)
-                return $currentDate->copy()->addMonthNoOverflow();
+                // Subsequent payments: Add 30 days to previous payment date
+                return $currentDate->copy()->addDays(30);
                 
-            case '3': // Daily loans - every working day (skip Sundays)
+            case '3': // Daily loans - 7-day grace period, then daily (skip Sundays)
                 if ($paymentNumber == 1) {
-                    // First payment: Get next working day from loan creation date
-                    return $this->getNextWorkingDay($currentDate);
+                    // First payment: 7 days after disbursement (grace period)
+                    return $currentDate->copy()->addDays(7);
                 }
                 // Subsequent payments: Add 1 day (skipping Sundays) to previous payment date
                 return $this->getNextWorkingDay($currentDate);
@@ -203,22 +203,6 @@ class LoanScheduleService
             default:
                 return $currentDate->copy()->addDays(30); // Default fallback
         }
-    }
-    
-    /**
-     * Get next weekly date (7 days after given date)
-     */
-    private function getNextWeeklyDate(Carbon $date): Carbon
-    {
-        return $date->copy()->addWeek();
-    }
-    
-    /**
-     * Get 25th of current or next month
-     */
-    private function getNextMonthlySameDay(Carbon $date): Carbon
-    {
-        return $date->copy()->addMonthNoOverflow();
     }
     
     /**

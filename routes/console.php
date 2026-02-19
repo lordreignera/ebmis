@@ -21,7 +21,7 @@ Schedule::command('disbursements:check')->everyFiveMinutes()->withoutOverlapping
 // Daily loans: Initiate payment at 3:00 PM every day
 Schedule::command('repayments:automate --type=daily')->dailyAt('15:00');
 
-// Weekly loans: Initiate payment at 3:00 PM every Friday
+// Weekly loans: Initiate payment at 3:00 PM every Friday (for loans with Friday payment dates)
 Schedule::command('repayments:automate --type=weekly')->fridays()->at('15:00');
 
 // Monthly loans: Initiate payment at 3:00 PM on payment date

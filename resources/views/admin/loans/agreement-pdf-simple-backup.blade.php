@@ -163,8 +163,8 @@
                 <td>Repayment Frequency:</td>
                 <td>
                     @if($loan->product)
-                        @if($loan->product->period_type == 1) Weekly (Every Friday)
-                        @elseif($loan->product->period_type == 2) Monthly (25th of each month)
+                        @if($loan->product->period_type == 1) Weekly (Every 7 days)
+                        @elseif($loan->product->period_type == 2) Monthly (Every 30 days)
                         @elseif($loan->product->period_type == 3) Daily (Monday to Saturday, excluding Sundays)
                         @else As per schedule
                         @endif
@@ -266,8 +266,8 @@
             
             <li><strong>Repayment:</strong> The borrower agrees to repay the loan amount plus interest in 
                 @if($loan->product)
-                    @if($loan->product->period_type == 1) weekly (every Friday)
-                    @elseif($loan->product->period_type == 2) monthly (on the 25th of each month)
+                    @if($loan->product->period_type == 1) weekly (every 7 days)
+                    @elseif($loan->product->period_type == 2) monthly (every 30 days)
                     @elseif($loan->product->period_type == 3) daily (Monday to Saturday, excluding Sundays)
                     @else regular
                     @endif

@@ -1478,37 +1478,9 @@ class LoanController extends Controller
      */
     private function generateLoanSchedule(Loan $loan)
     {
-        $principal = $loan->principal;
-        $interest = $loan->interest / 100; // Convert percentage to decimal
-        $period = $loan->period;
-        $installment = $loan->installment;
-        
-        $balance = $principal;
-        $monthlyInterestRate = $interest / 12; // Assuming monthly payments
-        
-        for ($i = 1; $i <= $period; $i++) {
-            $interestAmount = $balance * $monthlyInterestRate;
-            $principalAmount = $installment - $interestAmount;
-            $balance -= $principalAmount;
-            
-            // Ensure balance doesn't go negative
-            if ($balance < 0) {
-                $principalAmount += $balance;
-                $balance = 0;
-            }
-            
-            LoanSchedule::create([
-                'loan_id' => $loan->id,
-                'payment_date' => now()->addMonths($i)->format('Y-m-d'),
-                'payment' => $installment,
-                'interest' => round($interestAmount, 2),
-                'principal' => round($principalAmount, 2),
-                'balance' => round($balance, 2),
-                'status' => 0 // Pending
-            ]);
-            
-            if ($balance <= 0) break;
-        }
+        // Use the LoanScheduleService for proper schedule generation
+        $scheduleService = app(\App\Services\LoanScheduleService::class);
+        $scheduleService->generateAndSaveSchedule($loan);
     }
 
     /**
