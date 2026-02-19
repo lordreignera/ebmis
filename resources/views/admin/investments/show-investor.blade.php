@@ -93,16 +93,10 @@
                         <span class="text-muted">Country:</span>
                         <span>{{ $investor->country->name ?? 'N/A' }}</span>
                     </div>
-                    @if($investor->state)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">State:</span>
-                        <span>{{ $investor->state->name }}</span>
-                    </div>
-                    @endif
                     @if($investor->city)
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">City:</span>
-                        <span>{{ $investor->city->name }}</span>
+                        <span>{{ $investor->city }}</span>
                     </div>
                     @endif
                     @if($investor->postal_code)

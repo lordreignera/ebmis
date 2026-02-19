@@ -386,12 +386,12 @@ Route::middleware([
         Route::post('/investors/{investor}/deactivate', [\App\Http\Controllers\Admin\InvestmentController::class, 'deactivateInvestor'])->name('deactivate-investor');
         
         // Investment Management
-        Route::get('/investments/{investor}/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestment'])->name('create-investment');
-        Route::post('/investments/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'storeInvestment'])->name('store-investment');
-        Route::get('/investments/{investment}/show', [\App\Http\Controllers\Admin\InvestmentController::class, 'showInvestment'])->name('show-investment');
-        Route::get('/investments/{investment}/edit', [\App\Http\Controllers\Admin\InvestmentController::class, 'editInvestment'])->name('edit-investment');
-        Route::put('/investments/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestment'])->name('update-investment');
-        Route::delete('/investments/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'destroyInvestment'])->name('destroy');
+        Route::get('/{investor}/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestment'])->name('create-investment');
+        Route::post('/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'storeInvestment'])->name('store-investment');
+        Route::get('/{investment}/show', [\App\Http\Controllers\Admin\InvestmentController::class, 'showInvestment'])->name('show-investment');
+        Route::get('/{investment}/edit', [\App\Http\Controllers\Admin\InvestmentController::class, 'editInvestment'])->name('edit-investment');
+        Route::put('/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestment'])->name('update-investment');
+        Route::delete('/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'destroyInvestment'])->name('destroy');
         
         // Investment Calculations
         Route::post('/calculate-returns', [\App\Http\Controllers\Admin\InvestmentController::class, 'calculateReturns'])->name('calculate-returns');

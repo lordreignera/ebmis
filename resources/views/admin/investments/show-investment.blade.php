@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'Investment Details - ' . $investment->inv_name)
+@section('title', 'Investment Details - ' . $investment->name)
 
 @section('content')
 <div class="row">
@@ -8,14 +8,14 @@
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h4 class="font-weight-bold mb-0">Investment Details</h4>
-                <p class="text-muted mb-0">{{ $investment->inv_name }} - {{ $investment->investor->full_name }}</p>
+                <p class="text-muted mb-0">{{ $investment->name }} - {{ $investment->investor->full_name }}</p>
             </div>
             <div>
                 <a href="{{ route('admin.investments.edit-investment', $investment->id) }}" class="btn btn-success btn-sm">
                     <i class="mdi mdi-pencil"></i> Edit
                 </a>
-                <a href="{{ route('admin.investments.show-investor', $investment->investor_id) }}" class="btn btn-secondary btn-sm">
-                    <i class="mdi mdi-arrow-left"></i> Back to Investor
+                <a href="{{ route('admin.investments.index') }}" class="btn btn-secondary btn-sm">
+                    <i class="mdi mdi-arrow-left"></i> Back to Investments
                 </a>
             </div>
         </div>
@@ -29,8 +29,26 @@
             <div class="card-header">
                 <h6 class="mb-0">Investment Overview</h6>
                 @php
-                    $startDate = \Carbon\Carbon::parse($investment->term_start);
-                    $endDate = \Carbon\Carbon::parse($investment->term_end);
+                    $startDate = null;
+                    $endDate = null;
+                    try {
+                        $startDate = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->start));
+                    } catch (\Exception $e) {
+                        try {
+                            $startDate = \Carbon\Carbon::parse($investment->start);
+                        } catch (\Exception $e2) {
+                            $startDate = null;
+                        }
+                    }
+                    try {
+                        $endDate = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->end));
+                    } catch (\Exception $e) {
+                        try {
+                            $endDate = \Carbon\Carbon::parse($investment->end);
+                        } catch (\Exception $e2) {
+                            $endDate = null;
+                        }
+                    }
                     $now = \Carbon\Carbon::now();
                     
                     if ($now->lt($startDate)) {
@@ -57,16 +75,16 @@
                         <h6 class="text-primary">Investment Information</h6>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Investment Name:</span>
-                            <span class="font-weight-medium">{{ $investment->inv_name }}</span>
+                            <span class="font-weight-medium">{{ $investment->name }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Investment Amount:</span>
-                            <span class="font-weight-medium text-primary">${{ number_format($investment->inv_amt, 2) }}</span>
+                            <span class="font-weight-medium text-primary">${{ number_format($investment->amount, 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Investment Type:</span>
                             <span class="font-weight-medium">
-                                @if($investment->inv_term == 1)
+                                @if($investment->type == 1)
                                     <span class="badge badge-primary">Standard Interest</span>
                                 @else
                                     <span class="badge badge-info">Compound Interest</span>
@@ -75,11 +93,11 @@
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Investment Period:</span>
-                            <span class="font-weight-medium">{{ $investment->inv_period }} year{{ $investment->inv_period > 1 ? 's' : '' }}</span>
+                            <span class="font-weight-medium">{{ $investment->period }} year{{ $investment->period > 1 ? 's' : '' }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Interest Rate:</span>
-                            <span class="font-weight-medium">{{ number_format($investment->rate, 2) }}%</span>
+                            <span class="font-weight-medium">{{ number_format($investment->percentage, 2) }}%</span>
                         </div>
                     </div>
                     
@@ -87,24 +105,24 @@
                         <h6 class="text-success">Financial Summary</h6>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Total Interest:</span>
-                            <span class="font-weight-medium text-success">${{ number_format($investment->interest_amt, 2) }}</span>
+                            <span class="font-weight-medium text-success">${{ number_format($investment->interest, 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Total Return:</span>
-                            <span class="font-weight-medium text-primary">${{ number_format($investment->total_return, 2) }}</span>
+                            <span class="font-weight-medium text-primary">${{ number_format(($investment->amount + $investment->interest), 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Conversion Fee:</span>
-                            <span class="font-weight-medium">${{ number_format($investment->conversion_fee, 2) }}</span>
+                            <span class="font-weight-medium">${{ number_format(($investment->amount * 0.005), 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Total Charge:</span>
-                            <span class="font-weight-medium">${{ number_format($investment->total_charge, 2) }}</span>
+                            <span class="font-weight-medium">${{ number_format(($investment->amount + ($investment->amount * 0.005)), 2) }}</span>
                         </div>
-                        @if($investment->inv_term == 1)
+                        @if($investment->type == 1)
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Annual Profit:</span>
-                            <span class="font-weight-medium">${{ number_format($investment->annual_profit, 2) }}</span>
+                            <span class="font-weight-medium">${{ $investment->period > 0 ? number_format(($investment->interest / $investment->period), 2) : '0.00' }}</span>
                         </div>
                         @endif
                     </div>
@@ -115,19 +133,57 @@
                         <h6 class="text-info">Investment Timeline</h6>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Start Date:</span>
-                            <span class="font-weight-medium">{{ \Carbon\Carbon::parse($investment->term_start)->format('F d, Y') }}</span>
+                            <span class="font-weight-medium">
+                                @if(!empty($investment->start))
+                                    @php
+                                        try {
+                                            $date = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->start));
+                                            echo $date ? $date->format('F d, Y') : $investment->start;
+                                        } catch (\Exception $e) {
+                                            try {
+                                                $date = \Carbon\Carbon::parse($investment->start);
+                                                echo $date ? $date->format('F d, Y') : $investment->start;
+                                            } catch (\Exception $e2) {
+                                                echo $investment->start;
+                                            }
+                                        }
+                                    @endphp
+                                @else
+                                    N/A
+                                @endif
+                            </span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
-                            <span class="text-muted">Maturity Date:</span>
-                            <span class="font-weight-medium">{{ \Carbon\Carbon::parse($investment->term_end)->format('F d, Y') }}</span>
+                            <span class="text-muted">End Date:</span>
+                            <span class="font-weight-medium">
+                                @if(!empty($investment->end))
+                                    @php
+                                        try {
+                                            $date = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->end));
+                                            echo $date ? $date->format('F d, Y') : $investment->end;
+                                        } catch (\Exception $e) {
+                                            try {
+                                                $date = \Carbon\Carbon::parse($investment->end);
+                                                echo $date ? $date->format('F d, Y') : $investment->end;
+                                            } catch (\Exception $e2) {
+                                                echo $investment->end;
+                                            }
+                                        }
+                                    @endphp
+                                @else
+                                    N/A
+                                @endif
+                            </span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Days Remaining:</span>
                             @php
-                                $daysRemaining = $now->diffInDays($endDate, false);
+                                $daysRemaining = $endDate ? $now->diffInDays($endDate, false) : 0;
                             @endphp
                             <span class="font-weight-medium">
-                                @if($daysRemaining > 0)
+                                @if(!$endDate)
+                                    <span class="text-muted">N/A</span>
+                                @elseif($daysRemaining > 0)
                                     {{ $daysRemaining }} days
                                 @elseif($daysRemaining == 0)
                                     <span class="text-warning">Due Today</span>
@@ -140,9 +196,14 @@
                             <span class="text-muted">Progress:</span>
                             <span class="font-weight-medium">
                                 @php
-                                    $totalDays = $startDate->diffInDays($endDate);
-                                    $daysPassed = $startDate->diffInDays($now);
-                                    $progress = $totalDays > 0 ? min(100, max(0, ($daysPassed / $totalDays) * 100)) : 0;
+                                    $totalDays = 0;
+                                    $daysPassed = 0;
+                                    $progress = 0;
+                                    if ($startDate && $endDate) {
+                                        $totalDays = $startDate->diffInDays($endDate);
+                                        $daysPassed = $startDate->diffInDays($now);
+                                        $progress = $totalDays > 0 ? min(100, max(0, ($daysPassed / $totalDays) * 100)) : 0;
+                                    }
                                 @endphp
                                 {{ number_format($progress, 1) }}%
                             </span>
@@ -208,19 +269,73 @@
                         </div>
                         <div class="timeline-content">
                             <h6 class="timeline-title">Investment Started</h6>
-                            <p class="timeline-text">{{ \Carbon\Carbon::parse($investment->term_start)->format('F d, Y') }}</p>
-                            <small class="text-muted">{{ \Carbon\Carbon::parse($investment->term_start)->diffForHumans() }}</small>
+                            <p class="timeline-text">
+                                @if(!empty($investment->start))
+                                    @php
+                                        try {
+                                            $date = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->start));
+                                            echo $date ? $date->format('F d, Y') : $investment->start;
+                                        } catch (\Exception $e) {
+                                            try {
+                                                $date = \Carbon\Carbon::parse($investment->start);
+                                                echo $date ? $date->format('F d, Y') : $investment->start;
+                                            } catch (\Exception $e2) {
+                                                echo $investment->start;
+                                            }
+                                        }
+                                    @endphp
+                                @else
+                                    Start Date
+                                @endif
+                            </p>
+                            <small class="text-muted">
+                                @if(!empty($investment->start))
+                                    @php
+                                        try {
+                                            $date = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->start));
+                                            echo $date ? $date->diffForHumans() : '';
+                                        } catch (\Exception $e) {
+                                            try {
+                                                $date = \Carbon\Carbon::parse($investment->start);
+                                                echo $date ? $date->diffForHumans() : '';
+                                            } catch (\Exception $e2) {
+                                                echo '';
+                                            }
+                                        }
+                                    @endphp
+                                @endif
+                            </small>
                         </div>
                     </div>
 
                     @php
                         $milestones = [];
-                        $start = \Carbon\Carbon::parse($investment->term_start);
-                        $end = \Carbon\Carbon::parse($investment->term_end);
-                        $period = $investment->inv_period;
+                        $start = null;
+                        $end = null;
+                        try {
+                            $start = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->start));
+                        } catch (\Exception $e) {
+                            try {
+                                $start = \Carbon\Carbon::parse($investment->start);
+                            } catch (\Exception $e2) {
+                                $start = null;
+                            }
+                        }
+                        try {
+                            $end = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->end));
+                        } catch (\Exception $e) {
+                            try {
+                                $end = \Carbon\Carbon::parse($investment->end);
+                            } catch (\Exception $e2) {
+                                $end = null;
+                            }
+                        }
+                        $period = $investment->period;
                         
-                        for ($i = 1; $i < $period; $i++) {
-                            $milestones[] = $start->copy()->addYears($i);
+                        if ($start && $end && $period > 0) {
+                            for ($i = 1; $i < $period; $i++) {
+                                $milestones[] = $start->copy()->addYears($i);
+                            }
                         }
                     @endphp
 
@@ -243,8 +358,42 @@
                         </div>
                         <div class="timeline-content">
                             <h6 class="timeline-title">Investment Maturity</h6>
-                            <p class="timeline-text">{{ \Carbon\Carbon::parse($investment->term_end)->format('F d, Y') }}</p>
-                            <small class="text-muted">{{ \Carbon\Carbon::parse($investment->term_end)->diffForHumans() }}</small>
+                            <p class="timeline-text">
+                                @if(!empty($investment->end))
+                                    @php
+                                        try {
+                                            $date = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->end));
+                                            echo $date ? $date->format('F d, Y') : $investment->end;
+                                        } catch (\Exception $e) {
+                                            try {
+                                                $date = \Carbon\Carbon::parse($investment->end);
+                                                echo $date ? $date->format('F d, Y') : $investment->end;
+                                            } catch (\Exception $e2) {
+                                                echo $investment->end;
+                                            }
+                                        }
+                                    @endphp
+                                @else
+                                    End Date
+                                @endif
+                            </p>
+                            <small class="text-muted">
+                                @if(!empty($investment->end))
+                                    @php
+                                        try {
+                                            $date = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->end));
+                                            echo $date ? $date->diffForHumans() : '';
+                                        } catch (\Exception $e) {
+                                            try {
+                                                $date = \Carbon\Carbon::parse($investment->end);
+                                                echo $date ? $date->diffForHumans() : '';
+                                            } catch (\Exception $e2) {
+                                                echo '';
+                                            }
+                                        }
+                                    @endphp
+                                @endif
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -312,7 +461,7 @@
                         <i class="mdi mdi-pencil"></i> Edit Investment
                     </a>
                     
-                    <a href="{{ route('admin.investments.create-investment', $investment->investor_id) }}" 
+                    <a href="{{ route('admin.investments.create-investment', $investment->userid) }}" 
                        class="btn btn-primary btn-sm">
                         <i class="mdi mdi-plus"></i> New Investment
                     </a>
@@ -344,7 +493,11 @@
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">ROI:</span>
                         <span class="font-weight-bold text-success">
-                            {{ number_format(($investment->interest_amt / $investment->inv_amt) * 100, 2) }}%
+                            @if($investment->amount > 0)
+                                {{ number_format(($investment->interest / $investment->amount) * 100, 2) }}%
+                            @else
+                                0.00%
+                            @endif
                         </span>
                     </div>
                 </div>
@@ -353,7 +506,11 @@
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Daily Interest:</span>
                         <span class="font-weight-medium">
-                            ${{ number_format($investment->interest_amt / ($investment->inv_period * 365), 2) }}
+                            @if($investment->period > 0)
+                                ${{ number_format($investment->interest / ($investment->period * 365), 2) }}
+                            @else
+                                $0.00
+                            @endif
                         </span>
                     </div>
                 </div>
@@ -362,7 +519,11 @@
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Monthly Interest:</span>
                         <span class="font-weight-medium">
-                            ${{ number_format($investment->interest_amt / ($investment->inv_period * 12), 2) }}
+                            @if($investment->period > 0)
+                                ${{ number_format($investment->interest / ($investment->period * 12), 2) }}
+                            @else
+                                $0.00
+                            @endif
                         </span>
                     </div>
                 </div>
@@ -370,14 +531,21 @@
                 <div class="mb-3">
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Created:</span>
-                        <span>{{ $investment->created_at->format('M d, Y') }}</span>
-                    </div>
-                </div>
-                
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Last Updated:</span>
-                        <span>{{ $investment->updated_at->diffForHumans() }}</span>
+                        <span>
+                            @php
+                                try {
+                                    $createdDate = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->datecreated));
+                                    echo $createdDate ? $createdDate->format('M d, Y') : ($investment->datecreated ?? 'N/A');
+                                } catch (\Exception $e) {
+                                    try {
+                                        $createdDate = \Carbon\Carbon::parse($investment->datecreated);
+                                        echo $createdDate ? $createdDate->format('M d, Y') : ($investment->datecreated ?? 'N/A');
+                                    } catch (\Exception $e2) {
+                                        echo $investment->datecreated ?? 'N/A';
+                                    }
+                                }
+                            @endphp
+                        </span>
                     </div>
                 </div>
             </div>
@@ -396,7 +564,7 @@
                 </button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete the investment <strong>"{{ $investment->inv_name }}"</strong>?</p>
+                <p>Are you sure you want to delete the investment <strong>"{{ $investment->name }}"</strong>?</p>
                 <p class="text-danger"><strong>Warning:</strong> This action cannot be undone and will permanently remove all investment data.</p>
             </div>
             <div class="modal-footer">
@@ -420,16 +588,16 @@ function printInvestment() {
 function exportInvestment() {
     // Create export data
     const data = {
-        investment_name: '{{ $investment->inv_name }}',
+        investment_name: '{{ $investment->name }}',
         investor_name: '{{ $investment->investor->full_name }}',
-        amount: {{ $investment->inv_amt }},
-        type: '{{ $investment->inv_term == 1 ? "Standard Interest" : "Compound Interest" }}',
-        period: '{{ $investment->inv_period }} years',
-        rate: '{{ $investment->rate }}%',
-        interest: {{ $investment->interest_amt }},
-        total_return: {{ $investment->total_return }},
-        start_date: '{{ $investment->term_start }}',
-        end_date: '{{ $investment->term_end }}'
+        amount: {{ $investment->amount }},
+        type: '{{ $investment->type == 1 ? "Standard Interest" : "Compound Interest" }}',
+        period: '{{ $investment->period }} years',
+        rate: '{{ $investment->percentage }}%',
+        interest: {{ $investment->interest }},
+        total_return: {{ $investment->amount + $investment->interest }},
+        start_date: '{{ $investment->start }}',
+        end_date: '{{ $investment->end }}'
     };
     
     // Convert to CSV
@@ -443,7 +611,7 @@ function exportInvestment() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'investment_{{ $investment->id }}_{{ $investment->inv_name }}.csv';
+    a.download = 'investment_{{ $investment->id }}_{{ $investment->name }}.csv';
     a.click();
     window.URL.revokeObjectURL(url);
 }

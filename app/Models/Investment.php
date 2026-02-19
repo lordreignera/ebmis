@@ -33,7 +33,11 @@ class Investment extends Model
     protected $casts = [
         'userid' => 'integer',
         'type' => 'integer',
-        'status' => 'integer'
+        'status' => 'integer',
+        'amount' => 'float',
+        'period' => 'integer',
+        'percentage' => 'float',
+        'interest' => 'float'
     ];
 
     /**

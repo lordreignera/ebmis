@@ -43,7 +43,8 @@ class InvestmentController extends Controller
             $query->where('type', $request->type);
         }
 
-        $investments = $query->orderBy('created_at', 'desc')->paginate(20);
+        $perPage = $request->get('per_page', 10);
+        $investments = $query->orderBy('datecreated', 'desc')->paginate($perPage)->appends($request->except('page'));
 
         // Calculate statistics
         $stats = [
@@ -86,7 +87,7 @@ class InvestmentController extends Controller
             });
         }
 
-        $investors = $query->orderBy('created_at', 'desc')->paginate(20);
+        $investors = $query->orderBy('date_created', 'desc')->paginate(20);
 
         // Calculate statistics
         $stats = [
@@ -201,8 +202,7 @@ class InvestmentController extends Controller
             DB::table('areas_of_interest')->insert([
                 'inv_id' => $investor->id,
                 'area' => $area,
-                'created_at' => now(),
-                'updated_at' => now()
+                'datecreated' => now()
             ]);
         }
 
@@ -237,6 +237,81 @@ class InvestmentController extends Controller
         $investment->load(['investor.country']);
         
         return view('admin.investments.show-investment', compact('investment'));
+    }
+
+    /**
+     * Show the form for editing an investment
+     */
+    public function editInvestment(Investment $investment)
+    {
+        $investment->load(['investor.country']);
+        
+        // Get areas of interest for this investment
+        $areas = DB::table('areas_of_interest')
+            ->where('inv_id', $investment->userid)
+            ->pluck('area')
+            ->toArray();
+        
+        return view('admin.investments.edit-investment', compact('investment', 'areas'));
+    }
+
+    /**
+     * Update the specified investment
+     */
+    public function updateInvestment(Request $request, Investment $investment)
+    {
+        $validated = $request->validate([
+            'inv_name' => 'required|string|max:200',
+            'inv_amt' => 'required|numeric|min:1000',
+            'inv_period' => 'required|integer|min:1|max:7',
+            'inv_term' => 'required|integer|in:1,2',
+            'areas' => 'required|array',
+            'details' => 'required|string',
+            'status' => 'required|integer|in:0,1'
+        ]);
+
+        // Calculate investment details
+        $calculation = Investment::calculateInterest(
+            $validated['inv_amt'],
+            $validated['inv_period'],
+            $validated['inv_term']
+        );
+
+        // Parse existing dates or use current date for start
+        try {
+            $startDate = Carbon::createFromFormat('m/d/Y', $investment->start);
+        } catch (\Exception $e) {
+            $startDate = Carbon::parse($investment->start);
+        }
+        
+        $endDate = $startDate->copy()->addYears($validated['inv_period']);
+
+        // Update investment
+        $investment->update([
+            'type' => $validated['inv_term'],
+            'name' => $validated['inv_name'],
+            'amount' => $validated['inv_amt'],
+            'period' => $validated['inv_period'],
+            'percentage' => $calculation['rate'],
+            'end' => $endDate->format('m/d/Y'),
+            'interest' => $calculation['total_interest'],
+            'details' => $validated['details'],
+            'status' => $validated['status']
+        ]);
+
+        // Update areas of interest - remove old ones and add new
+        DB::table('areas_of_interest')->where('inv_id', $investment->userid)->delete();
+        
+        foreach ($validated['areas'] as $area) {
+            DB::table('areas_of_interest')->insert([
+                'inv_id' => $investment->userid,
+                'area' => $area,
+                'datecreated' => now()
+            ]);
+        }
+
+        return redirect()->route('admin.investments.show-investment', $investment->id)
+                        ->with('success', 'Investment updated successfully.');
     }
 
     /**
