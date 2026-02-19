@@ -1,0 +1,20 @@
+
+
+Scanning for future-dated disbursements and repayments (transaction date > 2026-02-20)...
+Planned corrections: 12 rows.
+Preview (first 50):
+DISBURSEMENT #52 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #65 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #72 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #86 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #89 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #90 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #91 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #93 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #94 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #112 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #113 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+DISBURSEMENT #129 => 2026-05-01 00:00:00 -> 2026-02-20 (created_at: 2026-05-01 00:00:00)
+
+This script will: update source row dates and set related JournalEntry.transaction_date to the new date (will NOT regenerate journal numbers).
+Type YES (uppercase) and press Enter to apply the changes: Applied changes. CSV saved to storage/future_date_corrections.csv and log to storage/logs/fix_future_dates.log

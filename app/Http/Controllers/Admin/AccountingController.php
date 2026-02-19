@@ -45,9 +45,35 @@ class AccountingController extends Controller
             $query->where('cost_center_id', $request->branch_id);
         }
 
+        // Filter by loan
+        if ($request->filled('loan_id')) {
+            $query->where(function($q) use ($request) {
+                // Direct loan entries (disbursements)
+                $q->where(function($subQ) use ($request) {
+                    $subQ->whereIn('reference_type', ['Disbursement', 'loan'])
+                         ->where('reference_id', $request->loan_id);
+                })
+                // Repayment entries (need to join with repayments table)
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Repayment')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('repayments')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                });
+            });
+        }
+
         $entries = $query->paginate(50);
 
-        return view('admin.accounting.journal-entries', compact('entries'));
+        // Get loan info if filtering by loan
+        $loan = null;
+        if ($request->filled('loan_id')) {
+            $loan = \App\Models\Loan::find($request->loan_id);
+        }
+
+        return view('admin.accounting.journal-entries', compact('entries', 'loan'));
     }
 
     /**
@@ -67,18 +93,24 @@ class AccountingController extends Controller
     {
         $asOfDate = $request->input('as_of_date', date('Y-m-d'));
 
-        // Get all accounts with their running balances
+        // Get all accounts and compute balances in bulk to avoid N+1 queries
         $accounts = SystemAccount::with('parent')
             ->orderBy('category')
             ->orderBy('code')
             ->orderBy('sub_code')
             ->get();
 
-        // Calculate balances as of the specified date
+        $accountCategories = [];
+        foreach ($accounts as $a) {
+            $accountCategories[$a->Id] = $a->category;
+        }
+
+        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
+
         foreach ($accounts as $account) {
-            $balance = $this->calculateAccountBalance($account->Id, $asOfDate);
-            $account->debit_balance = $balance > 0 ? $balance : 0;
-            $account->credit_balance = $balance < 0 ? abs($balance) : 0;
+            $b = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
+            $account->debit_balance = $b > 0 ? $b : 0;
+            $account->credit_balance = $b < 0 ? abs($b) : 0;
         }
 
         // Group by category
@@ -103,29 +135,39 @@ class AccountingController extends Controller
     {
         $asOfDate = $request->input('as_of_date', date('Y-m-d'));
 
-        $assets = SystemAccount::where('category', 'Asset')
-            ->orderBy('code')
-            ->get()
-            ->map(function ($account) use ($asOfDate) {
-                $account->balance = $this->calculateAccountBalance($account->Id, $asOfDate);
-                return $account;
-            });
+        // Bulk fetch accounts by category and compute balances in one aggregated query
+        $assetAccounts = SystemAccount::where('category', 'Asset')->where('status', 1)->orderBy('code')->get();
+        $liabilityAccounts = SystemAccount::where('category', 'Liability')->where('status', 1)->orderBy('code')->get();
+        $equityAccounts = SystemAccount::where('category', 'Equity')->where('status', 1)->orderBy('code')->get();
 
-        $liabilities = SystemAccount::where('category', 'Liability')
-            ->orderBy('code')
-            ->get()
-            ->map(function ($account) use ($asOfDate) {
-                $account->balance = abs($this->calculateAccountBalance($account->Id, $asOfDate));
-                return $account;
-            });
+        $allAccounts = $assetAccounts->merge($liabilityAccounts)->merge($equityAccounts);
+        $accountCategories = [];
+        foreach ($allAccounts as $a) {
+            $accountCategories[$a->id] = $a->category;
+        }
 
-        $equity = SystemAccount::where('category', 'Equity')
-            ->orderBy('code')
-            ->get()
-            ->map(function ($account) use ($asOfDate) {
-                $account->balance = abs($this->calculateAccountBalance($account->Id, $asOfDate));
-                return $account;
-            });
+        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
+
+        $assets = [];
+        foreach ($assetAccounts as $account) {
+            $balance = isset($balances[$account->id]) ? $balances[$account->id] : 0;
+            $account->balance = $balance;
+            $assets[] = $account;
+        }
+
+        $liabilities = [];
+        foreach ($liabilityAccounts as $account) {
+            $balance = isset($balances[$account->id]) ? abs($balances[$account->id]) : 0;
+            $account->balance = $balance;
+            $liabilities[] = $account;
+        }
+
+        $equity = [];
+        foreach ($equityAccounts as $account) {
+            $balance = isset($balances[$account->id]) ? abs($balances[$account->id]) : 0;
+            $account->balance = $balance;
+            $equity[] = $account;
+        }
 
         $totalAssets = $assets->sum('balance');
         $totalLiabilities = $liabilities->sum('balance');
@@ -150,24 +192,32 @@ class AccountingController extends Controller
         $dateFrom = $request->input('date_from', date('Y-m-01'));
         $dateTo = $request->input('date_to', date('Y-m-d'));
 
-        $income = SystemAccount::where('category', 'Income')
-            ->orderBy('code')
-            ->get()
-            ->map(function ($account) use ($dateFrom, $dateTo) {
-                $account->balance = abs($this->calculateAccountBalanceForPeriod($account->Id, $dateFrom, $dateTo));
-                return $account;
-            });
+        // Bulk compute balances for the period
+        $incomeAccounts = SystemAccount::where('category', 'Income')->where('status', 1)->orderBy('code')->get();
+        $expenseAccounts = SystemAccount::where('category', 'Expense')->where('status', 1)->orderBy('code')->get();
 
-        $expenses = SystemAccount::where('category', 'Expense')
-            ->orderBy('code')
-            ->get()
-            ->map(function ($account) use ($dateFrom, $dateTo) {
-                $account->balance = $this->calculateAccountBalanceForPeriod($account->Id, $dateFrom, $dateTo);
-                return $account;
-            });
+        $allAccounts = $incomeAccounts->merge($expenseAccounts);
+        $accountCategories = [];
+        foreach ($allAccounts as $a) {
+            $accountCategories[$a->id] = $a->category;
+        }
 
-        $totalIncome = $income->sum('balance');
-        $totalExpenses = $expenses->sum('balance');
+        $periodBalances = $this->calculateBalancesForAccountsForPeriod($accountCategories, $dateFrom, $dateTo);
+
+        $income = [];
+        foreach ($incomeAccounts as $account) {
+            $account->balance = isset($periodBalances[$account->id]) ? abs($periodBalances[$account->id]) : 0;
+            $income[] = $account;
+        }
+
+        $expenses = [];
+        foreach ($expenseAccounts as $account) {
+            $account->balance = isset($periodBalances[$account->id]) ? $periodBalances[$account->id] : 0;
+            $expenses[] = $account;
+        }
+
+        $totalIncome = array_sum(array_map(function($a){return $a->balance;}, $income));
+        $totalExpenses = array_sum(array_map(function($a){return $a->balance;}, $expenses));
         $netIncome = $totalIncome - $totalExpenses;
 
         return view('admin.accounting.income-statement', compact(
@@ -208,8 +258,18 @@ class AccountingController extends Controller
             // If end date filter is applied, calculate balances as of that date
             // Chart of Accounts shows cumulative balances AS OF a date, not period activity
             if ($endDate) {
+                // Build a map of account id => category so we can compute normal balance
+                $accountCategories = [];
+                foreach ($accounts as $a) {
+                    $accountCategories[$a->Id] = $a->category;
+                }
+
+                // Fetch aggregated debit/credit sums for all accounts in one query
+                $balances = $this->calculateBalancesForAccounts($accountCategories, $endDate);
+
+                // Attach running_balance to each account using the aggregated results
                 foreach ($accounts as $account) {
-                    $account->running_balance = $this->calculateAccountBalance($account->Id, $endDate);
+                    $account->running_balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
                 }
             }
             // If no dates provided, use the current running_balance from database
@@ -304,6 +364,78 @@ class AccountingController extends Controller
     }
 
     /**
+     * Calculate aggregated balances for multiple accounts as of a specific date.
+     * Returns an associative array: [account_id => balance]
+     */
+    private function calculateBalancesForAccounts(array $accountCategories, $asOfDate)
+    {
+        if (empty($accountCategories)) return [];
+
+        $accountIds = array_keys($accountCategories);
+
+        $rows = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->whereIn('journal_lines.account_id', $accountIds)
+            ->where('journal_entries.status', 'posted')
+            ->where('journal_entries.transaction_date', '<=', $asOfDate)
+            ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit_amount) as debits'), DB::raw('SUM(journal_lines.credit_amount) as credits'))
+            ->groupBy('journal_lines.account_id')
+            ->get();
+
+        $balances = [];
+        foreach ($rows as $r) {
+            $acctId = $r->account_id;
+            $debits = (float) $r->debits;
+            $credits = (float) $r->credits;
+
+            $category = isset($accountCategories[$acctId]) ? $accountCategories[$acctId] : null;
+            if (in_array($category, ['Asset', 'Expense'])) {
+                $balances[$acctId] = $debits - $credits;
+            } else {
+                $balances[$acctId] = $credits - $debits;
+            }
+        }
+
+        return $balances;
+    }
+
+    /**
+     * Calculate aggregated balances for multiple accounts for a period.
+     * Returns an associative array: [account_id => balance]
+     */
+    private function calculateBalancesForAccountsForPeriod(array $accountCategories, $dateFrom, $dateTo)
+    {
+        if (empty($accountCategories)) return [];
+
+        $accountIds = array_keys($accountCategories);
+
+        $rows = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->whereIn('journal_lines.account_id', $accountIds)
+            ->where('journal_entries.status', 'posted')
+            ->whereBetween('journal_entries.transaction_date', [$dateFrom, $dateTo])
+            ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit_amount) as debits'), DB::raw('SUM(journal_lines.credit_amount) as credits'))
+            ->groupBy('journal_lines.account_id')
+            ->get();
+
+        $balances = [];
+        foreach ($rows as $r) {
+            $acctId = $r->account_id;
+            $debits = (float) $r->debits;
+            $credits = (float) $r->credits;
+
+            $category = isset($accountCategories[$acctId]) ? $accountCategories[$acctId] : null;
+            if (in_array($category, ['Asset', 'Expense'])) {
+                $balances[$acctId] = $debits - $credits;
+            } else {
+                $balances[$acctId] = $credits - $debits;
+            }
+        }
+
+        return $balances;
+    }
+
+    /**
      * Download Trial Balance as PDF
      */
     public function downloadTrialBalance(Request $request)
@@ -319,9 +451,17 @@ class AccountingController extends Controller
         $totalDebits = 0;
         $totalCredits = 0;
 
+        // Bulk compute balances for the accounts
+        $accountCategories = [];
+        foreach ($accounts as $a) {
+            $accountCategories[$a->id] = $a->category;
+        }
+
+        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
+
         foreach ($accounts as $account) {
-            $balance = $this->calculateAccountBalance($account->id, $asOfDate);
-            
+            $balance = isset($balances[$account->id]) ? $balances[$account->id] : 0;
+
             if ($balance != 0) {
                 $data[] = [
                     'code' => $account->code,
@@ -377,9 +517,17 @@ class AccountingController extends Controller
         $liabilityAccounts = SystemAccount::where('category', 'Liability')->where('status', 1)->orderBy('code')->get();
         $equityAccounts = SystemAccount::where('category', 'Equity')->where('status', 1)->orderBy('code')->get();
 
+        $allAccounts = $assetAccounts->merge($liabilityAccounts)->merge($equityAccounts);
+        $accountCategories = [];
+        foreach ($allAccounts as $a) {
+            $accountCategories[$a->id] = $a->category;
+        }
+
+        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
+
         $totalAssets = 0;
         foreach ($assetAccounts as $account) {
-            $balance = $this->calculateAccountBalance($account->id, $asOfDate);
+            $balance = isset($balances[$account->id]) ? $balances[$account->id] : 0;
             if ($balance != 0) {
                 $assets[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalAssets += $balance;
@@ -388,7 +536,7 @@ class AccountingController extends Controller
 
         $totalLiabilities = 0;
         foreach ($liabilityAccounts as $account) {
-            $balance = abs($this->calculateAccountBalance($account->id, $asOfDate));
+            $balance = isset($balances[$account->id]) ? abs($balances[$account->id]) : 0;
             if ($balance != 0) {
                 $liabilities[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalLiabilities += $balance;
@@ -397,7 +545,7 @@ class AccountingController extends Controller
 
         $totalEquity = 0;
         foreach ($equityAccounts as $account) {
-            $balance = abs($this->calculateAccountBalance($account->id, $asOfDate));
+            $balance = isset($balances[$account->id]) ? abs($balances[$account->id]) : 0;
             if ($balance != 0) {
                 $equity[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalEquity += $balance;
@@ -436,12 +584,21 @@ class AccountingController extends Controller
         $income = [];
         $expenses = [];
 
+
         $incomeAccounts = SystemAccount::where('category', 'Income')->where('status', 1)->orderBy('code')->get();
         $expenseAccounts = SystemAccount::where('category', 'Expense')->where('status', 1)->orderBy('code')->get();
 
+        $allAccounts = $incomeAccounts->merge($expenseAccounts);
+        $accountCategories = [];
+        foreach ($allAccounts as $a) {
+            $accountCategories[$a->id] = $a->category;
+        }
+
+        $periodBalances = $this->calculateBalancesForAccountsForPeriod($accountCategories, $dateFrom, $dateTo);
+
         $totalIncome = 0;
         foreach ($incomeAccounts as $account) {
-            $balance = abs($this->calculateAccountBalanceForPeriod($account->id, $dateFrom, $dateTo));
+            $balance = isset($periodBalances[$account->id]) ? abs($periodBalances[$account->id]) : 0;
             if ($balance != 0) {
                 $income[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalIncome += $balance;
@@ -450,7 +607,7 @@ class AccountingController extends Controller
 
         $totalExpenses = 0;
         foreach ($expenseAccounts as $account) {
-            $balance = $this->calculateAccountBalanceForPeriod($account->id, $dateFrom, $dateTo);
+            $balance = isset($periodBalances[$account->id]) ? $periodBalances[$account->id] : 0;
             if ($balance != 0) {
                 $expenses[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalExpenses += $balance;
@@ -538,10 +695,17 @@ class AccountingController extends Controller
             ->orderBy('sub_code')
             ->get();
 
-        // If end date filter is applied, calculate balances as of that date
+        // If end date filter is applied, calculate balances as of that date (bulk)
         if ($endDate) {
+            $accountCategories = [];
+            foreach ($accounts as $a) {
+                $accountCategories[$a->Id] = $a->category;
+            }
+
+            $balances = $this->calculateBalancesForAccounts($accountCategories, $endDate);
+
             foreach ($accounts as $account) {
-                $account->running_balance = $this->calculateAccountBalance($account->Id, $endDate);
+                $account->running_balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
             }
         }
 

@@ -987,6 +987,9 @@ body.modal-open {
                                                 <a href="{{ $viewUrl }}" class="btn btn-sm btn-outline-primary" title="View Details">
                                                     <i class="mdi mdi-eye"></i> View
                                                 </a>
+                                                <a href="{{ route('admin.accounting.journal-entries', ['loan_id' => $loan->id]) }}" class="btn btn-sm btn-outline-success" title="View Journal Ledger">
+                                                    <i class="mdi mdi-book-open-variant"></i> Ledger
+                                                </a>
                                             </td>
                                         </tr>
                                     @endforeach

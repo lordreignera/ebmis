@@ -9,6 +9,7 @@ use App\Models\Disbursement;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class AccountingService
 {
@@ -70,14 +71,20 @@ class AccountingService
                 ? ($loan->member->fname . ' ' . $loan->member->lname)
                 : ($loan->group->name ?? 'Group');
 
+            // determine transaction date but cap to today to avoid future-dated journal entries
+            $sourceDate = $disbursement->date_approved ? (is_string($disbursement->date_approved) ? Carbon::parse($disbursement->date_approved) : $disbursement->date_approved) : ($disbursement->created_at ? Carbon::parse($disbursement->created_at) : Carbon::today());
+            $transactionDate = $sourceDate->greaterThan(Carbon::today()) ? Carbon::today() : $sourceDate;
+
             $journalData = [
-                'transaction_date' => date('Y-m-d'),
+                'transaction_date' => $transactionDate->format('Y-m-d'),
                 'reference_type' => 'Disbursement',
                 'reference_id' => $disbursement->id,
                 'narrative' => "Loan disbursement to {$borrowerName} - {$loan->code}",
                 'cost_center_id' => $loan->branch_id ?? null,
                 'product_id' => $loan->product_id ?? null,
-                'officer_id' => $loan->assigned_to ?? auth()->id(),
+                // prefer disbursement assigned/added-by metadata when available
+                'officer_id' => $disbursement->assigned_to ?? $loan->assigned_to ?? null,
+                'posted_by' => $disbursement->added_by ?? auth()->id(),
                 'fund_id' => $fundId,
             ];
 
@@ -321,14 +328,19 @@ class AccountingService
                 ($loan->member->fname . ' ' . $loan->member->lname) :
                 ($loan->group->name ?? 'Unknown');
 
+            // determine transaction date for repayment and cap to today
+            $repSourceDate = $repayment->date_created ? (is_string($repayment->date_created) ? Carbon::parse($repayment->date_created) : $repayment->date_created) : Carbon::today();
+            $repTransactionDate = $repSourceDate->greaterThan(Carbon::today()) ? Carbon::today() : $repSourceDate;
+
             $journalData = [
-                'transaction_date' => $repayment->date_paid ?? date('Y-m-d'),
+                'transaction_date' => $repTransactionDate->format('Y-m-d'),
                 'reference_type' => 'Repayment',
                 'reference_id' => $repayment->id,
                 'narrative' => "Loan repayment from {$borrowerName} - {$loan->code}",
                 'cost_center_id' => $loan->branch_id ?? null,
                 'product_id' => $loan->product_id ?? null,
-                'officer_id' => $loan->assigned_to ?? null,
+                'officer_id' => $repayment->added_by ?? $loan->assigned_to ?? null,
+                'posted_by' => $repayment->added_by ?? auth()->id(),
             ];
 
             $journalLines = [];

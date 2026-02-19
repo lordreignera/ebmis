@@ -81,6 +81,68 @@
     </div>
 </div>
 
+<!-- Loan Information (if filtered by loan) -->
+@if(isset($loan) && $loan)
+<div class="row">
+    <div class="col-md-12 grid-margin stretch-card">
+        <div class="card border-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="card-title mb-2">
+                            <i class="mdi mdi-book-open-variant text-primary me-2"></i>
+                            Journal Ledger for Loan: <span class="badge bg-primary">{{ $loan->code }}</span>
+                        </h5>
+                        <div class="row mt-3">
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Member:</strong></p>
+                                <p class="text-muted">{{ $loan->member->name ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Product:</strong></p>
+                                <p class="text-muted">{{ $loan->product->name ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Principal:</strong></p>
+                                <p class="text-muted">UGX {{ number_format($loan->principal, 2) }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Status:</strong></p>
+                                <p class="text-muted">
+                                    @php
+                                        $actualStatus = $loan->getActualStatus();
+                                        $badges = [
+                                            'pending' => '<span class="badge bg-warning">Pending</span>',
+                                            'approved' => '<span class="badge bg-info">Approved</span>',
+                                            'running' => '<span class="badge bg-success">Running</span>',
+                                            'closed' => '<span class="badge bg-secondary">Closed</span>',
+                                            'rejected' => '<span class="badge bg-danger">Rejected</span>',
+                                            'restructured' => '<span class="badge bg-primary">Restructured</span>',
+                                            'stopped' => '<span class="badge bg-dark">Stopped</span>',
+                                        ];
+                                    @endphp
+                                    {!! $badges[$actualStatus] ?? '<span class="badge bg-light text-dark">Unknown</span>' !!}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        @if($loan->member)
+                        <a href="{{ route('admin.members.show', $loan->member->id) }}" class="btn btn-outline-primary">
+                            <i class="mdi mdi-account"></i> View Client Profile
+                        </a>
+                        @endif
+                        <a href="{{ route('admin.accounting.journal-entries') }}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to All Entries
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 <!-- Filters -->
 <div class="row">
     <div class="col-md-12 grid-margin stretch-card">
@@ -88,6 +150,10 @@
             <div class="card-body">
                 <h5 class="card-title mb-3"><i class="mdi mdi-filter me-2"></i>Filters</h5>
                 <form method="GET" action="{{ route('admin.accounting.journal-entries') }}">
+                    <!-- Keep loan_id in form if present -->
+                    @if(request('loan_id'))
+                    <input type="hidden" name="loan_id" value="{{ request('loan_id') }}">
+                    @endif
                     <div class="row">
                         <div class="col-md-3">
                             <div class="form-group">
@@ -163,7 +229,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($entries as $entry)
+                            @php
+                                // Ensure entries are displayed ordered by transaction_date descending
+                                $displayEntries = $entries instanceof \Illuminate\Pagination\LengthAwarePaginator
+                                    ? $entries->getCollection()->sortByDesc('transaction_date')->values()
+                                    : collect($entries)->sortByDesc('transaction_date')->values();
+                            @endphp
+                            @foreach($displayEntries as $entry)
                             <tr>
                                 <td>{{ ($entries->currentPage() - 1) * $entries->perPage() + $loop->iteration }}</td>
                                 <td>

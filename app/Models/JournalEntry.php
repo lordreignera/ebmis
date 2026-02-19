@@ -98,7 +98,8 @@ class JournalEntry extends Model
         try {
             // Generate journal number
             $data['journal_number'] = self::generateJournalNumber($data['transaction_date']);
-            $data['posted_by'] = auth()->id();
+            // Allow caller to set `posted_by` (used by backfill scripts). Fall back to current auth id.
+            $data['posted_by'] = $data['posted_by'] ?? auth()->id();
             $data['posted_at'] = now();
             $data['status'] = 'posted';
 
