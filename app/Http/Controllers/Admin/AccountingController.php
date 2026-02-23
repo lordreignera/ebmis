@@ -48,18 +48,95 @@ class AccountingController extends Controller
         // Filter by loan
         if ($request->filled('loan_id')) {
             $query->where(function($q) use ($request) {
-                // Direct loan entries (disbursements)
                 $q->where(function($subQ) use ($request) {
-                    $subQ->whereIn('reference_type', ['Disbursement', 'loan'])
+                    // Explicit loan references
+                    $subQ->where('reference_type', 'loan')
                          ->where('reference_id', $request->loan_id);
                 })
-                // Repayment entries (need to join with repayments table)
                 ->orWhere(function($subQ) use ($request) {
+                    // Disbursement journals reference disbursement ids, not loan ids
+                    $subQ->where('reference_type', 'Disbursement')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('disbursements')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    // Repayment journals reference repayment ids
                     $subQ->where('reference_type', 'Repayment')
                          ->whereIn('reference_id', function($query) use ($request) {
                              $query->select('id')
                                    ->from('repayments')
                                    ->where('loan_id', $request->loan_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    // Loan-linked fee journals
+                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('fees')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    // Loan-linked cash security journals
+                    $subQ->where('reference_type', 'Cash Security')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('cash_securities')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                });
+            });
+        }
+
+        // Filter by member (ensures all member-related journals show even when created from different flows)
+        if ($request->filled('member_id')) {
+            $query->where(function($q) use ($request) {
+                $q->where(function($subQ) use ($request) {
+                    // Disbursement journals -> disbursement -> loan -> member
+                    $subQ->where('reference_type', 'Disbursement')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('disbursements')
+                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
+                                       $loanQuery->select('id')
+                                                 ->from('loans')
+                                                 ->where('member_id', $request->member_id);
+                                   });
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    // Repayment journals -> repayment -> loan -> member
+                    $subQ->where('reference_type', 'Repayment')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('repayments')
+                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
+                                       $loanQuery->select('id')
+                                                 ->from('loans')
+                                                 ->where('member_id', $request->member_id);
+                                   });
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    // Fees posted directly on member profile
+                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('fees')
+                                   ->where('member_id', $request->member_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    // Cash security posted on member profile
+                    $subQ->where('reference_type', 'Cash Security')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('cash_securities')
+                                   ->where('member_id', $request->member_id);
                          });
                 });
             });
@@ -73,7 +150,12 @@ class AccountingController extends Controller
             $loan = \App\Models\Loan::find($request->loan_id);
         }
 
-        return view('admin.accounting.journal-entries', compact('entries', 'loan'));
+        $member = null;
+        if ($request->filled('member_id')) {
+            $member = \App\Models\Member::find($request->member_id);
+        }
+
+        return view('admin.accounting.journal-entries', compact('entries', 'loan', 'member'));
     }
 
     /**
@@ -658,6 +740,92 @@ class AccountingController extends Controller
         }
         if ($request->filled('branch_id')) {
             $query->where('cost_center_id', $request->branch_id);
+        }
+
+        if ($request->filled('loan_id')) {
+            $query->where(function($q) use ($request) {
+                $q->where(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'loan')
+                         ->where('reference_id', $request->loan_id);
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Disbursement')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('disbursements')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Repayment')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('repayments')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('fees')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Cash Security')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('cash_securities')
+                                   ->where('loan_id', $request->loan_id);
+                         });
+                });
+            });
+        }
+
+        if ($request->filled('member_id')) {
+            $query->where(function($q) use ($request) {
+                $q->where(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Disbursement')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('disbursements')
+                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
+                                       $loanQuery->select('id')
+                                                 ->from('loans')
+                                                 ->where('member_id', $request->member_id);
+                                   });
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Repayment')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('repayments')
+                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
+                                       $loanQuery->select('id')
+                                                 ->from('loans')
+                                                 ->where('member_id', $request->member_id);
+                                   });
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('fees')
+                                   ->where('member_id', $request->member_id);
+                         });
+                })
+                ->orWhere(function($subQ) use ($request) {
+                    $subQ->where('reference_type', 'Cash Security')
+                         ->whereIn('reference_id', function($query) use ($request) {
+                             $query->select('id')
+                                   ->from('cash_securities')
+                                   ->where('member_id', $request->member_id);
+                         });
+                });
+            });
         }
 
         $entries = $query->get();

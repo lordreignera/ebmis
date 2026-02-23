@@ -96,7 +96,7 @@
                         <div class="row mt-3">
                             <div class="col-md-3">
                                 <p class="mb-1"><strong>Member:</strong></p>
-                                <p class="text-muted">{{ $loan->member->name ?? 'N/A' }}</p>
+                                <p class="text-muted">{{ $loan->member ? trim(($loan->member->fname ?? '') . ' ' . ($loan->member->mname ?? '') . ' ' . ($loan->member->lname ?? '')) : 'N/A' }}</p>
                             </div>
                             <div class="col-md-3">
                                 <p class="mb-1"><strong>Product:</strong></p>
@@ -143,6 +143,52 @@
 </div>
 @endif
 
+<!-- Member Information (if filtered by member) -->
+@if(isset($member) && $member)
+<div class="row">
+    <div class="col-md-12 grid-margin stretch-card">
+        <div class="card border-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="card-title mb-2">
+                            <i class="mdi mdi-account-cash text-info me-2"></i>
+                            Journal Ledger for Member: <span class="badge bg-info">{{ $member->code }}</span>
+                        </h5>
+                        <div class="row mt-3">
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Name:</strong></p>
+                                <p class="text-muted">{{ trim(($member->fname ?? '') . ' ' . ($member->mname ?? '') . ' ' . ($member->lname ?? '')) }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Contact:</strong></p>
+                                <p class="text-muted">{{ $member->contact ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Email:</strong></p>
+                                <p class="text-muted">{{ $member->email ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Branch:</strong></p>
+                                <p class="text-muted">{{ $member->branch->name ?? 'N/A' }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <a href="{{ route('admin.members.show', $member->id) }}" class="btn btn-outline-info">
+                            <i class="mdi mdi-account"></i> View Member Profile
+                        </a>
+                        <a href="{{ route('admin.accounting.journal-entries') }}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to All Entries
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 <!-- Filters -->
 <div class="row">
     <div class="col-md-12 grid-margin stretch-card">
@@ -153,6 +199,10 @@
                     <!-- Keep loan_id in form if present -->
                     @if(request('loan_id'))
                     <input type="hidden" name="loan_id" value="{{ request('loan_id') }}">
+                    @endif
+                    <!-- Keep member_id in form if present -->
+                    @if(request('member_id'))
+                    <input type="hidden" name="member_id" value="{{ request('member_id') }}">
                     @endif
                     <div class="row">
                         <div class="col-md-3">

@@ -927,7 +927,12 @@ body.modal-open {
             @if($member->loans->count() > 0)
                 <div class="card mb-4">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="mdi mdi-cash-multiple text-success"></i> Loan History</h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="mdi mdi-cash-multiple text-success"></i> Loan History</h5>
+                            <a href="{{ route('admin.accounting.journal-entries', ['member_id' => $member->id]) }}" class="btn btn-sm btn-outline-info" title="View all member journal entries">
+                                <i class="mdi mdi-book-open-variant"></i> Member Ledger
+                            </a>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
