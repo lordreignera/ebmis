@@ -330,7 +330,7 @@ $('#country_id').change(function() {
     
     if (countryId) {
         $.ajax({
-            url: '{{ route("api.states") }}',
+            url: '{{ route("admin.api.states") }}',
             method: 'GET',
             data: { country_id: countryId },
             success: function(states) {
@@ -348,7 +348,7 @@ $('#state_id').change(function() {
     
     if (stateId) {
         $.ajax({
-            url: '{{ route("api.cities") }}',
+            url: '{{ route("admin.api.cities") }}',
             method: 'GET',
             data: { state_id: stateId },
             success: function(cities) {

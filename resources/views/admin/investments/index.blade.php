@@ -192,10 +192,10 @@
                                     <td>{{ $investments->firstItem() + $index }}</td>
                                     <td>
                                         <div>
-                                            <div class="fw-semibold">{{ $investment->investor->full_name }}</div>
+                                            <div class="fw-semibold">{{ $investment->investor->full_name ?? 'Unknown Investor' }}</div>
                                             <small class="text-muted">
                                                 <i class="mdi mdi-map-marker me-1"></i>
-                                                {{ $investment->investor->country->name ?? 'Unknown' }}
+                                                {{ optional(optional($investment->investor)->country)->name ?? 'Unknown' }}
                                             </small>
                                         </div>
                                     </td>
