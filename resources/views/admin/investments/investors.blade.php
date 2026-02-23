@@ -219,6 +219,11 @@
                                            class="btn btn-sm btn-outline-primary" title="View Profile">
                                             <i class="mdi mdi-eye"></i>
                                         </a>
+
+                                        <a href="{{ route('admin.accounting.journal-entries', ['investor_id' => $investor->id]) }}"
+                                           class="btn btn-sm btn-outline-warning" title="View Journal Ledger">
+                                            <i class="mdi mdi-book-open-variant"></i>
+                                        </a>
                                         
                                         @if($investor->investments_count > 0)
                                             <a href="{{ route('admin.investments.show-investor', $investor->id) }}#investments" 
@@ -235,7 +240,7 @@
                                         @if(auth()->user()->user_type === 'admin')
                                             <button type="button" 
                                                     class="btn btn-sm btn-outline-danger" 
-                                                    title="Deactivate"
+                                                    title="Delete Investor"
                                                     onclick="confirmDelete({{ $investor->id }}, '{{ $investor->full_name }}')">
                                                 <i class="mdi mdi-delete"></i>
                                             </button>
@@ -296,7 +301,7 @@
                     <div class="alert alert-warning">
                         <i class="mdi mdi-alert-circle-outline"></i>
                         <strong>Are you sure?</strong>
-                        <p class="mb-0">You are about to deactivate investor <strong id="investorName"></strong>. This action will mark them as inactive.</p>
+                        <p class="mb-0">You are about to delete investor <strong id="investorName"></strong>. This action will soft-delete the investor from active lists.</p>
                     </div>
                     
                     <div class="form-group">
@@ -313,7 +318,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">
-                        <i class="mdi mdi-delete"></i> Deactivate Investor
+                        <i class="mdi mdi-delete"></i> Delete Investor
                     </button>
                 </div>
             </form>
@@ -325,7 +330,9 @@
 <script>
 function confirmDelete(investorId, investorName) {
     $('#investorName').text(investorName);
-    $('#deleteForm').attr('action', `/admin/investments/investors/${investorId}/delete`);
+    let deleteUrl = `{{ route('admin.investments.delete-investor', ['investor' => '__INVESTOR_ID__']) }}`;
+    deleteUrl = deleteUrl.replace('__INVESTOR_ID__', investorId);
+    $('#deleteForm').attr('action', deleteUrl);
     $('#deleteModal').modal('show');
 }
 

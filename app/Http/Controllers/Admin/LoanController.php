@@ -2243,8 +2243,14 @@ class LoanController extends Controller
 
             // Update basic fields
             $loan->loan_purpose = $request->input('loan_purpose');
-            $loan->cash_account_number = $request->input('cash_account_number');
-            $loan->cash_account_name = $request->input('cash_account_name');
+            if ($loanType === 'personal' && $borrower) {
+                $borrowerName = trim(($borrower->fname ?? '') . ' ' . ($borrower->mname ?? '') . ' ' . ($borrower->lname ?? ''));
+                $loan->cash_account_number = $borrower->cash_security_account_number ?: $request->input('cash_account_number');
+                $loan->cash_account_name = $borrowerName ?: $request->input('cash_account_name');
+            } else {
+                $loan->cash_account_number = $request->input('cash_account_number');
+                $loan->cash_account_name = $request->input('cash_account_name');
+            }
             $loan->immovable_assets = $request->input('immovable_assets');
             $loan->moveable_assets = $request->input('moveable_assets');
             $loan->intellectual_property = $request->input('intellectual_property');

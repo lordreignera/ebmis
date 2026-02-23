@@ -189,6 +189,52 @@
 </div>
 @endif
 
+<!-- Investor Information (if filtered by investor) -->
+@if(isset($investor) && $investor)
+<div class="row">
+    <div class="col-md-12 grid-margin stretch-card">
+        <div class="card border-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="card-title mb-2">
+                            <i class="mdi mdi-wallet text-warning me-2"></i>
+                            Journal Ledger for Investor: <span class="badge bg-warning text-dark">{{ $investor->title_name }} {{ $investor->full_name }}</span>
+                        </h5>
+                        <div class="row mt-3">
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Email:</strong></p>
+                                <p class="text-muted">{{ $investor->email ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Phone:</strong></p>
+                                <p class="text-muted">{{ $investor->phone ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Country:</strong></p>
+                                <p class="text-muted">{{ $investor->country->name ?? 'N/A' }}</p>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1"><strong>Accounts:</strong></p>
+                                <p class="text-muted">{{ $investor->investments_count ?? 0 }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <a href="{{ route('admin.investments.show-investor', $investor->id) }}" class="btn btn-outline-warning">
+                            <i class="mdi mdi-account"></i> View Investor Profile
+                        </a>
+                        <a href="{{ route('admin.accounting.journal-entries') }}" class="btn btn-outline-secondary">
+                            <i class="mdi mdi-arrow-left"></i> Back to All Entries
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 <!-- Filters -->
 <div class="row">
     <div class="col-md-12 grid-margin stretch-card">
@@ -203,6 +249,10 @@
                     <!-- Keep member_id in form if present -->
                     @if(request('member_id'))
                     <input type="hidden" name="member_id" value="{{ request('member_id') }}">
+                    @endif
+                    <!-- Keep investor_id in form if present -->
+                    @if(request('investor_id'))
+                    <input type="hidden" name="investor_id" value="{{ request('investor_id') }}">
                     @endif
                     <div class="row">
                         <div class="col-md-3">

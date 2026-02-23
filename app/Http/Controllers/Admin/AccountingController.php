@@ -8,6 +8,7 @@ use App\Models\JournalLine;
 use App\Models\SystemAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -142,6 +143,11 @@ class AccountingController extends Controller
             });
         }
 
+        // Filter by investor (journals from disbursements funded by selected investor account)
+        if ($request->filled('investor_id')) {
+            $this->applyInvestorFilter($query, (int) $request->investor_id);
+        }
+
         $entries = $query->paginate(50);
 
         // Get loan info if filtering by loan
@@ -155,7 +161,12 @@ class AccountingController extends Controller
             $member = \App\Models\Member::find($request->member_id);
         }
 
-        return view('admin.accounting.journal-entries', compact('entries', 'loan', 'member'));
+        $investor = null;
+        if ($request->filled('investor_id')) {
+            $investor = \App\Models\Investor::withCount('investments')->find($request->investor_id);
+        }
+
+        return view('admin.accounting.journal-entries', compact('entries', 'loan', 'member', 'investor'));
     }
 
     /**
@@ -828,6 +839,10 @@ class AccountingController extends Controller
             });
         }
 
+        if ($request->filled('investor_id')) {
+            $this->applyInvestorFilter($query, (int) $request->investor_id);
+        }
+
         $entries = $query->get();
         $dateFrom = $request->input('date_from', 'All');
         $dateTo = $request->input('date_to', 'All');
@@ -847,6 +862,67 @@ class AccountingController extends Controller
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="journal-entries-' . now()->format('Y-m-d') . '.pdf"'
         ]);
+    }
+
+    /**
+     * Apply investor-based journal filter with schema-safe disbursement column handling.
+     */
+    private function applyInvestorFilter($query, int $investorId): void
+    {
+        $hasInvestmentId = Schema::hasColumn('disbursements', 'investment_id');
+        $hasInvId = Schema::hasColumn('disbursements', 'inv_id');
+
+        $query->where(function($q) use ($investorId, $hasInvestmentId, $hasInvId) {
+            $q->where(function($subQ) use ($investorId, $hasInvestmentId, $hasInvId) {
+                $subQ->where('reference_type', 'Disbursement')
+                    ->whereIn('reference_id', function($disbQuery) use ($investorId, $hasInvestmentId, $hasInvId) {
+                        $disbQuery->select('id')
+                            ->from('disbursements')
+                            ->where(function($linkQuery) use ($investorId, $hasInvestmentId, $hasInvId) {
+                                $hasAnyLink = false;
+
+                                if ($hasInvestmentId) {
+                                    $linkQuery->whereIn('investment_id', function($investmentQuery) use ($investorId) {
+                                        $investmentQuery->select('id')
+                                            ->from('investment')
+                                            ->where('userid', $investorId);
+                                    });
+                                    $hasAnyLink = true;
+                                }
+
+                                if ($hasInvId) {
+                                    if ($hasAnyLink) {
+                                        $linkQuery->orWhereIn('inv_id', function($investmentQuery) use ($investorId) {
+                                            $investmentQuery->select('id')
+                                                ->from('investment')
+                                                ->where('userid', $investorId);
+                                        });
+                                    } else {
+                                        $linkQuery->whereIn('inv_id', function($investmentQuery) use ($investorId) {
+                                            $investmentQuery->select('id')
+                                                ->from('investment')
+                                                ->where('userid', $investorId);
+                                        });
+                                    }
+                                    $hasAnyLink = true;
+                                }
+
+                                if (!$hasAnyLink) {
+                                    $linkQuery->whereRaw('1 = 0');
+                                }
+                            });
+                    });
+            })
+            ->orWhere(function($subQ) use ($investorId) {
+                $subQ->whereNotNull('fund_id')
+                    ->whereIn('fund_id', function($fundQuery) use ($investorId) {
+                        $fundQuery->select('f.id')
+                            ->from('funds as f')
+                            ->join('investment as i', 'i.name', '=', 'f.name')
+                            ->where('i.userid', $investorId);
+                    });
+            });
+        });
     }
 
     /**

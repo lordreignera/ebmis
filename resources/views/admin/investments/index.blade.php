@@ -248,13 +248,13 @@
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
                                             @if($investment->investor)
-                                                <a href="{{ route('admin.investments.show-investor', $investment->investor->id) }}" 
-                                                   class="btn btn-sm btn-info" title="View Investor">
-                                                    <i class="mdi mdi-account"></i>
+                                                <a href="{{ route('admin.accounting.journal-entries', ['investor_id' => $investment->investor->id]) }}"
+                                                   class="btn btn-sm btn-warning" title="View Ledger">
+                                                    <i class="mdi mdi-book-open-variant"></i>
                                                 </a>
                                             @else
                                                 <span class="btn btn-sm btn-secondary disabled" title="Investor not found">
-                                                    <i class="mdi mdi-account-off"></i>
+                                                    <i class="mdi mdi-book-open-page-variant"></i>
                                                 </span>
                                             @endif
                                         </div>

@@ -43,10 +43,10 @@ return [
     // Transaction Limits
     'limits' => [
         'min_amount' => 1000, // 1,000 UGX
-        'max_amount' => 4000000, // 4,000,000 UGX
+        'max_amount' => 10000000, // 10,000,000 UGX
         'mtn' => [
             'min' => 1000,
-            'max' => 4000000,
+            'max' => 10000000,
         ],
         'airtel' => [
             'min' => 1000,

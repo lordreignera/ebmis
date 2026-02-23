@@ -384,6 +384,7 @@ Route::middleware([
         Route::put('/investors/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestor'])->name('update-investor');
         Route::post('/investors/{investor}/activate', [\App\Http\Controllers\Admin\InvestmentController::class, 'activateInvestor'])->name('activate-investor');
         Route::post('/investors/{investor}/deactivate', [\App\Http\Controllers\Admin\InvestmentController::class, 'deactivateInvestor'])->name('deactivate-investor');
+        Route::post('/investors/{investor}/delete', [\App\Http\Controllers\Admin\InvestmentController::class, 'deleteInvestor'])->name('delete-investor');
         
         // Investment Management
         Route::get('/{investor}/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestment'])->name('create-investment');

@@ -550,7 +550,7 @@
           <li class="nav-item"><a class="nav-link" href="#">Manage Security Code</a></li>
         </ul>
       </div>
-    </li> -->
+    </li> 
 
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#inv-approvals" aria-expanded="false" aria-controls="inv-approvals">
@@ -567,7 +567,7 @@
           <li class="nav-item"><a class="nav-link" href="#">Rejected</a></li>
         </ul>
       </div>
-    </li>
+    </li>-->
 
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#agency" aria-expanded="false" aria-controls="agency">

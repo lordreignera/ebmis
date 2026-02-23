@@ -205,8 +205,43 @@
 
     <p class="clause-title">7.1 Pledged Collateral:</p>
     <p>The following Collateral has been pledged by the Borrower to secure the loan:</p>
-    
-    <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number: __________________________ in the name of _____________________________ held with the Lender at City Centre Complex Room B27 Kampala Branch.</p>
+
+    @php
+        $accountNumber = $loan->cash_account_number;
+        $accountName = $loan->cash_account_name;
+        $cashSecurityAmount = null;
+
+        if ($type === 'personal') {
+            $borrowerName = trim(($borrower->fname ?? '') . ' ' . ($borrower->mname ?? '') . ' ' . ($borrower->lname ?? ''));
+            $accountNumber = $borrower->cash_security_account_number ?: $loan->cash_account_number;
+            $accountName = $borrowerName ?: $loan->cash_account_name;
+
+            $cashSecurityAmount = \App\Models\CashSecurity::where('member_id', $borrower->id)
+                ->where('status', 1)
+                ->where(function ($query) {
+                    $query->whereNull('returned')->orWhere('returned', 0);
+                })
+                ->sum('amount');
+        }
+    @endphp
+
+    <p style="margin-left: 20px;">All Monies in the following Cash security Accounts: Account number:
+    @if($accountNumber)
+        <strong>{{ $accountNumber }}</strong>
+    @else
+        __________________________
+    @endif
+    in the name of
+    @if($accountName)
+        <strong>{{ $accountName }}</strong>
+    @else
+        _____________________________
+    @endif
+    held with the Lender at City Centre Complex Room B27 Kampala Branch.</p>
+
+    @if($type === 'personal')
+    <p style="margin-left: 20px;">Current Cash Security Amount: <strong>UGX {{ number_format($cashSecurityAmount ?? 0, 2) }}</strong></p>
+    @endif
 
     <p style="margin-left: 20px;">Collateral Security pledged:<br>
     i) Immovable assets: ………………………………………<br>

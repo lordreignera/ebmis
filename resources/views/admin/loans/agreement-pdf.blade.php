@@ -243,20 +243,21 @@
     <p>The following Collateral has been pledged by the Borrower to secure the loan:</p>
     
     @php
-        // Priority: 1) E-signature form data, 2) Active savings account, 3) Blank
         $accountNumber = $loan->cash_account_number;
         $accountName = $loan->cash_account_name;
-        
-        if (!$accountNumber && $type === 'personal' && $borrower->savings && $borrower->savings->count() > 0) {
-            $activeSavings = $borrower->savings->where('status', 1)->first();
-            if ($activeSavings) {
-                $accountNumber = $activeSavings->code;
-                $accountName = $borrower->fname . ' ' . $borrower->lname;
-            }
-        }
-        
-        if (!$accountName && $type === 'personal') {
-            $accountName = $borrower->fname . ' ' . $borrower->lname;
+        $cashSecurityAmount = null;
+
+        if ($type === 'personal') {
+            $borrowerName = trim(($borrower->fname ?? '') . ' ' . ($borrower->mname ?? '') . ' ' . ($borrower->lname ?? ''));
+            $accountNumber = $borrower->cash_security_account_number ?: $loan->cash_account_number;
+            $accountName = $borrowerName ?: $loan->cash_account_name;
+
+            $cashSecurityAmount = \App\Models\CashSecurity::where('member_id', $borrower->id)
+                ->where('status', 1)
+                ->where(function ($query) {
+                    $query->whereNull('returned')->orWhere('returned', 0);
+                })
+                ->sum('amount');
         }
     @endphp
     
@@ -273,6 +274,10 @@
         _____________________________
     @endif
     held with the Lender at Akisim cell, Central ward, Akore town, Kapelebyong.</p>
+
+    @if($type === 'personal')
+    <p style="margin-left: 20px;">Current Cash Security Amount: <strong>UGX {{ number_format($cashSecurityAmount ?? 0, 2) }}</strong></p>
+    @endif
 
     <p style="margin-left: 20px;"><strong>Collateral Security pledged:</strong></p>
     @if($type === 'personal' && $borrower->assets && $borrower->assets->count() > 0)

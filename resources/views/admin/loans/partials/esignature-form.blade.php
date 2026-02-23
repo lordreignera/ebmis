@@ -20,6 +20,23 @@
 <form id="eSignatureForm" method="POST" action="{{ route('admin.loans.save-esignature', $loan->id) }}" enctype="multipart/form-data" {{ $loan->agreement_finalized_at ? 'onsubmit="return false;"' : '' }}>
     @csrf
     <input type="hidden" name="loan_type" value="{{ $loanType }}">
+    @php
+        $cashAccountNumber = $loan->cash_account_number;
+        $cashAccountName = $loan->cash_account_name;
+        $cashSecurityAmount = null;
+
+        if ($loanType === 'personal' && $loan->member) {
+            $cashAccountNumber = $loan->member->cash_security_account_number ?: $loan->cash_account_number;
+            $cashAccountName = trim(($loan->member->fname ?? '') . ' ' . ($loan->member->mname ?? '') . ' ' . ($loan->member->lname ?? ''));
+
+            $cashSecurityAmount = \App\Models\CashSecurity::where('member_id', $loan->member->id)
+                ->where('status', 1)
+                ->where(function ($query) {
+                    $query->whereNull('returned')->orWhere('returned', 0);
+                })
+                ->sum('amount');
+        }
+    @endphp
 
     <!-- Step 1: Loan Purpose & Collateral -->
     <div class="card mb-3">
@@ -38,23 +55,32 @@
             </div>
 
             <h6 class="mt-3 mb-3">Cash Security Account</h6>
+            <input type="hidden" name="cash_account_number" value="{{ $cashAccountNumber }}">
+            <input type="hidden" name="cash_account_name" value="{{ $cashAccountName }}">
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label for="cash_account_number" class="form-label">Account Number</label>
-                    <input type="text" class="form-control" id="cash_account_number" name="cash_account_number" 
-                        value="{{ $loan->cash_account_number }}" 
-                        placeholder="Savings account number"
-                        {{ $loan->agreement_finalized_at ? 'readonly' : '' }}>
-                    <small class="text-muted">Savings account number with the lender</small>
+                    <input type="text" class="form-control" id="cash_account_number" 
+                        value="{{ $cashAccountNumber }}" 
+                        placeholder="Cash security account number"
+                        readonly>
+                    <small class="text-muted">Auto-fetched from member profile cash security account</small>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="cash_account_name" class="form-label">Account Name</label>
-                    <input type="text" class="form-control" id="cash_account_name" name="cash_account_name" 
-                        value="{{ $loan->cash_account_name }}" 
+                    <input type="text" class="form-control" id="cash_account_name" 
+                        value="{{ $cashAccountName }}" 
                         placeholder="Name on the account"
-                        {{ $loan->agreement_finalized_at ? 'readonly' : '' }}>
-                    <small class="text-muted">Name on the savings account</small>
+                        readonly>
+                    <small class="text-muted">Auto-fetched from borrower details</small>
                 </div>
+                @if($loanType === 'personal')
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Current Cash Security Amount</label>
+                    <input type="text" class="form-control" value="UGX {{ number_format($cashSecurityAmount ?? 0, 2) }}" readonly>
+                    <small class="text-muted">Sum of paid, not-yet-returned cash security for this borrower</small>
+                </div>
+                @endif
             </div>
 
             <h6 class="mt-3 mb-3">Additional Collateral Security (Not captured in system)</h6>
