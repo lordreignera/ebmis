@@ -184,7 +184,7 @@ class FeeController extends Controller
                 // Post to General Ledger
                 try {
                     $accountingService = new \App\Services\AccountingService();
-                    $journal = $accountingService->postFeeCollectionEntry($fee, $validated['fee_type']);
+                    $journal = $accountingService->postFeeCollectionEntry($fee, $feeType);
                     if ($journal) {
                         \Log::info('Fee GL entry posted', [
                             'fee_id' => $fee->id,
@@ -291,7 +291,7 @@ class FeeController extends Controller
         // Post to General Ledger
         try {
             $accountingService = new \App\Services\AccountingService();
-            $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fee_type);
+            $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fees_type_id);
             if ($journal) {
                 \Log::info('Fee GL entry posted', [
                     'fee_id' => $fee->id,
@@ -710,7 +710,7 @@ class FeeController extends Controller
                 // Post to General Ledger
                 try {
                     $accountingService = new \App\Services\AccountingService();
-                    $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fee_type);
+                    $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fees_type_id);
                     if ($journal) {
                         \Log::info('Fee GL entry posted for mobile money payment', [
                             'fee_id' => $fee->id,

@@ -8,6 +8,7 @@ use App\Models\Fund;
 use App\Models\Disbursement;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
+use App\Models\FeeType;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
@@ -71,8 +72,23 @@ class AccountingService
                 ? ($loan->member->fname . ' ' . $loan->member->lname)
                 : ($loan->group->name ?? 'Group');
 
-            // determine transaction date but cap to today to avoid future-dated journal entries
-            $sourceDate = $disbursement->date_approved ? (is_string($disbursement->date_approved) ? Carbon::parse($disbursement->date_approved) : $disbursement->date_approved) : ($disbursement->created_at ? Carbon::parse($disbursement->created_at) : Carbon::today());
+            // determine transaction date from actual disbursement date first, then cap to today
+            $sourceDate = null;
+
+            if (!empty($disbursement->disbursement_date)) {
+                $sourceDate = is_string($disbursement->disbursement_date)
+                    ? Carbon::parse($disbursement->disbursement_date)
+                    : $disbursement->disbursement_date;
+            } elseif (!empty($disbursement->date_approved)) {
+                $sourceDate = is_string($disbursement->date_approved)
+                    ? Carbon::parse($disbursement->date_approved)
+                    : $disbursement->date_approved;
+            } elseif (!empty($disbursement->created_at)) {
+                $sourceDate = Carbon::parse($disbursement->created_at);
+            } else {
+                $sourceDate = Carbon::today();
+            }
+
             $transactionDate = $sourceDate->greaterThan(Carbon::today()) ? Carbon::today() : $sourceDate;
 
             $journalData = [
@@ -459,7 +475,9 @@ class AccountingService
     public function postFeeCollectionEntry($fee, $feeType)
     {
         try {
-            $feeName = strtolower($feeType->name);
+            $resolvedFeeType = $this->resolveFeeType($fee, $feeType);
+            $feeTypeName = $resolvedFeeType->name ?? 'Fee';
+            $feeName = strtolower($feeTypeName);
             
             // Check if this is a security deposit (LIABILITY, not income)
             if (stripos($feeName, 'security') !== false) {
@@ -469,14 +487,14 @@ class AccountingService
             
             // Check if this is insurance (LIABILITY, not income)
             if (stripos($feeName, 'insurance') !== false) {
-                return $this->postInsuranceFeeEntry($fee, $feeType);
+                return $this->postInsuranceFeeEntry($fee, $resolvedFeeType);
             }
             
             // 1. Determine the correct income account based on fee type
-            $incomeAccount = $this->getFeeIncomeAccount($feeType);
+            $incomeAccount = $this->getFeeIncomeAccount($resolvedFeeType);
             
             if (!$incomeAccount) {
-                throw new \Exception("Fee income account not found for fee type: {$feeType->name}");
+                throw new \Exception("Fee income account not found for fee type: {$feeTypeName}");
             }
 
             // 2. Find CASH account based on payment type
@@ -496,11 +514,16 @@ class AccountingService
             $memberName = $member ? ($member->fname . ' ' . $member->lname) : 'Unknown Member';
 
             // 4. Create journal entry
+            $transactionDate = $fee->created_at ?? ($fee->datecreated ?? date('Y-m-d'));
+            if ($transactionDate instanceof Carbon) {
+                $transactionDate = $transactionDate->format('Y-m-d');
+            }
+
             $journalData = [
-                'transaction_date' => $fee->created_at ?? date('Y-m-d'),
+                'transaction_date' => $transactionDate,
                 'reference_type' => 'Fee Collection',
                 'reference_id' => $fee->id,
-                'narrative' => "Fee payment: {$feeType->name} from {$memberName}" . ($loan ? " - Loan {$loan->code}" : ''),
+                'narrative' => "Fee payment: {$feeTypeName} from {$memberName}" . ($loan ? " - Loan {$loan->code}" : ''),
                 'cost_center_id' => $loan->branch_id ?? null,
                 'product_id' => $loan->product_id ?? null,
                 'officer_id' => $fee->added_by ?? null,
@@ -513,7 +536,7 @@ class AccountingService
                 'account_id' => $cashAccount->Id,
                 'debit' => $fee->amount,
                 'credit' => 0,
-                'narrative' => "Cash received - {$feeType->name}",
+                'narrative' => "Cash received - {$feeTypeName}",
             ];
 
             // CR: Fee Income (revenue earned)
@@ -521,7 +544,7 @@ class AccountingService
                 'account_id' => $incomeAccount->Id,
                 'debit' => 0,
                 'credit' => $fee->amount,
-                'narrative' => "Fee income - {$feeType->name}",
+                'narrative' => "Fee income - {$feeTypeName}",
             ];
 
             // Post the journal entry
@@ -531,7 +554,7 @@ class AccountingService
                 'fee_id' => $fee->id,
                 'journal_number' => $journal->journal_number,
                 'amount' => $fee->amount,
-                'fee_type' => $feeType->name,
+                'fee_type' => $feeTypeName,
                 'income_account' => $incomeAccount->code . ' - ' . $incomeAccount->name,
                 'cash_account' => $cashAccount->code . ' - ' . $cashAccount->name,
             ]);
@@ -541,13 +564,52 @@ class AccountingService
         } catch (\Exception $e) {
             Log::error('Failed to post fee collection GL entry', [
                 'fee_id' => $fee->id,
-                'fee_type' => $feeType->name ?? 'Unknown',
+                'fee_type' => $feeTypeName ?? 'Unknown',
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
             
             return null;
         }
+    }
+
+    /**
+     * Resolve fee type payload to an object with at least a name property.
+     */
+    private function resolveFeeType($fee, $feeType)
+    {
+        if (is_object($feeType) && isset($feeType->name)) {
+            return $feeType;
+        }
+
+        if (is_numeric($feeType)) {
+            $found = FeeType::find((int) $feeType);
+            if ($found) {
+                return $found;
+            }
+        }
+
+        if (is_string($feeType) && trim($feeType) !== '') {
+            $found = FeeType::where('name', $feeType)->first();
+            if ($found) {
+                return $found;
+            }
+
+            return (object) ['name' => $feeType];
+        }
+
+        if (isset($fee->feeType) && $fee->feeType && isset($fee->feeType->name)) {
+            return $fee->feeType;
+        }
+
+        if (isset($fee->fees_type_id) && $fee->fees_type_id) {
+            $found = FeeType::find((int) $fee->fees_type_id);
+            if ($found) {
+                return $found;
+            }
+        }
+
+        return (object) ['name' => 'Fee'];
     }
 
     /**
@@ -720,6 +782,7 @@ class AccountingService
     public function postInsuranceFeeEntry($fee, $feeType)
     {
         try {
+            $feeTypeName = $feeType->name ?? 'Insurance Fee';
             // 1. Find CASH/BANK account based on payment type
             $cashAccount = $this->getCashAccountByPaymentMethod($fee->payment_type ?? 1, null, null);
 
@@ -750,8 +813,13 @@ class AccountingService
             $memberName = $member ? ($member->fname . ' ' . $member->lname) : 'Unknown Member';
 
             // 4. Create journal entry
+            $transactionDate = $fee->created_at ?? ($fee->datecreated ?? date('Y-m-d'));
+            if ($transactionDate instanceof Carbon) {
+                $transactionDate = $transactionDate->format('Y-m-d');
+            }
+
             $journalData = [
-                'transaction_date' => $fee->created_at ?? date('Y-m-d'),
+                'transaction_date' => $transactionDate,
                 'reference_type' => 'Insurance Fee',
                 'reference_id' => $fee->id,
                 'narrative' => "Insurance fee from {$memberName}" . ($loan ? " - Loan {$loan->code}" : ''),
@@ -775,7 +843,7 @@ class AccountingService
                 'account_id' => $insuranceLiabilityAccount->Id,
                 'debit' => 0,
                 'credit' => $fee->amount,
-                'narrative' => "Insurance payable - {$feeType->name}",
+                'narrative' => "Insurance payable - {$feeTypeName}",
             ];
 
             // Post the journal entry
@@ -797,6 +865,92 @@ class AccountingService
                 'trace' => $e->getTraceAsString()
             ]);
             
+            return null;
+        }
+    }
+
+    /**
+     * Post journal entry for savings deposits made from member profile.
+     *
+     * DR: Cash/Bank/Mobile wallet
+     * CR: Client Savings Deposits liability (21010)
+     */
+    public function postSavingsDepositEntry($saving, $member = null)
+    {
+        try {
+            $depositAmount = (float) ($saving->value ?? 0);
+            if ($depositAmount <= 0) {
+                throw new \Exception('Invalid savings deposit amount');
+            }
+
+            if (!$member && !empty($saving->member_id)) {
+                $member = \App\Models\Member::find($saving->member_id);
+            }
+
+            $paymentType = (int) ($saving->platform ?? $saving->payment_type ?? 1);
+            $cashAccount = $this->getCashAccountByPaymentMethod($paymentType, null, null);
+
+            $savingsLiabilityAccount = SystemAccount::where('code', '21000')
+                ->where('sub_code', '21010')
+                ->first();
+
+            if (!$savingsLiabilityAccount) {
+                $savingsLiabilityAccount = SystemAccount::where('code', '21000')
+                    ->whereNull('sub_code')
+                    ->first();
+            }
+
+            if (!$cashAccount || !$savingsLiabilityAccount) {
+                throw new \Exception('Required accounts not found (Cash or Client Savings Deposits)');
+            }
+
+            $memberName = $member ? trim(($member->fname ?? '') . ' ' . ($member->lname ?? '')) : 'Unknown Member';
+            $transactionDate = $saving->datecreated ?? ($saving->created_at ?? $saving->sdate ?? date('Y-m-d'));
+            if ($transactionDate instanceof Carbon) {
+                $transactionDate = $transactionDate->format('Y-m-d');
+            }
+
+            $journalData = [
+                'transaction_date' => $transactionDate,
+                'reference_type' => 'Savings Deposit',
+                'reference_id' => $saving->id,
+                'narrative' => "Savings deposit from {$memberName} - {$saving->code}",
+                'cost_center_id' => $saving->branch_id ?? null,
+                'officer_id' => $saving->added_by ?? null,
+                'posted_by' => $saving->added_by ?? auth()->id(),
+            ];
+
+            $journalLines = [
+                [
+                    'account_id' => $cashAccount->Id,
+                    'debit' => $depositAmount,
+                    'credit' => 0,
+                    'narrative' => 'Savings deposit received',
+                ],
+                [
+                    'account_id' => $savingsLiabilityAccount->Id,
+                    'debit' => 0,
+                    'credit' => $depositAmount,
+                    'narrative' => 'Client savings deposits liability',
+                ],
+            ];
+
+            $journal = JournalEntry::postJournal($journalData, $journalLines);
+
+            Log::info('Savings deposit GL entry posted', [
+                'saving_id' => $saving->id,
+                'journal_number' => $journal->journal_number,
+                'amount' => $depositAmount,
+            ]);
+
+            return $journal;
+        } catch (\Exception $e) {
+            Log::error('Failed to post savings deposit GL entry', [
+                'saving_id' => $saving->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return null;
         }
     }

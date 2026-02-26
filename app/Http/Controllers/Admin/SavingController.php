@@ -150,6 +150,19 @@ class SavingController extends Controller
             $savingId = DB::table('savings')->insertGetId($savingData);
             $saving = Saving::find($savingId);
 
+            // Post GL for immediate (manual) savings deposits
+            if ($validated['payment_type'] != 1 && $saving) {
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $accountingService->postSavingsDepositEntry($saving, $member);
+                } catch (\Exception $glError) {
+                    \Log::error('Savings GL posting failed (manual)', [
+                        'saving_id' => $savingId,
+                        'error' => $glError->getMessage(),
+                    ]);
+                }
+            }
+
             DB::commit();
 
             if ($validated['payment_type'] == 1) {
@@ -506,6 +519,19 @@ class SavingController extends Controller
                         'pay_status' => 'PAID',
                         'pay_message' => json_encode($statusResult)
                     ]);
+
+                    // Post GL when mobile money deposit is confirmed paid
+                    try {
+                        $accountingService = new \App\Services\AccountingService();
+                        $member = \App\Models\Member::find($saving->member_id);
+                        $accountingService->postSavingsDepositEntry($saving, $member);
+                    } catch (\Exception $glError) {
+                        \Log::error('Savings GL posting failed (mobile confirmation)', [
+                            'saving_id' => $saving->id,
+                            'txn_id' => $validated['transaction_reference'],
+                            'error' => $glError->getMessage(),
+                        ]);
+                    }
 
                     return response()->json([
                         'success' => true,

@@ -809,9 +809,7 @@ class RepaymentController extends Controller
         // Get schedules with payment status - EXACT bimsadmin calculation logic
         $principal = floatval($loan->principal); // Running principal balance
         $globalprincipal = floatval($loan->principal); // Global principal for interest calculation
-        $carryOverPayment = 0; // Track overpayments to distribute to next schedules
-        
-        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $lateFeesPaidPerSchedule, $pendingPerSchedule, &$carryOverPayment) {
+        $schedules = $loan->schedules->map(function($schedule, $index) use ($loan, &$principal, &$globalprincipal, $paidPerSchedule, $lateFeesPaidPerSchedule, $pendingPerSchedule) {
             // 1. Calculate "Principal cal Interest" (reducing balance per period)
             $period = floor($loan->period / 2);
             $pricipalcalIntrest = $period > 0 ? ($loan->principal / $period) : 0;
@@ -973,9 +971,17 @@ class RepaymentController extends Controller
             // Ignore old schedule.paid field which has incorrect carry-over data
             $actualPaymentReceived = $paidFromRepayments;
             $totalPaid = $actualPaymentReceived;
+
+            // For historical/imported data, any amount above P+I proves late fees were actually paid
+            // Ensure display distribution and total payment reflect real money received
+            $principalInterestDue = $schedule->principal + $intrestamtpayable;
+            $lateFeesPaidFromActual = max(0, $actualPaymentReceived - $principalInterestDue);
+            if ($lateFeesPaidFromActual > 0) {
+                $latepayment = max($latepayment, $lateFeesPaidFromActual);
+                $totalWaivedAmount = max(0, $latepaymentOriginal - $latepayment);
+            }
             
-            // 5a. REMOVED: Automatic carry-over disabled - excess stays on original schedule
-            // Admins will manually carry over excess using "Carry Over" button
+            // Automatic carry-over remains disabled
             // $totalPaid += $carryOverPayment;
             // $carryOverPayment = 0; // Reset after applying
             // 6. Get pending count from pre-loaded data (optimized - no N+1 queries)
@@ -1029,16 +1035,16 @@ class RepaymentController extends Controller
             }
             
             // 8. Calculate total balance
-            $scheduleDue = $schedule->principal + $intrestamtpayable + $latepayment;
-            $act_bal = $scheduleDue - $totalPaid;
-            
-            // 8a. Handle overpayments - SHOW excess in separate column
+            $scheduleDueNet = $schedule->principal + $intrestamtpayable + $latepayment;
+            $scheduleDueGross = $schedule->principal + $intrestamtpayable + $latepaymentOriginal;
+            $act_bal = $scheduleDueNet - $totalPaid;
+
+            // 8a. Show EXCESS only if client paid above GROSS due (not just above net due after waivers)
+            $excessAmount = $totalPaid - $scheduleDueGross;
+            $schedule->excess_amount = $excessAmount > 1 ? $excessAmount : 0;
+
             if ($act_bal < 0) {
-                // Overpayment: Put excess in "Excess Amount" column
-                $schedule->excess_amount = abs($act_bal);
-                $act_bal = 0; // Balance should be 0 (fully paid)
-            } else {
-                $schedule->excess_amount = 0;
+                $act_bal = 0; // Balance cannot be negative
             }
             
             // 8b. Adjust arrears period display
@@ -4334,6 +4340,7 @@ class RepaymentController extends Controller
         try {
             $payments = Repayment::where('schedule_id', $scheduleId)
                 ->where('status', 1)
+                ->where('amount', '>', 0)
                 ->orderBy('id', 'asc')
                 ->get();
             
