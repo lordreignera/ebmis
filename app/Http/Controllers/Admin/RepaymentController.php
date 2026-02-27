@@ -1076,9 +1076,12 @@ class RepaymentController extends Controller
             $schedule->principal_balance = $principal;
             $schedule->pending_count = $pendingCount;
             
-            // Set payment status for filtering next due
-            $schedule->payment_status = $schedule->status == 0 ? 'pending' : 'paid';
-            $schedule->is_overdue = $d > 0 && $schedule->status == 0;
+            // Set display/payment status using calculated balance (not raw DB status)
+            // Raw status can be stale after imports; balance-based status reflects reality.
+            $isFullyPaid = $act_bal <= 1;
+            $schedule->status = $isFullyPaid ? 1 : 0;
+            $schedule->payment_status = $isFullyPaid ? 'paid' : 'pending';
+            $schedule->is_overdue = $d > 0 && !$isFullyPaid;
             $schedule->due_date = $schedule->payment_date;
             $schedule->due_amount = $schedule->principal + $intrestamtpayable;
             $schedule->penalty_amount = $latepayment;
@@ -1544,7 +1547,9 @@ class RepaymentController extends Controller
         $alreadyPaid = floatval($schedule->paid ?? 0);
         
         // Calculate late fees
-        $loan = PersonalLoan::with('product')->find($request->loan_id);
+        if (method_exists($loan, 'loadMissing')) {
+            $loan->loadMissing('product');
+        }
         $lateFeeData = $this->calculateLateFee($schedule, $loan);
         $lateFees = $lateFeeData['net']; // After waivers
         
@@ -2488,13 +2493,12 @@ class RepaymentController extends Controller
         try {
             DB::beginTransaction();
 
-            $loan = $repayment->loan;
             $oldAmount = $repayment->amount;
             $wasConfirmed = $repayment->status == 1;
 
             // Reverse the old repayment effects if it was confirmed
             if ($wasConfirmed) {
-                $loan->decrement('paid', $oldAmount);
+                // No-op: payment tracking is schedule-based (loan_schedules.paid)
             }
 
             // Update repayment data
@@ -2549,14 +2553,10 @@ class RepaymentController extends Controller
         try {
             DB::beginTransaction();
 
-            $loan = $repayment->loan;
-
             // Reverse the repayment effects if it was confirmed
             if ($repayment->status == 1) {
-                $loan->decrement('paid', $repayment->amount);
-                
-                // Update loan status back to active
-                $loan->update(['status' => 2]); // Back to active
+                // Keep rollback behavior on repayment record only.
+                // Loan-level paid column is not a reliable source in current flow.
             }
 
             $repayment->delete();
@@ -2907,7 +2907,8 @@ class RepaymentController extends Controller
                         ]);
                         
                         // Get loan and schedule
-                        $loan = Loan::find($repayment->loan_id);
+                        $loanResult = $this->findLoanById($repayment->loan_id);
+                        $loan = $loanResult['loan'];
                         $schedule = LoanSchedule::find($repayment->schedule_id);
                         
                         if ($loan && $schedule) {
@@ -3215,7 +3216,8 @@ class RepaymentController extends Controller
                     // Process ALL repayments with this transaction reference
                     foreach ($repayments as $repayment) {
                         $schedule = LoanSchedule::find($repayment->schedule_id);
-                        $loan = Loan::find($repayment->loan_id);
+                        $loanResult = $this->findLoanById($repayment->loan_id);
+                        $loan = $loanResult['loan'];
                         
                         // Update repayment status
                         $repayment->update([
