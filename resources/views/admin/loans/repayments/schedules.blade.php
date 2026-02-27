@@ -4,6 +4,42 @@
 
 @push('styles')
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+<style>
+    #schedulesTable.schedules-table-compact {
+        table-layout: fixed;
+        width: 100%;
+        font-size: 0.72rem;
+    }
+
+    #schedulesTable.schedules-table-compact th,
+    #schedulesTable.schedules-table-compact td {
+        padding: 0.2rem 0.25rem;
+        vertical-align: middle;
+    }
+
+    #schedulesTable.schedules-table-compact th {
+        white-space: normal;
+        line-height: 1.1;
+    }
+
+    #schedulesTable.schedules-table-compact td {
+        white-space: nowrap;
+    }
+
+    #schedulesTable.schedules-table-compact .btn.btn-sm {
+        padding: 0.12rem 0.35rem;
+        font-size: 0.67rem;
+    }
+
+    #schedulesTable.schedules-table-compact .badge {
+        font-size: 0.65rem;
+        padding: 0.2em 0.45em;
+    }
+
+    #schedulesTable.schedules-table-compact small {
+        font-size: 0.62rem;
+    }
+</style>
 @endpush
 
 @push('scripts')
@@ -294,29 +330,29 @@
                 @endphp
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered table-hover" id="schedulesTable" style="font-size: 0.875rem;">
+                        <table class="table table-sm table-bordered table-hover schedules-table-compact" id="schedulesTable">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 3%;">#</th>
-                                    <th style="width: 7%;">Installment Date</th>
-                                    <th style="width: 6%;">Principal</th>
+                                    <th style="width: 6%;">Date</th>
+                                    <th style="width: 5%;">Principal</th>
                                     {{-- <th style="width: 6%;">Original Interest</th> --}}
                                     {{-- <th style="width: 6%;">Principal cal Intrest</th> --}}
                                     {{-- <th style="width: 6%;">Principal Bal</th> --}}
                                     {{-- <th style="width: 6%;">Principal for Intrest payable</th> --}}
-                                    <th style="width: 6%;">Interest Payable</th>
-                                    <th style="width: 5%;">Periods in Arrears</th>
-                                    <th style="width: 6%;">Late Fees</th>
-                                    <th style="width: 6%;">Total Payment</th>
-                                    <th style="width: 6%;">Principal Paid</th>
-                                    <th style="width: 6%;">Interest Paid</th>
-                                    <th style="width: 6%;">Late fees Paid</th>
-                                    <th style="width: 6%;">Total Amount Paid</th>
-                                    <th style="width: 6%;">Total Balance</th>
+                                    <th style="width: 5%;">Int. Pay.</th>
+                                    <th style="width: 4%;">Arrears</th>
+                                    <th style="width: 5%;">Late Fees</th>
+                                    <th style="width: 5%;">Total Pay.</th>
+                                    <th style="width: 5%;">Prin. Paid</th>
+                                    <th style="width: 5%;">Int. Paid</th>
+                                    <th style="width: 5%;">Late Paid</th>
+                                    <th style="width: 6%;">Paid</th>
+                                    <th style="width: 5%;">Balance</th>
                                     @if($hasExcessAmounts)
-                                        <th style="width: 6%;">Excess Amount</th>
+                                        <th style="width: 5%;">Excess</th>
                                     @endif
-                                    <th style="width: 5%;">Status</th>
+                                    <th style="width: 4%;">Status</th>
                                     <th style="width: 5%;">Action</th>
                                 </tr>
                             </thead>
