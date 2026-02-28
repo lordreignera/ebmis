@@ -279,18 +279,44 @@ class RepaymentController extends Controller
             ];
         }
         
-        // Find any earlier unpaid schedules (by payment_date)
-        $earlierUnpaidSchedule = LoanSchedule::where('loan_id', $loanId)
+        // IMPORTANT: payment_date is stored as text and may be DD-MM-YYYY.
+        // Do NOT compare it in SQL as a string; parse and compare as timestamps.
+        $currentDueTs = $this->parsePaymentDate($currentSchedule->payment_date);
+
+        $candidateSchedules = LoanSchedule::where('loan_id', $loanId)
             ->where('id', '!=', $scheduleId)
-            ->where('payment_date', '<', $currentSchedule->payment_date)
-            ->where(function($query) {
-                // Check if total_balance > 0 (not fully paid)
-                // Use raw SQL because total_balance is calculated, not stored
-                $query->where('status', '!=', 1)
-                      ->orWhere(DB::raw('(principal + interest - COALESCE(paid, 0))'), '>', 0.01);
+            ->get()
+            ->filter(function ($schedule) use ($currentDueTs) {
+                $scheduleDueTs = $this->parsePaymentDate($schedule->payment_date);
+                return $scheduleDueTs < $currentDueTs;
             })
-            ->orderBy('payment_date', 'asc')
-            ->first();
+            ->sortBy(function ($schedule) {
+                return $this->parsePaymentDate($schedule->payment_date);
+            });
+
+        $candidateIds = $candidateSchedules->pluck('id')->values()->all();
+        $actualPaidMap = [];
+        if (!empty($candidateIds)) {
+            $actualPaidMap = DB::table('repayments')
+                ->whereIn('schedule_id', $candidateIds)
+                ->where('amount', '>', 0)
+                ->where(function ($query) {
+                    $query->where('status', 1)
+                        ->orWhere('payment_status', 'Completed');
+                })
+                ->groupBy('schedule_id')
+                ->select('schedule_id', DB::raw('SUM(amount) as total_paid'))
+                ->pluck('total_paid', 'schedule_id')
+                ->toArray();
+        }
+
+        $earlierUnpaidSchedule = $candidateSchedules
+            ->first(function ($schedule) use ($actualPaidMap) {
+                $requiredAmount = (float) ($schedule->payment ?? ($schedule->principal + $schedule->interest));
+                $paidAmount = (float) ($actualPaidMap[$schedule->id] ?? 0);
+                $remainingAmount = $requiredAmount - $paidAmount;
+                return $remainingAmount > 1; // rounding tolerance
+            });
         
         if ($earlierUnpaidSchedule) {
             return [
@@ -298,7 +324,14 @@ class RepaymentController extends Controller
                 'message' => sprintf(
                     'Cannot pay this schedule. Please pay the earlier schedule due on %s first. Remaining balance: UGX %s',
                     date('d-M-Y', $this->parsePaymentDate($earlierUnpaidSchedule->payment_date)),
-                    number_format(($earlierUnpaidSchedule->principal + $earlierUnpaidSchedule->interest - ($earlierUnpaidSchedule->paid ?? 0)), 0)
+                    number_format(
+                        max(
+                            0,
+                            ((float) ($earlierUnpaidSchedule->payment ?? ($earlierUnpaidSchedule->principal + $earlierUnpaidSchedule->interest)))
+                            - (float) ($actualPaidMap[$earlierUnpaidSchedule->id] ?? 0)
+                        ),
+                        0
+                    )
                 ),
                 'unpaid_schedule' => $earlierUnpaidSchedule
             ];

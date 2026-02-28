@@ -434,8 +434,11 @@
                                             @endif
                                         </td>
                                         <td class="text-end">
-                                            @if($schedule->total_balance > 0)
-                                                <strong class="text-danger">{{ number_format($schedule->total_balance, 0) }}</strong>
+                                            @php
+                                                $displayBalance = (float) ($schedule->total_balance ?? 0);
+                                            @endphp
+                                            @if($displayBalance > 1)
+                                                <strong class="text-danger">{{ number_format($displayBalance, 0) }}</strong>
                                             @else
                                                 <span class="text-success">0</span>
                                             @endif
@@ -625,7 +628,8 @@
                                             // Only sum positive balances (unpaid amounts)
                                             // Negative balances (overpayments) should not reduce the total
                                             $totalOutstanding = $schedules->sum(function($schedule) {
-                                                return max(0, $schedule->total_balance ?? 0);
+                                                $balance = (float) ($schedule->total_balance ?? 0);
+                                                return $balance > 1 ? $balance : 0;
                                             });
                                         @endphp
                                         <strong>{{ number_format($totalOutstanding, 0) }}</strong>
