@@ -813,7 +813,11 @@ class RepaymentController extends Controller
         // Get total paid per schedule (single query)
         $paidPerSchedule = DB::table('repayments')
             ->whereIn('schedule_id', $scheduleIds)
-            ->where('status', 1)
+            ->where('amount', '>', 0)
+            ->where(function($query) {
+                $query->where('status', 1)
+                      ->orWhere('payment_status', 'Completed');
+            })
             ->groupBy('schedule_id')
             ->select('schedule_id', DB::raw('SUM(amount) as total_paid'))
             ->pluck('total_paid', 'schedule_id')
@@ -876,7 +880,11 @@ class RepaymentController extends Controller
                     // Find last payment date
                     $lastPayment = DB::table('repayments')
                         ->where('schedule_id', $schedule->id)
-                        ->where('status', 1)
+                        ->where('amount', '>', 0)
+                        ->where(function($query) {
+                            $query->where('status', 1)
+                                  ->orWhere('payment_status', 'Completed');
+                        })
                         ->orderBy('id', 'desc')
                         ->first();
                     
@@ -1576,8 +1584,18 @@ class RepaymentController extends Controller
         // Calculate what's actually owed on this schedule (P + I + Late Fees - Already Paid)
         $scheduleDue = $schedule->principal + $schedule->interest;
         
-        // Use schedule.paid which includes both direct payments and carry-overs
-        $alreadyPaid = floatval($schedule->paid ?? 0);
+        // Use successful repayments only (status=1 OR payment_status=Completed)
+        // to match schedule display calculations and avoid stale schedule.paid mismatches.
+        $alreadyPaid = floatval(
+            DB::table('repayments')
+                ->where('schedule_id', $schedule->id)
+                ->where('amount', '>', 0)
+                ->where(function($query) {
+                    $query->where('status', 1)
+                          ->orWhere('payment_status', 'Completed');
+                })
+                ->sum('amount')
+        );
         
         // Calculate late fees
         if (method_exists($loan, 'loadMissing')) {
