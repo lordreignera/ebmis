@@ -291,6 +291,10 @@ Route::middleware([
         Route::get('/get/{id}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getRepayment'])->name('get');
         Route::get('/schedule-pending/{scheduleId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePendingRepayments'])->name('schedule-pending');
     });
+
+    // Personal Loan Management Preview Dashboard
+    Route::get('/loans/personal/preview-dashboard', [\App\Http\Controllers\Admin\LoanManagementController::class, 'personalPreviewDashboard'])
+        ->name('loans.personal.preview-dashboard');
     
     // Get all payments for a schedule
     Route::get('/loans/schedules/{id}/payments', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePayments'])->name('loans.schedules.payments');

@@ -13,8 +13,12 @@ use App\Models\GroupLoan;
 use App\Models\Loan;
 use App\Models\Disbursement;
 use App\Models\Repayment;
+use App\Models\LoanSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
 
 class LoanManagementController extends Controller
 {
@@ -398,6 +402,436 @@ class LoanManagementController extends Controller
                 'connection' => false,
                 'message' => 'Connection test failed: ' . $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * Personal loan preview dashboard (real data, monthly)
+     */
+    public function personalPreviewDashboard(Request $request)
+    {
+        $selectedMonth = $request->get('month', now()->format('Y-m'));
+        $selectedOfficer = $request->get('officer');
+        $selectedOfficer = ($selectedOfficer !== null && $selectedOfficer !== '') ? (int) $selectedOfficer : null;
+
+        try {
+            $monthStart = Carbon::createFromFormat('Y-m', $selectedMonth)->startOfMonth();
+        } catch (\Exception $e) {
+            $monthStart = now()->startOfMonth();
+            $selectedMonth = $monthStart->format('Y-m');
+        }
+
+        $monthEnd = (clone $monthStart)->endOfMonth();
+        $monthLabel = $monthStart->format('F Y');
+
+        $disbursementDateCandidates = [];
+        if (Schema::hasColumn('disbursements', 'disbursement_date')) {
+            $disbursementDateCandidates[] = 'disbursement_date';
+        }
+        if (Schema::hasColumn('disbursements', 'date_approved')) {
+            $disbursementDateCandidates[] = 'date_approved';
+        }
+        if (Schema::hasColumn('disbursements', 'created_at')) {
+            $disbursementDateCandidates[] = 'created_at';
+        }
+        if (empty($disbursementDateCandidates)) {
+            $disbursementDateCandidates[] = 'created_at';
+        }
+        $disbursementDateExpression = count($disbursementDateCandidates) > 1
+            ? 'COALESCE(' . implode(', ', $disbursementDateCandidates) . ')'
+            : $disbursementDateCandidates[0];
+
+        $successfulRepaymentsBase = Repayment::query()
+            ->where('amount', '>', 0)
+            ->whereBetween('date_created', [$monthStart, $monthEnd])
+            ->where(function ($query) {
+                $query->where('status', 1)
+                    ->orWhere('payment_status', 'Completed');
+            })
+            ->whereHas('schedule.personalLoan');
+
+        $collectionsTodayAmount = (clone $successfulRepaymentsBase)->sum('amount');
+        $collectionsTodayCount = (clone $successfulRepaymentsBase)->count();
+
+        $disbursementsBase = Disbursement::query()
+            ->where('loan_type', 1)
+            ->where('status', 2)
+            ->whereRaw(
+                "DATE({$disbursementDateExpression}) BETWEEN ? AND ?",
+                [$monthStart->toDateString(), $monthEnd->toDateString()]
+            );
+
+        $disbursementsTodayAmount = (clone $disbursementsBase)->sum('amount');
+        $disbursementsTodayCount = (clone $disbursementsBase)->count();
+
+        // Pending pipeline should include:
+        // 1) Not yet approved loans (verified = 0)
+        // 2) Already approved loans that are still awaiting disbursement
+        $pendingApprovals = PersonalLoan::query()
+            ->where(function ($query) use ($monthStart, $monthEnd) {
+                $query->where(function ($q) use ($monthStart, $monthEnd) {
+                    $q->where('verified', 0)
+                        ->whereBetween('datecreated', [$monthStart, $monthEnd]);
+                })->orWhere(function ($q) use ($monthStart, $monthEnd) {
+                    $q->where('verified', 1)
+                        ->whereRaw('DATE(COALESCE(date_approved, datecreated)) BETWEEN ? AND ?', [
+                            $monthStart->toDateString(),
+                            $monthEnd->toDateString()
+                        ])
+                        ->whereDoesntHave('disbursements', function ($d) {
+                            $d->where('status', 2);
+                        });
+                });
+            })
+            ->count();
+
+        $exceptionsCount = PersonalLoan::query()
+            ->where(function ($query) {
+                $query->where('verified', 2)
+                    ->orWhere('status', 4);
+            })
+            ->whereBetween('datecreated', [$monthStart, $monthEnd])
+            ->count();
+
+        $collectionsQueue = Repayment::with(['schedule.personalLoan.member'])
+            ->where('amount', '>', 0)
+            ->whereBetween('date_created', [$monthStart, $monthEnd])
+            ->where(function ($query) {
+                $query->where('status', 1)
+                    ->orWhere('payment_status', 'Completed');
+            })
+            ->whereHas('schedule.personalLoan')
+            ->orderByDesc('date_created')
+            ->limit(6)
+            ->get();
+
+        $disbursementQueue = Disbursement::with(['personalLoan.member'])
+            ->where('loan_type', 1)
+            ->whereRaw(
+                "DATE({$disbursementDateExpression}) BETWEEN ? AND ?",
+                [$monthStart->toDateString(), $monthEnd->toDateString()]
+            )
+            ->select('disbursements.*')
+            ->selectRaw("{$disbursementDateExpression} as activity_date")
+            ->orderByRaw("{$disbursementDateExpression} DESC")
+            ->limit(6)
+            ->get();
+
+        $cashReceived = (clone $successfulRepaymentsBase)
+            ->where(function ($query) {
+                $query->where('type', 1)
+                    ->orWhere('platform', 'cash');
+            })
+            ->sum('amount');
+
+        $bankReceived = (clone $successfulRepaymentsBase)
+            ->where(function ($query) {
+                $query->where('type', 3)
+                    ->orWhereIn('platform', ['bank', 'bank_transfer']);
+            })
+            ->sum('amount');
+
+        $mobileReceived = (clone $successfulRepaymentsBase)
+            ->where(function ($query) {
+                $query->where('type', 2)
+                    ->orWhere('platform', 'mobile');
+            })
+            ->sum('amount');
+
+        $cashPaidOut = (clone $disbursementsBase)
+            ->where('payment_type', 1)
+            ->sum('amount');
+
+        // Keep dashboard KPI definitions aligned:
+        // - Total Collections = all successful repayments in month
+        // - Total Paid Out = all disbursements in month
+        // - Expected Balance = Total Collections - Total Paid Out
+        $totalPaidOut = $disbursementsTodayAmount;
+        $expectedBalance = $collectionsTodayAmount - $totalPaidOut;
+
+        $activeCandidates = PersonalLoan::query()
+            ->whereIn('status', [2, 3])
+            ->with([
+                'schedules',
+                'repayments',
+                'member:id,fname,lname,contact',
+                'assignedTo:id,name',
+                'approvedBy:id,name',
+                'addedBy:id,name'
+            ])
+            ->get();
+
+        $activeLoanCollection = $activeCandidates->filter(function ($loan) {
+            $actualStatus = $loan->getActualStatus();
+            $schedules = $loan->schedules ?? collect();
+
+            if ($actualStatus !== 'running' || $schedules->isEmpty()) {
+                return false;
+            }
+
+            $unpaidCount = $schedules->where('status', '!=', 1)->count();
+            if ($unpaidCount <= 0) {
+                return false;
+            }
+
+            $totalPayable = $schedules->sum(function ($schedule) {
+                return (float) ($schedule->principal ?? 0) + (float) ($schedule->interest ?? 0);
+            });
+
+            $totalPaid = (float) ($loan->repayments ? $loan->repayments->where('status', 1)->sum('amount') : 0);
+            $outstanding = $totalPayable - $totalPaid;
+
+            return $outstanding != 0;
+        })->values();
+
+        $activeLoanIds = $activeLoanCollection->pluck('id');
+        $activeLoanIdsArray = $activeLoanIds->toArray();
+        $activeLoans = $activeLoanCollection->count();
+        $totalLoansCount = PersonalLoan::count();
+
+        $officerOptions = $activeLoanCollection
+            ->map(function ($loan) {
+                $officerId = $loan->assigned_to ?: ($loan->approved_by ?: $loan->added_by);
+                $officerName = optional($loan->assignedTo)->name
+                    ?: (optional($loan->approvedBy)->name ?: (optional($loan->addedBy)->name ?: 'Unassigned'));
+
+                if (!$officerId) {
+                    return null;
+                }
+
+                return [
+                    'id' => (int) $officerId,
+                    'name' => $officerName,
+                ];
+            })
+            ->filter()
+            ->unique('id')
+            ->sortBy('name')
+            ->values();
+
+        $parBuckets = [
+            'par_1_30' => 0,
+            'par_31_60' => 0,
+            'par_61_90' => 0,
+            'par_90_plus' => 0,
+        ];
+
+        $todayDate = now()->toDateString();
+        $severeOverdueDate = now()->copy()->subDays(30)->toDateString();
+
+        $today = now()->startOfDay();
+        $officerStats = [];
+        $clientsDueTodayRows = [];
+        $badlyOverdueRows = [];
+
+        foreach ($activeLoanCollection as $loan) {
+            $officerId = $loan->assigned_to ?: ($loan->approved_by ?: $loan->added_by);
+            $officerName = optional($loan->assignedTo)->name
+                ?: (optional($loan->approvedBy)->name ?: (optional($loan->addedBy)->name ?: 'Unassigned'));
+
+            if ($selectedOfficer && (int) $officerId !== $selectedOfficer) {
+                continue;
+            }
+
+            $officerKey = $officerId ? ('id_' . $officerId) : 'unassigned';
+
+            if (!isset($officerStats[$officerKey])) {
+                $officerStats[$officerKey] = [
+                    'officer_id' => $officerId,
+                    'officer_name' => $officerName,
+                    'assigned_loans' => 0,
+                    'due_today_count' => 0,
+                    'overdue_count' => 0,
+                    'severe_overdue_count' => 0,
+                    'collected_amount' => 0,
+                ];
+            }
+            $officerStats[$officerKey]['assigned_loans']++;
+
+            $loanHasDueToday = false;
+            $loanHasOverdue = false;
+            $loanHasSevereOverdue = false;
+
+            foreach (($loan->schedules ?? collect()) as $schedule) {
+                if ((int) ($schedule->status ?? 0) === 1) {
+                    continue;
+                }
+
+                $dueDate = $this->parsePreviewDate($schedule->payment_date ?? null);
+                if (!$dueDate) {
+                    continue;
+                }
+
+                if ($dueDate->lt($today)) {
+                    $daysOverdue = $dueDate->diffInDays($today);
+                    $loanHasOverdue = true;
+
+                    if ($daysOverdue <= 30) {
+                        $parBuckets['par_1_30']++;
+                    } elseif ($daysOverdue <= 60) {
+                        $parBuckets['par_31_60']++;
+                    } elseif ($daysOverdue <= 90) {
+                        $parBuckets['par_61_90']++;
+                    } else {
+                        $parBuckets['par_90_plus']++;
+                    }
+
+                    if ($daysOverdue >= 30) {
+                        $loanHasSevereOverdue = true;
+                        $badlyOverdueRows[] = [
+                            'schedule_id' => $schedule->id,
+                            'loan_id' => $loan->id,
+                            'loan_code' => $loan->code,
+                            'fname' => optional($loan->member)->fname,
+                            'lname' => optional($loan->member)->lname,
+                            'contact' => optional($loan->member)->contact,
+                            'officer_name' => $officerName,
+                            'payment' => (float) ($schedule->payment ?? 0),
+                            'payment_date' => $schedule->payment_date,
+                            'days_overdue' => $daysOverdue,
+                        ];
+                    }
+                }
+
+                if ($dueDate->eq($today)) {
+                    $loanHasDueToday = true;
+                    $clientsDueTodayRows[] = [
+                        'schedule_id' => $schedule->id,
+                        'loan_id' => $loan->id,
+                        'loan_code' => $loan->code,
+                        'fname' => optional($loan->member)->fname,
+                        'lname' => optional($loan->member)->lname,
+                        'contact' => optional($loan->member)->contact,
+                        'officer_name' => $officerName,
+                        'payment' => (float) ($schedule->payment ?? 0),
+                        'payment_date' => $schedule->payment_date,
+                    ];
+                }
+            }
+
+            if ($loanHasDueToday) {
+                $officerStats[$officerKey]['due_today_count']++;
+            }
+            if ($loanHasOverdue) {
+                $officerStats[$officerKey]['overdue_count']++;
+            }
+            if ($loanHasSevereOverdue) {
+                $officerStats[$officerKey]['severe_overdue_count']++;
+            }
+        }
+
+        $collectionsByOfficer = collect();
+        if (!empty($activeLoanIdsArray)) {
+            $collectionsByOfficer = DB::table('repayments as r')
+                ->join('loan_schedules as ls', 'ls.id', '=', 'r.schedule_id')
+                ->join('personal_loans as pl', 'pl.id', '=', 'ls.loan_id')
+                ->whereIn('pl.id', $activeLoanIdsArray)
+                ->where('r.amount', '>', 0)
+                ->whereBetween('r.date_created', [$monthStart, $monthEnd])
+                ->where(function ($query) {
+                    $query->where('r.status', 1)
+                        ->orWhere('r.payment_status', 'Completed');
+                })
+                ->groupBy(DB::raw('COALESCE(pl.assigned_to, pl.approved_by, pl.added_by)'))
+                ->selectRaw('COALESCE(pl.assigned_to, pl.approved_by, pl.added_by) as officer_id, SUM(r.amount) as collected_amount')
+                ->get()
+                ->pluck('collected_amount', 'officer_id');
+        }
+
+        foreach ($officerStats as $key => $row) {
+            $officerStats[$key]['collected_amount'] = (float) ($collectionsByOfficer[$row['officer_id']] ?? 0);
+        }
+
+        $officerPerformance = collect(array_values($officerStats))
+            ->sortByDesc('overdue_count')
+            ->take(10)
+            ->values();
+
+        $clientsDueToday = collect($clientsDueTodayRows)
+            ->map(function ($row) {
+                return (object) $row;
+            })
+            ->sortBy(['officer_name', 'payment_date'])
+            ->take(20)
+            ->values();
+
+        $badlyOverdueClients = collect($badlyOverdueRows)
+            ->map(function ($row) {
+                return (object) $row;
+            })
+            ->sortByDesc('days_overdue')
+            ->take(20)
+            ->values();
+
+        $recentActivity = collect();
+
+        foreach ($collectionsQueue->take(3) as $item) {
+            $loanCode = optional(optional($item->schedule)->personalLoan)->code ?? ('LN-' . $item->loan_id);
+            $recentActivity->push([
+                'time' => Carbon::parse($item->date_created),
+                'text' => 'Repayment posted on ' . $loanCode . ' (UGX ' . number_format((float) $item->amount, 0) . ')',
+            ]);
+        }
+
+        foreach ($disbursementQueue->take(3) as $item) {
+            $loanCode = optional($item->personalLoan)->code ?? ('LN-' . $item->loan_id);
+            $recentActivity->push([
+                'time' => Carbon::parse($item->activity_date ?? $item->created_at ?? now()),
+                'text' => 'Disbursement ' . strtolower($item->status_name ?? 'updated') . ' for ' . $loanCode,
+            ]);
+        }
+
+        $recentActivity = $recentActivity
+            ->sortByDesc('time')
+            ->take(6)
+            ->values();
+
+        return view('admin.loans.personal-preview-dashboard', compact(
+            'selectedMonth',
+            'selectedOfficer',
+            'officerOptions',
+            'monthLabel',
+            'collectionsTodayAmount',
+            'collectionsTodayCount',
+            'disbursementsTodayAmount',
+            'disbursementsTodayCount',
+            'pendingApprovals',
+            'exceptionsCount',
+            'cashReceived',
+            'bankReceived',
+            'mobileReceived',
+            'cashPaidOut',
+            'totalPaidOut',
+            'expectedBalance',
+            'totalLoansCount',
+            'activeLoans',
+            'parBuckets',
+            'collectionsQueue',
+            'disbursementQueue',
+            'recentActivity',
+            'officerPerformance',
+            'clientsDueToday',
+            'badlyOverdueClients'
+        ));
+    }
+
+    /**
+     * Parse legacy schedule date values safely.
+     */
+    private function parsePreviewDate($dateValue): ?Carbon
+    {
+        if (empty($dateValue)) {
+            return null;
+        }
+
+        try {
+            if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', (string) $dateValue, $matches)) {
+                return Carbon::createFromDate((int) $matches[3], (int) $matches[2], (int) $matches[1])->startOfDay();
+            }
+
+            return Carbon::parse($dateValue)->startOfDay();
+        } catch (\Exception $e) {
+            return null;
         }
     }
     
