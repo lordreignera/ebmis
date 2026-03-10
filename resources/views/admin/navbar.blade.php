@@ -337,6 +337,42 @@
     padding-top: 64px !important;
 }
 
+@media (max-width: 991px) {
+    .navbar .navbar-brand-wrapper {
+        width: auto !important;
+        min-width: 150px !important;
+        padding: 0 0.5rem !important;
+    }
+
+    .navbar .navbar-menu-wrapper {
+        padding: 0 0.5rem !important;
+    }
+
+    .navbar .navbar-nav-right .nav-item {
+        margin-right: 0.25rem !important;
+    }
+
+    .navbar .navbar-nav-right .nav-link {
+        padding: 0.35rem !important;
+    }
+
+    .navbar .dropdown-menu {
+        position: fixed !important;
+        top: 70px !important;
+        left: 0.75rem !important;
+        right: 0.75rem !important;
+        min-width: auto !important;
+        max-width: none !important;
+    }
+}
+
+@media (max-width: 575px) {
+    .navbar #messageDropdown,
+    .navbar #notificationDropdown {
+        display: none !important;
+    }
+}
+
 /* Force dropdown to work */
 .dropdown-menu.show {
     display: block !important;

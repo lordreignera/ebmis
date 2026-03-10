@@ -249,8 +249,6 @@
   }
 </style>
 
-<div class="main-panel">
-  <div class="content-wrapper">
     
     <!-- Welcome Message -->
     <div class="page-header mb-4">
@@ -645,9 +643,6 @@
       </div>
     </div>
 
-  </div>
-  <!-- content-wrapper ends -->
-  
   <!-- Chart.js Script -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
@@ -704,9 +699,3 @@
       }
     });
   </script>
-  
-  <!-- Footer -->
-  @include('admin.footer')
-  
-</div>
-<!-- main-panel ends -->

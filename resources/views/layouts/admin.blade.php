@@ -236,6 +236,10 @@
             min-height: 100vh;
             overflow-x: hidden;
         }
+
+        .sidebar-overlay {
+            display: none;
+        }
         
         /* SIDEBAR - MAXIMUM SPECIFICITY (Match admin/home.blade.php) */
         nav.sidebar,
@@ -256,7 +260,7 @@
             overflow-y: auto !important;
             overflow-x: hidden !important;
             transform: translateX(0) !important;
-            transition: none !important;
+            transition: transform 0.25s ease !important;
         }
         
         /* Sidebar Brand */
@@ -448,23 +452,145 @@
             border-top: 1px solid #e2e8f0;
             margin-top: auto;
         }
+
+        .table-responsive,
+        .mobile-table-scroll {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .table-responsive table,
+        .mobile-table-scroll table {
+            min-width: max-content;
+            margin-bottom: 0;
+        }
+
+        .table-responsive::-webkit-scrollbar,
+        .mobile-table-scroll::-webkit-scrollbar,
+        .dataTables_wrapper::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .table-responsive::-webkit-scrollbar-thumb,
+        .mobile-table-scroll::-webkit-scrollbar-thumb,
+        .dataTables_wrapper::-webkit-scrollbar-thumb {
+            background: rgba(107, 114, 128, 0.6);
+            border-radius: 999px;
+        }
+
+        .table-responsive::-webkit-scrollbar-track,
+        .mobile-table-scroll::-webkit-scrollbar-track,
+        .dataTables_wrapper::-webkit-scrollbar-track {
+            background: rgba(229, 231, 235, 0.7);
+        }
+
+        .dataTables_wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
         
         /* Responsive - Mobile */
         @media (max-width: 991px) {
-            .page-body-wrapper {
+            nav.sidebar,
+            .sidebar,
+            #sidebar,
+            nav#sidebar.sidebar.sidebar-offcanvas {
+                width: min(82vw, 320px) !important;
+                left: 0 !important;
+                transform: translateX(-100%) !important;
+                z-index: 1045 !important;
+            }
+
+            body.sidebar-open nav.sidebar,
+            body.sidebar-open .sidebar,
+            body.sidebar-open #sidebar,
+            body.sidebar-open nav#sidebar.sidebar.sidebar-offcanvas,
+            .sidebar.active {
+                transform: translateX(0) !important;
+            }
+
+            .sidebar-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.45);
+                z-index: 1040;
+            }
+
+            body.sidebar-open .sidebar-overlay {
+                display: block;
+            }
+
+            body.sidebar-open {
+                overflow: hidden;
+            }
+
+            .page-body-wrapper,
+            .container-fluid.page-body-wrapper {
                 padding-left: 0 !important;
+                margin-left: 0 !important;
+                width: 100% !important;
             }
             
             .navbar {
                 left: 0 !important;
+                width: 100% !important;
+            }
+
+            .main-panel {
+                width: 100% !important;
             }
             
-            .sidebar {
-                left: -260px !important;
+            .content-wrapper {
+                padding: 1rem !important;
             }
-            
-            .sidebar.active {
-                left: 0 !important;
+
+            .footer {
+                padding: 1rem !important;
+            }
+
+            .card-header {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.5rem;
+            }
+
+            .card-header .card-title {
+                width: 100%;
+                margin-bottom: 0;
+            }
+
+            .card-header .card-tools {
+                width: 100%;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .small-box .inner h3 {
+                font-size: 1.5rem !important;
+                line-height: 1.2 !important;
+                white-space: normal !important;
+            }
+
+            .small-box .inner p {
+                white-space: normal !important;
+            }
+
+            .table {
+                white-space: nowrap;
+            }
+        }
+
+        @media (max-width: 575px) {
+            .card-header .card-tools .btn {
+                width: 100%;
+            }
+
+            .small-box .icon {
+                display: none;
             }
         }
     </style>
@@ -473,6 +599,7 @@
     <div class="container-scroller">
         <!-- Sidebar -->
         @include('admin.sidebar_new')
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
         
         <!-- Page Body Wrapper -->
         <div class="container-fluid page-body-wrapper">
@@ -509,6 +636,88 @@
     <!-- plugins:js -->
     @include('admin.java')
     <!-- End custom js for this page -->
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const body = document.body;
+            const sidebar = document.getElementById('sidebar');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
+            const offcanvasToggles = document.querySelectorAll('[data-toggle="offcanvas"]');
+
+            if (!sidebar || offcanvasToggles.length === 0) {
+                return;
+            }
+
+            function isMobile() {
+                return window.innerWidth <= 991;
+            }
+
+            function closeSidebar() {
+                body.classList.remove('sidebar-open');
+                sidebar.classList.remove('active');
+            }
+
+            function toggleSidebar() {
+                if (!isMobile()) {
+                    return;
+                }
+
+                const willOpen = !body.classList.contains('sidebar-open');
+                body.classList.toggle('sidebar-open', willOpen);
+                sidebar.classList.toggle('active', willOpen);
+            }
+
+            offcanvasToggles.forEach(function (toggle) {
+                toggle.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    toggleSidebar();
+                });
+            });
+
+            document.querySelectorAll('.content-wrapper table').forEach(function (table) {
+                if (table.closest('.table-responsive, .mobile-table-scroll')) {
+                    return;
+                }
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mobile-table-scroll';
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+            });
+
+            sidebar.addEventListener('click', function (event) {
+                const navLink = event.target.closest('a.nav-link');
+
+                if (!navLink || !isMobile()) {
+                    return;
+                }
+
+                if (navLink.hasAttribute('data-bs-toggle')) {
+                    return;
+                }
+
+                closeSidebar();
+            });
+
+            closeSidebar();
+
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', closeSidebar);
+            }
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') {
+                    closeSidebar();
+                }
+            });
+
+            window.addEventListener('resize', function () {
+                if (!isMobile()) {
+                    closeSidebar();
+                }
+            });
+        });
+    </script>
     
     <!-- CSRF Token Auto-Refresh & Session Management -->
     <script>
