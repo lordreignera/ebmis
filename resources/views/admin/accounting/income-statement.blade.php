@@ -50,7 +50,7 @@
         <div class="card">
             <div class="card-body">
                 <div class="text-center mb-4">
-                    <h3 class="mb-0">EBMIS Income Statement</h3>
+                    <h3 class="mb-0">EBIMS Income Statement</h3>
                     <p class="text-muted">
                         For the Period: {{ \Carbon\Carbon::parse($dateFrom)->format('F d, Y') }} to {{ \Carbon\Carbon::parse($dateTo)->format('F d, Y') }}
                     </p>
@@ -93,7 +93,7 @@
                 </h5>
                 <table class="table table-sm table-bordered mb-4">
                     <tbody>
-                        @if($expenses->count() > 0 && $expenses->sum('balance') > 0)
+                        @if(count($expenses) > 0 && array_sum(array_map(fn($a) => $a->balance, $expenses)) > 0)
                         @foreach($expenses as $expenseAccount)
                         @if($expenseAccount->balance != 0)
                         <tr class="{{ $expenseAccount->parent_id ? '' : 'table-light fw-bold' }}">

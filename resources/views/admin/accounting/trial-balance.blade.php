@@ -46,7 +46,7 @@
         <div class="card">
             <div class="card-body">
                 <div class="text-center mb-4">
-                    <h3 class="mb-0">EBMIS Trial Balance</h3>
+                    <h3 class="mb-0">EBIMS Trial Balance</h3>
                     <p class="text-muted">As of {{ \Carbon\Carbon::parse($asOfDate)->format('F d, Y') }}</p>
                 </div>
 

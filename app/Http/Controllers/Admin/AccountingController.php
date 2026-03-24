@@ -269,9 +269,9 @@ class AccountingController extends Controller
             $equity[] = $account;
         }
 
-        $totalAssets = $assets->sum('balance');
-        $totalLiabilities = $liabilities->sum('balance');
-        $totalEquity = $equity->sum('balance');
+        $totalAssets = array_sum(array_column($assets, 'balance'));
+        $totalLiabilities = array_sum(array_column($liabilities, 'balance'));
+        $totalEquity = array_sum(array_column($equity, 'balance'));
 
         return view('admin.accounting.balance-sheet', compact(
             'assets',
