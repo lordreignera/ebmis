@@ -202,8 +202,15 @@ class AccountingController extends Controller
 
         foreach ($accounts as $account) {
             $b = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
-            $account->debit_balance = $b > 0 ? $b : 0;
-            $account->credit_balance = $b < 0 ? abs($b) : 0;
+            // Asset & Expense accounts have a natural debit balance;
+            // Liability, Income & Equity accounts have a natural credit balance.
+            if (in_array($account->category, ['Asset', 'Expense'])) {
+                $account->debit_balance  = $b > 0 ? $b : 0;
+                $account->credit_balance = $b < 0 ? abs($b) : 0;
+            } else {
+                $account->credit_balance = $b > 0 ? $b : 0;
+                $account->debit_balance  = $b < 0 ? abs($b) : 0;
+            }
         }
 
         // Group by category
@@ -564,19 +571,25 @@ class AccountingController extends Controller
             $balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
 
             if ($balance != 0) {
+                $isDebitNormal = in_array($account->category, ['Asset', 'Expense']);
+                if ($isDebitNormal) {
+                    $debit  = $balance > 0 ? $balance : 0;
+                    $credit = $balance < 0 ? abs($balance) : 0;
+                } else {
+                    $credit = $balance > 0 ? $balance : 0;
+                    $debit  = $balance < 0 ? abs($balance) : 0;
+                }
+
                 $data[] = [
-                    'code' => $account->code,
-                    'name' => $account->name,
+                    'code'     => $account->code,
+                    'name'     => $account->name,
                     'category' => $account->category,
-                    'debit' => $balance > 0 ? $balance : 0,
-                    'credit' => $balance < 0 ? abs($balance) : 0,
+                    'debit'    => $debit,
+                    'credit'   => $credit,
                 ];
 
-                if ($balance > 0) {
-                    $totalDebits += $balance;
-                } else {
-                    $totalCredits += abs($balance);
-                }
+                $totalDebits  += $debit;
+                $totalCredits += $credit;
             }
         }
 

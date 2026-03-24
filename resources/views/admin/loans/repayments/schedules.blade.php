@@ -950,11 +950,9 @@
                             <tbody id="balanceList">
                                 @foreach($schedules as $schedule)
                                     @php
-                                        $totalDue = ($schedule->principal + $schedule->interest);
-                                        $totalPaid = $schedule->paid ?? 0;
-                                        $balance = $totalDue - $totalPaid;
-                                        // Round to 2 decimal places to avoid floating point issues
-                                        $balance = round($balance, 2);
+                                        // Use the controller-computed total_balance which already includes
+                                        // P+I + late fees − amount paid (correctly calculated by schedules()).
+                                        $balance = round($schedule->total_balance, 2);
                                     @endphp
                                     @if($balance >= 1)
                                         <tr>
@@ -2160,6 +2158,9 @@ function showRetryRepaymentModal(repaymentId) {
 
 // Cash/bank payment submission
 function submitRepayment(formData) {
+    var $submitBtn = $('#repaymentForm [type=submit]');
+    $submitBtn.prop('disabled', true).text('Processing...');
+
     $.ajax({
         url: '{{ route("admin.loans.repayments.store") }}',
         method: 'POST',
@@ -2171,10 +2172,12 @@ function submitRepayment(formData) {
                     window.location.reload();
                 });
             } else {
+                $submitBtn.prop('disabled', false).text('Add Record');
                 Swal.fire('Error!', response.message, 'error');
             }
         },
         error: function(xhr) {
+            $submitBtn.prop('disabled', false).text('Add Record');
             var message = xhr.responseJSON?.message || 'An error occurred';
             Swal.fire('Error!', message, 'error');
         }

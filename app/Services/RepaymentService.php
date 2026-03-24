@@ -233,46 +233,74 @@ class RepaymentService
             
             // Update schedule and handle overpayment redistribution
             $schedule->increment('paid', $repayment->amount);
-            
-            // Check if there's an overpayment on this schedule
-            if ($schedule->paid > $schedule->payment) {
-                $overpayment = $schedule->paid - $schedule->payment;
-                
-                // Cap the current schedule paid amount to its required payment
+
+            // Load the loan so we can calculate dynamic late fees
+            $loanResult = null;
+            if (class_exists('\App\Models\PersonalLoan')) {
+                $loanResult = \App\Models\PersonalLoan::with('product')->find($schedule->loan_id);
+            }
+            if (!$loanResult) {
+                $loanResult = \App\Models\GroupLoan::with('product')->find($schedule->loan_id);
+            }
+
+            $svcLateFees = 0.0;
+            if ($loanResult) {
+                $svcLateFeeData = $this->calculateLateFee($schedule, $loanResult);
+                $svcLateFees    = $svcLateFeeData['net'] ?? 0.0;
+            }
+            $svcTotalDue = $schedule->payment + $svcLateFees;
+
+            if ($schedule->paid >= $svcTotalDue) {
+                // P+I AND late fees fully paid — redistribute only the true excess
+                $overpayment = $schedule->paid - $svcTotalDue;
+
                 $schedule->update([
-                    'paid' => $schedule->payment,
-                    'status' => 1,
-                    'date_cleared' => now()
+                    'paid'         => $schedule->payment,
+                    'status'       => 1,
+                    'date_cleared' => now() // Safe: late fees also settled
                 ]);
-                
-                Log::info("Overpayment detected: {$overpayment} UGX for schedule ID: {$schedule->id}");
-                
-                // Apply overpayment to next unpaid schedule
-                $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $schedule->loan_id)
-                    ->where('status', '!=', 1)
-                    ->where('id', '>', $schedule->id)
-                    ->orderBy('id')
-                    ->first();
-                
-                if ($nextSchedule && $overpayment > 0) {
-                    $nextSchedule->increment('paid', $overpayment);
-                    
-                    Log::info("Redistributed overpayment: {$overpayment} UGX to schedule ID: {$nextSchedule->id}");
-                    
-                    // Check if next schedule is now fully paid
-                    if ($nextSchedule->paid >= $nextSchedule->payment) {
-                        $nextSchedule->update([
-                            'status' => 1,
-                            'date_cleared' => now()
-                        ]);
-                        
-                        Log::info("Next schedule fully paid after overpayment allocation");
+
+                Log::info("Schedule fully settled (P+I + late fees): schedule ID {$schedule->id}");
+
+                if ($overpayment > 1) {
+                    $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $schedule->loan_id)
+                        ->where('status', '!=', 1)
+                        ->where('id', '>', $schedule->id)
+                        ->orderBy('id')
+                        ->first();
+
+                    if ($nextSchedule) {
+                        $nextSchedule->increment('paid', $overpayment);
+
+                        Log::info("Redistributed overpayment: {$overpayment} UGX to schedule ID: {$nextSchedule->id}");
+
+                        $nextLateFees = DB::table('late_fees')
+                            ->where('schedule_id', $nextSchedule->id)
+                            ->where('status', 0)
+                            ->sum('amount');
+                        $nextTotalDue = $nextSchedule->payment + $nextLateFees;
+
+                        if ($nextSchedule->paid >= $nextTotalDue) {
+                            $nextUpdateData = ['status' => 1];
+                            if ($nextLateFees <= 0.01) {
+                                $nextUpdateData['date_cleared'] = now();
+                            }
+                            $nextSchedule->update($nextUpdateData);
+
+                            Log::info("Next schedule fully paid after overpayment allocation");
+                        }
                     }
                 }
-            } elseif ($schedule->paid >= $schedule->payment) {
-                // Exact or just enough payment - mark as fully paid
+            } elseif ($schedule->paid >= $schedule->payment && $svcLateFees > 0.01) {
+                // P+I paid but late fees still outstanding — do NOT set date_cleared
                 $schedule->update([
+                    'paid'   => $schedule->payment,
                     'status' => 1,
+                ]);
+            } elseif ($schedule->paid >= $schedule->payment) {
+                // P+I paid, no late fees — fully settled
+                $schedule->update([
+                    'status'       => 1,
                     'date_cleared' => now()
                 ]);
             }

@@ -177,12 +177,17 @@ class AutomateRepayments extends Command
                 'ls.loan_id',
                 'ls.payment',
                 'ls.payment_date',
+                'ls.principal as schedule_principal',
+                'ls.interest as schedule_interest',
+                'ls.date_cleared',
+                'ls.paid as schedule_paid',
                 'm.id as member_id',
                 'm.fname',
                 'm.lname',
                 'm.contact',
                 'pl.code as loan_code',
-                'p.name as product_name'
+                'p.name as product_name',
+                'p.period_type'
             )
             ->orderBy('ls.payment_date', 'asc') // Oldest first
             ->get();
@@ -194,35 +199,59 @@ class AutomateRepayments extends Command
     protected function initiatePayment($schedule, $type)
     {
         $phone = $this->formatPhone($schedule->contact);
-        $amount = $schedule->payment;
-        
+
+        // Calculate dynamic late fee using the extra columns now selected in getDueSchedules()
+        $lateFee = $this->computeLateFeeForSchedule($schedule);
+
+        // How much has already been paid on this schedule (from confirmed repayments)
+        $alreadyPaid = floatval(
+            DB::table('repayments')
+                ->where('schedule_id', $schedule->schedule_id)
+                ->where('amount', '>', 0)
+                ->where(function ($q) {
+                    $q->where('status', 1)->orWhere('payment_status', 'Completed');
+                })
+                ->sum('amount')
+        );
+
+        $totalDue = $schedule->payment + $lateFee;
+        $amount   = max(0, round($totalDue - $alreadyPaid)); // Round to whole UGX
+
+        if ($amount <= 0) {
+            $this->info("  → Schedule #{$schedule->schedule_id} balance is zero. Skipping.");
+            return;
+        }
+
         Log::info("Initiating payment", [
-            'schedule_id' => $schedule->schedule_id,
-            'loan_code' => $schedule->loan_code,
-            'member' => $schedule->fname . ' ' . $schedule->lname,
-            'phone' => $phone,
-            'amount' => $amount,
-            'type' => $type
+            'schedule_id'  => $schedule->schedule_id,
+            'loan_code'    => $schedule->loan_code,
+            'member'       => $schedule->fname . ' ' . $schedule->lname,
+            'phone'        => $phone,
+            'pi_amount'    => $schedule->payment,
+            'late_fee'     => $lateFee,
+            'already_paid' => $alreadyPaid,
+            'total_amount' => $amount,
+            'type'         => $type,
         ]);
-        
+
         // Check if already initiated today
         $existing = DB::table('auto_payment_requests')
             ->where('schedule_id', $schedule->schedule_id)
             ->whereDate('created_at', Carbon::today())
             ->first();
-        
+
         if ($existing) {
             $this->warn("Payment already initiated for schedule {$schedule->schedule_id}");
             return;
         }
-        
+
         // Create payment request record
         $requestId = DB::table('auto_payment_requests')->insertGetId([
             'schedule_id' => $schedule->schedule_id,
-            'loan_id' => $schedule->loan_id,
-            'member_id' => $schedule->member_id,
-            'phone' => $phone,
-            'amount' => $amount,
+            'loan_id'     => $schedule->loan_id,
+            'member_id'   => $schedule->member_id,
+            'phone'       => $phone,
+            'amount'      => $amount, // Full amount: P+I + late fees - already paid
             'loan_type' => $type,
             'status' => 'initiated',
             'retry_count' => 0,
@@ -570,15 +599,27 @@ class AutomateRepayments extends Command
                     // Update schedule paid amount (EXACT SAME as manual)
                     $schedule->increment('paid', $repayment->amount);
                     
-                    // Check if schedule is fully paid (EXACT SAME as manual - with 1 UGX rounding tolerance)
+                    // Check if schedule is fully paid (with 1 UGX rounding tolerance)
                     $difference = abs($schedule->payment - $schedule->paid);
                     if ($schedule->paid >= $schedule->payment || $difference <= 1.0) {
-                        $schedule->update([
-                            'status' => 1, // Fully paid
-                            'paid' => $schedule->payment, // Ensure exact match to prevent rounding issues
-                            'date_cleared' => Carbon::now()
-                        ]);
-                        
+                        // Auto-repayments collect P+I only ($schedule->payment).
+                        // Only set date_cleared (which freezes late fee accrual) when there
+                        // are no outstanding late fees — otherwise keep them accruing.
+                        $autoLoan = $loan ? $loan->load('product') : null;
+                        $autoLateFee = $autoLoan ? $this->calculateLateFee($schedule, $autoLoan) : 0.0;
+
+                        $pollUpdateData = [
+                            'status' => 1,
+                            'paid'   => $schedule->payment, // Cap to P+I exact amount
+                        ];
+                        if ($autoLateFee <= 0.01) {
+                            // No late fees outstanding — safe to freeze
+                            $pollUpdateData['date_cleared'] = Carbon::now();
+                        }
+                        // If late fees exist, date_cleared is intentionally omitted so
+                        // they keep accruing until a manual payment covers them.
+
+                        $schedule->update($pollUpdateData);
                         $this->info("  → ✓ Schedule #{$scheduleId} marked as PAID!");
                     } else {
                         $this->info("  → ✓ Schedule #{$scheduleId} partially paid: " . number_format($schedule->paid, 2) . " / " . number_format($schedule->payment, 2));
@@ -752,11 +793,45 @@ class AutomateRepayments extends Command
     }
     
     /**
+     * Calculate late fee for a stdClass schedule row from getDueSchedules().
+     * Uses the extra columns (schedule_principal, schedule_interest, date_cleared, period_type)
+     * that getDueSchedules() now selects. schedule_id is used for waiver lookup.
+     */
+    private function computeLateFeeForSchedule($schedule): float
+    {
+        $dateCleared = $schedule->date_cleared ?? null;
+        $now = $dateCleared ? strtotime($dateCleared) : time();
+
+        $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
+        $daysLate = max(0, floor(($now - $dueTimestamp) / 86400));
+
+        $periods = 0;
+        if ($daysLate > 0) {
+            $periodType = $schedule->period_type ?? '3';
+            $periods = $periodType == '1' ? ceil($daysLate / 7)
+                     : ($periodType == '2' ? ceil($daysLate / 30)
+                     : $daysLate);
+        }
+
+        $principal = (float) ($schedule->schedule_principal ?? 0);
+        $interest  = (float) ($schedule->schedule_interest  ?? 0);
+        $grossFee  = ($principal + $interest) * 0.06 * $periods;
+
+        // Deduct any admin-approved waivers
+        $waived = DB::table('late_fees')
+            ->where('schedule_id', $schedule->schedule_id)
+            ->where('status', 2)
+            ->sum('amount');
+
+        return max(0, $grossFee - (float) $waived);
+    }
+
+    /**
      * Calculate net late fee for a schedule (after waivers)
      * CRITICAL: Uses date_cleared to determine freeze vs multiply
      * 
-     * @param object $schedule
-     * @param object $loan
+     * @param object $schedule  Eloquent LoanSchedule model
+     * @param object $loan      Eloquent loan model with product relationship
      * @return float
      */
     private function calculateLateFee($schedule, $loan): float
