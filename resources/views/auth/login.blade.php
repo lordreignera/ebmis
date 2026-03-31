@@ -388,7 +388,7 @@
                     <button type="button" class="btn btn-school-join w-100" data-bs-toggle="modal" data-bs-target="#schoolBenefitsModal">
                         🏫 Join us as a School
                     </button>
-                    
+
                     <!-- Complete Assessment Link -->
                     <div class="mt-3">
                         <a href="{{ route('school.complete-assessment') }}" class="btn btn-outline-warning w-100 btn-complete-assessment">

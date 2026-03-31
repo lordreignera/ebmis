@@ -469,6 +469,13 @@
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Personal Loan Management</strong></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.personal.preview-dashboard') }}">Preview Dashboard</a></li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center justify-content-between" href="{{ route('admin.client-applications.index') }}">
+              <span>Self-Applied Applications</span>
+              @php $pendingApps = \App\Models\ClientLoanApplication::whereIn('status',['pending_fo_review','pending_fo_verification'])->count(); @endphp
+              @if($pendingApps > 0)<span class="badge bg-warning text-dark">{{ $pendingApps }}</span>@endif
+            </a>
+          </li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Pending Approvals</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>

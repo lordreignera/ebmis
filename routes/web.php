@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\SchoolRegistrationController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\CronController;
+use App\Http\Controllers\ClientLoanApplicationController;
+use App\Http\Controllers\Admin\ClientApplicationController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -31,6 +33,12 @@ Route::post('/school/assessment', [SchoolRegistrationController::class, 'storeAs
 // Complete Assessment Routes (Public - for schools with incomplete assessments)
 Route::get('/school/complete-assessment', [SchoolRegistrationController::class, 'showCompleteAssessment'])->name('school.complete-assessment');
 Route::post('/school/complete-assessment', [SchoolRegistrationController::class, 'continueAssessment'])->name('school.continue-assessment');
+
+// Client Self-Service Loan Application (Public — no login required)
+Route::get('/apply', [ClientLoanApplicationController::class, 'create'])->name('client.apply');
+Route::post('/apply', [ClientLoanApplicationController::class, 'store'])->name('client.apply.store');
+Route::get('/apply/success', [ClientLoanApplicationController::class, 'success'])->name('client.apply.success');
+Route::get('/apply/check-status', [ClientLoanApplicationController::class, 'checkStatus'])->name('client.apply.check-status');
 
 Route::middleware([
     'auth:sanctum',
@@ -101,6 +109,14 @@ Route::middleware([
         return redirect()->back()->with('error', 'Log file not found');
     })->name('logs.download');
     
+    // Self-Applied Client Loan Applications
+    Route::prefix('client-applications')->name('client-applications.')->group(function () {
+        Route::get('/',                                      [ClientApplicationController::class, 'index'])->name('index');
+        Route::get('/{id}',                                  [ClientApplicationController::class, 'show'])->name('show');
+        Route::post('/{id}/approve',                         [ClientApplicationController::class, 'approve'])->name('approve');
+        Route::post('/{id}/reject',                          [ClientApplicationController::class, 'reject'])->name('reject');
+    });
+
     // Member Management Routes
     Route::get('/members/search', [\App\Http\Controllers\Admin\MemberController::class, 'search'])->name('members.search');
     Route::resource('members', \App\Http\Controllers\Admin\MemberController::class);
