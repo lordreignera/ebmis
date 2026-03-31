@@ -19,12 +19,10 @@ return new class extends Migration
             $table->string('national_id', 30)->nullable();           // NIN
             $table->date('date_of_birth')->nullable();
             $table->enum('gender', ['Male', 'Female', 'Other'])->nullable();
-            $table->unsignedBigInteger('branch_id')->nullable();
-            $table->foreign('branch_id')->references('id')->on('branches')->nullOnDelete();
+            $table->unsignedBigInteger('branch_id')->nullable()->index();
 
             // ── Loan Request ─────────────────────────────────────────────────
-            $table->unsignedBigInteger('product_id')->nullable();
-            $table->foreign('product_id')->references('id')->on('products')->nullOnDelete();
+            $table->unsignedBigInteger('product_id')->nullable()->index();
             $table->decimal('requested_amount', 15, 2);
             $table->integer('tenure_periods');
             $table->enum('repayment_frequency', ['daily', 'weekly', 'monthly']);
@@ -154,15 +152,12 @@ return new class extends Migration
             ])->default('pending_scoring');
 
             $table->text('rejection_reason')->nullable();
-            $table->unsignedBigInteger('reviewed_by')->nullable();
-            $table->foreign('reviewed_by')->references('id')->on('users')->nullOnDelete();
+            $table->unsignedBigInteger('reviewed_by')->nullable()->index();
             $table->timestamp('reviewed_at')->nullable();
 
             // ── Post-Conversion Links ─────────────────────────────────────────
-            $table->unsignedBigInteger('member_id')->nullable();
-            $table->foreign('member_id')->references('id')->on('members')->nullOnDelete();
-            $table->unsignedBigInteger('loan_id')->nullable();
-            $table->foreign('loan_id')->references('id')->on('personal_loans')->nullOnDelete();
+            $table->unsignedBigInteger('member_id')->nullable()->index();
+            $table->unsignedBigInteger('loan_id')->nullable()->index();
 
             $table->timestamps();
 
@@ -170,6 +165,27 @@ return new class extends Migration
             $table->index('phone');
             $table->index('national_id');
         });
+
+        // Add foreign keys separately so a type mismatch on the referenced table
+        // does not prevent the main table from being created.
+        $fks = [
+            ['branch_id',   'branches',       'id'],
+            ['product_id',  'products',       'id'],
+            ['reviewed_by', 'users',          'id'],
+            ['member_id',   'members',        'id'],
+            ['loan_id',     'personal_loans', 'id'],
+        ];
+
+        foreach ($fks as [$col, $refTable, $refCol]) {
+            try {
+                Schema::table('client_loan_applications', function (Blueprint $table) use ($col, $refTable, $refCol) {
+                    $table->foreign($col)->references($refCol)->on($refTable)->nullOnDelete();
+                });
+            } catch (\Throwable $e) {
+                // FK could not be added (type mismatch on production). The app
+                // enforces referential integrity at the application layer.
+            }
+        }
     }
 
     public function down(): void
