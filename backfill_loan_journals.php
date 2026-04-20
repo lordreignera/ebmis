@@ -1,4 +1,5 @@
 <?php
+if (php_sapi_name() !== 'cli') { http_response_code(403); exit('Direct access not allowed.'); }
 
 /**
  * Backfill Journal Entries for Historical Loans

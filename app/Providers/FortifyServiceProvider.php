@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -54,27 +55,41 @@ class FortifyServiceProvider extends ServiceProvider
         // OPTIMIZED: Only select needed columns for faster login
         // ===============================================================
         Fortify::authenticateUsing(function (Request $request) {
-            // PERFORMANCE: Select only essential columns, don't load relationships yet
-            $user = User::select('id', 'name', 'email', 'password', 'status', 'user_type', 'school_id', 'branch_id')
+            $availableColumns = Schema::getColumnListing('users');
+            $authColumns = array_values(array_intersect(
+                ['id', 'email', 'password', 'status', 'user_type', 'school_id', 'branch_id', 'name'],
+                $availableColumns
+            ));
+
+            // Ensure password is loaded for Hash::check, even on legacy schemas.
+            if (!in_array('password', $authColumns, true)) {
+                $authColumns[] = 'password';
+            }
+
+            $user = User::select($authColumns)
                 ->where('email', $request->email)
                 ->first();
 
             if ($user && Hash::check($request->password, $user->password)) {
+                $hasStatusColumn = in_array('status', $availableColumns, true);
+                $hasUserTypeColumn = in_array('user_type', $availableColumns, true);
+                $hasSchoolIdColumn = in_array('school_id', $availableColumns, true);
+
                 // Fast approval check without loading relationships
-                if ($user->user_type === 'school' && $user->school_id) {
+                if ($hasUserTypeColumn && $hasSchoolIdColumn && $user->user_type === 'school' && $user->school_id) {
                     // Only load school if needed for school users
                     $schoolStatus = \DB::table('schools')
                         ->where('id', $user->school_id)
                         ->value('status');
                     
-                    if ($schoolStatus !== 'approved' || $user->status !== 'active') {
+                    if ($schoolStatus !== 'approved' || ($hasStatusColumn && $user->status !== 'active')) {
                         throw ValidationException::withMessages([
-                            Fortify::username() => [$user->getStatusMessage()],
+                            Fortify::username() => ['Your account is not active or your school is not approved. Please contact the administrator.'],
                         ]);
                     }
                 } else {
                     // For non-school users, just check status
-                    if ($user->status !== 'active') {
+                    if ($hasStatusColumn && $user->status !== 'active') {
                         throw ValidationException::withMessages([
                             Fortify::username() => ['Your account is not active. Please contact the administrator.'],
                         ]);

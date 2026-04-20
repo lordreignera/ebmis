@@ -39,6 +39,7 @@ Route::get('/apply', [ClientLoanApplicationController::class, 'create'])->name('
 Route::post('/apply', [ClientLoanApplicationController::class, 'store'])->name('client.apply.store');
 Route::get('/apply/success', [ClientLoanApplicationController::class, 'success'])->name('client.apply.success');
 Route::get('/apply/check-status', [ClientLoanApplicationController::class, 'checkStatus'])->name('client.apply.check-status');
+Route::post('/loan-status', [ClientLoanApplicationController::class, 'loanStatusLookup'])->name('client.loan-status')->middleware('throttle:10,1');
 
 Route::middleware([
     'auth:sanctum',
@@ -113,6 +114,8 @@ Route::middleware([
     Route::prefix('client-applications')->name('client-applications.')->group(function () {
         Route::get('/',                                      [ClientApplicationController::class, 'index'])->name('index');
         Route::get('/{id}',                                  [ClientApplicationController::class, 'show'])->name('show');
+        Route::get('/{id}/verify',                           [ClientApplicationController::class, 'verifyForm'])->name('verify');
+        Route::post('/{id}/verify',                          [ClientApplicationController::class, 'submitVerification'])->name('verify.submit');
         Route::post('/{id}/approve',                         [ClientApplicationController::class, 'approve'])->name('approve');
         Route::post('/{id}/reject',                          [ClientApplicationController::class, 'reject'])->name('reject');
     });
@@ -615,6 +618,10 @@ Route::middleware([
         Route::get('/email-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'emailConfig'])->name('email-config');
         Route::get('/sms-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'smsConfig'])->name('sms-config');
         Route::get('/notification-config', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'notificationConfig'])->name('notification-config');
+
+        // Loan Scoring Policy Controls
+        Route::get('/loan-policy-controls', [\App\Http\Controllers\Admin\LoanPolicyControlController::class, 'index'])->name('loan-policy-controls');
+        Route::put('/loan-policy-controls', [\App\Http\Controllers\Admin\LoanPolicyControlController::class, 'update'])->name('loan-policy-controls.update');
         
         // Maintenance & Tools
         Route::get('/backup', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'backup'])->name('backup');

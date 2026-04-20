@@ -37,7 +37,7 @@ return [
     |
     */
 
-    'cron_secret' => env('CRON_SECRET', 'sysadmin2002'),
+    'cron_secret' => env('CRON_SECRET'),
 
     /*
     |--------------------------------------------------------------------------

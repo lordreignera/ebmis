@@ -796,6 +796,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.email-config') }}">Email Configuration</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.sms-config') }}">SMS Configuration</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.notification-config') }}">Notification Settings</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.loan-policy-controls') }}">Loan Policy Controls</a></li>
         </ul>
       </div>
     </li>

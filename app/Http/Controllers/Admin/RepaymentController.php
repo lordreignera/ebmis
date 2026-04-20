@@ -1403,6 +1403,7 @@ class RepaymentController extends Controller
             }
 
             $repayment = Repayment::create($repaymentData);
+            $glPosted = true;
 
             // Update loan balance and schedules if confirmed
             if ($repaymentData['status'] == 1) {
@@ -1423,8 +1424,12 @@ class RepaymentController extends Controller
                             'repayment_id' => $repayment->id,
                             'journal_number' => $journal->journal_number
                         ]);
+                    } else {
+                        $glPosted = false;
+                        Log::warning('GL entry not posted for repayment', ['repayment_id' => $repayment->id]);
                     }
                 } catch (\Exception $glError) {
+                    $glPosted = false;
                     Log::error('GL posting failed but repayment will continue', [
                         'repayment_id' => $repayment->id,
                         'gl_error' => $glError->getMessage()
@@ -1439,12 +1444,16 @@ class RepaymentController extends Controller
                 $message = "Collection request sent to " . $request->phone . ". Please check your phone and enter your Mobile Money PIN to complete the payment.";
             }
 
-            return response()->json([
+            $jsonResponse = [
                 'success' => true,
                 'message' => $message,
                 'repayment_id' => $repayment->id,
-                'payment_type' => $paymentTypeCode
-            ]);
+                'payment_type' => $paymentTypeCode,
+            ];
+            if (!$glPosted) {
+                $jsonResponse['gl_warning'] = 'GL journal entry could not be posted automatically. Please post manually via Journal Entries.';
+            }
+            return response()->json($jsonResponse);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -2498,6 +2507,9 @@ class RepaymentController extends Controller
                                 'repayment_id' => $repayment->id,
                                 'journal_number' => $journal->journal_number
                             ]);
+                        } else {
+                            Log::warning('GL entry not posted for repayment', ['repayment_id' => $repayment->id]);
+                            session()->flash('warning', 'Repayment saved but GL journal entry could not be posted automatically. Please post manually via Journal Entries.');
                         }
                     }
                 } catch (\Exception $glError) {
@@ -2505,6 +2517,7 @@ class RepaymentController extends Controller
                         'repayment_id' => $repayment->id,
                         'gl_error' => $glError->getMessage()
                     ]);
+                    session()->flash('warning', 'Repayment saved but GL journal entry failed: ' . $glError->getMessage() . '. Please post manually.');
                 }
             }
 

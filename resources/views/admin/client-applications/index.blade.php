@@ -24,7 +24,15 @@
 
       {{-- Stat Cards --}}
       <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
+            <div class="card-body text-center p-3">
+              <div class="text-muted small mb-1">Pending FO Visit</div>
+              <div class="fs-3 fw-bold text-warning">{{ $counts['fo_verification'] }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
           <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center p-3">
               <div class="text-muted small mb-1">Pending Scoring</div>
@@ -32,15 +40,15 @@
             </div>
           </div>
         </div>
-        <div class="col-6 col-md-3">
-          <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
+        <div class="col-6 col-md-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-info">
             <div class="card-body text-center p-3">
               <div class="text-muted small mb-1">Pending FO Review</div>
-              <div class="fs-3 fw-bold text-warning">{{ $counts['fo_review'] }}</div>
+              <div class="fs-3 fw-bold text-info">{{ $counts['fo_review'] }}</div>
             </div>
           </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md-2">
           <div class="card border-0 shadow-sm h-100 border-start border-4 border-success">
             <div class="card-body text-center p-3">
               <div class="text-muted small mb-1">Converted to Loan</div>
@@ -48,7 +56,7 @@
             </div>
           </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md-2">
           <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
             <div class="card-body text-center p-3">
               <div class="text-muted small mb-1">Rejected</div>
@@ -65,11 +73,12 @@
           {{-- Tabs --}}
           <ul class="nav nav-pills mb-0">
             @foreach([
-              ['fo_review', 'Pending FO Review', 'warning'],
-              ['scoring',   'Pending Scoring',   'secondary'],
-              ['converted', 'Converted',         'success'],
-              ['rejected',  'Rejected',          'danger'],
-              ['all',       'All',               'primary'],
+              ['fo_verification', 'Pending FO Visit',   'warning'],
+              ['scoring',         'Pending Scoring',    'secondary'],
+              ['fo_review',       'Pending FO Review',  'info'],
+              ['converted',       'Converted',          'success'],
+              ['rejected',        'Rejected',           'danger'],
+              ['all',             'All',                'primary'],
             ] as [$key, $label, $color])
             <li class="nav-item">
               <a class="nav-link py-1 px-3 {{ $tab === $key ? 'active bg-'.$color : '' }}"
@@ -155,6 +164,12 @@
                   </td>
                   <td class="small text-muted">{{ $app->created_at->format('d M Y') }}</td>
                   <td>
+                    @if($app->status === 'pending_fo_verification')
+                    <a href="{{ route('admin.client-applications.verify', $app->id) }}"
+                       class="btn btn-sm btn-warning me-1">
+                      <i class="fas fa-clipboard-check me-1"></i>Verify
+                    </a>
+                    @endif
                     <a href="{{ route('admin.client-applications.show', $app->id) }}"
                        class="btn btn-sm btn-outline-primary">
                       <i class="fas fa-eye me-1"></i>View

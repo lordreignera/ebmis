@@ -1217,6 +1217,9 @@ class DisbursementController extends Controller
                         'disbursement_id' => $disbursement->id,
                         'journal_number' => $journal->journal_number
                     ]);
+                } else {
+                    Log::warning('GL entry not posted for disbursement', ['disbursement_id' => $disbursement->id]);
+                    session()->flash('warning', 'Disbursement completed but GL journal entry could not be posted automatically. Please post manually via Journal Entries.');
                 }
             } catch (\Exception $glError) {
                 // Don't fail disbursement if GL posting fails - can be corrected later
@@ -1224,6 +1227,7 @@ class DisbursementController extends Controller
                     'disbursement_id' => $disbursement->id,
                     'gl_error' => $glError->getMessage()
                 ]);
+                session()->flash('warning', 'Disbursement completed but GL journal entry failed: ' . $glError->getMessage() . '. Please post manually.');
             }
 
             Log::info('Disbursement completed successfully', [

@@ -47,7 +47,6 @@ class Member extends Model
         'del_user',
         'del_comments',
         'added_by',
-        'password',
         'mobile_pin',
         'cash_security_account_number',
         'savings_account_number',

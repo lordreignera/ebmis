@@ -194,18 +194,33 @@ class ReportsController extends Controller
             return $this->handleExport($request->download, $data['loans'], 'disbursed_loans_' . date('Y-m-d'), "{$typeLabel} Disbursed Loans Report", 'disbursed_loans');
         }
 
+        $weekStart = now()->startOfWeek()->toDateTimeString();
+        $weekEnd   = now()->endOfWeek()->toDateTimeString();
+        $month     = now()->month;
+        $pStats = PersonalLoan::where('verified', 1)->selectRaw(
+            'COUNT(*) as cnt, COALESCE(SUM(principal),0) as total,
+             SUM(CASE WHEN DATE(datecreated)=CURDATE() THEN 1 ELSE 0 END) as today_cnt,
+             SUM(CASE WHEN datecreated BETWEEN ? AND ? THEN 1 ELSE 0 END) as week_cnt,
+             SUM(CASE WHEN MONTH(datecreated)=? THEN 1 ELSE 0 END) as month_cnt',
+            [$weekStart, $weekEnd, $month]
+        )->first();
+        $gStats = GroupLoan::where('verified', 1)->selectRaw(
+            'COUNT(*) as cnt, COALESCE(SUM(principal),0) as total,
+             SUM(CASE WHEN DATE(datecreated)=CURDATE() THEN 1 ELSE 0 END) as today_cnt,
+             SUM(CASE WHEN datecreated BETWEEN ? AND ? THEN 1 ELSE 0 END) as week_cnt,
+             SUM(CASE WHEN MONTH(datecreated)=? THEN 1 ELSE 0 END) as month_cnt',
+            [$weekStart, $weekEnd, $month]
+        )->first();
+        $totalDisbursedAmount = ($pStats->total ?? 0) + ($gStats->total ?? 0);
         $stats = [
-            'total_disbursed' => PersonalLoan::where('verified', 1)->count() + GroupLoan::where('verified', 1)->count(),
-            'personal_loans' => PersonalLoan::where('verified', 1)->count(),
-            'group_loans' => GroupLoan::where('verified', 1)->count(),
-            'total_amount' => PersonalLoan::where('verified', 1)->sum('principal') + GroupLoan::where('verified', 1)->sum('principal'),
-            'outstanding_amount' => PersonalLoan::where('verified', 1)->sum('principal') + GroupLoan::where('verified', 1)->sum('principal') - Repayment::sum('amount'),
-            'today_disbursed' => PersonalLoan::where('verified', 1)->whereDate('datecreated', today())->count() + 
-                               GroupLoan::where('verified', 1)->whereDate('datecreated', today())->count(),
-            'this_week' => PersonalLoan::where('verified', 1)->whereBetween('datecreated', [now()->startOfWeek(), now()->endOfWeek()])->count() +
-                          GroupLoan::where('verified', 1)->whereBetween('datecreated', [now()->startOfWeek(), now()->endOfWeek()])->count(),
-            'this_month' => PersonalLoan::where('verified', 1)->whereMonth('datecreated', now()->month)->count() +
-                           GroupLoan::where('verified', 1)->whereMonth('datecreated', now()->month)->count(),
+            'total_disbursed'    => ($pStats->cnt ?? 0) + ($gStats->cnt ?? 0),
+            'personal_loans'     => $pStats->cnt ?? 0,
+            'group_loans'        => $gStats->cnt ?? 0,
+            'total_amount'       => $totalDisbursedAmount,
+            'outstanding_amount' => $totalDisbursedAmount - Repayment::sum('amount'),
+            'today_disbursed'    => ($pStats->today_cnt ?? 0) + ($gStats->today_cnt ?? 0),
+            'this_week'          => ($pStats->week_cnt ?? 0) + ($gStats->week_cnt ?? 0),
+            'this_month'         => ($pStats->month_cnt ?? 0) + ($gStats->month_cnt ?? 0),
         ];
 
         return view('admin.reports.disbursed_loans', compact('data', 'stats'));
@@ -296,15 +311,29 @@ class ReportsController extends Controller
             return $this->handleExport($request->download, $loans, 'rejected_loans_' . date('Y-m-d'), 'Rejected Loans Report', 'rejected_loans');
         }
         
+        $weekStart = now()->startOfWeek()->toDateTimeString();
+        $weekEnd   = now()->endOfWeek()->toDateTimeString();
+        $month     = now()->month;
+        $prStats = PersonalLoan::where('verified', 2)->selectRaw(
+            'COUNT(*) as cnt, COALESCE(SUM(principal),0) as total,
+             SUM(CASE WHEN DATE(datecreated)=CURDATE() THEN 1 ELSE 0 END) as today_cnt,
+             SUM(CASE WHEN datecreated BETWEEN ? AND ? THEN 1 ELSE 0 END) as week_cnt,
+             SUM(CASE WHEN MONTH(datecreated)=? THEN 1 ELSE 0 END) as month_cnt',
+            [$weekStart, $weekEnd, $month]
+        )->first();
+        $grStats = GroupLoan::where('verified', 2)->selectRaw(
+            'COUNT(*) as cnt, COALESCE(SUM(principal),0) as total,
+             SUM(CASE WHEN DATE(datecreated)=CURDATE() THEN 1 ELSE 0 END) as today_cnt,
+             SUM(CASE WHEN datecreated BETWEEN ? AND ? THEN 1 ELSE 0 END) as week_cnt,
+             SUM(CASE WHEN MONTH(datecreated)=? THEN 1 ELSE 0 END) as month_cnt',
+            [$weekStart, $weekEnd, $month]
+        )->first();
         $stats = [
-            'total_rejected' => PersonalLoan::where('verified', 2)->count() + GroupLoan::where('verified', 2)->count(),
-            'rejected_amount' => PersonalLoan::where('verified', 2)->sum('principal') + GroupLoan::where('verified', 2)->sum('principal'),
-            'today_rejected' => PersonalLoan::where('verified', 2)->whereDate('datecreated', today())->count() + 
-                               GroupLoan::where('verified', 2)->whereDate('datecreated', today())->count(),
-            'this_week' => PersonalLoan::where('verified', 2)->whereBetween('datecreated', [now()->startOfWeek(), now()->endOfWeek()])->count() +
-                          GroupLoan::where('verified', 2)->whereBetween('datecreated', [now()->startOfWeek(), now()->endOfWeek()])->count(),
-            'this_month' => PersonalLoan::where('verified', 2)->whereMonth('datecreated', now()->month)->count() +
-                           GroupLoan::where('verified', 2)->whereMonth('datecreated', now()->month)->count(),
+            'total_rejected'  => ($prStats->cnt ?? 0) + ($grStats->cnt ?? 0),
+            'rejected_amount' => ($prStats->total ?? 0) + ($grStats->total ?? 0),
+            'today_rejected'  => ($prStats->today_cnt ?? 0) + ($grStats->today_cnt ?? 0),
+            'this_week'       => ($prStats->week_cnt ?? 0) + ($grStats->week_cnt ?? 0),
+            'this_month'      => ($prStats->month_cnt ?? 0) + ($grStats->month_cnt ?? 0),
         ];
 
         return view('admin.reports.rejected-loans', compact('data', 'stats'));

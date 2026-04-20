@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Apply for a Loan - Emuria Micro Finance Limited</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -304,6 +305,95 @@
                 </div>
             </div>
         </div>
+
+        <!-- ── Check Loan Status (Existing Members) ────────────────── -->
+        <div class="mt-4">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="card border-0 shadow-sm rounded-4 p-4" style="background:#f0fdf4">
+                        <div class="text-center mb-3">
+                            <div style="font-size:2rem; color:#15803d; margin-bottom:.5rem"><i class="fas fa-search-dollar"></i></div>
+                            <h5 class="fw-bold mb-1" style="color:#14532d">Already a Member? Check Your Loan Status</h5>
+                            <p class="text-muted small mb-0">Enter the phone number registered on your account to view your active loan and repayment schedule.</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <input type="tel" id="lsPhoneInput" class="form-control" placeholder="e.g. 0772 123 456"
+                                   style="border-radius:50px; padding-left:1rem"
+                                   onkeydown="if(event.key==='Enter'){checkLoanStatus();return false;}">
+                            <button class="btn btn-success px-4" id="lsBtn" onclick="checkLoanStatus()" style="border-radius:50px; white-space:nowrap">
+                                <i class="fas fa-search me-1"></i>Check Status
+                            </button>
+                        </div>
+
+                        {{-- Spinner --}}
+                        <div id="lsChecking" class="text-muted small text-center mt-3" style="display:none">
+                            <i class="fas fa-spinner fa-spin me-1"></i>Looking up your loan…
+                        </div>
+
+                        {{-- Not found --}}
+                        <div id="lsNotFound" class="alert alert-warning mt-3 mb-0 py-2 small" style="display:none; border-radius:12px">
+                            <i class="fas fa-info-circle me-1"></i><span id="lsNotFoundMsg">No active loan found for that phone number.</span>
+                        </div>
+
+                        {{-- Result panel --}}
+                        <div id="lsResult" style="display:none" class="mt-3">
+                            {{-- Loan summary --}}
+                            <div class="rounded-3 p-3 mb-3" style="background:white; border:1px solid #d1fae5">
+                                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                    <div>
+                                        <div class="fw-bold" style="color:#14532d; font-size:1.05rem"><i class="fas fa-user-circle me-1"></i><span id="lsMemberName"></span></div>
+                                        <div class="text-muted small mt-1">Loan: <strong id="lsLoanCode"></strong> &nbsp;|&nbsp; <span id="lsProduct"></span></div>
+                                    </div>
+                                    <span id="lsStatusBadge" class="badge fs-6 px-3 py-2"></span>
+                                </div>
+                                <hr class="my-2">
+                                <div class="row g-2 text-center">
+                                    <div class="col-4">
+                                        <div class="small text-muted">Principal</div>
+                                        <div class="fw-bold" style="color:#1a237e">UGX&nbsp;<span id="lsPrincipal"></span></div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="small text-muted">Total Paid</div>
+                                        <div class="fw-bold text-success">UGX&nbsp;<span id="lsTotalPaid"></span></div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="small text-muted">Outstanding</div>
+                                        <div class="fw-bold text-danger">UGX&nbsp;<span id="lsOutstanding"></span></div>
+                                    </div>
+                                </div>
+                                <div id="lsOverdueAlert" class="alert alert-danger py-1 px-2 small mt-2 mb-0" style="display:none; border-radius:8px">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>You have <strong id="lsOverdueCount"></strong> overdue installment(s). Please visit your branch to avoid penalties.
+                                </div>
+                                <div id="lsNextDue" class="alert alert-info py-1 px-2 small mt-2 mb-0" style="display:none; border-radius:8px">
+                                    <i class="fas fa-calendar-alt me-1"></i>Next payment: <strong id="lsNextDueDate"></strong> — UGX <strong id="lsNextDueAmt"></strong>
+                                </div>
+                            </div>
+
+                            {{-- Schedule table --}}
+                            <div class="fw-bold small mb-2" style="color:#14532d"><i class="fas fa-table me-1"></i>Repayment Schedule</div>
+                            <div style="overflow-x:auto; border-radius:10px; border:1px solid #d1fae5">
+                                <table class="table table-sm mb-0" style="font-size:.8rem">
+                                    <thead style="background:#d1fae5; color:#14532d">
+                                        <tr>
+                                            <th class="ps-3">#</th>
+                                            <th>Due Date</th>
+                                            <th class="text-end">Installment</th>
+                                            <th class="text-end">Paid</th>
+                                            <th class="text-end">Balance</th>
+                                            <th class="text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="lsScheduleBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="text-muted text-center small mt-2">
+                                <i class="fas fa-shield-alt me-1"></i>Amounts in Uganda Shillings (UGX). For queries, visit your nearest branch.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <footer class="text-center text-muted py-4" style="font-size:.78rem; border-top:1px solid #e0e0e0">
@@ -520,6 +610,37 @@
                         <label class="form-label">Years at Residence</label>
                         <input type="number" name="years_at_residence" class="form-control" value="{{ old('years_at_residence') }}" min="0">
                     </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Home Front Door Colour</label>
+                        <input type="text" name="home_door_color" class="form-control" value="{{ old('home_door_color') }}" placeholder="e.g. Blue">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">House Structure Type</label>
+                        <select name="home_type" class="form-select">
+                            <option value="">-- Select --</option>
+                            @foreach(['Permanent brick/cement','Mud and wattle','Iron sheet/mabati','Stone block','Semi-permanent','Other'] as $ht)
+                            <option value="{{ $ht }}" {{ old('home_type') == $ht ? 'selected' : '' }}>{{ $ht }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Next of Kin Name</label>
+                        <input type="text" name="next_of_kin_name" class="form-control" value="{{ old('next_of_kin_name') }}" placeholder="Full name">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Next of Kin Phone</label>
+                        <input type="text" name="next_of_kin_phone" class="form-control" value="{{ old('next_of_kin_phone') }}" placeholder="256XXXXXXXXX">
+                    </div>
+
+                    <div class="col-12"><hr class="my-1"><strong class="text-muted small">Chairman's Introduction Letter <span class="required-star">*</span></strong></div>
+                    <div class="col-12">
+                        <label class="form-label fw-semibold">LC1 Chairman's Letter <span class="required-star">*</span></label>
+                        <div class="small text-muted mb-1">Upload the LC1 Chairman's letter introducing and vouching for the applicant. <strong>This is mandatory.</strong> Accepted: JPG, PNG, PDF — max 5 MB.</div>
+                        <input type="file" name="chairman_letter" id="chairmanLetterInput"
+                               class="form-control @error('chairman_letter') is-invalid @enderror"
+                               accept=".jpg,.jpeg,.png,.pdf" required>
+                        @error('chairman_letter')<div class="invalid-feedback">{{ $message }}</div>@else<div class="invalid-feedback" id="chairmanLetterErr">Please upload the LC1 Chairman's introduction letter — this is required.</div>@enderror
+                    </div>
 
                     <div class="col-12"><hr class="my-1"><strong class="text-muted small">LC1 Information</strong></div>
                     <div class="col-md-6">
@@ -531,26 +652,44 @@
                         <input type="text" name="lc1_phone" class="form-control" value="{{ old('lc1_phone') }}" placeholder="256XXXXXXXXX">
                     </div>
 
-                    <div class="col-12"><hr class="my-1"><strong class="text-muted small">Local / Clan Reference</strong></div>
+                    <div class="col-12"><hr class="my-1"><strong class="text-muted small">Clan / Customary Authority</strong></div>
                     <div class="col-md-4">
-                        <label class="form-label">Has Local/Clan Reference?</label>
-                        <select name="has_local_reference" class="form-select" id="hasRefSelect">
-                            <option value="0" {{ old('has_local_reference') == '0' ? 'selected' : '' }}>No</option>
-                            <option value="1" {{ old('has_local_reference') == '1' ? 'selected' : '' }}>Yes</option>
+                        <label class="form-label">Clan Chairperson Name</label>
+                        <input type="text" name="clan_name" class="form-control" value="{{ old('clan_name') }}" placeholder="CCP name">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Clan Chairperson Contact</label>
+                        <input type="text" name="clan_contact" class="form-control" value="{{ old('clan_contact') }}" placeholder="256XXXXXXXXX">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Clan Letter Available?</label>
+                        <select name="clan_letter_available" class="form-select">
+                            <option value="0" {{ old('clan_letter_available') == '0' ? 'selected' : '' }}>No</option>
+                            <option value="1" {{ old('clan_letter_available') == '1' ? 'selected' : '' }}>Yes</option>
                         </select>
                     </div>
-                    <div class="col-md-4 ref-fields">
-                        <label class="form-label">Reference Name</label>
+
+                    <div class="col-12"><hr class="my-1"><strong class="text-muted small">Community References</strong></div>
+                    <div class="col-md-4">
+                        <label class="form-label">Reference 1 Name</label>
                         <input type="text" name="reference_name" class="form-control" value="{{ old('reference_name') }}">
                     </div>
-                    <div class="col-md-4 ref-fields">
-                        <label class="form-label">Reference Phone</label>
-                        <input type="text" name="reference_phone" class="form-control" value="{{ old('reference_phone') }}">
+                    <div class="col-md-4">
+                        <label class="form-label">Reference 1 Contact</label>
+                        <input type="text" name="reference_phone" class="form-control" value="{{ old('reference_phone') }}" placeholder="256XXXXXXXXX">
                     </div>
-                    <div class="col-md-6 ref-fields">
-                        <label class="form-label">Reference Relationship</label>
+                    <div class="col-md-4">
+                        <label class="form-label">Reference 1 Relationship</label>
                         <input type="text" name="reference_relationship" class="form-control" value="{{ old('reference_relationship') }}"
                                placeholder="e.g. Neighbor and produce supplier">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Reference 2 Name</label>
+                        <input type="text" name="reference_2_name" class="form-control" value="{{ old('reference_2_name') }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Reference 2 Contact</label>
+                        <input type="text" name="reference_2_contact" class="form-control" value="{{ old('reference_2_contact') }}" placeholder="256XXXXXXXXX">
                     </div>
                 </div>
             </div>
@@ -599,6 +738,18 @@
                         <label class="form-label">Avg. Daily Customers</label>
                         <input type="number" name="avg_daily_customers" class="form-control" value="{{ old('avg_daily_customers') }}" min="0">
                     </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Days Open Per Week</label>
+                        <input type="number" name="business_days_open" class="form-control" value="{{ old('business_days_open') }}" min="1" max="7" placeholder="e.g. 6">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Peak Trading Hours</label>
+                        <input type="text" name="peak_trading_hours" class="form-control" value="{{ old('peak_trading_hours') }}" placeholder="e.g. 5:30pm–8:30pm">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Main Supplier Name</label>
+                        <input type="text" name="top_supplier_name" class="form-control" value="{{ old('top_supplier_name') }}" placeholder="e.g. Kireka Wholesalers Ltd">
+                    </div>
                     <div class="col-12">
                         <label class="form-label">Describe Main Business Activity</label>
                         <textarea name="business_description" class="form-control" rows="2" placeholder="e.g. Retail shop selling produce, sugar, soap…">{{ old('business_description') }}</textarea>
@@ -633,36 +784,62 @@
                     Client Financial Claims
                 </div>
                 <div class="row g-3">
+                    <div class="col-12">
+                        <div class="alert alert-info py-2 px-3 small mb-0" style="border-radius:10px">
+                            <i class="fas fa-info-circle me-1"></i>
+                            All figures below are <strong>monthly</strong> (per calendar month). Enter what the business actually earns and spends each month.
+                        </div>
+                    </div>
                     <div class="col-md-6">
-                        <label class="form-label">Daily Sales Claimed (UGX) <span class="required-star">*</span></label>
+                        <label class="form-label">Monthly Sales (UGX) <span class="required-star">*</span></label>
+                        <div class="form-text text-muted mb-1">DMS — Total gross monthly sales/turnover</div>
                         <input type="text" id="daily_sales_claimedDisp" class="form-control ugx-display @error('daily_sales_claimed') is-invalid @enderror"
                                placeholder="0" autocomplete="off"
                                value="{{ old('daily_sales_claimed') ? number_format((int)old('daily_sales_claimed')) : '0' }}">
                         <input type="hidden" name="daily_sales_claimed" id="daily_sales_claimedHid" value="{{ old('daily_sales_claimed', 0) }}">
-                        <div class="invalid-feedback" id="daily_sales_claimedErr">@error('daily_sales_claimed'){{ $message }}@else Please enter the daily sales amount.@enderror</div>
+                        <div class="invalid-feedback" id="daily_sales_claimedErr">@error('daily_sales_claimed'){{ $message }}@else Please enter the monthly sales amount.@enderror</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Business Expenses per Day (UGX) <span class="required-star">*</span></label>
+                        <label class="form-label">Monthly Cost of Goods Sold (UGX) <span class="required-star">*</span></label>
+                        <div class="form-text text-muted mb-1">DMCOGS — Purchase cost of goods sold monthly</div>
+                        <input type="text" id="monthly_cogs_claimedDisp" class="form-control ugx-display @error('monthly_cogs_claimed') is-invalid @enderror"
+                               placeholder="0" autocomplete="off"
+                               value="{{ old('monthly_cogs_claimed') ? number_format((int)old('monthly_cogs_claimed')) : '0' }}">
+                        <input type="hidden" name="monthly_cogs_claimed" id="monthly_cogs_claimedHid" value="{{ old('monthly_cogs_claimed', 0) }}">
+                        <div class="invalid-feedback" id="monthly_cogs_claimedErr">@error('monthly_cogs_claimed'){{ $message }}@else Please enter the monthly cost of goods sold.@enderror</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Monthly Operating Expenses (UGX) <span class="required-star">*</span></label>
+                        <div class="form-text text-muted mb-1">DMOE — Rent, transport, utilities, wages etc.</div>
                         <input type="text" id="business_expenses_claimedDisp" class="form-control ugx-display @error('business_expenses_claimed') is-invalid @enderror"
                                placeholder="0" autocomplete="off"
                                value="{{ old('business_expenses_claimed') ? number_format((int)old('business_expenses_claimed')) : '0' }}">
                         <input type="hidden" name="business_expenses_claimed" id="business_expenses_claimedHid" value="{{ old('business_expenses_claimed', 0) }}">
-                        <div class="invalid-feedback" id="business_expenses_claimedErr">@error('business_expenses_claimed'){{ $message }}@else Please enter the daily business expenses.@enderror</div>
+                        <div class="invalid-feedback" id="business_expenses_claimedErr">@error('business_expenses_claimed'){{ $message }}@else Please enter the monthly operating expenses.@enderror</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Household Expenses per Day (UGX) <span class="required-star">*</span></label>
+                        <label class="form-label">Monthly Household Expenses (UGX) <span class="required-star">*</span></label>
+                        <div class="form-text text-muted mb-1">DMHE — Food, school fees, utilities for the household</div>
                         <input type="text" id="household_expenses_claimedDisp" class="form-control ugx-display @error('household_expenses_claimed') is-invalid @enderror"
                                placeholder="0" autocomplete="off"
                                value="{{ old('household_expenses_claimed') ? number_format((int)old('household_expenses_claimed')) : '0' }}">
                         <input type="hidden" name="household_expenses_claimed" id="household_expenses_claimedHid" value="{{ old('household_expenses_claimed', 0) }}">
-                        <div class="invalid-feedback" id="household_expenses_claimedErr">@error('household_expenses_claimed'){{ $message }}@else Please enter the daily household expenses.@enderror</div>
+                        <div class="invalid-feedback" id="household_expenses_claimedErr">@error('household_expenses_claimed'){{ $message }}@else Please enter the monthly household expenses.@enderror</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Other Daily Income (UGX)</label>
+                        <label class="form-label">Other Monthly Income (UGX)</label>
+                        <div class="form-text text-muted mb-1">DOMI — Salary, rental income, remittances etc.</div>
                         <input type="text" id="other_income_claimedDisp" class="form-control ugx-display"
                                placeholder="0" autocomplete="off"
                                value="{{ old('other_income_claimed') ? number_format((int)old('other_income_claimed')) : '0' }}">
                         <input type="hidden" name="other_income_claimed" id="other_income_claimedHid" value="{{ old('other_income_claimed', 0) }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Seasonality / Trading Note</label>
+                        <div class="form-text text-muted mb-1">SEASONALITY_NOTE — e.g. "peak during school term, low in Dec"</div>
+                        <input type="text" name="seasonality_note" class="form-control"
+                               value="{{ old('seasonality_note') }}"
+                               placeholder="e.g. Stable trading cycle with moderate stock turnover">
                     </div>
 
                     <div class="col-12"><hr class="my-1"><strong class="text-muted small">External Debt</strong></div>
@@ -703,7 +880,11 @@
                     Collateral Security Pledge
                 </div>
 
-                <strong class="text-muted small d-block mb-3">Collateral 1 <span class="required-star">*</span></strong>
+                {{-- ── Collateral 1 (Required) ── --}}
+                <div class="d-flex align-items-center mb-3">
+                    <strong class="text-muted small">Collateral 1 <span class="required-star">*</span></strong>
+                    <span class="badge bg-danger ms-2" style="font-size:.65rem">Required</span>
+                </div>
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label">Type <span class="required-star">*</span></label>
@@ -744,9 +925,9 @@
                         </select>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Document Number <span class="required-star">*</span></label>
+                        <label class="form-label">Document Number</label>
                         <input type="text" name="collateral_1_doc_number" class="form-control @error('collateral_1_doc_number') is-invalid @enderror"
-                               value="{{ old('collateral_1_doc_number') }}" required>
+                               value="{{ old('collateral_1_doc_number') }}">
                         @error('collateral_1_doc_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-4">
@@ -761,53 +942,105 @@
                         <label class="form-label">Upload Collateral Document Photo</label>
                         <input type="file" name="collateral_1_doc_photo" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
                     </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Collateral Already Pledged?</label>
+                        <select name="collateral_1_pledged" class="form-select">
+                            <option value="0" {{ old('collateral_1_pledged') == '0' ? 'selected' : '' }}>No</option>
+                            <option value="1" {{ old('collateral_1_pledged') == '1' ? 'selected' : '' }}>Yes</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Customary / Ancestral Land?</label>
+                        <select name="collateral_1_customary" class="form-select">
+                            <option value="0" {{ old('collateral_1_customary') == '0' ? 'selected' : '' }}>No</option>
+                            <option value="1" {{ old('collateral_1_customary') == '1' ? 'selected' : '' }}>Yes — CCP letter required</option>
+                        </select>
+                    </div>
+                </div>{{-- /row collateral 1 --}}
+
+                {{-- ── Add Collateral 2 button ── --}}
+                <div class="mt-4" id="addCollateral2Wrap" style="{{ old('collateral_2_type') ? 'display:none' : '' }}">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showCollateral2()"
+                            style="border-radius:50px">
+                        <i class="fas fa-plus me-1"></i>Add Second Collateral <span class="text-muted">(Optional)</span>
+                    </button>
                 </div>
 
-                <hr class="my-4">
-                <strong class="text-muted small d-block mb-3">Collateral 2 (Optional)</strong>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Type</label>
-                        <select name="collateral_2_type" class="form-select">
-                            <option value="">-- None --</option>
-                            @foreach(['Land','Building','Motorcycle','Vehicle','Equipment','Machinery','Livestock','Electronics','Other'] as $ct)
-                            <option value="{{ $ct }}" {{ old('collateral_2_type') == $ct ? 'selected' : '' }}>{{ $ct }}</option>
-                            @endforeach
-                        </select>
+                {{-- ── Collateral 2 (Optional, hidden by default) ── --}}
+                <div id="collateral2Section" style="{{ old('collateral_2_type') ? '' : 'display:none' }}">
+                    <hr class="my-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <strong class="text-muted small">Collateral 2</strong>
+                        <span class="badge bg-secondary ms-2" style="font-size:.65rem">Optional</span>
+                        <button type="button" class="btn btn-link btn-sm text-danger ms-auto p-0"
+                                onclick="removeCollateral2()" title="Remove second collateral">
+                            <i class="fas fa-times-circle me-1"></i>Remove
+                        </button>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Owner Name</label>
-                        <input type="text" name="collateral_2_owner_name" class="form-control" value="{{ old('collateral_2_owner_name') }}">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Type</label>
+                            <select name="collateral_2_type" class="form-select" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                                <option value="">-- None --</option>
+                                @foreach(['Land','Building','Motorcycle','Vehicle','Equipment','Machinery','Livestock','Electronics','Other'] as $ct)
+                                <option value="{{ $ct }}" {{ old('collateral_2_type') == $ct ? 'selected' : '' }}>{{ $ct }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Owner Name</label>
+                            <input type="text" name="collateral_2_owner_name" class="form-control"
+                                   value="{{ old('collateral_2_owner_name') }}" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Client Estimated Value (UGX)</label>
+                            <input type="text" id="collateral_2_client_valueDisp" class="form-control ugx-display"
+                                   placeholder="0" autocomplete="off"
+                                   value="{{ old('collateral_2_client_value') ? number_format((int)old('collateral_2_client_value')) : '' }}"
+                                   {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                            <input type="hidden" name="collateral_2_client_value" id="collateral_2_client_valueHid" value="{{ old('collateral_2_client_value', 0) }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <input type="text" name="collateral_2_description" class="form-control"
+                                   value="{{ old('collateral_2_description') }}" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Document Type</label>
+                            <select name="collateral_2_doc_type" class="form-select" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                                <option value="">-- Select --</option>
+                                @foreach(['Land Title','LC1 Letter + Witness','Logbook','Receipt','Agreement Letter','Other'] as $dt)
+                                <option value="{{ $dt }}" {{ old('collateral_2_doc_type') == $dt ? 'selected' : '' }}>{{ $dt }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Document Number</label>
+                            <input type="text" name="collateral_2_doc_number" class="form-control"
+                                   value="{{ old('collateral_2_doc_number') }}" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Upload Document Photo</label>
+                            <input type="file" name="collateral_2_doc_photo" class="form-control"
+                                   accept=".jpg,.jpeg,.png,.pdf" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Collateral Already Pledged?</label>
+                            <select name="collateral_2_pledged" class="form-select" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                                <option value="0" {{ old('collateral_2_pledged', '0') == '0' ? 'selected' : '' }}>No</option>
+                                <option value="1" {{ old('collateral_2_pledged') == '1' ? 'selected' : '' }}>Yes</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Customary / Ancestral Land?</label>
+                            <select name="collateral_2_customary" class="form-select" {{ old('collateral_2_type') ? '' : 'disabled' }}>
+                                <option value="0" {{ old('collateral_2_customary', '0') == '0' ? 'selected' : '' }}>No</option>
+                                <option value="1" {{ old('collateral_2_customary') == '1' ? 'selected' : '' }}>Yes — CCP letter required</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Client Estimated Value (UGX)</label>
-                        <input type="text" id="collateral_2_client_valueDisp" class="form-control ugx-display"
-                               placeholder="0" autocomplete="off"
-                               value="{{ old('collateral_2_client_value') ? number_format((int)old('collateral_2_client_value')) : '0' }}">
-                        <input type="hidden" name="collateral_2_client_value" id="collateral_2_client_valueHid" value="{{ old('collateral_2_client_value', 0) }}">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Description</label>
-                        <input type="text" name="collateral_2_description" class="form-control" value="{{ old('collateral_2_description') }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Document Type</label>
-                        <select name="collateral_2_doc_type" class="form-select">
-                            <option value="">-- Select --</option>
-                            @foreach(['Land Title','LC1 Letter + Witness','Logbook','Receipt','Agreement Letter','Other'] as $dt)
-                            <option value="{{ $dt }}" {{ old('collateral_2_doc_type') == $dt ? 'selected' : '' }}>{{ $dt }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Document Number</label>
-                        <input type="text" name="collateral_2_doc_number" class="form-control" value="{{ old('collateral_2_doc_number') }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Upload Document Photo</label>
-                        <input type="file" name="collateral_2_doc_photo" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
-                    </div>
-                </div>
+                </div>{{-- /collateral2Section --}}
+
             </div>
         </div>
 
@@ -821,7 +1054,11 @@
                     Guarantor Support
                 </div>
 
-                <strong class="text-muted small d-block mb-3">Guarantor 1 <span class="required-star">*</span></strong>
+                {{-- ── Guarantor 1 (Mandatory) ── --}}
+                <div class="d-flex align-items-center mb-3">
+                    <strong class="text-muted small">Guarantor 1 <span class="required-star">*</span></strong>
+                    <span class="badge bg-danger ms-2" style="font-size:.65rem">Required</span>
+                </div>
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label">Name <span class="required-star">*</span></label>
@@ -856,58 +1093,97 @@
                                value="{{ old('guarantor_1_pledged_asset_value', 0) }}" min="0" step="10000">
                     </div>
                     <div class="col-md-4">
+                        <label class="form-label">Declared Monthly Income (UGX)</label>
+                        <input type="number" name="guarantor_1_monthly_income" class="form-control"
+                               value="{{ old('guarantor_1_monthly_income') }}" min="0" step="10000" placeholder="e.g. 1,000,000">
+                    </div>
+                    <div class="col-md-4">
                         <label class="form-label">Guarantor Signed Consent?</label>
                         <select name="guarantor_1_signed_consent" class="form-select">
                             <option value="0" {{ old('guarantor_1_signed_consent') == '0' ? 'selected' : '' }}>Not yet</option>
                             <option value="1" {{ old('guarantor_1_signed_consent') == '1' ? 'selected' : '' }}>Yes, signed</option>
                         </select>
                     </div>
-                    <div class="col-12">
+                    <div class="col-md-6">
                         <label class="form-label">Pledge Description</label>
                         <input type="text" name="guarantor_1_pledge_description" class="form-control"
                                value="{{ old('guarantor_1_pledge_description') }}" placeholder="e.g. Two dairy cows and salary support">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Support Type / Description</label>
+                        <input type="text" name="guarantor_1_support_description" class="form-control"
+                               value="{{ old('guarantor_1_support_description') }}" placeholder="e.g. Income + motorcycle">
+                    </div>
                 </div>
 
-                <hr class="my-4">
-                <strong class="text-muted small d-block mb-3">Guarantor 2 (Optional)</strong>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Name</label>
-                        <input type="text" name="guarantor_2_name" class="form-control" value="{{ old('guarantor_2_name') }}">
+                {{-- ── Add Guarantor 2 button ── --}}
+                <div class="mt-4" id="addGuarantor2Wrap" style="{{ old('guarantor_2_name') ? 'display:none' : '' }}">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showGuarantor2()"
+                            style="border-radius:50px">
+                        <i class="fas fa-plus me-1"></i>Add Second Guarantor <span class="text-muted">(Optional)</span>
+                    </button>
+                </div>
+
+                {{-- ── Guarantor 2 (Optional, hidden by default) ── --}}
+                <div id="guarantor2Section" style="{{ old('guarantor_2_name') ? '' : 'display:none' }}">
+                    <hr class="my-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <strong class="text-muted small">Guarantor 2</strong>
+                        <span class="badge bg-secondary ms-2" style="font-size:.65rem">Optional</span>
+                        <button type="button" class="btn btn-link btn-sm text-danger ms-auto p-0"
+                                onclick="removeGuarantor2()" title="Remove second guarantor">
+                            <i class="fas fa-times-circle me-1"></i>Remove
+                        </button>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Relationship</label>
-                        <input type="text" name="guarantor_2_relationship" class="form-control" value="{{ old('guarantor_2_relationship') }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Phone</label>
-                        <input type="text" name="guarantor_2_phone" class="form-control" value="{{ old('guarantor_2_phone') }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Commitment Level</label>
-                        <select name="guarantor_2_commitment_level" class="form-select">
-                            <option value="">-- Select --</option>
-                            <option value="High"     {{ old('guarantor_2_commitment_level') == 'High'     ? 'selected' : '' }}>High</option>
-                            <option value="Moderate" {{ old('guarantor_2_commitment_level') == 'Moderate' ? 'selected' : '' }}>Moderate</option>
-                            <option value="Low"      {{ old('guarantor_2_commitment_level') == 'Low'      ? 'selected' : '' }}>Low</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Pledged Asset Value (UGX)</label>
-                        <input type="number" name="guarantor_2_pledged_asset_value" class="form-control"
-                               value="{{ old('guarantor_2_pledged_asset_value', 0) }}" min="0" step="10000">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Signed Consent?</label>
-                        <select name="guarantor_2_signed_consent" class="form-select">
-                            <option value="0">Not yet</option>
-                            <option value="1" {{ old('guarantor_2_signed_consent') == '1' ? 'selected' : '' }}>Yes</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Pledge Description</label>
-                        <input type="text" name="guarantor_2_pledge_description" class="form-control" value="{{ old('guarantor_2_pledge_description') }}">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Name</label>
+                            <input type="text" name="guarantor_2_name" class="form-control" value="{{ old('guarantor_2_name') }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Relationship</label>
+                            <input type="text" name="guarantor_2_relationship" class="form-control" value="{{ old('guarantor_2_relationship') }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Phone</label>
+                            <input type="text" name="guarantor_2_phone" class="form-control" value="{{ old('guarantor_2_phone') }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Commitment Level</label>
+                            <select name="guarantor_2_commitment_level" class="form-select">
+                                <option value="">-- Select --</option>
+                                <option value="High"     {{ old('guarantor_2_commitment_level') == 'High'     ? 'selected' : '' }}>High</option>
+                                <option value="Moderate" {{ old('guarantor_2_commitment_level') == 'Moderate' ? 'selected' : '' }}>Moderate</option>
+                                <option value="Low"      {{ old('guarantor_2_commitment_level') == 'Low'      ? 'selected' : '' }}>Low</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Pledged Asset Value (UGX)</label>
+                            <input type="number" name="guarantor_2_pledged_asset_value" class="form-control"
+                                   value="{{ old('guarantor_2_pledged_asset_value', 0) }}" min="0" step="10000">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Declared Monthly Income (UGX)</label>
+                            <input type="number" name="guarantor_2_monthly_income" class="form-control"
+                                   value="{{ old('guarantor_2_monthly_income') }}" min="0" step="10000" placeholder="e.g. 1,300,000">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Signed Consent?</label>
+                            <select name="guarantor_2_signed_consent" class="form-select">
+                                <option value="0">Not yet</option>
+                                <option value="1" {{ old('guarantor_2_signed_consent') == '1' ? 'selected' : '' }}>Yes</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Pledge Description</label>
+                            <input type="text" name="guarantor_2_pledge_description" class="form-control"
+                                   value="{{ old('guarantor_2_pledge_description') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Support Type / Description</label>
+                            <input type="text" name="guarantor_2_support_description" class="form-control"
+                                   value="{{ old('guarantor_2_support_description') }}" placeholder="e.g. Salary + household assets">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -969,22 +1245,27 @@
         </div>
 
         {{-- Navigation Buttons --}}
-        <div class="d-flex justify-content-between align-items-center mb-5">
-            <button type="button" class="btn btn-outline-secondary btn-back" id="btnBack" style="display:none!important">
-                <i class="fas fa-arrow-left me-1"></i> Back
-            </button>
-            <div class="ms-auto d-flex gap-2">
-                <button type="button" class="btn btn-primary btn-next" id="btnNext">
-                    Next <i class="fas fa-arrow-right ms-1"></i>
-                </button>
-                <button type="submit" class="btn btn-success" id="btnSubmit" style="display:none">
-                    <i class="fas fa-paper-plane me-1"></i> Submit Application
-                </button>
-            </div>
-        </div>
+        <div style="height:80px"></div>{{-- spacer so content isn't hidden behind sticky bar --}}
     </form>
 </div>{{-- /container --}}
 </div>{{-- /formWrapper --}}
+
+{{-- Sticky navigation bar (always visible at bottom of viewport) --}}
+<div id="stickyNav" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:100; background:#fff; border-top:1px solid #dee2e6; box-shadow:0 -2px 12px rgba(0,0,0,.08); padding:12px 20px;">
+    <div style="max-width:860px; margin:0 auto; display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn btn-outline-secondary btn-back" id="btnBack" style="display:none; min-width:110px">
+            <i class="fas fa-arrow-left me-1"></i> Back
+        </button>
+        <div class="ms-auto d-flex gap-2">
+            <button type="button" class="btn btn-primary btn-next" id="btnNext" style="min-width:110px">
+                Next <i class="fas fa-arrow-right ms-1"></i>
+            </button>
+            <button type="submit" form="applyForm" class="btn btn-success" id="btnSubmit" style="display:none; min-width:140px">
+                <i class="fas fa-paper-plane me-1"></i> Submit Application
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -994,6 +1275,8 @@ function showForm() {
     document.getElementById('landingPage').style.display  = 'none';
     document.getElementById('formHeader').style.display   = '';
     document.getElementById('formWrapper').style.display  = '';
+    document.getElementById('stickyNav').style.display    = '';
+    showStep(currentStep);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1070,8 +1353,9 @@ function validateStep(stepIndex) {
     const UGX_PAIRS = [
         // [displayId, hiddenId, errorId, label, required, min]
         ['requestedAmountDisplay',          'requestedAmount',                  null,                              'Loan amount',             true,  1],
-        ['daily_sales_claimedDisp',         'daily_sales_claimedHid',           'daily_sales_claimedErr',          'Daily sales',             true,  0],
-        ['business_expenses_claimedDisp',   'business_expenses_claimedHid',     'business_expenses_claimedErr',    'Business expenses',       true,  0],
+        ['daily_sales_claimedDisp',         'daily_sales_claimedHid',           'daily_sales_claimedErr',          'Monthly sales',           true,  0],
+        ['monthly_cogs_claimedDisp',         'monthly_cogs_claimedHid',          'monthly_cogs_claimedErr',         'Cost of goods sold',      true,  0],
+        ['business_expenses_claimedDisp',   'business_expenses_claimedHid',     'business_expenses_claimedErr',    'Operating expenses',      true,  0],
         ['household_expenses_claimedDisp',  'household_expenses_claimedHid',    'household_expenses_claimedErr',   'Household expenses',      true,  0],
         ['collateral_1_client_valueDisp',   'collateral_1_client_valueHid',     'collateral_1_client_valueErr',    'Collateral 1 value',      true,  1],
     ];
@@ -1125,11 +1409,11 @@ document.getElementById('btnBack').addEventListener('click', function() {
     const stepFieldMap = [
         ['full_name','phone','national_id','date_of_birth','gender'],
         ['product_id','branch_id','requested_amount','tenure_periods','repayment_frequency'],
-        ['residence_village','lc1_name','reference_name'],
-        ['business_name','business_type'],
-        ['daily_sales_claimed','business_expenses_claimed','household_expenses_claimed'],
-        ['collateral_1_type','collateral_1_owner_name','collateral_1_description','collateral_1_doc_number','collateral_1_client_value'],
-        ['guarantor_1_name','guarantor_1_relationship','guarantor_1_phone','guarantor_1_commitment_level'],
+        ['residence_village','lc1_name','reference_name','home_door_color','home_type','next_of_kin_name','next_of_kin_phone','reference_2_name','reference_2_contact','clan_name','clan_contact'],
+        ['business_name','business_type','business_days_open','peak_trading_hours','top_supplier_name'],
+        ['daily_sales_claimed','monthly_cogs_claimed','business_expenses_claimed','household_expenses_claimed','seasonality_note'],
+        ['collateral_1_type','collateral_1_owner_name','collateral_1_description','collateral_1_client_value','collateral_1_pledged','collateral_1_customary'],
+        ['guarantor_1_name','guarantor_1_relationship','guarantor_1_phone','guarantor_1_commitment_level','guarantor_1_monthly_income','guarantor_1_support_description'],
         ['consent_verification','consent_crb','declaration_truth'],
     ];
     let jumpStep = 0;
@@ -1184,6 +1468,7 @@ amountDisplay.addEventListener('input', function () {
 // Each pair: [displayId, hiddenId]
 const UGX_FIELD_PAIRS = [
     ['daily_sales_claimedDisp',        'daily_sales_claimedHid'],
+    ['monthly_cogs_claimedDisp',       'monthly_cogs_claimedHid'],
     ['business_expenses_claimedDisp',  'business_expenses_claimedHid'],
     ['household_expenses_claimedDisp', 'household_expenses_claimedHid'],
     ['other_income_claimedDisp',       'other_income_claimedHid'],
@@ -1288,21 +1573,25 @@ document.getElementById('applyForm').addEventListener('submit', function(e) {
 const hasRef = document.getElementById('hasRefSelect');
 function toggleRef() {
     document.querySelectorAll('.ref-fields').forEach(el => {
-        el.style.display = hasRef.value == '1' ? '' : 'none';
+        el.style.display = (hasRef && hasRef.value == '1') ? '' : 'none';
     });
 }
-hasRef.addEventListener('change', toggleRef);
-toggleRef();
+if (hasRef) {
+    hasRef.addEventListener('change', toggleRef);
+    toggleRef();
+}
 
 // Toggle external loan fields
 const hasExternal = document.getElementById('hasExternalLoans');
 function toggleExternal() {
     document.querySelectorAll('.external-fields').forEach(el => {
-        el.style.display = hasExternal.value == '1' ? '' : 'none';
+        el.style.display = (hasExternal && hasExternal.value == '1') ? '' : 'none';
     });
 }
-hasExternal.addEventListener('change', toggleExternal);
-toggleExternal();
+if (hasExternal) {
+    hasExternal.addEventListener('change', toggleExternal);
+    toggleExternal();
+}
 
 // ── Business type "Other" → custom text input ─────────────────────────
 const bizTypeSelect = document.getElementById('businessTypeSelect');
@@ -1532,6 +1821,134 @@ if (phoneFormField) {
                 };
             }
         });
+    });
+}
+
+// ── Collateral 2 toggle ───────────────────────────────────────────────
+function showCollateral2() {
+    document.getElementById('collateral2Section').style.display = '';
+    document.getElementById('addCollateral2Wrap').style.display = 'none';
+    // Enable all collateral 2 fields
+    document.querySelectorAll('#collateral2Section input, #collateral2Section select').forEach(function(el) {
+        el.disabled = false;
+    });
+}
+function removeCollateral2() {
+    document.getElementById('collateral2Section').style.display = 'none';
+    document.getElementById('addCollateral2Wrap').style.display = '';
+    // Clear and disable collateral 2 fields so they aren't submitted or validated
+    document.querySelectorAll('#collateral2Section input[name^="collateral_2_"], #collateral2Section select[name^="collateral_2_"]').forEach(function(el) {
+        el.value = el.tagName === 'SELECT' ? (el.querySelector('option') ? el.querySelector('option').value : '') : '';
+        el.disabled = true;
+    });
+    var hid = document.getElementById('collateral_2_client_valueHid');
+    if (hid) hid.value = '0';
+    var disp = document.getElementById('collateral_2_client_valueDisp');
+    if (disp) disp.value = '';
+}
+
+// ── Guarantor 2 toggle ───────────────────────────────────────────────
+function showGuarantor2() {
+    document.getElementById('guarantor2Section').style.display = '';
+    document.getElementById('addGuarantor2Wrap').style.display = 'none';
+}
+function removeGuarantor2() {
+    var sec = document.getElementById('guarantor2Section');
+    sec.style.display = 'none';
+    document.getElementById('addGuarantor2Wrap').style.display = '';
+    // Clear all guarantor 2 fields so they aren't submitted
+    sec.querySelectorAll('input[name^="guarantor_2_"], select[name^="guarantor_2_"]').forEach(function(el) {
+        el.value = el.tagName === 'SELECT' ? (el.querySelector('option') ? el.querySelector('option').value : '') : '';
+    });
+}
+
+function checkLoanStatus() {
+    const phoneInput = document.getElementById('lsPhoneInput');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    if (!phone) { phoneInput.classList.add('is-invalid'); return; }
+    phoneInput.classList.remove('is-invalid');
+
+    const btn = document.getElementById('lsBtn');
+    btn.disabled = true;
+    ['lsChecking','lsNotFound','lsResult'].forEach(function(id) {
+        document.getElementById(id).style.display = 'none';
+    });
+    document.getElementById('lsChecking').style.display = '';
+
+    fetch('{{ route("client.loan-status") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').content : '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ phone: phone })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        document.getElementById('lsChecking').style.display = 'none';
+        btn.disabled = false;
+
+        if (!data.found) {
+            document.getElementById('lsNotFoundMsg').textContent = data.message || 'No active loan found for that phone number.';
+            document.getElementById('lsNotFound').style.display = '';
+            return;
+        }
+
+        // Populate summary
+        document.getElementById('lsMemberName').textContent   = data.member_name;
+        document.getElementById('lsLoanCode').textContent     = data.loan.code;
+        document.getElementById('lsProduct').textContent      = data.loan.product;
+        document.getElementById('lsPrincipal').textContent    = data.loan.principal;
+        document.getElementById('lsTotalPaid').textContent    = data.loan.total_paid;
+        document.getElementById('lsOutstanding').textContent  = data.loan.outstanding;
+
+        var badge = document.getElementById('lsStatusBadge');
+        badge.textContent = data.loan.status;
+        badge.className   = 'badge fs-6 px-3 py-2 bg-' + data.loan.status_color;
+
+        var overdueEl = document.getElementById('lsOverdueAlert');
+        if (data.loan.overdue > 0) {
+            document.getElementById('lsOverdueCount').textContent = data.loan.overdue;
+            overdueEl.style.display = '';
+        } else {
+            overdueEl.style.display = 'none';
+        }
+
+        var nextEl = document.getElementById('lsNextDue');
+        if (data.loan.next_due_date) {
+            document.getElementById('lsNextDueDate').textContent = data.loan.next_due_date;
+            document.getElementById('lsNextDueAmt').textContent  = data.loan.next_due_amount;
+            nextEl.style.display = '';
+        } else {
+            nextEl.style.display = 'none';
+        }
+
+        // Populate schedule table
+        var tbody = document.getElementById('lsScheduleBody');
+        tbody.innerHTML = '';
+        (data.schedules || []).forEach(function(s) {
+            var statusClass = { 'Paid': 'success', 'Overdue': 'danger', 'Pending': 'secondary' }[s.status] || 'secondary';
+            tbody.innerHTML += '<tr>' +
+                '<td class="ps-3 text-muted">' + s.installment + '</td>' +
+                '<td>' + s.due_date + '</td>' +
+                '<td class="text-end">' + s.amount + '</td>' +
+                '<td class="text-end text-success">' + s.paid + '</td>' +
+                '<td class="text-end text-danger">' + s.balance + '</td>' +
+                '<td class="text-center"><span class="badge bg-' + statusClass + '">' + s.status + '</span></td>' +
+                '</tr>';
+        });
+        if (!data.schedules || data.schedules.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No schedule yet — loan may not be disbursed.</td></tr>';
+        }
+
+        document.getElementById('lsResult').style.display = '';
+        document.getElementById('lsResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    })
+    .catch(function() {
+        document.getElementById('lsChecking').style.display = 'none';
+        btn.disabled = false;
+        document.getElementById('lsNotFoundMsg').textContent = 'Unable to connect. Please try again.';
+        document.getElementById('lsNotFound').style.display = '';
     });
 }
 </script>

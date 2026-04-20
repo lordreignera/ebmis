@@ -1,0 +1,18 @@
+L119:         $vss = $this->s2_vss($app, $fvl);                                      // (VSS) Verification Strength Score
+[656]         return (int) round(($c1 + $c2 + $c3 + $c4 + $c5 + $c6 + $c7) / 7);
+[657]     }
+[658]     private function s2_vss(ClientLoanApplication $app, ?FieldVerification $fvl): int
+[659]     {
+[660]         if ($fvl) {
+[673]         } else {
+[686]         }
+[688]         return min(100, array_sum(array_map('intval', $checks)) * 10);
+[689]     }
+[703]     private function s3_dscrs(float $dscr): int
+[704]     {
+[705]         if ($dscr >= 3.5) return 100;
+[706]         if ($dscr >= 2.0) return (int) round(80 + ($dscr - 2.0) / 1.5 * 20);
+[707]         if ($dscr >= 1.2) return (int) round(60 + ($dscr - 1.2) / 0.8 * 20);
+[708]         if ($dscr >= 0.8) return (int) round(($dscr - 0.8) / 0.4 * 60);
+[709]         return 0;
+[710]     }

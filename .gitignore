@@ -26,6 +26,7 @@ Thumbs.db
 
 # Database migration and fix scripts
 /fix-scripts/
+/scripts/
 /deployment/
 /docs/
 
