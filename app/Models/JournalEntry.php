@@ -22,6 +22,7 @@ class JournalEntry extends Model
         'product_id',
         'officer_id',
         'fund_id',
+        'inv_id',
         'narrative',
         'total_debit',
         'total_credit',

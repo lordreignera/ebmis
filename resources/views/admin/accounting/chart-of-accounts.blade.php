@@ -28,26 +28,35 @@
     <div class="col-md-12 grid-margin">
         <div class="card">
             <div class="card-body">
-                <form method="GET" action="{{ route('admin.accounting.chart-of-accounts') }}" class="row g-3">
-                    <div class="col-md-3">
+                <form method="GET" action="{{ route('admin.accounting.chart-of-accounts') }}" class="row g-3" id="coaFilterForm">
+                    <div class="col-md-2">
                         <label class="form-label">Filter Period</label>
-                        <select class="form-select" id="period_filter" onchange="updateDateInputs()">
-                            <option value="all" {{ !request('start_date') && !request('end_date') ? 'selected' : '' }}>All Time</option>
+                        <select class="form-select" id="period_filter" name="period" onchange="updateDateInputs(this.value)">
+                            <option value="all" {{ !request('start_date') && !request('end_date') && !request('period') ? 'selected' : '' }}>All Time</option>
                             <option value="current_month" {{ request('period') == 'current_month' ? 'selected' : '' }}>Current Month</option>
                             <option value="last_month" {{ request('period') == 'last_month' ? 'selected' : '' }}>Last Month</option>
                             <option value="current_quarter" {{ request('period') == 'current_quarter' ? 'selected' : '' }}>Current Quarter</option>
                             <option value="last_quarter" {{ request('period') == 'last_quarter' ? 'selected' : '' }}>Last Quarter</option>
                             <option value="current_year" {{ request('period') == 'current_year' ? 'selected' : '' }}>Current Year</option>
-                            <option value="custom" {{ request('start_date') || request('end_date') ? 'selected' : '' }}>Custom Range</option>
+                            <option value="custom" {{ request('start_date') && !request('period') ? 'selected' : '' }}>Custom Range</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label">Start Date</label>
                         <input type="date" class="form-control" name="start_date" id="start_date" value="{{ request('start_date') }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label">End Date</label>
                         <input type="date" class="form-control" name="end_date" id="end_date" value="{{ request('end_date', date('Y-m-d')) }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label"><i class="mdi mdi-domain me-1"></i>Branch</label>
+                        <select class="form-select" name="branch_id">
+                            <option value="">All Branches</option>
+                            @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" {{ request('branch_id') == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">&nbsp;</label>
@@ -79,12 +88,11 @@
 @endif
 
 <script>
-function updateDateInputs() {
-    const period = document.getElementById('period_filter').value;
+function updateDateInputs(period) {
     const today = new Date();
     let startDate = '';
     let endDate = today.toISOString().split('T')[0];
-    
+
     if (period === 'all') {
         startDate = '';
         endDate = '';
@@ -105,10 +113,18 @@ function updateDateInputs() {
         endDate = new Date(year, (adjustedQuarter + 1) * 3, 0).toISOString().split('T')[0];
     } else if (period === 'current_year') {
         startDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+    } else {
+        // custom — leave date fields as-is
+        return;
     }
-    
+
     document.getElementById('start_date').value = startDate;
     document.getElementById('end_date').value = endDate;
+
+    // Auto-submit on preset selection (not custom)
+    if (period !== 'custom') {
+        document.getElementById('coaFilterForm').submit();
+    }
 }
 </script>
 

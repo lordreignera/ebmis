@@ -67,30 +67,51 @@
                     <div class="col-md-6">
                         <h5 class="card-title mb-3">Additional Details</h5>
                         <table class="table table-sm">
-                            @if($entry->costCenter)
                             <tr>
-                                <th width="40%">Cost Center (Branch):</th>
-                                <td>{{ $entry->costCenter->name }}</td>
+                                <th width="40%">Branch / Cost Centre:</th>
+                                <td>
+                                    @if($entry->costCenter)
+                                        <span class="badge" style="background:#1a73e8;color:#fff;font-size:0.85em;padding:4px 8px;">{{ $entry->costCenter->name }}</span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
                             </tr>
-                            @endif
-                            @if($entry->product)
                             <tr>
                                 <th>Product:</th>
-                                <td>{{ $entry->product->name }}</td>
+                                <td>
+                                    @if($entry->product)
+                                        <span class="badge" style="background:#0f9d58;color:#fff;font-size:0.85em;padding:4px 8px;">{{ $entry->product->name }}</span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
                             </tr>
-                            @endif
-                            @if($entry->officer)
                             <tr>
-                                <th>Officer:</th>
-                                <td>{{ $entry->officer->name }}</td>
+                                <th>Loan Officer:</th>
+                                <td>
+                                    @if($entry->officer)
+                                        <span class="badge" style="background:#6f42c1;color:#fff;font-size:0.85em;padding:4px 8px;">{{ $entry->officer->name }}</span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
                             </tr>
-                            @endif
-                            @if($entry->fund)
                             <tr>
                                 <th>Fund:</th>
-                                <td>{{ $entry->fund->name }}</td>
+                                <td>
+                                    @if($entry->fund)
+                                        <span class="badge badge-info">{{ $entry->fund->name }}</span>
+                                    @elseif($entry->inv_id)
+                                        @php
+                                            $inv = DB::table('investment')->where('id', $entry->inv_id)->first();
+                                        @endphp
+                                        <span class="badge badge-info">{{ $inv->name ?? 'Investor #'.$entry->inv_id }}</span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
                             </tr>
-                            @endif
                             <tr>
                                 <th>Created By:</th>
                                 <td>{{ $entry->postedBy->name ?? 'System' }}</td>

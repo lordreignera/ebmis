@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\JournalEntry;
-use App\Models\JournalLine;
 use App\Models\SystemAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,152 +19,10 @@ class AccountingController extends Controller
      */
     public function journalEntries(Request $request)
     {
-        $query = JournalEntry::with(['lines.account', 'costCenter', 'product', 'officer', 'fund'])
-            ->orderBy('transaction_date', 'desc')
-            ->orderBy('journal_number', 'desc');
-
-        // Filter by date range
-        if ($request->filled('date_from')) {
-            $query->where('transaction_date', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->where('transaction_date', '<=', $request->date_to);
-        }
-
-        // Filter by reference type
-        if ($request->filled('reference_type')) {
-            $query->where('reference_type', $request->reference_type);
-        }
-
-        // Filter by status
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        // Filter by branch
-        if ($request->filled('branch_id')) {
-            $query->where('cost_center_id', $request->branch_id);
-        }
-
-        // Filter by loan
-        if ($request->filled('loan_id')) {
-            $query->where(function($q) use ($request) {
-                $q->where(function($subQ) use ($request) {
-                    // Explicit loan references
-                    $subQ->where('reference_type', 'loan')
-                         ->where('reference_id', $request->loan_id);
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Disbursement journals reference disbursement ids, not loan ids
-                    $subQ->where('reference_type', 'Disbursement')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('disbursements')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Repayment journals reference repayment ids
-                    $subQ->where('reference_type', 'Repayment')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('repayments')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Loan-linked fee journals
-                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('fees')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Loan-linked cash security journals
-                    $subQ->where('reference_type', 'Cash Security')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('cash_securities')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                });
-            });
-        }
-
-        // Filter by member (ensures all member-related journals show even when created from different flows)
-        if ($request->filled('member_id')) {
-            $query->where(function($q) use ($request) {
-                $q->where(function($subQ) use ($request) {
-                    // Disbursement journals -> disbursement -> loan -> member
-                    $subQ->where('reference_type', 'Disbursement')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('disbursements')
-                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
-                                       $loanQuery->select('id')
-                                                 ->from('loans')
-                                                 ->where('member_id', $request->member_id);
-                                   });
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Repayment journals -> repayment -> loan -> member
-                    $subQ->where('reference_type', 'Repayment')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('repayments')
-                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
-                                       $loanQuery->select('id')
-                                                 ->from('loans')
-                                                 ->where('member_id', $request->member_id);
-                                   });
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Fees posted directly on member profile
-                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('fees')
-                                   ->where('member_id', $request->member_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    // Cash security posted on member profile
-                    $subQ->where('reference_type', 'Cash Security')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('cash_securities')
-                                   ->where('member_id', $request->member_id);
-                         });
-                });
-            });
-        }
-
-        // Filter by investor (journals from disbursements funded by selected investor account)
-        if ($request->filled('investor_id')) {
-            $this->applyInvestorFilter($query, (int) $request->investor_id);
-        }
-
-        $entries = $query->paginate(50);
-
-        // Get loan info if filtering by loan
-        $loan = null;
-        if ($request->filled('loan_id')) {
-            $loan = \App\Models\Loan::find($request->loan_id);
-        }
-
-        $member = null;
-        if ($request->filled('member_id')) {
-            $member = \App\Models\Member::find($request->member_id);
-        }
-
-        $investor = null;
-        if ($request->filled('investor_id')) {
-            $investor = \App\Models\Investor::withCount('investments')->find($request->investor_id);
-        }
+        $entries  = $this->buildJournalQuery($request)->paginate(50);
+        $loan     = $request->filled('loan_id')     ? \App\Models\Loan::find($request->loan_id)                                  : null;
+        $member   = $request->filled('member_id')   ? \App\Models\Member::find($request->member_id)                              : null;
+        $investor = $request->filled('investor_id') ? \App\Models\Investor::withCount('investments')->find($request->investor_id) : null;
 
         return view('admin.accounting.journal-entries', compact('entries', 'loan', 'member', 'investor'));
     }
@@ -193,12 +51,7 @@ class AccountingController extends Controller
             ->orderBy('sub_code')
             ->get();
 
-        $accountCategories = [];
-        foreach ($accounts as $a) {
-            $accountCategories[$a->Id] = $a->category;
-        }
-
-        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
+        $balances = $this->calculateBalancesForAccounts($this->buildAccountCategories($accounts), $asOfDate);
 
         foreach ($accounts as $account) {
             $b = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
@@ -234,6 +87,8 @@ class AccountingController extends Controller
     public function balanceSheet(Request $request)
     {
         $asOfDate = $request->input('as_of_date', date('Y-m-d'));
+        $branchId = $request->input('branch_id') ?: null;
+        $branches = Branch::orderBy('name')->get();
 
         // Bulk fetch accounts by category and compute balances in one aggregated query
         $assetAccounts = SystemAccount::where('category', 'Asset')->where('status', 1)->orderBy('code')->get();
@@ -241,12 +96,9 @@ class AccountingController extends Controller
         $equityAccounts = SystemAccount::where('category', 'Equity')->where('status', 1)->orderBy('code')->get();
 
         $allAccounts = $assetAccounts->merge($liabilityAccounts)->merge($equityAccounts);
-        $accountCategories = [];
-        foreach ($allAccounts as $a) {
-            $accountCategories[$a->Id] = $a->category;
-        }
-
-        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
+        $balances = $this->calculateBalancesForAccounts(
+            $this->buildAccountCategories($allAccounts), $asOfDate, $branchId
+        );
 
         $assets = [];
         foreach ($assetAccounts as $account) {
@@ -269,9 +121,12 @@ class AccountingController extends Controller
             $equity[] = $account;
         }
 
-        $totalAssets = array_sum(array_column($assets, 'balance'));
+        $totalAssets      = array_sum(array_column($assets, 'balance'));
         $totalLiabilities = array_sum(array_column($liabilities, 'balance'));
-        $totalEquity = array_sum(array_column($equity, 'balance'));
+        $totalEquity      = array_sum(array_column($equity, 'balance'));
+
+        $currentYearNetIncome = $this->computeCurrentYearNetIncome($asOfDate, $branchId);
+        $totalEquity         += $currentYearNetIncome;
 
         return view('admin.accounting.balance-sheet', compact(
             'assets',
@@ -280,7 +135,10 @@ class AccountingController extends Controller
             'totalAssets',
             'totalLiabilities',
             'totalEquity',
-            'asOfDate'
+            'currentYearNetIncome',
+            'asOfDate',
+            'branchId',
+            'branches'
         ));
     }
 
@@ -291,18 +149,17 @@ class AccountingController extends Controller
     {
         $dateFrom = $request->input('date_from', date('Y-m-01'));
         $dateTo = $request->input('date_to', date('Y-m-d'));
+        $branchId = $request->input('branch_id') ?: null;
+        $branches = Branch::orderBy('name')->get();
 
         // Bulk compute balances for the period
         $incomeAccounts = SystemAccount::where('category', 'Income')->where('status', 1)->orderBy('code')->get();
         $expenseAccounts = SystemAccount::where('category', 'Expense')->where('status', 1)->orderBy('code')->get();
 
         $allAccounts = $incomeAccounts->merge($expenseAccounts);
-        $accountCategories = [];
-        foreach ($allAccounts as $a) {
-            $accountCategories[$a->Id] = $a->category;
-        }
-
-        $periodBalances = $this->calculateBalancesForAccountsForPeriod($accountCategories, $dateFrom, $dateTo);
+        $periodBalances = $this->calculateBalancesForAccountsForPeriod(
+            $this->buildAccountCategories($allAccounts), $dateFrom, $dateTo, $branchId
+        );
 
         $income = [];
         foreach ($incomeAccounts as $account) {
@@ -316,8 +173,8 @@ class AccountingController extends Controller
             $expenses[] = $account;
         }
 
-        $totalIncome = array_sum(array_map(function($a){return $a->balance;}, $income));
-        $totalExpenses = array_sum(array_map(function($a){return $a->balance;}, $expenses));
+        $totalIncome   = array_sum(array_column($income,   'balance'));
+        $totalExpenses = array_sum(array_column($expenses, 'balance'));
         $netIncome = $totalIncome - $totalExpenses;
 
         return view('admin.accounting.income-statement', compact(
@@ -327,7 +184,9 @@ class AccountingController extends Controller
             'totalExpenses',
             'netIncome',
             'dateFrom',
-            'dateTo'
+            'dateTo',
+            'branchId',
+            'branches'
         ));
     }
 
@@ -339,6 +198,40 @@ class AccountingController extends Controller
         try {
             $startDate = $request->input('start_date');
             $endDate = $request->input('end_date', date('Y-m-d'));
+            $branchId = $request->input('branch_id') ?: null;
+            $branches = Branch::orderBy('name')->get();
+
+            // Expand named period shortcuts into concrete start/end dates
+            $period = $request->input('period');
+            if ($period && $period !== 'custom') {
+                $today = now();
+                switch ($period) {
+                    case 'all':
+                        $startDate = null;
+                        $endDate   = null;
+                        break;
+                    case 'current_month':
+                        $startDate = $today->copy()->startOfMonth()->format('Y-m-d');
+                        $endDate   = $today->format('Y-m-d');
+                        break;
+                    case 'last_month':
+                        $startDate = $today->copy()->subMonth()->startOfMonth()->format('Y-m-d');
+                        $endDate   = $today->copy()->subMonth()->endOfMonth()->format('Y-m-d');
+                        break;
+                    case 'current_quarter':
+                        $startDate = $today->copy()->startOfQuarter()->format('Y-m-d');
+                        $endDate   = $today->format('Y-m-d');
+                        break;
+                    case 'last_quarter':
+                        $startDate = $today->copy()->subQuarter()->startOfQuarter()->format('Y-m-d');
+                        $endDate   = $today->copy()->subQuarter()->endOfQuarter()->format('Y-m-d');
+                        break;
+                    case 'current_year':
+                        $startDate = $today->copy()->startOfYear()->format('Y-m-d');
+                        $endDate   = $today->format('Y-m-d');
+                        break;
+                }
+            }
 
             // Check if system_accounts table exists
             if (!DB::getSchemaBuilder()->hasTable('system_accounts')) {
@@ -355,36 +248,19 @@ class AccountingController extends Controller
                 ->orderBy('sub_code')
                 ->get();
 
-            // If start+end provided, show activity for that period.
-            // If only end date is provided, show cumulative balance as-of date.
+            $categories = $this->buildAccountCategories($accounts);
             if ($startDate && $endDate) {
-                $accountCategories = [];
-                foreach ($accounts as $a) {
-                    $accountCategories[$a->Id] = $a->category;
-                }
-
-                $balances = $this->calculateBalancesForAccountsForPeriod($accountCategories, $startDate, $endDate);
-
-                foreach ($accounts as $account) {
-                    $account->running_balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
-                }
-            } elseif ($endDate) {
-                $accountCategories = [];
-                foreach ($accounts as $a) {
-                    $accountCategories[$a->Id] = $a->category;
-                }
-
-                $balances = $this->calculateBalancesForAccounts($accountCategories, $endDate);
-
-                foreach ($accounts as $account) {
-                    $account->running_balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
-                }
+                $balances = $this->calculateBalancesForAccountsForPeriod($categories, $startDate, $endDate, $branchId);
+            } else {
+                $balances = $this->calculateBalancesForAccounts($categories, $endDate ?? date('Y-m-d'), $branchId);
             }
-            // If no dates provided, use the current running_balance from database
+            foreach ($accounts as $account) {
+                $account->running_balance = $balances[$account->Id] ?? 0;
+            }
 
             $accounts = $accounts->groupBy('category');
 
-            return view('admin.accounting.chart-of-accounts', compact('accounts', 'startDate', 'endDate'));
+            return view('admin.accounting.chart-of-accounts', compact('accounts', 'startDate', 'endDate', 'branchId', 'branches'));
             
         } catch (\Exception $e) {
             \Log::error('Chart of Accounts Error: ' . $e->getMessage(), [
@@ -406,76 +282,126 @@ class AccountingController extends Controller
         }
     }
 
+    // ─── Private Helpers ──────────────────────────────────────────────────────
+
     /**
-     * Calculate account balance as of a specific date
+     * Build an [account_id => category] map from a collection of SystemAccount models.
      */
-    private function calculateAccountBalance($accountId, $asOfDate)
+    private function buildAccountCategories($collection): array
     {
-        try {
-            $account = SystemAccount::find($accountId);
-            if (!$account) return 0;
-
-            // Get all journal lines for this account up to the date
-            $debits = JournalLine::whereHas('journalEntry', function ($q) use ($asOfDate) {
-                    $q->where('transaction_date', '<=', $asOfDate)
-                      ->where('status', 'posted');
-                })
-                ->where('account_id', $accountId)
-                ->sum('debit_amount');
-
-            $credits = JournalLine::whereHas('journalEntry', function ($q) use ($asOfDate) {
-                    $q->where('transaction_date', '<=', $asOfDate)
-                      ->where('status', 'posted');
-                })
-                ->where('account_id', $accountId)
-                ->sum('credit_amount');
-
-            // Normal balance based on category
-            if (in_array($account->category, ['Asset', 'Expense'])) {
-                return $debits - $credits; // Debit increases
-            } else {
-                return $credits - $debits; // Credit increases
-            }
-        } catch (\Exception $e) {
-            \Log::error("Error calculating balance for account {$accountId}: " . $e->getMessage());
-            return 0; // Return 0 on error to prevent page crash
+        $map = [];
+        foreach ($collection as $a) {
+            $map[$a->Id] = $a->category;
         }
+        return $map;
     }
 
     /**
-     * Calculate account balance for a period
+     * Compute current-year net income (income minus expenses) as of a date.
+     * Used by both the web and PDF balance sheet methods.
      */
-    private function calculateAccountBalanceForPeriod($accountId, $dateFrom, $dateTo)
+    private function computeCurrentYearNetIncome(string $asOfDate, ?int $branchId = null): float
     {
-        $account = SystemAccount::find($accountId);
-        if (!$account) return 0;
+        $incomeAccounts  = SystemAccount::where('category', 'Income')->where('status', 1)->get();
+        $expenseAccounts = SystemAccount::where('category', 'Expense')->where('status', 1)->get();
 
-        $debits = JournalLine::whereHas('journalEntry', function ($q) use ($dateFrom, $dateTo) {
-                $q->whereBetween('transaction_date', [$dateFrom, $dateTo])
-                  ->where('status', 'posted');
-            })
-            ->where('account_id', $accountId)
-            ->sum('debit_amount');
+        $balances = $this->calculateBalancesForAccounts(
+            $this->buildAccountCategories($incomeAccounts->merge($expenseAccounts)),
+            $asOfDate, $branchId
+        );
 
-        $credits = JournalLine::whereHas('journalEntry', function ($q) use ($dateFrom, $dateTo) {
-                $q->whereBetween('transaction_date', [$dateFrom, $dateTo])
-                  ->where('status', 'posted');
-            })
-            ->where('account_id', $accountId)
-            ->sum('credit_amount');
+        $grossIncome   = $incomeAccounts->sum(fn($a) => $balances[$a->Id] ?? 0);
+        $grossExpenses = $expenseAccounts->sum(fn($a) => $balances[$a->Id] ?? 0);
+        return $grossIncome - $grossExpenses;
+    }
 
-        if (in_array($account->category, ['Asset', 'Expense'])) {
-            return $debits - $credits;
-        } else {
-            return $credits - $debits;
+    /**
+     * Render a Blade view as a PDF download response.
+     */
+    private function renderPdf(string $view, array $data, string $filename)
+    {
+        $options = new Options();
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('isRemoteEnabled', true);
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml(view($view, $data)->render());
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        return response($dompdf->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    /**
+     * Build and filter the JournalEntry query from request parameters.
+     * Shared between journalEntries() (paginated) and downloadJournalEntries() (full export).
+     */
+    private function buildJournalQuery(Request $request)
+    {
+        $query = JournalEntry::with(['lines.account', 'costCenter', 'product', 'officer', 'fund'])
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('journal_number', 'desc');
+
+        if ($request->filled('date_from')) {
+            $query->where('transaction_date', '>=', $request->date_from);
         }
+        if ($request->filled('date_to')) {
+            $query->where('transaction_date', '<=', $request->date_to);
+        }
+        if ($request->filled('reference_type')) {
+            $query->where('reference_type', $request->reference_type);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('branch_id')) {
+            $query->where('cost_center_id', $request->branch_id);
+        }
+
+        if ($request->filled('loan_id')) {
+            $query->where(function ($q) use ($request) {
+                $q->where(fn($s) => $s->where('reference_type', 'loan')->where('reference_id', $request->loan_id))
+                  ->orWhere(fn($s) => $s->where('reference_type', 'Disbursement')
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('disbursements')->where('loan_id', $request->loan_id)))
+                  ->orWhere(fn($s) => $s->where('reference_type', 'Repayment')
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('repayments')->where('loan_id', $request->loan_id)))
+                  ->orWhere(fn($s) => $s->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('fees')->where('loan_id', $request->loan_id)))
+                  ->orWhere(fn($s) => $s->where('reference_type', 'Cash Security')
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('cash_securities')->where('loan_id', $request->loan_id)));
+            });
+        }
+
+        if ($request->filled('member_id')) {
+            $query->where(function ($q) use ($request) {
+                $q->where(fn($s) => $s->where('reference_type', 'Disbursement')
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('disbursements')
+                          ->whereIn('loan_id', fn($lq) => $lq->select('id')->from('loans')->where('member_id', $request->member_id))))
+                  ->orWhere(fn($s) => $s->where('reference_type', 'Repayment')
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('repayments')
+                          ->whereIn('loan_id', fn($lq) => $lq->select('id')->from('loans')->where('member_id', $request->member_id))))
+                  ->orWhere(fn($s) => $s->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('fees')->where('member_id', $request->member_id)))
+                  ->orWhere(fn($s) => $s->where('reference_type', 'Cash Security')
+                      ->whereIn('reference_id', fn($q) => $q->select('id')->from('cash_securities')->where('member_id', $request->member_id)));
+            });
+        }
+
+        if ($request->filled('investor_id')) {
+            $this->applyInvestorFilter($query, (int) $request->investor_id);
+        }
+
+        return $query;
     }
 
     /**
      * Calculate aggregated balances for multiple accounts as of a specific date.
      * Returns an associative array: [account_id => balance]
      */
-    private function calculateBalancesForAccounts(array $accountCategories, $asOfDate)
+    private function calculateBalancesForAccounts(array $accountCategories, $asOfDate, $branchId = null)
     {
         if (empty($accountCategories)) return [];
 
@@ -486,6 +412,7 @@ class AccountingController extends Controller
             ->whereIn('journal_lines.account_id', $accountIds)
             ->where('journal_entries.status', 'posted')
             ->where('journal_entries.transaction_date', '<=', $asOfDate)
+            ->when($branchId, fn($q) => $q->where('journal_entries.cost_center_id', $branchId))
             ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit_amount) as debits'), DB::raw('SUM(journal_lines.credit_amount) as credits'))
             ->groupBy('journal_lines.account_id')
             ->get();
@@ -511,7 +438,7 @@ class AccountingController extends Controller
      * Calculate aggregated balances for multiple accounts for a period.
      * Returns an associative array: [account_id => balance]
      */
-    private function calculateBalancesForAccountsForPeriod(array $accountCategories, $dateFrom, $dateTo)
+    private function calculateBalancesForAccountsForPeriod(array $accountCategories, $dateFrom, $dateTo, $branchId = null)
     {
         if (empty($accountCategories)) return [];
 
@@ -522,6 +449,7 @@ class AccountingController extends Controller
             ->whereIn('journal_lines.account_id', $accountIds)
             ->where('journal_entries.status', 'posted')
             ->whereBetween('journal_entries.transaction_date', [$dateFrom, $dateTo])
+            ->when($branchId, fn($q) => $q->where('journal_entries.cost_center_id', $branchId))
             ->select('journal_lines.account_id', DB::raw('SUM(journal_lines.debit_amount) as debits'), DB::raw('SUM(journal_lines.credit_amount) as credits'))
             ->groupBy('journal_lines.account_id')
             ->get();
@@ -551,68 +479,29 @@ class AccountingController extends Controller
         $asOfDate = $request->input('as_of_date', now()->format('Y-m-d'));
         $branchId = $request->input('branch_id');
 
-        $accounts = SystemAccount::where('status', 1)
-            ->orderBy('code')
-            ->get();
+        $accounts = SystemAccount::where('status', 1)->orderBy('code')->get();
+        $balances = $this->calculateBalancesForAccounts($this->buildAccountCategories($accounts), $asOfDate);
 
         $data = [];
-        $totalDebits = 0;
-        $totalCredits = 0;
-
-        // Bulk compute balances for the accounts
-        $accountCategories = [];
-        foreach ($accounts as $a) {
-            $accountCategories[$a->Id] = $a->category;
-        }
-
-        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
-
+        $totalDebits = $totalCredits = 0;
         foreach ($accounts as $account) {
-            $balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
+            $balance = $balances[$account->Id] ?? 0;
+            if ($balance == 0) continue;
 
-            if ($balance != 0) {
-                $isDebitNormal = in_array($account->category, ['Asset', 'Expense']);
-                if ($isDebitNormal) {
-                    $debit  = $balance > 0 ? $balance : 0;
-                    $credit = $balance < 0 ? abs($balance) : 0;
-                } else {
-                    $credit = $balance > 0 ? $balance : 0;
-                    $debit  = $balance < 0 ? abs($balance) : 0;
-                }
+            $isDebitNormal = in_array($account->category, ['Asset', 'Expense']);
+            $debit  = $isDebitNormal ? ($balance > 0 ? $balance : 0) : ($balance < 0 ? abs($balance) : 0);
+            $credit = $isDebitNormal ? ($balance < 0 ? abs($balance) : 0) : ($balance > 0 ? $balance : 0);
 
-                $data[] = [
-                    'code'     => $account->code,
-                    'name'     => $account->name,
-                    'category' => $account->category,
-                    'debit'    => $debit,
-                    'credit'   => $credit,
-                ];
-
-                $totalDebits  += $debit;
-                $totalCredits += $credit;
-            }
+            $data[]        = ['code' => $account->code, 'name' => $account->name, 'category' => $account->category, 'debit' => $debit, 'credit' => $credit];
+            $totalDebits  += $debit;
+            $totalCredits += $credit;
         }
 
-        $options = new Options();
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('isRemoteEnabled', true);
-        
-        $dompdf = new Dompdf($options);
-        $html = view('admin.accounting.pdf.trial-balance', [
-            'data' => $data,
-            'totalDebits' => $totalDebits,
-            'totalCredits' => $totalCredits,
-            'asOfDate' => $asOfDate
-        ])->render();
-        
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        
-        return response($dompdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="trial-balance-' . $asOfDate . '.pdf"'
-        ]);
+        return $this->renderPdf(
+            'admin.accounting.pdf.trial-balance',
+            compact('data', 'totalDebits', 'totalCredits', 'asOfDate'),
+            'trial-balance-' . $asOfDate . '.pdf'
+        );
     }
 
     /**
@@ -621,69 +510,49 @@ class AccountingController extends Controller
     public function downloadBalanceSheet(Request $request)
     {
         $asOfDate = $request->input('as_of_date', now()->format('Y-m-d'));
-        $branchId = $request->input('branch_id');
+        $branchId = $request->input('branch_id') ?: null;
 
-        $assets = [];
-        $liabilities = [];
-        $equity = [];
-
-        $assetAccounts = SystemAccount::where('category', 'Asset')->where('status', 1)->orderBy('code')->get();
+        $assetAccounts     = SystemAccount::where('category', 'Asset')->where('status', 1)->orderBy('code')->get();
         $liabilityAccounts = SystemAccount::where('category', 'Liability')->where('status', 1)->orderBy('code')->get();
-        $equityAccounts = SystemAccount::where('category', 'Equity')->where('status', 1)->orderBy('code')->get();
+        $equityAccounts    = SystemAccount::where('category', 'Equity')->where('status', 1)->orderBy('code')->get();
 
-        $allAccounts = $assetAccounts->merge($liabilityAccounts)->merge($equityAccounts);
-        $accountCategories = [];
-        foreach ($allAccounts as $a) {
-            $accountCategories[$a->Id] = $a->category;
-        }
+        $balances = $this->calculateBalancesForAccounts(
+            $this->buildAccountCategories($assetAccounts->merge($liabilityAccounts)->merge($equityAccounts)),
+            $asOfDate, $branchId
+        );
 
-        $balances = $this->calculateBalancesForAccounts($accountCategories, $asOfDate);
-
-        $totalAssets = 0;
+        $assets = []; $totalAssets = 0;
         foreach ($assetAccounts as $account) {
-            $balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
-            if ($balance != 0) {
+            if (($balance = $balances[$account->Id] ?? 0) != 0) {
                 $assets[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalAssets += $balance;
             }
         }
 
-        $totalLiabilities = 0;
+        $liabilities = []; $totalLiabilities = 0;
         foreach ($liabilityAccounts as $account) {
-            $balance = isset($balances[$account->Id]) ? abs($balances[$account->Id]) : 0;
-            if ($balance != 0) {
+            if (($balance = isset($balances[$account->Id]) ? abs($balances[$account->Id]) : 0) != 0) {
                 $liabilities[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalLiabilities += $balance;
             }
         }
 
-        $totalEquity = 0;
+        $equity = []; $totalEquity = 0;
         foreach ($equityAccounts as $account) {
-            $balance = isset($balances[$account->Id]) ? abs($balances[$account->Id]) : 0;
-            if ($balance != 0) {
+            if (($balance = isset($balances[$account->Id]) ? abs($balances[$account->Id]) : 0) != 0) {
                 $equity[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalEquity += $balance;
             }
         }
 
-        $options = new Options();
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('isRemoteEnabled', true);
-        
-        $dompdf = new Dompdf($options);
-        $html = view('admin.accounting.pdf.balance-sheet', compact(
-            'assets', 'liabilities', 'equity', 
-            'totalAssets', 'totalLiabilities', 'totalEquity', 'asOfDate'
-        ))->render();
-        
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        
-        return response($dompdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="balance-sheet-' . $asOfDate . '.pdf"'
-        ]);
+        $currentYearNetIncome = $this->computeCurrentYearNetIncome($asOfDate, $branchId);
+        $totalEquity         += $currentYearNetIncome;
+
+        return $this->renderPdf(
+            'admin.accounting.pdf.balance-sheet',
+            compact('assets', 'liabilities', 'equity', 'totalAssets', 'totalLiabilities', 'totalEquity', 'currentYearNetIncome', 'asOfDate'),
+            'balance-sheet-' . $asOfDate . '.pdf'
+        );
     }
 
     /**
@@ -692,37 +561,28 @@ class AccountingController extends Controller
     public function downloadIncomeStatement(Request $request)
     {
         $dateFrom = $request->input('date_from', now()->startOfMonth()->format('Y-m-d'));
-        $dateTo = $request->input('date_to', now()->format('Y-m-d'));
-        $branchId = $request->input('branch_id');
+        $dateTo   = $request->input('date_to', now()->format('Y-m-d'));
+        $branchId = $request->input('branch_id') ?: null;
 
-        $income = [];
-        $expenses = [];
-
-
-        $incomeAccounts = SystemAccount::where('category', 'Income')->where('status', 1)->orderBy('code')->get();
+        $incomeAccounts  = SystemAccount::where('category', 'Income')->where('status', 1)->orderBy('code')->get();
         $expenseAccounts = SystemAccount::where('category', 'Expense')->where('status', 1)->orderBy('code')->get();
 
-        $allAccounts = $incomeAccounts->merge($expenseAccounts);
-        $accountCategories = [];
-        foreach ($allAccounts as $a) {
-            $accountCategories[$a->Id] = $a->category;
-        }
+        $periodBalances = $this->calculateBalancesForAccountsForPeriod(
+            $this->buildAccountCategories($incomeAccounts->merge($expenseAccounts)),
+            $dateFrom, $dateTo, $branchId
+        );
 
-        $periodBalances = $this->calculateBalancesForAccountsForPeriod($accountCategories, $dateFrom, $dateTo);
-
-        $totalIncome = 0;
+        $income = []; $totalIncome = 0;
         foreach ($incomeAccounts as $account) {
-            $balance = isset($periodBalances[$account->Id]) ? abs($periodBalances[$account->Id]) : 0;
-            if ($balance != 0) {
+            if (($balance = isset($periodBalances[$account->Id]) ? abs($periodBalances[$account->Id]) : 0) != 0) {
                 $income[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalIncome += $balance;
             }
         }
 
-        $totalExpenses = 0;
+        $expenses = []; $totalExpenses = 0;
         foreach ($expenseAccounts as $account) {
-            $balance = isset($periodBalances[$account->Id]) ? $periodBalances[$account->Id] : 0;
-            if ($balance != 0) {
+            if (($balance = $periodBalances[$account->Id] ?? 0) != 0) {
                 $expenses[] = ['code' => $account->code, 'name' => $account->name, 'balance' => $balance];
                 $totalExpenses += $balance;
             }
@@ -730,23 +590,11 @@ class AccountingController extends Controller
 
         $netIncome = $totalIncome - $totalExpenses;
 
-        $options = new Options();
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('isRemoteEnabled', true);
-        
-        $dompdf = new Dompdf($options);
-        $html = view('admin.accounting.pdf.income-statement', compact(
-            'income', 'expenses', 'totalIncome', 'totalExpenses', 'netIncome', 'dateFrom', 'dateTo'
-        ))->render();
-        
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        
-        return response($dompdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="income-statement-' . $dateFrom . '-to-' . $dateTo . '.pdf"'
-        ]);
+        return $this->renderPdf(
+            'admin.accounting.pdf.income-statement',
+            compact('income', 'expenses', 'totalIncome', 'totalExpenses', 'netIncome', 'dateFrom', 'dateTo'),
+            'income-statement-' . $dateFrom . '-to-' . $dateTo . '.pdf'
+        );
     }
 
     /**
@@ -754,135 +602,15 @@ class AccountingController extends Controller
      */
     public function downloadJournalEntries(Request $request)
     {
-        $query = JournalEntry::with(['lines.account', 'costCenter', 'product', 'officer', 'fund'])
-            ->orderBy('transaction_date', 'desc')
-            ->orderBy('journal_number', 'desc');
-
-        if ($request->filled('date_from')) {
-            $query->where('transaction_date', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->where('transaction_date', '<=', $request->date_to);
-        }
-        if ($request->filled('reference_type')) {
-            $query->where('reference_type', $request->reference_type);
-        }
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->filled('branch_id')) {
-            $query->where('cost_center_id', $request->branch_id);
-        }
-
-        if ($request->filled('loan_id')) {
-            $query->where(function($q) use ($request) {
-                $q->where(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'loan')
-                         ->where('reference_id', $request->loan_id);
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'Disbursement')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('disbursements')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'Repayment')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('repayments')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('fees')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'Cash Security')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('cash_securities')
-                                   ->where('loan_id', $request->loan_id);
-                         });
-                });
-            });
-        }
-
-        if ($request->filled('member_id')) {
-            $query->where(function($q) use ($request) {
-                $q->where(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'Disbursement')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('disbursements')
-                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
-                                       $loanQuery->select('id')
-                                                 ->from('loans')
-                                                 ->where('member_id', $request->member_id);
-                                   });
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'Repayment')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('repayments')
-                                   ->whereIn('loan_id', function($loanQuery) use ($request) {
-                                       $loanQuery->select('id')
-                                                 ->from('loans')
-                                                 ->where('member_id', $request->member_id);
-                                   });
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->whereIn('reference_type', ['Fee Collection', 'Insurance Fee'])
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('fees')
-                                   ->where('member_id', $request->member_id);
-                         });
-                })
-                ->orWhere(function($subQ) use ($request) {
-                    $subQ->where('reference_type', 'Cash Security')
-                         ->whereIn('reference_id', function($query) use ($request) {
-                             $query->select('id')
-                                   ->from('cash_securities')
-                                   ->where('member_id', $request->member_id);
-                         });
-                });
-            });
-        }
-
-        if ($request->filled('investor_id')) {
-            $this->applyInvestorFilter($query, (int) $request->investor_id);
-        }
-
-        $entries = $query->get();
+        $entries  = $this->buildJournalQuery($request)->get();
         $dateFrom = $request->input('date_from', 'All');
-        $dateTo = $request->input('date_to', 'All');
+        $dateTo   = $request->input('date_to', 'All');
 
-        $options = new Options();
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('isRemoteEnabled', true);
-        
-        $dompdf = new Dompdf($options);
-        $html = view('admin.accounting.pdf.journal-entries', compact('entries', 'dateFrom', 'dateTo'))->render();
-        
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        
-        return response($dompdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="journal-entries-' . now()->format('Y-m-d') . '.pdf"'
-        ]);
+        return $this->renderPdf(
+            'admin.accounting.pdf.journal-entries',
+            compact('entries', 'dateFrom', 'dateTo'),
+            'journal-entries-' . now()->format('Y-m-d') . '.pdf'
+        );
     }
 
     /**
@@ -952,7 +680,8 @@ class AccountingController extends Controller
     public function downloadChartOfAccounts(Request $request)
     {
         $startDate = $request->input('start_date');
-        $endDate = $request->input('end_date', date('Y-m-d'));
+        $endDate   = $request->input('end_date', date('Y-m-d'));
+        $branchId  = $request->input('branch_id') ?: null;
 
         $accounts = SystemAccount::with('parent')
             ->orderBy('category')
@@ -960,49 +689,22 @@ class AccountingController extends Controller
             ->orderBy('sub_code')
             ->get();
 
-        // If start+end provided, show period activity; otherwise show cumulative as-of end date.
-        if ($startDate && $endDate) {
-            $accountCategories = [];
-            foreach ($accounts as $a) {
-                $accountCategories[$a->Id] = $a->category;
-            }
+        $categories = $this->buildAccountCategories($accounts);
+        $balances   = $startDate
+            ? $this->calculateBalancesForAccountsForPeriod($categories, $startDate, $endDate, $branchId)
+            : $this->calculateBalancesForAccounts($categories, $endDate, $branchId);
 
-            $balances = $this->calculateBalancesForAccountsForPeriod($accountCategories, $startDate, $endDate);
-
-            foreach ($accounts as $account) {
-                $account->running_balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
-            }
-        } elseif ($endDate) {
-            $accountCategories = [];
-            foreach ($accounts as $a) {
-                $accountCategories[$a->Id] = $a->category;
-            }
-
-            $balances = $this->calculateBalancesForAccounts($accountCategories, $endDate);
-
-            foreach ($accounts as $account) {
-                $account->running_balance = isset($balances[$account->Id]) ? $balances[$account->Id] : 0;
-            }
+        foreach ($accounts as $account) {
+            $account->running_balance = $balances[$account->Id] ?? 0;
         }
 
         $accounts = $accounts->groupBy('category');
+        $filename = 'chart-of-accounts-' . ($endDate ?: now()->format('Y-m-d')) . '.pdf';
 
-        $options = new Options();
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('isRemoteEnabled', true);
-        
-        $dompdf = new Dompdf($options);
-        $html = view('admin.accounting.pdf.chart-of-accounts', compact('accounts', 'startDate', 'endDate'))->render();
-        
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        
-        $filename = 'chart-of-accounts-' . ($endDate ? $endDate : now()->format('Y-m-d')) . '.pdf';
-        
-        return response($dompdf->output(), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"'
-        ]);
+        return $this->renderPdf(
+            'admin.accounting.pdf.chart-of-accounts',
+            compact('accounts', 'startDate', 'endDate'),
+            $filename
+        );
     }
 }

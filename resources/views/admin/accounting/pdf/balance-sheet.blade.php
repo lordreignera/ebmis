@@ -77,6 +77,13 @@
                 <td class="text-right">{{ number_format($eq['balance'], 2) }}</td>
             </tr>
             @endforeach
+            @if(isset($currentYearNetIncome))
+            <tr style="color: {{ $currentYearNetIncome >= 0 ? 'green' : 'red' }};">
+                <td>33000</td>
+                <td>&nbsp;&nbsp;Current Year Net Income</td>
+                <td class="text-right">{{ number_format($currentYearNetIncome, 2) }}</td>
+            </tr>
+            @endif
             <tr class="section-total">
                 <td colspan="2" class="text-right"><strong>TOTAL EQUITY</strong></td>
                 <td class="text-right"><strong>{{ number_format($totalEquity, 2) }}</strong></td>

@@ -24,17 +24,35 @@
     <div class="col-md-12 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
-                <form method="GET" action="{{ route('admin.accounting.balance-sheet') }}" class="row align-items-end">
-                    <div class="col-md-4">
+                <form method="GET" action="{{ route('admin.accounting.balance-sheet') }}" class="row align-items-end g-2">
+                    <div class="col-md-3">
                         <label><i class="mdi mdi-calendar me-1"></i>As of Date</label>
                         <input type="date" class="form-control" name="as_of_date" value="{{ $asOfDate }}">
                     </div>
+                    <div class="col-md-3">
+                        <label><i class="mdi mdi-domain me-1"></i>Branch</label>
+                        <select class="form-select" name="branch_id">
+                            <option value="">All Branches</option>
+                            @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" {{ $branchId == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="col-md-4">
-                        <button type="submit" class="btn btn-primary"><i class="mdi mdi-refresh me-1"></i>Refresh</button>
-                        <button type="button" class="btn btn-success" onclick="window.print()"><i class="mdi mdi-printer me-1"></i>Print</button>
-                        <a href="{{ route('admin.accounting.balance-sheet.download', ['as_of_date' => $asOfDate]) }}" class="btn btn-info"><i class="mdi mdi-download me-1"></i>Download PDF</a>
+                        <label>&nbsp;</label>
+                        <div>
+                            <button type="submit" class="btn btn-primary"><i class="mdi mdi-refresh me-1"></i>Refresh</button>
+                            <button type="button" class="btn btn-success" onclick="window.print()"><i class="mdi mdi-printer me-1"></i>Print</button>
+                            <a href="{{ route('admin.accounting.balance-sheet.download', ['as_of_date' => $asOfDate, 'branch_id' => $branchId]) }}" class="btn btn-info"><i class="mdi mdi-download me-1"></i>Download PDF</a>
+                        </div>
                     </div>
                 </form>
+                @if($branchId)
+                <div class="alert alert-info mt-2 mb-0 py-1">
+                    <i class="mdi mdi-domain me-1"></i>Filtered by branch: <strong>{{ $branches->firstWhere('id', $branchId)?->name }}</strong>
+                    <a href="{{ route('admin.accounting.balance-sheet', ['as_of_date' => $asOfDate]) }}" class="alert-link ms-2">Clear</a>
+                </div>
+                @endif
             </div>
         </div>
     </div>
@@ -138,6 +156,19 @@
                                 @endif
                                 @endforeach
                             </tbody>
+                            @if(isset($currentYearNetIncome))
+                            <tbody>
+                                <tr class="{{ $currentYearNetIncome >= 0 ? 'table-success' : 'table-danger' }}">
+                                    <td width="70%">
+                                        Current Year Net Income
+                                        <br><small class="text-muted">33000 — Income Statement</small>
+                                    </td>
+                                    <td width="30%" class="text-end">
+                                        {{ number_format($currentYearNetIncome, 2) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                            @endif
                             <tfoot class="table-secondary">
                                 <tr>
                                     <th>Total Equity</th>

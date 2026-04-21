@@ -147,6 +147,37 @@ class SystemAccountsSeeder extends Seeder
             
             // EXPENSES - Bank Charges (was missing)
             ['code' => '52000', 'sub_code' => '52040', 'name' => 'Bank Charges and Fees', 'category' => 'Expense', 'accountType' => 'Operating Expenses', 'accountSubType' => 'Branch Operations', 'parent_account' => 46, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => true],
+
+            // ==================== MOP ACCOUNTS — added via migration, now in seeder ====================
+
+            // LIABILITIES - Investor Deposits (ID 85-87)
+            ['code' => '21100', 'sub_code' => null,    'name' => 'Investor Deposits',                          'category' => 'Liability', 'accountType' => 'Other Current Liabilities', 'accountSubType' => 'Investor Deposits',    'parent_account' => 0,  'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => true],
+            ['code' => '21110', 'sub_code' => '21100', 'name' => 'Investor Deposits - Local',                  'category' => 'Liability', 'accountType' => 'Other Current Liabilities', 'accountSubType' => 'Investor Deposits',    'parent_account' => 0,  'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => true],
+            ['code' => '21120', 'sub_code' => '21100', 'name' => 'Investor Deposits - International/Donor',   'category' => 'Liability', 'accountType' => 'Other Current Liabilities', 'accountSubType' => 'Investor Deposits',    'parent_account' => 0,  'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => true],
+
+            // LIABILITIES - FAN (ID 88)
+            ['code' => '20010', 'sub_code' => null,    'name' => 'Financing Account Number (FAN)',             'category' => 'Liability', 'accountType' => 'Other Current Liabilities', 'accountSubType' => 'Clearing Accounts',    'parent_account' => 22, 'is_cash_bank' => false, 'is_clearing' => true,  'is_loan_receivable' => false, 'allow_manual_posting' => false],
+
+            // ASSETS - Loan Receivable Restructured (ID 89)
+            ['code' => '11000', 'sub_code' => '11050', 'name' => 'Loan Receivable – Restructured (CWRL)',      'category' => 'Asset',     'accountType' => 'Accounts receivable (A/R)', 'accountSubType' => 'Loan Receivables',     'parent_account' => 12, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => true,  'allow_manual_posting' => false],
+
+            // ASSETS - Interest Suspense NPL (ID 90)
+            ['code' => '11200', 'sub_code' => '11250', 'name' => 'Interest Suspense – NPL',                    'category' => 'Asset',     'accountType' => 'Accounts receivable (A/R)', 'accountSubType' => 'Interest Receivable',  'parent_account' => 62, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => false],
+
+            // ASSETS - Late Fee Receivable (ID 91)
+            ['code' => '11300', 'sub_code' => null,    'name' => 'Late Fee Receivable',                        'category' => 'Asset',     'accountType' => 'Accounts receivable (A/R)', 'accountSubType' => 'Fee Receivables',      'parent_account' => 0,  'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => false],
+
+            // EXPENSES - Interest Waiver (ID 92)
+            ['code' => '56200', 'sub_code' => null,    'name' => 'Interest Waiver Expense (IWE)',              'category' => 'Expense',   'accountType' => 'Operating Expenses',        'accountSubType' => 'Loan Losses',          'parent_account' => 41, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => false],
+
+            // INCOME - Waiver Reversal (ID 93)
+            ['code' => '42000', 'sub_code' => '42025', 'name' => 'Interest Waiver Reversal Income (IWR)',      'category' => 'Income',    'accountType' => 'Other Income',              'accountSubType' => 'Fees and Charges',     'parent_account' => 35, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => false],
+
+            // EXPENSES - Cash Shortage (ID 94)
+            ['code' => '56300', 'sub_code' => null,    'name' => 'Cash Shortage Expense (ZCL)',                'category' => 'Expense',   'accountType' => 'Operating Expenses',        'accountSubType' => 'Cash Control',         'parent_account' => 41, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => true],
+
+            // INCOME - Cash Over (ID 95)
+            ['code' => '42000', 'sub_code' => '42060', 'name' => 'Cash Over Income (ZCL)',                    'category' => 'Income',    'accountType' => 'Other Income',              'accountSubType' => 'Cash Control',         'parent_account' => 35, 'is_cash_bank' => false, 'is_clearing' => false, 'is_loan_receivable' => false, 'allow_manual_posting' => true],
         ];
 
         DB::transaction(function() use ($accounts) {

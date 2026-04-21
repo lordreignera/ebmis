@@ -24,21 +24,39 @@
     <div class="col-md-12 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
-                <form method="GET" action="{{ route('admin.accounting.income-statement') }}" class="row align-items-end">
-                    <div class="col-md-3">
+                <form method="GET" action="{{ route('admin.accounting.income-statement') }}" class="row align-items-end g-2">
+                    <div class="col-md-2">
                         <label><i class="mdi mdi-calendar me-1"></i>Date From</label>
                         <input type="date" class="form-control" name="date_from" value="{{ $dateFrom }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label><i class="mdi mdi-calendar me-1"></i>Date To</label>
                         <input type="date" class="form-control" name="date_to" value="{{ $dateTo }}">
                     </div>
                     <div class="col-md-3">
-                        <button type="submit" class="btn btn-primary"><i class="mdi mdi-refresh me-1"></i>Refresh</button>
-                        <button type="button" class="btn btn-success" onclick="window.print()"><i class="mdi mdi-printer me-1"></i>Print</button>
-                        <a href="{{ route('admin.accounting.income-statement.download', ['date_from' => $dateFrom, 'date_to' => $dateTo]) }}" class="btn btn-info"><i class="mdi mdi-download me-1"></i>Download PDF</a>
+                        <label><i class="mdi mdi-domain me-1"></i>Branch</label>
+                        <select class="form-select" name="branch_id">
+                            <option value="">All Branches</option>
+                            @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" {{ $branchId == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label>&nbsp;</label>
+                        <div>
+                            <button type="submit" class="btn btn-primary"><i class="mdi mdi-refresh me-1"></i>Refresh</button>
+                            <button type="button" class="btn btn-success" onclick="window.print()"><i class="mdi mdi-printer me-1"></i>Print</button>
+                            <a href="{{ route('admin.accounting.income-statement.download', ['date_from' => $dateFrom, 'date_to' => $dateTo, 'branch_id' => $branchId]) }}" class="btn btn-info"><i class="mdi mdi-download me-1"></i>Download PDF</a>
+                        </div>
                     </div>
                 </form>
+                @if($branchId)
+                <div class="alert alert-info mt-2 mb-0 py-1">
+                    <i class="mdi mdi-domain me-1"></i>Filtered by branch: <strong>{{ $branches->firstWhere('id', $branchId)?->name }}</strong>
+                    <a href="{{ route('admin.accounting.income-statement', ['date_from' => $dateFrom, 'date_to' => $dateTo]) }}" class="alert-link ms-2">Clear</a>
+                </div>
+                @endif
             </div>
         </div>
     </div>
@@ -93,8 +111,7 @@
                 </h5>
                 <table class="table table-sm table-bordered mb-4">
                     <tbody>
-                        @if(count($expenses) > 0 && array_sum(array_map(fn($a) => $a->balance, $expenses)) > 0)
-                        @foreach($expenses as $expenseAccount)
+                        @forelse($expenses as $expenseAccount)
                         @if($expenseAccount->balance != 0)
                         <tr class="{{ $expenseAccount->parent_id ? '' : 'table-light fw-bold' }}">
                             <td width="15%">{{ $expenseAccount->code }} {{ $expenseAccount->sub_code ? '- ' . $expenseAccount->sub_code : '' }}</td>
@@ -109,14 +126,13 @@
                             </td>
                         </tr>
                         @endif
-                        @endforeach
-                        @else
+                        @empty
                         <tr>
                             <td colspan="3" class="text-center text-muted">
                                 <i class="mdi mdi-information me-1"></i>No expenses recorded for this period
                             </td>
                         </tr>
-                        @endif
+                        @endforelse
                     </tbody>
                     <tfoot class="table-secondary">
                         <tr>

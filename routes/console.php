@@ -33,3 +33,10 @@ Schedule::command('repayments:automate --type=retry')->hourly();
 // Generate late fees: At midnight for failed payments
 Schedule::command('repayments:automate --type=late-fees')->dailyAt('00:00');
 
+// ============================================
+// MOP §3 — INTEREST ACCRUAL
+// ============================================
+// Post DR Interest Receivable → CR Interest Income for all due schedule
+// instalments. Runs nightly at 01:00 so accruals are ready before business.
+Schedule::command('accrual:run')->dailyAt('01:00')->withoutOverlapping();
+
