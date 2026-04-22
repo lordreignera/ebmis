@@ -18,15 +18,18 @@ class DisbursementService
     private FeeManagementService $feeService;
     private LoanScheduleService $scheduleService;
     private MobileMoneyService $mobileMoneyService;
+    private AccountingService $accountingService;
     
     public function __construct(
         FeeManagementService $feeService,
         LoanScheduleService $scheduleService,
-        MobileMoneyService $mobileMoneyService
+        MobileMoneyService $mobileMoneyService,
+        AccountingService $accountingService
     ) {
         $this->feeService = $feeService;
         $this->scheduleService = $scheduleService;
         $this->mobileMoneyService = $mobileMoneyService;
+        $this->accountingService = $accountingService;
     }
     
     /**
@@ -117,6 +120,15 @@ class DisbursementService
                               now();
             
             $this->scheduleService->updateScheduleDatesAfterDisbursement($loan, $disbursementDate);
+
+            // Post GL journal in the same service flow used for reset/new paths.
+            $journal = $this->accountingService->postDisbursementEntry($disbursement->fresh());
+            if (!$journal) {
+                Log::warning('Disbursement completed but journal posting failed', [
+                    'disbursement_id' => $disbursementId,
+                    'loan_id' => $disbursement->loan_id,
+                ]);
+            }
             
             DB::commit();
             

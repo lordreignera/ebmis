@@ -9,6 +9,7 @@ use App\Services\LoanApprovalService;
 use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 use App\Services\DisbursementService;
+use App\Services\AccountingService;
 
 class LoanServiceProvider extends ServiceProvider
 {
@@ -32,7 +33,8 @@ class LoanServiceProvider extends ServiceProvider
         
         $this->app->singleton(RepaymentService::class, function ($app) {
             return new RepaymentService(
-                $app->make(MobileMoneyService::class)
+                $app->make(MobileMoneyService::class),
+                $app->make(AccountingService::class)
             );
         });
         
@@ -47,7 +49,8 @@ class LoanServiceProvider extends ServiceProvider
             return new DisbursementService(
                 $app->make(FeeManagementService::class),
                 $app->make(LoanScheduleService::class),
-                $app->make(MobileMoneyService::class)
+                $app->make(MobileMoneyService::class),
+                $app->make(AccountingService::class)
             );
         });
     }

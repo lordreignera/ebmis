@@ -1891,6 +1891,30 @@ class RepaymentController extends Controller
                 
                 // Check if loan is fully paid by checking ALL schedules
                 $this->checkAndCloseLoanIfComplete($loan->id);
+
+                // Post GL entry for confirmed cash/bank repayments.
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postRepaymentEntry($repayment, $loan);
+
+                    if ($journal) {
+                        \Log::info('GL entry posted for repayment', [
+                            'repayment_id' => $repayment->id,
+                            'journal_number' => $journal->journal_number,
+                        ]);
+                    } else {
+                        \Log::warning('GL entry not posted for repayment', [
+                            'repayment_id' => $repayment->id,
+                            'loan_id' => $loan->id,
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    \Log::error('GL posting failed but repayment will continue', [
+                        'repayment_id' => $repayment->id,
+                        'loan_id' => $loan->id,
+                        'gl_error' => $glError->getMessage(),
+                    ]);
+                }
                 
                 DB::commit();
                 
@@ -2166,6 +2190,33 @@ class RepaymentController extends Controller
                         
                         $schedule->update($updateData);
                         $schedulesPaid[] = $scheduleData['due_date'];
+                    }
+
+                    // Post GL entry immediately for each confirmed cash/bank allocation.
+                    try {
+                        $accountingService = new \App\Services\AccountingService();
+                        $journal = $accountingService->postRepaymentEntry($repayment, $loan);
+
+                        if ($journal) {
+                            \Log::info('GL entry posted for balance repayment allocation', [
+                                'repayment_id' => $repayment->id,
+                                'journal_number' => $journal->journal_number,
+                                'schedule_id' => $scheduleId,
+                            ]);
+                        } else {
+                            \Log::warning('GL entry not posted for balance repayment allocation', [
+                                'repayment_id' => $repayment->id,
+                                'loan_id' => $loan->id,
+                                'schedule_id' => $scheduleId,
+                            ]);
+                        }
+                    } catch (\Exception $glError) {
+                        \Log::error('GL posting failed for balance repayment allocation', [
+                            'repayment_id' => $repayment->id,
+                            'loan_id' => $loan->id,
+                            'schedule_id' => $scheduleId,
+                            'gl_error' => $glError->getMessage(),
+                        ]);
                     }
                 }
 

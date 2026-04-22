@@ -14,10 +14,12 @@ use Illuminate\Support\Facades\Log;
 class RepaymentService
 {
     private MobileMoneyService $mobileMoneyService;
+    private AccountingService $accountingService;
     
-    public function __construct(MobileMoneyService $mobileMoneyService)
+    public function __construct(MobileMoneyService $mobileMoneyService, AccountingService $accountingService)
     {
         $this->mobileMoneyService = $mobileMoneyService;
+        $this->accountingService = $accountingService;
     }
     
     /**
@@ -307,6 +309,23 @@ class RepaymentService
             
             // Check if all schedules are paid - close the loan
             $this->checkAndCloseLoanIfComplete($schedule->loan_id);
+
+            // Post repayment journal for service-based approvals.
+            $loanForAccounting = $this->getLoanForAccounting((int) $schedule->loan_id);
+            if ($loanForAccounting) {
+                $journal = $this->accountingService->postRepaymentEntry($repayment->fresh(), $loanForAccounting);
+                if (!$journal) {
+                    Log::warning('Repayment approved but journal posting failed', [
+                        'repayment_id' => $repaymentId,
+                        'loan_id' => $schedule->loan_id,
+                    ]);
+                }
+            } else {
+                Log::warning('Repayment approved but loan not found for journal posting', [
+                    'repayment_id' => $repaymentId,
+                    'loan_id' => $schedule->loan_id,
+                ]);
+            }
             
             DB::commit();
             
@@ -837,5 +856,18 @@ class RepaymentService
             'pending_schedules' => $schedules->where('status', '0')->count(),
             'completion_percentage' => $totalScheduled > 0 ? ($totalPaid / $totalScheduled) * 100 : 0
         ];
+    }
+
+    /**
+     * Resolve loan model with required relations for accounting posting.
+     */
+    private function getLoanForAccounting(int $loanId)
+    {
+        $loan = PersonalLoan::with(['product', 'member', 'branch'])->find($loanId);
+        if ($loan) {
+            return $loan;
+        }
+
+        return GroupLoan::with(['product', 'group', 'branch'])->find($loanId);
     }
 }
