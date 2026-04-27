@@ -826,6 +826,15 @@ class LoanController extends Controller
             $paymentRef = $request->input('payment_reference');
             $paymentNotes = $request->input('payment_notes');
 
+            // Mobile money must go through the individual MM flow (storeLoanMobileMoneyPayment)
+            // to ensure GL is only posted after the transaction actually confirms
+            if ($paymentMethod == 2) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Mobile money payments must be processed individually per fee. Please use the mobile money option for each fee separately.');
+            }
+
             // Get product charges for this loan
             $product = Product::with('charges')->find($loan->product_type);
             if (!$product) {
@@ -875,7 +884,7 @@ class LoanController extends Controller
                     }
                 }
 
-                // Create fee payment record
+                // Create fee payment record (cash/bank — already gated above for MM)
                 $fee = \App\Models\Fee::create([
                     'member_id' => $memberId,
                     'loan_id' => $loan->id,
@@ -891,7 +900,7 @@ class LoanController extends Controller
                     'datecreated' => now()
                 ]);
 
-                // Post to General Ledger
+                // Post to General Ledger (cash/bank only — MM is handled via checkLoanMmStatus)
                 try {
                     $accountingService = new \App\Services\AccountingService();
                     $journal = $accountingService->postFeeCollectionEntry($fee, $charge->name);
@@ -963,6 +972,14 @@ class LoanController extends Controller
             $paymentRef = $request->input('payment_reference');
             $paymentNotes = $request->input('payment_notes');
 
+            // Mobile money must go through storeLoanMobileMoneyPayment so GL posts on confirmation
+            if ($paymentMethod == 2) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Mobile money payments must use the mobile money payment form.');
+            }
+
             // Get the charge from product charges
             $charge = \App\Models\ProductCharge::find($feeId);
             if (!$charge) {
@@ -1007,7 +1024,7 @@ class LoanController extends Controller
                 throw new \Exception('This charge has already been paid for this loan.');
             }
 
-            // Create fee payment record
+            // Create fee payment record (cash/bank — MM gated above)
             $fee = \App\Models\Fee::create([
                 'member_id' => $memberId,
                 'loan_id' => $loan->id,
@@ -1022,6 +1039,26 @@ class LoanController extends Controller
                 'status' => 1, // Paid
                 'datecreated' => now()
             ]);
+
+            // Post to General Ledger (cash/bank only — MM posts on confirmation via checkLoanMmStatus)
+            try {
+                $accountingService = new \App\Services\AccountingService();
+                $journal = $accountingService->postFeeCollectionEntry($fee, $charge->name);
+                if ($journal) {
+                    \Log::info('Single upfront fee GL entry posted', [
+                        'fee_id' => $fee->id,
+                        'loan_id' => $loan->id,
+                        'journal_number' => $journal->journal_number
+                    ]);
+                }
+            } catch (\Exception $glError) {
+                \Log::error('Single upfront fee GL posting failed', [
+                    'fee_id' => $fee->id,
+                    'loan_id' => $loan->id,
+                    'error' => $glError->getMessage()
+                ]);
+                // Continue - don't fail fee recording if GL posting fails
+            }
 
             DB::commit();
 
@@ -1063,7 +1100,7 @@ class LoanController extends Controller
                 'member_id' => $validated['member_id'],
                 'loan_id' => $validated['loan_id'],
                 'fees_type_id' => $validated['fees_type_id'],
-                'payment_type' => 1, // Mobile Money
+                'payment_type' => 2, // Mobile Money
                 'payment_phone' => $validated['member_phone'], // Save actual phone used
                 'amount' => $validated['amount'],
                 'description' => $validated['description'] ?? 'Loan upfront charge payment',
@@ -1191,6 +1228,24 @@ class LoanController extends Controller
                     'payment_raw' => json_encode($statusResult)
                 ]);
 
+                // Post to General Ledger once payment settles
+                try {
+                    $accountingService = new \App\Services\AccountingService();
+                    $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fees_type_id);
+                    if ($journal) {
+                        \Log::info('Loan mobile-money fee GL entry posted', [
+                            'fee_id' => $fee->id,
+                            'journal_number' => $journal->journal_number,
+                        ]);
+                    }
+                } catch (\Exception $glError) {
+                    \Log::error('Loan mobile-money fee GL posting failed', [
+                        'fee_id' => $fee->id,
+                        'error' => $glError->getMessage(),
+                    ]);
+                    // Continue - do not fail payment confirmation because GL failed
+                }
+
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
@@ -1270,7 +1325,7 @@ class LoanController extends Controller
             $fee = Fee::findOrFail($validated['fee_id']);
 
             // Verify the fee is failed and is a mobile money payment
-            if ($fee->payment_type != 1) {
+            if ($fee->payment_type != 2) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only mobile money payments can be retried'

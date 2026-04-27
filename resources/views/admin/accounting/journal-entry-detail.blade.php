@@ -132,6 +132,138 @@
                         </div>
                     </div>
                 </div>
+
+                @if($entry->reference_type === 'Repayment' && $entry->lines && $entry->lines->count() > 0)
+                @php
+                    $sortedLines = $entry->lines->sortBy('line_number');
+                    $cashReceived = (float) $sortedLines
+                        ->filter(fn($line) => ($line->account->code ?? null) === '10000')
+                        ->sum('debit_amount');
+
+                    $principalPaid = (float) $sortedLines
+                        ->filter(fn($line) => ($line->account->code ?? null) === '11000')
+                        ->sum('credit_amount');
+
+                    $interestPaid = (float) $sortedLines
+                        ->filter(function($line) {
+                            $code = $line->account->code ?? null;
+                            return $code === '11200' || $code === '41000';
+                        })
+                        ->sum('credit_amount');
+
+                    $lateFeesPaid = (float) $sortedLines
+                        ->filter(function($line) {
+                            return ($line->account->code ?? null) === '42000'
+                                && ($line->account->sub_code ?? null) === '42020';
+                        })
+                        ->sum('credit_amount');
+
+                    $reclassPrincipalEffect = (float) (($relatedReclassEntries ?? collect())
+                        ->flatMap(function($reclass) {
+                            return $reclass->lines ?? collect();
+                        })
+                        ->filter(function($line) {
+                            return ($line->account->code ?? null) === '11000';
+                        })
+                        ->sum(function($line) {
+                            return (float) $line->credit_amount - (float) $line->debit_amount;
+                        }));
+
+                    $reclassLateFees = (float) (($relatedReclassEntries ?? collect())
+                        ->flatMap(function($reclass) {
+                            return $reclass->lines ?? collect();
+                        })
+                        ->filter(function($line) {
+                            return ($line->account->code ?? null) === '42000'
+                                && ($line->account->sub_code ?? null) === '42020';
+                        })
+                        ->sum(function($line) {
+                            return (float) $line->credit_amount - (float) $line->debit_amount;
+                        }));
+
+                    $lateFeesPaidTotal = $lateFeesPaid + $reclassLateFees;
+                    $principalPaidTotal = $principalPaid + $reclassPrincipalEffect;
+                @endphp
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-success mb-0">
+                            <h6 class="mb-2"><i class="mdi mdi-cash-multiple me-1"></i>Repayment Breakdown (Simple View)</h6>
+                            <div class="row">
+                                <div class="col-md-3"><strong>Customer Paid:</strong><br>UGX {{ number_format($cashReceived, 2) }}</div>
+                                <div class="col-md-3"><strong>Principal Paid (Net):</strong><br>UGX {{ number_format($principalPaidTotal, 2) }}</div>
+                                <div class="col-md-3"><strong>Interest Paid:</strong><br>UGX {{ number_format($interestPaid, 2) }}</div>
+                                <div class="col-md-3"><strong>Late Fees Paid:</strong><br>UGX {{ number_format($lateFeesPaidTotal, 2) }}</div>
+                            </div>
+                            @if(($relatedReclassEntries ?? collect())->count() > 0)
+                            <div class="mt-2 small text-muted">
+                                Includes linked late-fee reclass journal(s):
+                                @foreach($relatedReclassEntries as $idx => $reclass)
+                                    <a href="{{ route('admin.accounting.journal-entry', $reclass->Id) }}">{{ $reclass->journal_number }}</a>@if($idx < $relatedReclassEntries->count() - 1), @endif
+                                @endforeach
+                            </div>
+                            @endif
+                            <div class="mt-2 small text-muted">
+                                Net principal reflects linked adjustments posted to Loan Receivable (11000 series).
+                            </div>
+                            <div class="mt-2 small text-muted">
+                                Note: Journal totals include FAN transit lines, so they can look higher than the customer paid amount.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @endif
+
+                @if(($relatedReclassEntries ?? collect())->count() > 0)
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-warning mb-0">
+                            <h6 class="mb-2"><i class="mdi mdi-link-variant me-1"></i>Linked Late Fee Reclass Entries</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Journal #</th>
+                                            <th>Date</th>
+                                            <th>Narrative</th>
+                                            <th class="text-end">Loan Receivable Effect (11000)</th>
+                                            <th class="text-end">Late Fee Effect (42020)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($relatedReclassEntries as $reclass)
+                                        @php
+                                            $principalEffect = (float) ($reclass->lines ?? collect())
+                                                ->filter(function($line) {
+                                                    return ($line->account->code ?? null) === '11000';
+                                                })
+                                                ->sum(function($line) {
+                                                    return (float) $line->credit_amount - (float) $line->debit_amount;
+                                                });
+
+                                            $lateFeeEffect = (float) ($reclass->lines ?? collect())
+                                                ->filter(function($line) {
+                                                    return ($line->account->code ?? null) === '42000'
+                                                        && ($line->account->sub_code ?? null) === '42020';
+                                                })
+                                                ->sum(function($line) {
+                                                    return (float) $line->credit_amount - (float) $line->debit_amount;
+                                                });
+                                        @endphp
+                                        <tr>
+                                            <td><a href="{{ route('admin.accounting.journal-entry', $reclass->Id) }}">{{ $reclass->journal_number }}</a></td>
+                                            <td>{{ \Carbon\Carbon::parse($reclass->transaction_date)->format('Y-m-d') }}</td>
+                                            <td>{{ $reclass->narrative }}</td>
+                                            <td class="text-end">UGX {{ number_format($principalEffect, 2) }}</td>
+                                            <td class="text-end">UGX {{ number_format($lateFeeEffect, 2) }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @endif
             </div>
         </div>
     </div>

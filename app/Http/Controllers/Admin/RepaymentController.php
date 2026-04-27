@@ -1311,11 +1311,29 @@ class RepaymentController extends Controller
                 ? (int)$paymentMethod 
                 : $this->getPaymentTypeCode($paymentMethod);
             
+            $scheduleId = (int) ($request->input('schedule_id') ?: $request->input('s_id') ?: 0);
+            if ($scheduleId <= 0) {
+                $nextSchedule = LoanSchedule::where('loan_id', $loan->id)
+                    ->where('status', 0)
+                    ->orderBy('payment_date')
+                    ->orderBy('id')
+                    ->first();
+                $scheduleId = $nextSchedule ? (int) $nextSchedule->id : 0;
+            }
+
+            if ($scheduleId <= 0) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No pending repayment schedule found for this loan.'
+                ], 422);
+            }
+
             $repaymentData = [
                 'type' => $paymentTypeCode,
                 'details' => $request->input('notes') ?: $request->input('details', 'Quick repayment'),
                 'loan_id' => $request->loan_id,
-                'schedule_id' => $request->input('schedule_id', 0),
+                'schedule_id' => $scheduleId,
                 'amount' => $request->amount,
                 'date_created' => now(),
                 'added_by' => auth()->id(),
@@ -1359,11 +1377,9 @@ class RepaymentController extends Controller
                     $repaymentData['pay_message'] = 'Mobile money collection initiated - check your phone';
                     
                     // Increment pending_count on the schedule (bimsadmin style)
-                    if ($request->has('s_id')) {
-                        DB::table('loan_schedules')
-                            ->where('id', $request->s_id)
-                            ->increment('pending_count');
-                    }
+                    DB::table('loan_schedules')
+                        ->where('id', $scheduleId)
+                        ->increment('pending_count');
                     
                     // Create raw_payments record for tracking (bimsadmin style)
                     RawPayment::create([
@@ -1379,7 +1395,7 @@ class RepaymentController extends Controller
                         'type' => 'repayment', // Must be 'repayment' not 'collection'
                         'direction' => 'cash_in',
                         'added_by' => auth()->id(),
-                        'raw_message' => serialize(['schedule_id' => $request->s_id, 'loan_id' => $request->loan_id, 'member_id' => $loan->member_id]),
+                        'raw_message' => serialize(['schedule_id' => $scheduleId, 'loan_id' => $request->loan_id, 'member_id' => $loan->member_id]),
                     ]);
                 } else {
                     DB::rollBack();

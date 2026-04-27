@@ -9,6 +9,7 @@ use App\Models\Disbursement;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\FeeType;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
@@ -140,13 +141,8 @@ class AccountingService
      */
     private function getCashAccountByPaymentType(Disbursement $disbursement)
     {
-        // Disbursement payment_type: 1 = mobile money, otherwise bank (detect from payment_source)
+        // Loan disbursements settle from institution bank via FAN, regardless of client payout channel.
         $paymentSource = $disbursement->payment_source ?? null;
-        if ($disbursement->payment_type == 1) {
-            // Mobile money → fee-system type 2
-            return $this->getCashAccountByPaymentMethod(2, null, $paymentSource);
-        }
-        // Bank (cheque/EFT/etc.) → fee-system type 3 with source for bank name detection
         return $this->getCashAccountByPaymentMethod(3, null, $paymentSource);
     }
 
@@ -199,10 +195,10 @@ class AccountingService
                 ?? SystemAccount::where('code', '42000')->whereNull('sub_code')->first();
 
             // Cash/Bank account based on payment method
-            $paymentType   = $repayment->type ?? $repayment->payment_type ?? null;
             $paymentMethod = $repayment->payment_method ?? null;
             $paymentSource = $repayment->source ?? null;
-            $cashAccount   = $this->getCashAccountByPaymentMethod($paymentType, $paymentMethod, $paymentSource);
+            // Repayment collections settle to institutional bank via FAN, even when payer uses mobile channel.
+            $cashAccount   = $this->getCashAccountByPaymentMethod(3, $paymentMethod, $paymentSource);
 
             if (!$loanReceivableAccount || !$cashAccount) {
                 throw new \Exception("Required accounts not found (Loan Receivable or Cash)");
@@ -211,6 +207,21 @@ class AccountingService
             $borrowerName       = $this->borrowerName($loan);
             $repTransactionDate = $this->capToToday($repayment->date_created ?? null);
             $invId              = $this->resolveInvId($loan);
+
+            // Idempotency guard: do not post a second active repayment JE for the same repayment.
+            $existingRepaymentJE = JournalEntry::where('reference_type', 'Repayment')
+                ->where('reference_id', $repayment->id)
+                ->where('status', '!=', 'reversed')
+                ->orderByDesc('Id')
+                ->first();
+            if ($existingRepaymentJE) {
+                Log::warning('Skipped duplicate repayment GL posting', [
+                    'repayment_id' => $repayment->id,
+                    'existing_journal_id' => $existingRepaymentJE->Id,
+                    'existing_journal_number' => $existingRepaymentJE->journal_number,
+                ]);
+                return $existingRepaymentJE;
+            }
 
             $journalData = [
                 'transaction_date' => $repTransactionDate->format('Y-m-d'),
@@ -225,30 +236,16 @@ class AccountingService
                 'inv_id'           => $invId,
             ];
 
-            // Break down the repayment amounts
-            $principal = (float) ($repayment->principal ?? 0);
-            $interest  = (float) ($repayment->interest  ?? 0);
-            $penalty   = (float) ($repayment->penalty   ?? 0);
+            // Break down repayment using the agreed waterfall:
+            // Interest/Principal first (up to schedule due), late fee only from excess over P+I.
+            $schedule = \App\Models\LoanSchedule::find($repayment->schedule_id ?? null);
+            $repaymentDate = $this->capToToday($repayment->date_created ?? null);
+            $allocation = $this->allocateRepaymentBreakdownForJournal($repayment, $loan, $schedule, $repaymentDate);
 
-            // If principal/interest not split, derive from loan schedule
-            if ($principal == 0 && $interest == 0 && $repayment->amount > 0) {
-                $schedule = \App\Models\LoanSchedule::find($repayment->schedule_id ?? null);
-                if ($schedule) {
-                    $schPrincipal = (float) ($schedule->principal ?? 0);
-                    $schInterest  = (float) ($schedule->interest  ?? 0);
-                    $schTotal     = $schPrincipal + $schInterest;
-                    if ($schTotal > 0) {
-                        $principal = ($repayment->amount * $schPrincipal) / $schTotal;
-                        $interest  = ($repayment->amount * $schInterest)  / $schTotal;
-                    } else {
-                        $principal = $repayment->amount;
-                    }
-                } else {
-                    $principal = $repayment->amount;
-                }
-            }
-
-            $totalReceived = $principal + $interest + $penalty;
+            $principal = $allocation['principal'];
+            $interest  = $allocation['interest'];
+            $penalty   = $allocation['penalty'];
+            $totalReceived = $allocation['total'];
 
             // ── MOP FAN repayment flow ────────────────────────────────────────────
             // Step 2: DR Bank → CR FAN   (cash received, parked in FAN)
@@ -395,8 +392,10 @@ class AccountingService
                 throw new \Exception("Fee income account not found for fee type: {$feeTypeName}");
             }
 
-            // 2. Find CASH account based on payment type
-            $cashAccount = $this->getCashAccountByPaymentMethod($fee->payment_type ?? 1, null, null);
+            // 2. Settlement account is always bank regardless of capture channel
+            $paymentMethod = $fee->payment_method ?? null;
+            $paymentSource = $fee->payment_source ?? $fee->source ?? null;
+            $cashAccount = $this->getCashAccountByPaymentMethod(3, $paymentMethod, $paymentSource);
 
             if (!$cashAccount) {
                 throw new \Exception("Cash/Bank account not found");
@@ -575,6 +574,16 @@ class AccountingService
                 ->first();
         }
 
+        // Affiliation / License / Restructuring / Individual affiliation → Administration Fees (42050)
+        if (stripos($feeName, 'affiliation') !== false ||
+            stripos($feeName, 'license') !== false ||
+            stripos($feeName, 'restructur') !== false ||
+            stripos($feeName, 'individual') !== false) {
+            return SystemAccount::where('code', '42000')
+                ->where('sub_code', '42050')
+                ->first();
+        }
+
         // Insurance fees → Try to find specific insurance account or use generic fee income
         if (stripos($feeName, 'insurance') !== false) {
             $insuranceAccount = SystemAccount::where('category', 'Income')
@@ -597,24 +606,26 @@ class AccountingService
             if ($securityAccount) return $securityAccount;
         }
 
-        // Default: Generic fee income (parent account 42000)
+        // Default: Route all unrecognised pre-disbursement fees to Administration Fees (42050)
+        // rather than the bare parent account 42000
         return SystemAccount::where('code', '42000')
-            ->whereNull('sub_code')
+            ->where('sub_code', '42050')
             ->first();
     }
 
     /**
      * Post journal entry for cash security deposit
      * 
-     * Cash security is a LIABILITY (refundable to member when loan is settled)
-     * DR: Cash/Bank (asset increases)
-     * CR: Cash Security Liability (liability increases - we owe this back to member)
+    * Cash security is a LIABILITY (refundable to member when loan is settled)
+    * MOP flow: DR Bank -> CR FAN, then DR FAN -> CR Cash Security Liability
      */
     public function postCashSecurityEntry($cashSecurity)
     {
         try {
-            // 1. Find CASH/BANK account based on payment type
-            $cashAccount = $this->getCashAccountByPaymentMethod($cashSecurity->payment_type ?? 1, null, null);
+            // 1. Settlement account is always bank regardless of capture channel
+            $paymentMethod = $cashSecurity->payment_method ?? null;
+            $paymentSource = $cashSecurity->payment_source ?? $cashSecurity->source ?? null;
+            $cashAccount = $this->getCashAccountByPaymentMethod(3, $paymentMethod, $paymentSource);
 
             // 2. Find CASH SECURITY LIABILITY account (21025)
             $securityLiabilityAccount = SystemAccount::where('code', '21000')
@@ -630,6 +641,11 @@ class AccountingService
 
             if (!$cashAccount || !$securityLiabilityAccount) {
                 throw new \Exception("Required accounts not found (Cash or Cash Security Liability)");
+            }
+
+            $fanAccount = SystemAccount::where('code', '20010')->whereNull('sub_code')->first();
+            if (!$fanAccount) {
+                throw new \Exception("FAN account (20010) not found — cannot post cash security");
             }
 
             // 3. Get member/loan details
@@ -662,7 +678,7 @@ class AccountingService
 
             $journalLines = [];
 
-            // DR: Cash (money received from member)
+            // Step A — DR Bank/Cash settlement account
             $journalLines[] = [
                 'account_id' => $cashAccount->Id,
                 'debit' => $cashSecurity->amount,
@@ -670,7 +686,23 @@ class AccountingService
                 'narrative' => "Cash security deposit received",
             ];
 
-            // CR: Cash Security Liability (we owe this money back to member when loan is settled)
+            // Step A — CR FAN
+            $journalLines[] = [
+                'account_id' => $fanAccount->Id,
+                'debit' => 0,
+                'credit' => $cashSecurity->amount,
+                'narrative' => "FAN: cash security receipt staged",
+            ];
+
+            // Step B — DR FAN
+            $journalLines[] = [
+                'account_id' => $fanAccount->Id,
+                'debit' => $cashSecurity->amount,
+                'credit' => 0,
+                'narrative' => "FAN: allocates cash security to liability",
+            ];
+
+            // Step B — CR Cash Security Liability
             $journalLines[] = [
                 'account_id' => $securityLiabilityAccount->Id,
                 'debit' => 0,
@@ -704,16 +736,17 @@ class AccountingService
     /**
      * Post journal entry for insurance fee collection
      * 
-     * Insurance fees are a LIABILITY (held for insurance purposes)
-     * DR: Cash/Bank (asset increases)
-     * CR: Insurance Payable (liability increases - insurance fund balance)
+    * Insurance fees are a LIABILITY (held for insurance purposes)
+    * MOP flow: DR Bank -> CR FAN, then DR FAN -> CR Insurance Payable
      */
     public function postInsuranceFeeEntry($fee, $feeType)
     {
         try {
             $feeTypeName = $feeType->name ?? 'Insurance Fee';
-            // 1. Find CASH/BANK account based on payment type
-            $cashAccount = $this->getCashAccountByPaymentMethod($fee->payment_type ?? 1, null, null);
+            // 1. Settlement account is always bank regardless of capture channel
+            $paymentMethod = $fee->payment_method ?? null;
+            $paymentSource = $fee->payment_source ?? $fee->source ?? null;
+            $cashAccount = $this->getCashAccountByPaymentMethod(3, $paymentMethod, $paymentSource);
 
             // 2. Find INSURANCE PAYABLE LIABILITY account (21030 or 21040)
             // Use 21030 (Credit Insurance 1%) for smaller amounts, 21040 (Security Fund 3%) for larger
@@ -730,6 +763,11 @@ class AccountingService
 
             if (!$cashAccount || !$insuranceLiabilityAccount) {
                 throw new \Exception("Required accounts not found (Cash or Insurance Payable)");
+            }
+
+            $fanAccount = SystemAccount::where('code', '20010')->whereNull('sub_code')->first();
+            if (!$fanAccount) {
+                throw new \Exception("FAN account (20010) not found — cannot post insurance fee");
             }
 
             // 3. Get member/loan details
@@ -765,7 +803,7 @@ class AccountingService
 
             $journalLines = [];
 
-            // DR: Cash (money received)
+            // Step A — DR Bank/Cash settlement account
             $journalLines[] = [
                 'account_id' => $cashAccount->Id,
                 'debit' => $fee->amount,
@@ -773,7 +811,23 @@ class AccountingService
                 'narrative' => "Insurance fee collected",
             ];
 
-            // CR: Insurance Payable (liability - insurance fund balance)
+            // Step A — CR FAN
+            $journalLines[] = [
+                'account_id' => $fanAccount->Id,
+                'debit' => 0,
+                'credit' => $fee->amount,
+                'narrative' => "FAN: insurance receipt staged",
+            ];
+
+            // Step B — DR FAN
+            $journalLines[] = [
+                'account_id' => $fanAccount->Id,
+                'debit' => $fee->amount,
+                'credit' => 0,
+                'narrative' => "FAN: allocates insurance to liability",
+            ];
+
+            // Step B — CR Insurance Payable
             $journalLines[] = [
                 'account_id' => $insuranceLiabilityAccount->Id,
                 'debit' => 0,
@@ -822,8 +876,9 @@ class AccountingService
                 $member = \App\Models\Member::find($saving->member_id);
             }
 
-            $paymentType = (int) ($saving->platform ?? $saving->payment_type ?? 1);
-            $cashAccount = $this->getCashAccountByPaymentMethod($paymentType, null, null);
+            $paymentMethod = $saving->payment_method ?? null;
+            $paymentSource = $saving->payment_source ?? $saving->source ?? null;
+            $cashAccount = $this->getCashAccountByPaymentMethod(3, $paymentMethod, $paymentSource);
 
             $savingsLiabilityAccount = SystemAccount::where('code', '21000')
                 ->where('sub_code', '21010')
@@ -900,6 +955,7 @@ class AccountingService
      */
     private function getCashAccountByPaymentMethod($paymentType, $paymentMethod = null, $paymentSource = null)
     {
+        $paymentType = is_numeric($paymentType) ? (int) $paymentType : null;
         $paymentMethod = strtolower($paymentMethod ?? '');
         $paymentSource = strtolower($paymentSource ?? '');
         
@@ -912,7 +968,7 @@ class AccountingService
         }
         
         // Type 2 = Mobile Money
-        if ($paymentType == 2 || str_contains($paymentMethod, 'mobile') || str_contains($paymentSource, 'mobile')) {
+        if ($paymentType === 2) {
             $cashAccount = SystemAccount::where('code', '10000')
                 ->where('sub_code', '10040')
                 ->first();
@@ -920,7 +976,7 @@ class AccountingService
         }
         
         // Type 3 = Bank
-        if ($paymentType == 3 || str_contains($paymentMethod, 'bank') || str_contains($paymentSource, 'bank')) {
+        if ($paymentType === 3) {
             // Try to detect specific bank
             if (str_contains($paymentMethod, 'stanbic') || str_contains($paymentSource, 'stanbic')) {
                 $cashAccount = SystemAccount::where('code', '10000')
@@ -938,14 +994,35 @@ class AccountingService
             }
             if ($cashAccount) return $cashAccount;
         }
+
+        // Infer payment channel only when payment type is not explicit
+        if (str_contains($paymentMethod, 'mobile') || str_contains($paymentSource, 'mobile')) {
+            $cashAccount = SystemAccount::where('code', '10000')
+                ->where('sub_code', '10040')
+                ->first();
+            if ($cashAccount) return $cashAccount;
+        }
+
+        if (str_contains($paymentMethod, 'bank') || str_contains($paymentSource, 'bank')) {
+            if (str_contains($paymentMethod, 'absa') || str_contains($paymentSource, 'absa')) {
+                $cashAccount = SystemAccount::where('code', '10000')
+                    ->where('sub_code', '10020')
+                    ->first();
+            } else {
+                $cashAccount = SystemAccount::where('code', '10000')
+                    ->where('sub_code', '10030')
+                    ->first();
+            }
+            if ($cashAccount) return $cashAccount;
+        }
         
-        // Default to mobile money (most common)
+        // Default to bank (Stanbic) when source/method is ambiguous
         $cashAccount = SystemAccount::where('code', '10000')
-            ->where('sub_code', '10040')
+            ->where('sub_code', '10030')
             ->first();
-        
+
         if ($cashAccount) return $cashAccount;
-        
+
         // Last resort: parent cash account
         return SystemAccount::where('code', '10000')
             ->whereNull('sub_code')
@@ -1134,6 +1211,186 @@ class AccountingService
             'ii'  => $isSchool ? '41010' : ($isSalary ? '41030' : ($isHousing ? '41040' : '41020')),
             'llp' => $isSchool ? '11110' : ($isSalary ? '11130' : ($isHousing ? '11140' : '11120')),
         ];
+    }
+
+    /**
+     * Calculate net late fee due for a schedule at a specific date.
+     * Uses repayment-date periods and subtracts waived late fees (status=2).
+     */
+    private function calculateScheduleLateFeeAtDate($schedule, $loan, Carbon $asOfDate): float
+    {
+        if (!$schedule) {
+            return 0.0;
+        }
+
+        $dueDate = $this->parseSchedulePaymentDate($schedule->payment_date ?? null);
+        if (!$dueDate || $asOfDate->lessThanOrEqualTo($dueDate)) {
+            return 0.0;
+        }
+
+        $daysLate = $dueDate->diffInDays($asOfDate);
+        $periodType = (string) ($loan->product->period_type ?? '1');
+
+        if ($periodType === '1') {
+            $periodsOverdue = (int) ceil($daysLate / 7);
+        } elseif ($periodType === '2') {
+            $periodsOverdue = (int) ceil($daysLate / 30);
+        } elseif ($periodType === '3') {
+            $periodsOverdue = (int) $daysLate;
+        } else {
+            $periodsOverdue = (int) ceil($daysLate / 7);
+        }
+
+        if ($periodsOverdue <= 0) {
+            return 0.0;
+        }
+
+        $baseAmount = (float) ($schedule->principal ?? 0) + (float) ($schedule->interest ?? 0);
+        $grossLateFee = ($baseAmount * 0.06) * $periodsOverdue;
+
+        $waivedLateFees = (float) DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', 2)
+            ->sum('amount');
+
+        return max(0.0, $grossLateFee - $waivedLateFees);
+    }
+
+    /**
+     * Allocate repayment components for GL posting.
+     *
+     * Business rule:
+     * - P+I is settled first (capped by schedule remaining balances)
+     * - Late fee is paid only from amount above remaining P+I
+     */
+    private function allocateRepaymentBreakdownForJournal($repayment, $loan, $schedule, Carbon $repaymentDate): array
+    {
+        $amount = max(0.0, (float) ($repayment->amount ?? 0));
+        if ($amount <= 0) {
+            return ['principal' => 0.0, 'interest' => 0.0, 'penalty' => 0.0, 'total' => 0.0];
+        }
+
+        // Respect explicit split if the repayment already carries it.
+        $explicitPrincipal = max(0.0, (float) ($repayment->principal ?? 0));
+        $explicitInterest  = max(0.0, (float) ($repayment->interest ?? 0));
+        $explicitPenalty   = max(0.0, (float) ($repayment->penalty ?? 0));
+        $explicitTotal     = $explicitPrincipal + $explicitInterest + $explicitPenalty;
+        if ($explicitTotal > 0) {
+            $scale = ($explicitTotal > $amount) ? ($amount / $explicitTotal) : 1.0;
+            $p = $explicitPrincipal * $scale;
+            $i = $explicitInterest * $scale;
+            $f = $explicitPenalty * $scale;
+            return [
+                'principal' => round($p, 2),
+                'interest'  => round($i, 2),
+                'penalty'   => round($f, 2),
+                'total'     => round($p + $i + $f, 2),
+            ];
+        }
+
+        // No schedule means we cannot derive a reliable late-fee/interest split.
+        if (!$schedule) {
+            return ['principal' => round($amount, 2), 'interest' => 0.0, 'penalty' => 0.0, 'total' => round($amount, 2)];
+        }
+
+        $remainingInterest = max(0.0, (float) ($schedule->interest ?? 0));
+        $remainingPrincipal = max(0.0, (float) ($schedule->principal ?? 0));
+        $paidLateFeesSoFar = 0.0;
+
+        // Replay successful repayments for this schedule up to and including current row.
+        // Use id ordering for deterministic behavior with legacy date formats.
+        $allRepayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
+            ->where('amount', '>', 0)
+            ->where(function ($q) {
+                $q->where('status', 1)
+                    ->orWhere('pay_status', 'SUCCESS')
+                    ->orWhere(function ($x) {
+                        $x->where('payment_status', 'Completed')
+                            ->where(function ($y) {
+                                $y->whereNull('pay_status')
+                                    ->orWhereNotIn('pay_status', ['FAILED', 'INVALID']);
+                            })
+                            ->where(function ($y) {
+                                $y->whereNull('status')->orWhere('status', '>=', 0);
+                            });
+                    });
+            })
+            ->orderBy('id')
+            ->get();
+
+        $interest = 0.0;
+        $principal = 0.0;
+        $penalty = 0.0;
+
+        foreach ($allRepayments as $row) {
+            $rowAmount = max(0.0, (float) ($row->amount ?? 0));
+            if ($rowAmount <= 0) {
+                continue;
+            }
+
+            $piRemaining = max(0.0, $remainingInterest + $remainingPrincipal);
+            $piPortion = min($rowAmount, $piRemaining);
+
+            $allocInterest = min($piPortion, $remainingInterest);
+            $allocPrincipal = min(max(0.0, $piPortion - $allocInterest), $remainingPrincipal);
+
+            $remainingInterest -= $allocInterest;
+            $remainingPrincipal -= $allocPrincipal;
+
+            $excess = max(0.0, $rowAmount - $piRemaining);
+            $rowDate = $this->capToToday($row->date_created ?? null);
+            $lateDueAtRowDate = $this->calculateScheduleLateFeeAtDate($schedule, $loan, $rowDate);
+            $remainingLateAtRowDate = max(0.0, $lateDueAtRowDate - $paidLateFeesSoFar);
+            $allocLate = min($excess, $remainingLateAtRowDate);
+            $paidLateFeesSoFar += $allocLate;
+
+            if ((int) $row->id === (int) ($repayment->id ?? 0)) {
+                $interest = $allocInterest;
+                $principal = $allocPrincipal;
+                $penalty = $allocLate;
+                break;
+            }
+        }
+
+        // Keep JE fully allocated to paid cash in edge cases (e.g. stale schedule balances).
+        $allocated = $principal + $interest + $penalty;
+        if ($amount > $allocated) {
+            $principal += ($amount - $allocated);
+        }
+
+        $total = $principal + $interest + $penalty;
+
+        return [
+            'principal' => round($principal, 2),
+            'interest'  => round($interest, 2),
+            'penalty'   => round($penalty, 2),
+            'total'     => round($total, 2),
+        ];
+    }
+
+    /**
+     * Parse schedule payment date from either d-m-Y or Y-m-d style strings.
+     */
+    private function parseSchedulePaymentDate($raw): ?Carbon
+    {
+        if ($raw instanceof Carbon) {
+            return $raw->copy()->startOfDay();
+        }
+
+        if (!is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $raw = trim($raw);
+        try {
+            if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $raw)) {
+                return Carbon::createFromFormat('d-m-Y', $raw)->startOfDay();
+            }
+
+            return Carbon::parse($raw)->startOfDay();
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

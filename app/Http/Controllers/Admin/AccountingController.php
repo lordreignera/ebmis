@@ -33,8 +33,18 @@ class AccountingController extends Controller
     public function showJournalEntry(JournalEntry $entry)
     {
         $entry->load(['lines.account', 'costCenter', 'product', 'officer', 'fund']);
+        $relatedReclassEntries = collect();
+
+        if ($entry->reference_type === 'Repayment' && $entry->reference_id) {
+            $relatedReclassEntries = JournalEntry::with(['lines.account', 'postedBy'])
+                ->where('reference_type', 'Repayment Late Fee Reclass')
+                ->where('reference_id', $entry->reference_id)
+                ->orderBy('transaction_date')
+                ->orderBy('journal_number')
+                ->get();
+        }
         
-        return view('admin.accounting.journal-entry-detail', compact('entry'));
+        return view('admin.accounting.journal-entry-detail', compact('entry', 'relatedReclassEntries'));
     }
 
     /**

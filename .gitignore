@@ -48,6 +48,22 @@ generate_*.php
 !composer.json
 !package.json
 
+# Diagnostic, audit, and backfill scripts
+audit_*.php
+audit_*.txt
+diag*.php
+diagnose_*.php
+explore_*.php
+list_*.php
+sweep_*.php
+backfill_*.php
+*_analysis.php
+repayment_je_*.php
+repayment_journals_*.php
+schema_*.php
+*_output.txt
+*.ps1
+
 # Documentation files (except deployment guide)
 *.md
 !README.md

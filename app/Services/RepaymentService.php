@@ -32,7 +32,7 @@ class RepaymentService
             
             $scheduleId = $paymentData['schedule_id'];
             $amount = (float) $paymentData['amount'];
-            $paymentType = $paymentData['type'] ?? '1'; // 1=cash, 2=mobile money, 3=bank
+            $paymentType = $paymentData['type'] ?? '3'; // default to bank: 1=cash, 2=mobile money, 3=bank
             
             // Get schedule details
             $schedule = LoanSchedule::with('loan')->find($scheduleId);
