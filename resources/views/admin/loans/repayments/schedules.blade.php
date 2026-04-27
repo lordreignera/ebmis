@@ -469,6 +469,7 @@
                                                 {{-- Paid - Show Receipt Button + View All Payments --}}
                                                 @php
                                                     $allPayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
+                                                        ->whereNotIn('status', [-1, 2]) // Exclude INVALID/FAILED
                                                         ->where(function($query) {
                                                             $query->where('status', 1)
                                                                   ->orWhere('payment_status', 'Completed');

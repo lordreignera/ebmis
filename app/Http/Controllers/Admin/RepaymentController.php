@@ -300,6 +300,7 @@ class RepaymentController extends Controller
             $actualPaidMap = DB::table('repayments')
                 ->whereIn('schedule_id', $candidateIds)
                 ->where('amount', '>', 0)
+                ->whereNotIn('status', [-1, 2]) // Exclude INVALID/FAILED records
                 ->where(function ($query) {
                     $query->where('status', 1)
                         ->orWhere('payment_status', 'Completed');
@@ -819,6 +820,7 @@ class RepaymentController extends Controller
         $paidPerSchedule = DB::table('repayments')
             ->whereIn('schedule_id', $scheduleIds)
             ->where('amount', '>', 0)
+            ->whereNotIn('status', [-1, 2]) // Exclude INVALID/FAILED records
             ->where(function($query) {
                 $query->where('status', 1)
                       ->orWhere('payment_status', 'Completed');
@@ -1638,12 +1640,14 @@ class RepaymentController extends Controller
         // Calculate what's actually owed on this schedule (P + I + Late Fees - Already Paid)
         $scheduleDue = $schedule->principal + $schedule->interest;
         
-        // Use successful repayments only (status=1 OR payment_status=Completed)
-        // to match schedule display calculations and avoid stale schedule.paid mismatches.
+        // Use successful repayments only (status=1 OR payment_status=Completed).
+        // Exclude INVALID (status=-1) and FAILED (status=2) records even if
+        // payment_status was incorrectly set to 'Completed' by the old system.
         $alreadyPaid = floatval(
             DB::table('repayments')
                 ->where('schedule_id', $schedule->id)
                 ->where('amount', '>', 0)
+                ->whereNotIn('status', [-1, 2])
                 ->where(function($query) {
                     $query->where('status', 1)
                           ->orWhere('payment_status', 'Completed');
@@ -1828,7 +1832,7 @@ class RepaymentController extends Controller
 
                 $existingConfirmed = Repayment::where('schedule_id', $schedule->id)
                     ->where('status', 1)
-                    ->where('amount', $request->amount)
+                    ->where('amount', $totalOwed)
                     ->where('added_by', auth()->id())
                     ->where('date_created', '>=', now()->subSeconds(30))
                     ->exists();
@@ -1838,72 +1842,22 @@ class RepaymentController extends Controller
                     return response()->json(['success' => false, 'message' => 'This payment was already recorded. Please refresh the page.'], 409);
                 }
 
+                // Use server-calculated outstanding balance as the canonical payment amount.
+                // This prevents partial-payment residuals caused by client-supplied amounts
+                // and stale schedule.paid counter drift from prior payBalance() calls.
+                $repaymentData['amount'] = $totalOwed;
+
                 $repayment = Repayment::create($repaymentData);
-                
-                // Update schedule for confirmed payments
-                // NOTE: personal_loans table doesn't have 'paid' column - tracking is done via loan_schedules
-                
-                // Handle payment allocation with overpayment redistribution
-                $paymentAmount = $request->amount;
-                $schedule->increment('paid', $paymentAmount);
-                
-                // Check if the schedule is fully settled including late fees.
-                // $lateFees is already calculated above via calculateLateFee() and reflects
-                // dynamic late fees after any waivers — far more reliable than the sparse
-                // late_fees table which is often empty for non-mobile-money flows.
-                $totalScheduleDue = $schedule->payment + $lateFees;
 
-                if ($schedule->paid >= $totalScheduleDue) {
-                    // P+I AND late fees fully paid — only true excess goes to the next schedule
-                    $overpayment = $schedule->paid - $totalScheduleDue;
-
-                    $schedule->update([
-                        'paid'         => $schedule->payment,
-                        'status'       => 1,
-                        'date_cleared' => now(), // Safe to freeze: both P+I and late fees settled
-                    ]);
-
-                    // Redistribute only the amount paid ABOVE total due (P+I + late fees)
-                    if ($overpayment > 1) {
-                        $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $loan->id)
-                            ->where('status', '!=', 1)
-                            ->where('id', '>', $schedule->id)
-                            ->orderBy('id')
-                            ->first();
-
-                        if ($nextSchedule) {
-                            $nextSchedule->increment('paid', $overpayment);
-
-                            $nextLateFees = DB::table('late_fees')
-                                ->where('schedule_id', $nextSchedule->id)
-                                ->where('status', 0)
-                                ->sum('amount');
-                            $nextTotalDue = $nextSchedule->payment + $nextLateFees;
-
-                            if ($nextSchedule->paid >= $nextTotalDue) {
-                                $nextUpdateData = ['status' => 1];
-                                if ($nextLateFees <= 0.01) {
-                                    $nextUpdateData['date_cleared'] = now();
-                                }
-                                $nextSchedule->update($nextUpdateData);
-                            }
-                        }
-                    }
-                } elseif ($schedule->paid >= $schedule->payment && $lateFees > 0.01) {
-                    // P+I paid but late fees still outstanding — record P+I portion, do NOT freeze
-                    $schedule->update([
-                        'paid'   => $schedule->payment,
-                        'status' => 1,
-                        // No date_cleared: late fees are still accruing / unpaid
-                    ]);
-                } elseif ($schedule->paid >= $schedule->payment) {
-                    // P+I paid and no late fees — fully settled
-                    $schedule->update([
-                        'paid'         => $schedule->payment,
-                        'status'       => 1,
-                        'date_cleared' => now(),
-                    ]);
-                }
+                // Full balance is now paid — mark schedule closed and freeze late-fee accrual.
+                // We use schedule.payment (canonical P+I column) for the paid field and set
+                // date_cleared so calculateLateFee() freezes at today rather than continuing
+                // to accumulate into future periods.
+                $schedule->update([
+                    'paid'         => $schedule->payment,
+                    'status'       => 1,
+                    'date_cleared' => now(),
+                ]);
                 
                 // Check if loan is fully paid by checking ALL schedules
                 $this->checkAndCloseLoanIfComplete($loan->id);
@@ -2181,32 +2135,15 @@ class RepaymentController extends Controller
 
                 // For cash/bank, update schedule payment status immediately
                 if ($paymentTypeCode != 2) {
-                    // Calculate new total paid for this schedule
-                    $totalPaid = DB::table('repayments')
-                        ->where('schedule_id', $scheduleId)
-                        ->where('status', 1)
-                        ->sum('amount');
-
-                    $totalDue = $schedule->principal + $schedule->interest;
-
-                    // Mark schedule as paid if balance is less than 1 UGX (negligible)
-                    if ($totalPaid >= ($totalDue - 1)) {
-                        // Check if late fees are also paid before freezing
-                        $pendingLateFees = DB::table('late_fees')
-                            ->where('schedule_id', $scheduleId)
-                            ->where('status', 0)
-                            ->sum('amount');
-                        
-                        $updateData = ['status' => 1];
-                        
-                        // Only freeze if total balance (P+I+Late Fees) is less than 1 UGX
-                        if ($totalPaid >= ($totalDue + $pendingLateFees - 1)) {
-                            $updateData['date_cleared'] = now();
-                        }
-                        
-                        $schedule->update($updateData);
-                        $schedulesPaid[] = $scheduleData['due_date'];
-                    }
+                    // Payment amount = full outstanding balance (set by frontend readonly field).
+                    // Always mark schedule fully paid and set date_cleared to freeze late-fee
+                    // accrual — avoids residual balances when new periods start after payment.
+                    $schedule->update([
+                        'paid'         => $schedule->payment,
+                        'status'       => 1,
+                        'date_cleared' => now(),
+                    ]);
+                    $schedulesPaid[] = $scheduleData['due_date'];
 
                     // Post GL entry immediately for each confirmed cash/bank allocation.
                     try {
