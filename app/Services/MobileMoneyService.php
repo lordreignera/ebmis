@@ -561,18 +561,34 @@ class MobileMoneyService
                 $statusCode = $responseData['statusCode'] ?? '';
                 $statusDescription = $responseData['statusDescription'] ?? 'Unknown status';
                 
-                // Map status codes to our internal status
-                // FIXED: Use statusDescription text, not just code, as FlexiPay returns '01' for both success and failure
+                // Map status codes + description to internal status.
+                // SAFETY RULE: check for failure words FIRST because "not successful" contains
+                // the word "successful" — never confirm a payment based on text alone.
                 $status = 'pending';
                 $descriptionUpper = strtoupper($statusDescription);
-                
-                if (str_contains($descriptionUpper, 'SUCCESS') || str_contains($descriptionUpper, 'COMPLETED')) {
-                    $status = 'completed';
-                } elseif (str_contains($descriptionUpper, 'FAILED') || str_contains($descriptionUpper, 'DECLINED') || 
-                          str_contains($descriptionUpper, 'CANCELLED') || str_contains($descriptionUpper, 'REJECTED')) {
+
+                // 1. Unambiguous failure codes → failed immediately.
+                if (in_array((string) $statusCode, ['02', '03', '57', '58', '59'])) {
                     $status = 'failed';
-                } elseif (str_contains($descriptionUpper, 'PENDING') || str_contains($descriptionUpper, 'INITIATED')) {
-                    $status = 'pending';
+                }
+                // 2. Explicit failure words in description → failed.
+                elseif (str_contains($descriptionUpper, 'FAILED') || str_contains($descriptionUpper, 'DECLINED') ||
+                          str_contains($descriptionUpper, 'CANCELLED') || str_contains($descriptionUpper, 'REJECTED') ||
+                          str_contains($descriptionUpper, 'INSUFFICIENT') || str_contains($descriptionUpper, 'UNSUCCESSFUL')) {
+                    $status = 'failed';
+                }
+                // 3. Unambiguous success code → completed.
+                elseif ($statusCode === '00') {
+                    $status = 'completed';
+                }
+                // 4. Ambiguous code '01': trust description ONLY when no negation present.
+                elseif ($statusCode === '01') {
+                    $hasNegation = str_contains($descriptionUpper, ' NOT ') || str_contains($descriptionUpper, 'UNSUCCESS');
+                    if (!$hasNegation && (str_contains($descriptionUpper, 'SUCCESS') || str_contains($descriptionUpper, 'COMPLETED'))) {
+                        $status = 'completed';
+                    } else {
+                        $status = 'pending'; // Stay pending when ambiguous.
+                    }
                 }
                 
                 return [
@@ -656,19 +672,30 @@ class MobileMoneyService
             $status = 'pending';
             $descriptionUpper = strtoupper($statusDescription);
             
-            // Stanbic status codes: 
+            // Stanbic status codes:
             // 00 = Success/Completed
-            // 01 = Pending/Processing  
+            // 01 = Pending/Processing
             // 02 = Failed
             // 03 = User cancelled
-            if ($statusCode === '00' || str_contains($descriptionUpper, 'SUCCESS') || str_contains($descriptionUpper, 'COMPLETED')) {
+            // Use status codes as the authoritative source. Description is only used
+            // as a fallback for unknown codes — never to override an explicit code.
+            if ($statusCode === '00') {
                 $status = 'completed';
-            } elseif (in_array($statusCode, ['02', '03']) || 
-                      str_contains($descriptionUpper, 'FAILED') || 
-                      str_contains($descriptionUpper, 'DECLINED') || 
-                      str_contains($descriptionUpper, 'CANCELLED') || 
-                      str_contains($descriptionUpper, 'REJECTED')) {
+            } elseif (in_array($statusCode, ['02', '03'])) {
                 $status = 'failed';
+            } elseif (!empty($statusCode)) {
+                // Unknown code: check description but guard against negation phrases.
+                $hasFailureWord = str_contains($descriptionUpper, 'FAILED') || str_contains($descriptionUpper, 'DECLINED') ||
+                    str_contains($descriptionUpper, 'CANCELLED') || str_contains($descriptionUpper, 'REJECTED') ||
+                    str_contains($descriptionUpper, 'INSUFFICIENT') || str_contains($descriptionUpper, 'UNSUCCESSFUL');
+                $hasNegation = str_contains($descriptionUpper, ' NOT ') || str_contains($descriptionUpper, 'UNSUCCESS');
+                $hasSuccessWord = !$hasNegation && (str_contains($descriptionUpper, 'SUCCESS') || str_contains($descriptionUpper, 'COMPLETED'));
+                if ($hasFailureWord) {
+                    $status = 'failed';
+                } elseif ($hasSuccessWord) {
+                    $status = 'completed';
+                }
+                // else: remains 'pending'
             }
             
             return [
@@ -886,8 +913,19 @@ class MobileMoneyService
         try {
             Log::info("Processing FlexiPay Callback", $callbackData);
             
-            $transactionRef = $callbackData['transactionReferenceNumber'] ?? null;
-            $statusCode = $callbackData['statusCode'] ?? null;
+            // FlexiPay integrations may send different reference/status field names.
+            // Stanbic sends 'requestId'; Emuria sends 'transactionReferenceNumber' or 'flexipayReferenceNumber'.
+            $transactionRef = $callbackData['transactionReferenceNumber']
+                ?? $callbackData['transactionReference']
+                ?? $callbackData['reference']
+                ?? $callbackData['flexipayReferenceNumber']
+                ?? $callbackData['requestId']
+                ?? null;
+
+            $statusCode = $callbackData['statusCode']
+                ?? $callbackData['status']
+                ?? $callbackData['transactionStatusCode']
+                ?? null;
             $statusDesc = $callbackData['statusDescription'] ?? 'Unknown';
             
             if (!$transactionRef) {
@@ -898,12 +936,15 @@ class MobileMoneyService
                 ];
             }
             
-            $isSuccessful = in_array($statusCode, ['00', '01']);
+            $statusCodeString = strtoupper((string) $statusCode);
+            // Only exact status codes are trusted for confirming payment.
+            // Text-based matching on descriptions is unsafe — "not successful" contains "successful".
+            $isSuccessful = in_array($statusCodeString, ['00', '01']);
             
             $result = [
                 'success' => $isSuccessful,
                 'transaction_reference' => $transactionRef,
-                'status_code' => $statusCode,
+                'status_code' => $statusCodeString,
                 'status_description' => $statusDesc,
                 'callback_data' => $callbackData,
                 'processed_at' => now()

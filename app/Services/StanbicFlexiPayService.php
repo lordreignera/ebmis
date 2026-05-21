@@ -365,10 +365,13 @@ class StanbicFlexiPayService
     public function checkStatus(string $requestId, string $network): array
     {
         try {
+            // Stanbic merchantpaymentstatus endpoint only accepts requestId + clientId.
+            // Sending a third field (network) causes a 400 "JSON unique labels count
+            // exceeds maximum value" from the IBM API Connect gateway — so network is
+            // intentionally omitted here (the requestId already identifies the transaction).
             $payload = [
                 'requestId' => $requestId,
                 'clientId' => $this->clientName,
-                'network' => $network,
             ];
 
             $this->log('info', 'Checking transaction status', [

@@ -45,7 +45,7 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label text-muted">Fee Type</label>
-                                <div class="fw-medium">{{ $fee->feeType->name }}</div>
+                                <div class="fw-medium">{{ $fee->fee_type_name }}</div>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -205,7 +205,7 @@
                         @foreach($recentFees as $recentFee)
                         <div class="d-flex justify-content-between align-items-center {{ !$loop->last ? 'border-bottom pb-2 mb-2' : '' }}">
                             <div>
-                                <div class="fw-medium">{{ $recentFee->feeType->name }}</div>
+                                <div class="fw-medium">{{ $recentFee->fee_type_name }}</div>
                                 <small class="text-muted">{{ $recentFee->created_at ? $recentFee->created_at->format('d M Y') : ($recentFee->datecreated ? $recentFee->datecreated->format('d M Y') : 'N/A') }}</small>
                             </div>
                             <div class="text-end">

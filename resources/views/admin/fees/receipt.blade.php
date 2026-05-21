@@ -60,7 +60,7 @@
                                     <tbody>
                                         <tr>
                                             <td class="fw-medium" width="30%">Fee Type</td>
-                                            <td>{{ $fee->feeType->name }}</td>
+                                            <td>{{ $fee->fee_type_name }}</td>
                                         </tr>
                                         <tr>
                                             <td class="fw-medium">Amount</td>

@@ -1066,7 +1066,7 @@ body.modal-open {
                                         @forelse($member->fees as $fee)
                                             <tr>
                                                 <td>{{ $fee->created_at ? $fee->created_at->format('d M Y') : ($fee->datecreated ? $fee->datecreated->format('d M Y') : 'N/A') }}</td>
-                                                <td>{{ $fee->feeType->name ?? 'N/A' }}</td>
+                                                <td>{{ $fee->fee_type_name }}</td>
                                                 <td><strong>UGX {{ number_format($fee->amount ?? 0, 2) }}</strong></td>
                                                 <td>
                                                     @php
@@ -1097,7 +1097,7 @@ body.modal-open {
                                                                 data-member-phone="{{ $member->contact }}"
                                                                 data-member-name="{{ $member->fname }} {{ $member->lname }}"
                                                                 data-amount="{{ $fee->amount }}"
-                                                                data-fee-type="{{ $fee->feeType->name ?? 'Fee' }}">
+                                                                data-fee-type="{{ $fee->fee_type_name }}">
                                                             <i class="mdi mdi-refresh"></i> Retry Payment
                                                         </button>
                                                         <!-- Add Check Status button for pending/failed mobile money payments -->
@@ -2331,7 +2331,7 @@ function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
                 // Payment was completed during polling!
                 processingAlert.className = 'alert alert-success';
                 statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
-                setTimeout(() => location.reload(), 2000);
+                setTimeout(() => { window.location.href = data.receipt_url || window.location.href; }, 2000);
             } else if (data.status === 'failed') {
                 // Payment failed
                 processingAlert.className = 'alert alert-danger';
@@ -2385,7 +2385,7 @@ function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
             statusText.innerHTML = '<i class="mdi mdi-check-circle"></i> Payment received successfully!';
             
             setTimeout(() => {
-                location.reload(); // Reload to show updated payment
+                window.location.href = data.receipt_url || window.location.href;
             }, 2000);
             
         } else if (data.status === 'failed') {

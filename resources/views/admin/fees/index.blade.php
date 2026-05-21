@@ -198,7 +198,7 @@
                                             </div>
                                         </td>
                                         <td>
-                                            <span class="badge bg-info">{{ $fee->feeType->name }}</span>
+                                            <span class="badge bg-info">{{ $fee->fee_type_name }}</span>
                                         </td>
                                         <td>
                                             <strong>UGX {{ number_format($fee->amount) }}</strong>
@@ -234,7 +234,12 @@
                                                         onclick="viewFeeDetails({{ $fee->id }})" title="View Details">
                                                     <i class="mdi mdi-eye"></i>
                                                 </button>
-                                                @if($fee->status == 0)
+                                                @if($fee->status == 1)
+                                                    <a href="{{ route('admin.fees.receipt', $fee->id) }}" 
+                                                       class="btn btn-sm btn-outline-success" target="_blank" title="View Receipt">
+                                                        <i class="mdi mdi-receipt"></i>
+                                                    </a>
+                                                @else
                                                     <button type="button" class="btn btn-sm btn-outline-success" 
                                                             onclick="markAsPaid({{ $fee->id }})" title="Mark as Paid">
                                                         <i class="mdi mdi-check"></i>

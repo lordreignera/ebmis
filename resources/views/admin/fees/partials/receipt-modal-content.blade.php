@@ -63,7 +63,7 @@
                         <tbody>
                             <tr style="background-color: white;">
                                 <td class="fw-bold" style="width: 40%; color: #000;">Fee Type</td>
-                                <td style="color: #000;">{{ $fee->feeType->name ?? 'N/A' }}</td>
+                                <td style="color: #000;">{{ $fee->fee_type_name }}</td>
                             </tr>
                             <tr class="table-warning">
                                 <td class="fw-bold" style="color: #000;">Amount Paid</td>

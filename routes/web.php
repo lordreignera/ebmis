@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\CronController;
 use App\Http\Controllers\ClientLoanApplicationController;
 use App\Http\Controllers\Admin\ClientApplicationController;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -40,6 +41,12 @@ Route::post('/apply', [ClientLoanApplicationController::class, 'store'])->name('
 Route::get('/apply/success', [ClientLoanApplicationController::class, 'success'])->name('client.apply.success');
 Route::get('/apply/check-status', [ClientLoanApplicationController::class, 'checkStatus'])->name('client.apply.check-status');
 Route::post('/loan-status', [ClientLoanApplicationController::class, 'loanStatusLookup'])->name('client.loan-status')->middleware('throttle:10,1');
+
+// Public callback endpoint for payment providers (no auth/session/csrf)
+Route::post('/admin/mobile-money/callback', [\App\Http\Controllers\Admin\LoanManagementController::class, 'mobileMoneyCallback'])
+    ->name('public.mobile-money.callback')
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->middleware('throttle:120,1');
 
 Route::middleware([
     'auth:sanctum',

@@ -22,6 +22,7 @@ class Fee extends Model
         'loan_id',
         'fees_type_id',
         'payment_type',
+        'payment_phone',
         'amount',
         'description',
         'added_by',
@@ -66,11 +67,27 @@ class Fee extends Model
     }
 
     /**
-     * Get the fee type
+     * Get the fee type (from fees_types table — used for member-level fees)
      */
     public function feeType()
     {
         return $this->belongsTo(FeeType::class, 'fees_type_id');
+    }
+
+    /**
+     * Get the product charge (from product_charges table — used for loan upfront charges)
+     */
+    public function productCharge()
+    {
+        return $this->belongsTo(ProductCharge::class, 'fees_type_id');
+    }
+
+    /**
+     * Return the display name of the fee type, resolving from either source
+     */
+    public function getFeeTypeNameAttribute(): string
+    {
+        return $this->feeType?->name ?? $this->productCharge?->name ?? $this->description ?? 'N/A';
     }
 
     /**

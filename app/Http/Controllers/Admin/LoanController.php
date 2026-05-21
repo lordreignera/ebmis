@@ -1100,7 +1100,7 @@ class LoanController extends Controller
                 'member_id' => $validated['member_id'],
                 'loan_id' => $validated['loan_id'],
                 'fees_type_id' => $validated['fees_type_id'],
-                'payment_type' => 2, // Mobile Money
+                'payment_type' => 1, // Mobile Money (1=MM per loan fee modal; not the repayment coding)
                 'payment_phone' => $validated['member_phone'], // Save actual phone used
                 'amount' => $validated['amount'],
                 'description' => $validated['description'] ?? 'Loan upfront charge payment',
@@ -1193,7 +1193,9 @@ class LoanController extends Controller
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
-                    'message' => 'Payment completed successfully'
+                    'message' => 'Payment completed successfully',
+                    'fee_id' => $fee->id,
+                    'receipt_url' => route('admin.fees.receipt', $fee->id)
                 ]);
             }
 
@@ -1249,7 +1251,9 @@ class LoanController extends Controller
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
-                    'message' => 'Payment completed successfully'
+                    'message' => 'Payment completed successfully',
+                    'fee_id' => $fee->id,
+                    'receipt_url' => route('admin.fees.receipt', $fee->id)
                 ]);
             } elseif ($statusResult['status'] === 'failed') {
                 // Check if payment is recent (within 2 minutes) - FlexiPay retries 3 times
@@ -1324,8 +1328,8 @@ class LoanController extends Controller
             // Find the fee
             $fee = Fee::findOrFail($validated['fee_id']);
 
-            // Verify the fee is failed and is a mobile money payment
-            if ($fee->payment_type != 2) {
+            // Verify the fee is a mobile money payment (1=MM in new coding, 2=MM in old coding)
+            if (!in_array($fee->payment_type, [1, 2])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only mobile money payments can be retried'

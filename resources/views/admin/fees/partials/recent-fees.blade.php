@@ -3,7 +3,7 @@
         @foreach($fees as $fee)
             <div class="d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
                 <div>
-                    <small class="text-muted">{{ $fee->feeType->name }}</small>
+                    <small class="text-muted">{{ $fee->fee_type_name }}</small>
                     <br>
                     <strong>UGX {{ number_format($fee->amount) }}</strong>
                 </div>

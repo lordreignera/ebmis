@@ -371,6 +371,11 @@
                                             $statusClass = 'table-warning';
                                             $statusFilter = 'pending';
                                             $statusBadge = '<span class="badge bg-warning">Pending (' . $schedule->pending_count . ')</span>';
+                                        } elseif ($schedule->pi_paid ?? false) {
+                                            // P+I confirmed but late fees still outstanding
+                                            $statusClass = 'table-warning';
+                                            $statusFilter = 'pending';
+                                            $statusBadge = '<span class="badge bg-warning text-dark">Late Fee Due</span>';
                                         } elseif ($schedule->periods_in_arrears > 0) {
                                             $statusClass = 'table-danger';
                                             $statusFilter = 'overdue';
@@ -465,77 +470,89 @@
                                         @endif
                                         <td class="text-center">{!! $statusBadge !!}</td>
                                         <td class="text-center">
+                                            @php
+                                                // ── Shared: confirmed repayments for this schedule ──────────────────
+                                                $confirmedPayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
+                                                    ->whereNotIn('status', [-1, 2])
+                                                    ->where(function($q) {
+                                                        $q->where('status', 1)->orWhere('payment_status', 'Completed');
+                                                    })
+                                                    ->orderBy('id', 'desc')
+                                                    ->get();
+                                                $latestConfirmedRepayment = $confirmedPayments->first();
+                                                $confirmedCount = $confirmedPayments->count();
+
+                                                // ── Shared: sequential payment guard ───────────────────────────────
+                                                $hasEarlierUnpaid = false;
+                                                $earlierUnpaidDate = null;
+                                                $earlierUnpaidBalance = 0;
+                                                foreach ($schedules as $earlierSchedule) {
+                                                    if ($earlierSchedule->payment_date < $schedule->payment_date
+                                                        && ($earlierSchedule->total_balance ?? 0) > 1) {
+                                                        $hasEarlierUnpaid = true;
+                                                        $earlierUnpaidDate = date('d-M-Y', strtotime($earlierSchedule->payment_date));
+                                                        $earlierUnpaidBalance = $earlierSchedule->total_balance;
+                                                        break;
+                                                    }
+                                                }
+                                            @endphp
+
                                             @if($schedule->status == 1)
-                                                {{-- Paid - Show Receipt Button + View All Payments --}}
-                                                @php
-                                                    $allPayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
-                                                        ->whereNotIn('status', [-1, 2]) // Exclude INVALID/FAILED
-                                                        ->where(function($query) {
-                                                            $query->where('status', 1)
-                                                                  ->orWhere('payment_status', 'Completed');
-                                                        })
-                                                        ->orderBy('id', 'desc')
-                                                        ->get();
-                                                    $repayment = $allPayments->first();
-                                                    $paymentCount = $allPayments->count();
-                                                @endphp
-                                                @if($repayment)
+                                                {{-- Fully Paid --}}
+                                                @if($latestConfirmedRepayment)
                                                     <div class="btn-group btn-group-sm">
-                                                        <a href="{{ route('admin.repayments.receipt', $repayment->id) }}" 
-                                                           class="btn btn-primary btn-sm px-2 py-1" 
-                                                           target="_blank"
-                                                           title="View Latest Receipt">
+                                                        <a href="{{ route('admin.repayments.receipt', $latestConfirmedRepayment->id) }}"
+                                                           class="btn btn-primary btn-sm px-2 py-1"
+                                                           target="_blank" title="View Latest Receipt">
                                                             <i class="fas fa-receipt"></i> Receipt
                                                         </a>
-                                                        @if($paymentCount > 1)
-                                                            <button type="button" 
-                                                                    class="btn btn-info btn-sm px-2 py-1" 
+                                                        @if($confirmedCount > 1)
+                                                            <button type="button"
+                                                                    class="btn btn-info btn-sm px-2 py-1"
                                                                     onclick="showAllPayments({{ $schedule->id }})"
-                                                                    title="View All {{ $paymentCount }} Payments">
-                                                                <i class="fas fa-list"></i> ({{ $paymentCount }})
+                                                                    title="View All {{ $confirmedCount }} Payments">
+                                                                <i class="fas fa-list"></i> ({{ $confirmedCount }})
                                                             </button>
                                                         @endif
                                                     </div>
                                                 @else
                                                     <span class="text-muted">Paid</span>
                                                 @endif
+
+                                            @elseif(($schedule->pi_paid ?? false) && $schedule->pending_count == 0)
+                                                {{-- P+I confirmed, late fees still outstanding --}}
+                                                @php $lateFeeRemaining = $schedule->total_balance ?? 0; @endphp
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    @if($latestConfirmedRepayment)
+                                                        <a href="{{ route('admin.repayments.receipt', $latestConfirmedRepayment->id) }}"
+                                                           class="btn btn-primary btn-sm px-2 py-1"
+                                                           target="_blank" title="View Receipt">
+                                                            <i class="fas fa-receipt"></i> Receipt
+                                                        </a>
+                                                    @endif
+                                                    @if($lateFeeRemaining > 1)
+                                                        <button type="button" class="btn btn-warning btn-sm px-2 py-1"
+                                                                onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $lateFeeRemaining }})"
+                                                                title="Pay outstanding late fee: UGX {{ number_format($lateFeeRemaining, 0) }}">
+                                                            <i class="fas fa-exclamation-triangle"></i> Pay Fee
+                                                        </button>
+                                                    @endif
+                                                </div>
+
                                             @elseif($schedule->status == 0 && $schedule->pending_count == 0)
-                                                {{-- Not Paid - Show Repay Button only if balance > 1 AND no earlier unpaid schedules --}}
+                                                {{-- Not Paid --}}
                                                 @php
-                                                    // Use total_balance (includes P+I+Late Fees) calculated by controller
                                                     $scheduleRemaining = $schedule->total_balance ?? 0;
-                                                    // If balance is less than 1 UGX, consider it paid (rounding tolerance)
                                                     $shouldShowRepay = $scheduleRemaining > 1;
-                                                    
-                                                    // SEQUENTIAL PAYMENT ENFORCEMENT: Check if any earlier schedule is unpaid
-                                                    $hasEarlierUnpaid = false;
-                                                    $earlierUnpaidDate = null;
-                                                    $earlierUnpaidBalance = 0;
-                                                    
-                                                    if ($shouldShowRepay) {
-                                                        foreach ($schedules as $earlierSchedule) {
-                                                            // Check if this is an earlier schedule (by date)
-                                                            if ($earlierSchedule->payment_date < $schedule->payment_date) {
-                                                                $earlierBalance = $earlierSchedule->total_balance ?? 0;
-                                                                // If earlier schedule has balance > 1, it's unpaid
-                                                                if ($earlierBalance > 1) {
-                                                                    $hasEarlierUnpaid = true;
-                                                                    $earlierUnpaidDate = date('d-M-Y', strtotime($earlierSchedule->payment_date));
-                                                                    $earlierUnpaidBalance = $earlierBalance;
-                                                                    break; // Found first unpaid earlier schedule
-                                                                }
-                                                            }
-                                                        }
-                                                    }
                                                 @endphp
                                                 @if($shouldShowRepay && !$hasEarlierUnpaid)
-                                                    <button type="button" class="btn btn-success btn-sm px-2 py-1" 
+                                                    <button type="button" class="btn btn-success btn-sm px-2 py-1"
                                                             onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRemaining }})"
                                                             title="Repay">
                                                         Repay
                                                     </button>
                                                 @elseif($shouldShowRepay && $hasEarlierUnpaid)
-                                                    <button type="button" class="btn btn-secondary btn-sm px-2 py-1" 
+                                                    <button type="button" class="btn btn-secondary btn-sm px-2 py-1"
                                                             disabled
                                                             title="Cannot pay this schedule. Please pay the earlier schedule due on {{ $earlierUnpaidDate }} first (Balance: UGX {{ number_format($earlierUnpaidBalance, 0) }})">
                                                         <i class="fas fa-lock"></i> Locked
@@ -543,44 +560,33 @@
                                                 @else
                                                     <span class="text-muted">Paid</span>
                                                 @endif
+
                                             @elseif($schedule->pending_count > 0)
-                                                {{-- Pending - Show Check Progress and Retry Buttons (with sequential check) --}}
+                                                {{-- Pending --}}
                                                 @php
-                                                    // Use total_balance for retry as well
                                                     $scheduleRetryRemaining = $schedule->total_balance ?? (($schedule->total_payment ?? $schedule->payment) - $schedule->paid);
-                                                    
-                                                    // Check if any earlier schedule is unpaid (same logic as above)
-                                                    $hasEarlierUnpaidForRetry = false;
-                                                    foreach ($schedules as $earlierSchedule) {
-                                                        if ($earlierSchedule->payment_date < $schedule->payment_date) {
-                                                            $earlierBalance = $earlierSchedule->total_balance ?? 0;
-                                                            if ($earlierBalance > 1) {
-                                                                $hasEarlierUnpaidForRetry = true;
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
                                                 @endphp
                                                 <div class="btn-group" role="group">
-                                                    <button type="button" class="btn btn-info btn-sm px-2 py-1" 
+                                                    <button type="button" class="btn btn-info btn-sm px-2 py-1"
                                                             onclick="checkScheduleProgress({{ $schedule->id }})"
                                                             title="Check Payment Status">
                                                         <i class="fas fa-sync"></i> Check
                                                     </button>
-                                                    @if(!$hasEarlierUnpaidForRetry)
-                                                        <button type="button" class="btn btn-warning btn-sm px-2 py-1" 
+                                                    @if(!$hasEarlierUnpaid)
+                                                        <button type="button" class="btn btn-warning btn-sm px-2 py-1"
                                                                 onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRetryRemaining }})"
                                                                 title="Retry Payment">
                                                             <i class="fas fa-redo"></i> Retry
                                                         </button>
                                                     @else
-                                                        <button type="button" class="btn btn-secondary btn-sm px-2 py-1" 
+                                                        <button type="button" class="btn btn-secondary btn-sm px-2 py-1"
                                                                 disabled
                                                                 title="Cannot retry - pay earlier schedule first">
                                                             <i class="fas fa-lock"></i> Locked
                                                         </button>
                                                     @endif
                                                 </div>
+
                                             @else
                                                 <span class="text-muted">-</span>
                                             @endif
@@ -1228,14 +1234,13 @@ function toggleBalanceMedium() {
 
 // Open repayment modal - Keep outside for onclick attribute
 function openRepayModal(scheduleId, dueDate, amount) {
+    const rounded = Math.round(amount); // Round to whole UGX
     $('#schedule_id').val(scheduleId);
-    $('#payment_amount').val(amount.toFixed(0));
-    $('#payment_amount').attr('max', amount.toFixed(0));
-    
-    // Update helper text to show this is the exact amount owed (no more, no less)
-    const helperText = 'Total amount owed: UGX ' + amount.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' (exact amount required - no overpayments allowed)';
-    $('#payment_amount').next('small').text(helperText);
-    
+    $('#payment_amount').val(rounded);
+    $('#payment_amount').attr('data-exact', rounded); // used by submit validator
+    $('#payment_amount').next('small').text(
+        'Total balance: UGX ' + rounded.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' — exact amount required'
+    );
     $('#repaymentModal').modal('show');
 }
 
@@ -1258,15 +1263,30 @@ $(document).ready(function() {
         e.preventDefault();
         console.log('Form submitted!');
         
-        // Validate payment amount doesn't exceed schedule balance
+        // Validate payment amount is the exact amount owed (no more, no less)
         const paymentAmount = parseFloat($('#payment_amount').val());
-        const maxAmount = parseFloat($('#payment_amount').attr('max'));
-        
-        if (paymentAmount > maxAmount) {
+        const exactAmount = parseFloat($('#payment_amount').attr('data-exact'));
+
+        if (isNaN(paymentAmount) || paymentAmount <= 0) {
+            Swal.fire({ icon: 'error', title: 'Invalid Amount', text: 'Payment amount is missing or invalid.', confirmButtonText: 'OK' });
+            return false;
+        }
+
+        if (paymentAmount > exactAmount + 1) {
             Swal.fire({
                 icon: 'error',
                 title: 'Excess Payment Not Allowed',
-                html: 'Payment amount <strong>UGX ' + paymentAmount.toLocaleString() + '</strong> exceeds the schedule balance of <strong>UGX ' + maxAmount.toLocaleString() + '</strong>.<br><br>Please pay the exact amount due. Overpayments are not permitted.',
+                html: 'Payment amount <strong>UGX ' + paymentAmount.toLocaleString() + '</strong> exceeds the balance of <strong>UGX ' + exactAmount.toLocaleString() + '</strong>.<br><br>Please pay the exact amount due.',
+                confirmButtonText: 'OK'
+            });
+            return false;
+        }
+
+        if (paymentAmount < exactAmount - 1) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Partial Payment Not Allowed',
+                html: 'Payment amount <strong>UGX ' + paymentAmount.toLocaleString() + '</strong> is less than the balance of <strong>UGX ' + exactAmount.toLocaleString() + '</strong>.<br><br>Please pay the exact amount due.',
                 confirmButtonText: 'OK'
             });
             return false;
@@ -1859,7 +1879,7 @@ function checkRepaymentStatusInModal(transactionRef, repaymentId, pollingTimer, 
                 // Auto-close modal after 2 seconds and reload page
                 setTimeout(function() {
                     $('#repaymentModal').modal('hide');
-                    window.location.href = '{{ route("admin.loans.repayments.schedules", ["id" => $loan->id]) }}';
+                    location.reload();
                 }, 2000);
                 
             } else if (response.status === 'failed') {
@@ -1893,15 +1913,53 @@ function handleRepaymentTimeoutInModal(repaymentId, transactionRef) {
     const processingAlert = $('#repaymentMmProcessingAlert');
     const statusText = $('#repaymentMmStatusText');
     const countdown = $('#repaymentMmCountdown');
-    
+
+    // Do one final status check before showing the timeout message
     processingAlert.removeClass('alert-info').addClass('alert-warning');
-    statusText.html('<i class="fas fa-clock me-1"></i> Payment verification timeout');
-    countdown.html(`
-        <p class="mb-2">The 2-minute verification period has expired. If you completed the payment, it may still be processing.</p>
-        <button type="button" class="btn btn-sm btn-info me-2" onclick="checkRepaymentStatusManually('${transactionRef}', ${repaymentId})"><i class="fas fa-sync me-1"></i> Check Status Again</button>
-        <button type="button" class="btn btn-sm btn-warning me-2" onclick="showRetryRepaymentModal(${repaymentId})"><i class="fas fa-redo me-1"></i> Cancel & Retry</button>
-        <button type="button" class="btn btn-sm btn-secondary" onclick="window.location.reload()">Close</button>
-    `);
+    statusText.html('<i class="fas fa-sync fa-spin me-1"></i> Doing final payment check...');
+    countdown.html('');
+
+    $.ajax({
+        url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+        method: 'GET',
+        success: function(response) {
+            if (response.status === 'completed') {
+                let lateFeeMessage = '';
+                if (response.late_fee_applied) {
+                    lateFeeMessage = `<div class="alert alert-warning mt-2 mb-0"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Late Fee Applied:</strong> UGX ${parseFloat(response.late_fee_amount).toLocaleString()} (${response.late_fee_days} day(s) late)</div>`;
+                }
+                processingAlert.removeClass('alert-warning').addClass('alert-success');
+                statusText.html('<i class="fas fa-check-circle me-1"></i> ' + response.message);
+                countdown.html(lateFeeMessage);
+                // Auto-reload page
+                setTimeout(function() {
+                    $('#repaymentModal').modal('hide');
+                    location.reload();
+                }, 2000);
+            } else {
+                // Show the standard timeout UI
+                processingAlert.removeClass('alert-info').addClass('alert-warning');
+                statusText.html('<i class="fas fa-clock me-1"></i> Payment verification timeout');
+                countdown.html(`
+                    <p class="mb-2">The 2-minute verification period has expired. If you completed the payment, it may still be processing.</p>
+                    <button type="button" class="btn btn-sm btn-info me-2" onclick="checkRepaymentStatusManually('${transactionRef}', ${repaymentId})"><i class="fas fa-sync me-1"></i> Check Status Again</button>
+                    <button type="button" class="btn btn-sm btn-warning me-2" onclick="showRetryRepaymentModal(${repaymentId})"><i class="fas fa-redo me-1"></i> Cancel & Retry</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="window.location.reload()">Close</button>
+                `);
+            }
+        },
+        error: function() {
+            // On error, show the standard timeout UI
+            processingAlert.removeClass('alert-info').addClass('alert-warning');
+            statusText.html('<i class="fas fa-clock me-1"></i> Payment verification timeout');
+            countdown.html(`
+                <p class="mb-2">The 2-minute verification period has expired. If you completed the payment, it may still be processing.</p>
+                <button type="button" class="btn btn-sm btn-info me-2" onclick="checkRepaymentStatusManually('${transactionRef}', ${repaymentId})"><i class="fas fa-sync me-1"></i> Check Status Again</button>
+                <button type="button" class="btn btn-sm btn-warning me-2" onclick="showRetryRepaymentModal(${repaymentId})"><i class="fas fa-redo me-1"></i> Cancel & Retry</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="window.location.reload()">Close</button>
+            `);
+        }
+    });
 }
 
 function checkRepaymentStatusManually(transactionRef, repaymentId) {
@@ -1925,7 +1983,11 @@ function checkRepaymentStatusManually(transactionRef, repaymentId) {
                 
                 processingAlert.removeClass('alert-info').addClass('alert-success');
                 statusText.html('<i class="fas fa-check-circle me-1"></i> ' + response.message);
-                countdown.html(lateFeeMessage + '<button type="button" class="btn btn-sm btn-success mt-2" onclick="window.location.reload()"><i class="fas fa-check me-1"></i> Done</button>');
+                var receiptBtn = '<button type="button" class="btn btn-sm btn-success mt-2" onclick="$(\"#repaymentModal\").modal(\"hide\"); location.reload();"><i class="fas fa-sync me-1"></i> Reload Page</button>';
+                if (response.receipt_url) {
+                    receiptBtn += ' <a href="' + response.receipt_url + '" class="btn btn-sm btn-outline-success mt-2" target="_blank"><i class="fas fa-receipt me-1"></i> Receipt</a>';
+                }
+                countdown.html(lateFeeMessage + receiptBtn);
             } else if (response.status === 'failed') {
                 processingAlert.removeClass('alert-info').addClass('alert-danger');
                 statusText.html('<i class="fas fa-times-circle me-1"></i> ' + response.message);
@@ -1993,9 +2055,9 @@ function checkScheduleProgress(scheduleId) {
                                 icon: 'success',
                                 title: 'Payment Completed',
                                 html: statusResponse.message + lateFeeMessage,
-                                confirmButtonText: 'OK'
+                                confirmButtonText: 'Reload Page'
                             }).then(() => {
-                                window.location.reload();
+                                location.reload();
                             });
                         } else if (statusResponse.status === 'failed') {
                             Swal.fire({
@@ -2170,7 +2232,7 @@ function submitRepayment(formData) {
             if (response.success) {
                 $('#repaymentModal').modal('hide');
                 Swal.fire('Success!', response.message, 'success').then(() => {
-                    window.location.reload();
+                    location.reload();
                 });
             } else {
                 $submitBtn.prop('disabled', false).text('Add Record');
@@ -2260,9 +2322,9 @@ function checkBalancePaymentStatus(transactionRef, pollingTimer, countdownTimer,
                     icon: 'success',
                     title: 'Payment Successful!',
                     html: '<i class="fas fa-check-circle"></i> ' + (response.message || 'Balance payment completed successfully'),
-                    confirmButtonText: 'OK'
+                    confirmButtonText: 'Reload Page'
                 }).then(() => {
-                    window.location.reload();
+                    location.reload();
                 });
                 
             } else if (response.status === 'failed') {
@@ -2829,6 +2891,99 @@ $(document).ready(function() {
         });
     }
 });
+
+// ─── Background callback detection ────────────────────────────────────────────
+// When a FlexiPay callback fires and marks a repayment as paid automatically,
+// the page will detect it here and notify the user with a receipt link.
+(function() {
+    // Collect all schedule IDs that still have a pending mobile money payment
+    var pendingScheduleIds = @json(
+        $schedules->filter(fn($s) => $s->pending_count > 0)->pluck('id')->values()
+    );
+
+    if (!pendingScheduleIds || pendingScheduleIds.length === 0) return;
+
+    // Track which ones we have already resolved so we don't spam the UI
+    var resolved = {};
+
+    function checkOnePendingSchedule(scheduleId) {
+        if (resolved[scheduleId]) return;
+
+        $.ajax({
+            url: '{{ url("admin/loans/repayments/schedule-pending") }}/' + scheduleId,
+            method: 'GET',
+            success: function(response) {
+                if (!response.success || !response.pending_repayments || response.pending_repayments.length === 0) {
+                    // No pending records found - mark resolved so we stop checking
+                    resolved[scheduleId] = true;
+                    return;
+                }
+
+                var repayment = response.pending_repayments[0];
+                var transactionRef = repayment.transaction_reference;
+                if (!transactionRef) return;
+
+                $.ajax({
+                    url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+                    method: 'GET',
+                    success: function(statusResponse) {
+                        if (statusResponse.status === 'completed') {
+                            resolved[scheduleId] = true;
+
+                            // Show a non-blocking toast notification at the top of the page
+                            var toastId = 'mm-auto-toast-' + scheduleId;
+                            if ($('#' + toastId).length) return; // already shown
+
+                            var $toast = $('<div>', {
+                                id: toastId,
+                                class: 'alert alert-success alert-dismissible d-flex align-items-center shadow-sm mb-2',
+                                role: 'alert',
+                                css: { position: 'relative', zIndex: 1050 }
+                            }).html(
+                                '<i class="fas fa-check-circle me-2 fs-5"></i>' +
+                                '<div>' +
+                                    '<strong>Mobile money payment confirmed!</strong> ' +
+                                    'Schedule #' + scheduleId + ' marked as <strong>Paid</strong>. Reloading in 3s...' +
+                                '</div>' +
+                                '<button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>'
+                            );
+                            setTimeout(function() { location.reload(); }, 3000);
+
+                            // Insert above the schedules table
+                            var $container = $('#schedulesTable').closest('.card-body');
+                            if (!$container.length) $container = $('main, .container-fluid').first();
+                            $container.prepend($toast);
+
+                            // Auto-scroll so the user sees it
+                            $('html, body').animate({ scrollTop: $toast.offset().top - 80 }, 400);
+                        }
+                        // If still pending/failed - do nothing, will retry on next interval
+                    }
+                });
+            }
+        });
+    }
+
+    // Run once after 15 seconds (give the user time to settle) then every 15 seconds
+    var autoCheckTimer = setInterval(function() {
+        var allResolved = pendingScheduleIds.every(function(id) { return resolved[id]; });
+        if (allResolved) {
+            clearInterval(autoCheckTimer);
+            return;
+        }
+        pendingScheduleIds.forEach(function(scheduleId) {
+            checkOnePendingSchedule(scheduleId);
+        });
+    }, 15000);
+
+    // Also run a first check after 15 seconds in case the callback fires quickly
+    setTimeout(function() {
+        pendingScheduleIds.forEach(function(scheduleId) {
+            checkOnePendingSchedule(scheduleId);
+        });
+    }, 15000);
+})();
+// ──────────────────────────────────────────────────────────────────────────────
 </script>
 
 <style type="text/css" media="print">

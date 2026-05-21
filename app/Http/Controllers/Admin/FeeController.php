@@ -489,7 +489,7 @@ class FeeController extends Controller
      */
     public function receipt(Fee $fee)
     {
-        $fee->load(['member', 'loan', 'feeType', 'addedBy']);
+        $fee->load(['member', 'loan', 'feeType', 'productCharge', 'addedBy']);
 
         return view('admin.fees.receipt', compact('fee'));
     }
@@ -499,7 +499,7 @@ class FeeController extends Controller
      */
     public function getReceiptModal(Fee $fee)
     {
-        $fee->load(['member', 'loan', 'feeType', 'addedBy']);
+        $fee->load(['member', 'loan', 'feeType', 'productCharge', 'addedBy']);
 
         return response()->json([
             'success' => true,
@@ -673,7 +673,9 @@ class FeeController extends Controller
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
-                    'message' => 'Payment completed successfully'
+                    'message' => 'Payment completed successfully',
+                    'fee_id' => $fee->id,
+                    'receipt_url' => route('admin.fees.receipt', $fee->id)
                 ]);
             }
 
@@ -728,7 +730,9 @@ class FeeController extends Controller
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
-                    'message' => 'Payment completed successfully'
+                    'message' => 'Payment completed successfully',
+                    'fee_id' => $fee->id,
+                    'receipt_url' => route('admin.fees.receipt', $fee->id)
                 ]);
             } elseif ($statusResult['status'] === 'failed') {
                 // Check if payment is recent (within 2 minutes) - FlexiPay retries 3 times

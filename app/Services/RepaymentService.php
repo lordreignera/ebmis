@@ -122,15 +122,22 @@ class RepaymentService
                     'message' => 'Invalid phone number: ' . $phoneValidation['message']
                 ];
             }
-            
-            // Process mobile money payment
-            $paymentResult = $this->mobileMoneyService->disburse($phone, $amount, $network);
-            
+
+            // Resolve borrower name for the collection request
+            $loan = PersonalLoan::with('member')->find($repayment->loan_id)
+                 ?? GroupLoan::with('member')->find($repayment->loan_id);
+            $payerName = $loan?->member?->full_name ?? 'Loan Borrower';
+
+            // Collect mobile money payment FROM the borrower (repayment = collection, not disbursement)
+            $paymentResult = $this->mobileMoneyService->collectMoney($payerName, $phone, $amount, 'Loan repayment');
+
+            // Extract transaction reference — Stanbic returns 'reference', Emuria returns 'transaction_reference'
+            $transactionRef = $paymentResult['transaction_reference'] ?? $paymentResult['reference'] ?? '';
+
             // Update repayment with transaction details - set both fields for consistency
-            $transactionRef = $paymentResult['transaction_reference'] ?? '';
             $repayment->update([
-                'txn_id' => $transactionRef, // FlexiPay-generated reference
-                'transaction_reference' => $transactionRef, // Set both fields for consistency
+                'txn_id' => $transactionRef,
+                'transaction_reference' => $transactionRef,
                 'pay_status' => $paymentResult['status_code'] ?? 'ERROR'
             ]);
             
@@ -146,7 +153,7 @@ class RepaymentService
             return [
                 'success' => $paymentResult['success'],
                 'message' => $paymentResult['message'],
-                'transaction_reference' => $paymentResult['transaction_reference'] ?? null
+                'transaction_reference' => $transactionRef
             ];
             
         } catch (\Exception $e) {
@@ -229,6 +236,7 @@ class RepaymentService
             // Update repayment status
             $repayment->update([
                 'status' => '1', // Approved
+                'payment_status' => 'Completed',
                 'pay_status' => $statusCode,
                 'pay_message' => $statusMessage
             ]);
@@ -376,8 +384,12 @@ class RepaymentService
             }
             
             $transactionRef = $callbackResult['transaction_reference'];
-            $statusCode = $callbackResult['status_code'];
+            $statusCode = (string) ($callbackResult['status_code'] ?? '');
             $statusDesc = $callbackResult['status_description'];
+            $statusCodeUpper = strtoupper($statusCode);
+            // Only exact status codes are trusted — text matching on description is unsafe.
+            // e.g. "Transaction not successful" contains "successful" and would be a false positive.
+            $isSuccessfulStatus = in_array($statusCodeUpper, ['00', '01']);
             
             // Try to find the repayment record first
             $repayment = Repayment::where(function($query) use ($transactionRef) {
@@ -386,11 +398,32 @@ class RepaymentService
                             })
                                 ->where('status', '0')
                                 ->first();
+
+            // Fallback: if callback reference points to raw_payments.ref, resolve to trans_id first.
+            if (!$repayment) {
+                $rawPayment = DB::table('raw_payments')
+                    ->where(function ($query) use ($transactionRef) {
+                        $query->where('trans_id', $transactionRef)
+                            ->orWhere('ref', $transactionRef);
+                    })
+                    ->where('type', 'repayment')
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($rawPayment && !empty($rawPayment->trans_id)) {
+                    $repayment = Repayment::where(function($query) use ($rawPayment) {
+                                        $query->where('txn_id', $rawPayment->trans_id)
+                                              ->orWhere('transaction_reference', $rawPayment->trans_id);
+                                    })
+                                        ->where('status', '0')
+                                        ->first();
+                }
+            }
             
             if ($repayment) {
                 // Handle repayment
-                if (in_array($statusCode, ['00', '01'])) {
-                    $result = $this->approveRepayment($repayment->id, $statusCode, $statusDesc);
+                if ($isSuccessfulStatus) {
+                    $result = $this->approveRepayment($repayment->id, $statusCodeUpper, $statusDesc);
                     
                     return [
                         'success' => $result['success'],
@@ -412,16 +445,13 @@ class RepaymentService
             }
             
             // Try to find a fee record
-            $fee = \App\Models\Fee::where(function($query) use ($transactionRef) {
-                                $query->where('pay_ref', $transactionRef)
-                                      ->orWhere('transaction_reference', $transactionRef);
-                            })
+            $fee = \App\Models\Fee::where('pay_ref', $transactionRef)
                                 ->where('status', 0)
                                 ->first();
             
             if ($fee) {
                 // Handle fee payment
-                if (in_array($statusCode, ['00', '01']) || $statusCode === 'SUCCESSFUL') {
+                if ($isSuccessfulStatus) {
                     $fee->update([
                         'status' => 1,
                         'payment_status' => 'Paid',
@@ -430,6 +460,24 @@ class RepaymentService
                     ]);
                     
                     Log::info("Fee payment confirmed via callback", ['fee_id' => $fee->id]);
+                    
+                    // Post to General Ledger
+                    try {
+                        $accountingService = new \App\Services\AccountingService();
+                        $journal = $accountingService->postFeeCollectionEntry($fee, $fee->fees_type_id);
+                        if ($journal) {
+                            Log::info('Fee GL entry posted via callback', [
+                                'fee_id' => $fee->id,
+                                'journal_number' => $journal->journal_number
+                            ]);
+                        }
+                    } catch (\Exception $glError) {
+                        Log::error('Fee GL posting failed via callback', [
+                            'fee_id' => $fee->id,
+                            'error' => $glError->getMessage()
+                        ]);
+                        // Continue — do not fail the callback acknowledgement if GL posting fails
+                    }
                     
                     return [
                         'success' => true,
@@ -453,16 +501,13 @@ class RepaymentService
             }
             
             // Try to find a cash security record
-            $cashSecurity = \App\Models\CashSecurity::where(function($query) use ($transactionRef) {
-                                $query->where('pay_ref', $transactionRef)
-                                      ->orWhere('transaction_reference', $transactionRef);
-                            })
+            $cashSecurity = \App\Models\CashSecurity::where('pay_ref', $transactionRef)
                                 ->where('status', 0)
                                 ->first();
             
             if ($cashSecurity) {
                 // Handle cash security payment
-                if (in_array($statusCode, ['00', '01']) || $statusCode === 'SUCCESSFUL') {
+                if ($isSuccessfulStatus) {
                     $cashSecurity->update([
                         'status' => 1,
                         'payment_status' => 'Paid',
@@ -500,7 +545,7 @@ class RepaymentService
             
             if ($saving) {
                 // Handle savings deposit payment
-                if (in_array($statusCode, ['00', '01']) || $statusCode === 'SUCCESSFUL') {
+                if ($isSuccessfulStatus) {
                     $saving->update([
                         'status' => 1,
                         'pay_status' => 'PAID',
@@ -627,7 +672,7 @@ class RepaymentService
      * Check if all schedules are paid and close loan if complete
      * NO WAIVERS - all schedules must be fully paid
      */
-    private function checkAndCloseLoanIfComplete(int $loanId): bool
+    public function checkAndCloseLoanIfComplete(int $loanId): bool
     {
         try {
             // Try PersonalLoan first, then GroupLoan
@@ -678,9 +723,9 @@ class RepaymentService
                 $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
                 $totalDue += max(0, $scheduleBalance);
                 
-                if ($scheduleBalance > 0.01) {
+                if ($scheduleBalance >= 1) {
                     $allSchedulesPaid = false;
-                } else if ($scheduleBalance <= 0.01 && $schedule->status != 1) {
+                } else if ($scheduleBalance < 1 && $schedule->status != 1) {
                     // Mark schedule as paid
                     $schedule->update([
                         'status' => 1,
@@ -690,7 +735,7 @@ class RepaymentService
             }
             
             // If total due is <= 0 (fully paid), close the loan
-            if ($totalDue <= 0.01 && $allSchedulesPaid) {
+            if ($totalDue < 1 && $allSchedulesPaid) {
                 if ($loan->status != 3) {
                     $loan->update([
                         'status' => 3, // Closed/Completed
@@ -758,7 +803,7 @@ class RepaymentService
      * @param object $loan - loan record with product relationship
      * @return array ['gross' => total, 'net' => after_waivers, 'waived' => amount, 'days_overdue' => days, 'periods_overdue' => periods]
      */
-    private function calculateLateFee($schedule, $loan): array
+    public function calculateLateFee($schedule, $loan): array
     {
         // CRITICAL: Check date_cleared to determine if we freeze or continue multiplying
         if ($schedule->date_cleared) {

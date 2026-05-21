@@ -781,52 +781,43 @@
                                 
                                 // Calculate disbursable amount
                                 $disbursableAmount = $loan->charge_type == 1 ? ($principal - $totalCharges) : $principal;
-                                
+
+                                // Load all fees for this loan once — avoids per-charge DB queries below
+                                $loanFees = \App\Models\Fee::where('loan_id', $loan->id)->get();
+                                $memberId = $loanType === 'personal' ? $loan->member_id : ($loan->group->members()->first()->id ?? null);
+
                                 // Get upfront fees if charge_type = 2
                                 $upfrontFees = [];
                                 if ($loan->charge_type == 2) {
-                                    // Get charges from product that are upfront (charge_type = 2)
                                     $upfrontCharges = $productCharges->where('charge_type', 2);
-                                    
-                                    $memberId = $loanType === 'personal' ? $loan->member_id : ($loan->group->members()->first()->id ?? null);
-                                    
+
                                     foreach ($upfrontCharges as $charge) {
-                                        // Calculate charge amount
                                         $chargeAmount = 0;
-                                        if ($charge->type == 1) { // Fixed
+                                        if ($charge->type == 1) {
                                             $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0);
-                                        } elseif ($charge->type == 2) { // Percentage
-                                            $percentageValue = floatval($charge->getRawOriginal('value') ?? 0);
-                                            $chargeAmount = ($principal * $percentageValue) / 100;
-                                        } elseif ($charge->type == 3) { // Per Day
-                                            $perDayValue = floatval($charge->getRawOriginal('value') ?? 0);
-                                            $chargeAmount = $perDayValue * $loan->period;
-                                        } elseif ($charge->type == 4) { // Per Month
-                                            $perMonthValue = floatval($charge->getRawOriginal('value') ?? 0);
-                                            $chargeAmount = $perMonthValue * $loan->period;
+                                        } elseif ($charge->type == 2) {
+                                            $chargeAmount = ($principal * floatval($charge->getRawOriginal('value') ?? 0)) / 100;
+                                        } elseif ($charge->type == 3) {
+                                            $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0) * $loan->period;
+                                        } elseif ($charge->type == 4) {
+                                            $chargeAmount = floatval($charge->getRawOriginal('value') ?? 0) * $loan->period;
                                         }
-                                        
-                                        // Check if fee has been paid
-                                        $paidFee = \App\Models\Fee::where('loan_id', $loan->id)
-                                                                   ->where('fees_type_id', $charge->id)
-                                                                   ->where('status', 1)
-                                                                   ->first();
-                                        
-                                        // For registration fees, check if member has paid before (one-time payment)
-                                        $isRegistrationFee = stripos($charge->name, 'registration') !== false;
-                                        if ($isRegistrationFee && !$paidFee && $memberId) {
+
+                                        $paidFee = $loanFees->where('fees_type_id', $charge->id)->where('status', 1)->first();
+
+                                        // Registration fees: also check member-level payments (one-time)
+                                        if (!$paidFee && stripos($charge->name, 'registration') !== false && $memberId) {
                                             $paidFee = \App\Models\Fee::where('member_id', $memberId)
-                                                                       ->where('fees_type_id', $charge->id)
-                                                                       ->where('status', 1)
-                                                                       ->first();
+                                                ->where('fees_type_id', $charge->id)->where('status', 1)->first();
                                         }
-                                        
+
                                         $upfrontFees[] = [
-                                            'id' => $charge->id,
-                                            'name' => $charge->name,
-                                            'amount' => $chargeAmount,
-                                            'paid' => $paidFee ? true : false,
-                                            'payment_date' => $paidFee ? $paidFee->datecreated : null
+                                            'id'           => $charge->id,
+                                            'fee_id'       => $paidFee?->id,
+                                            'name'         => $charge->name,
+                                            'amount'       => $chargeAmount,
+                                            'paid'         => (bool) $paidFee,
+                                            'payment_date' => $paidFee?->datecreated,
                                         ];
                                     }
                                 }
@@ -893,19 +884,10 @@
                                             <td class="text-end text-danger">-{{ number_format($chargeAmount, 0) }}</td>
                                             <td class="text-center"><span class="badge bg-danger">Debit</span></td>
                                             @php
-                                                // Check if this charge is paid
-                                                $chargePaidFee = \App\Models\Fee::where('loan_id', $loan->id)
-                                                                   ->where('fees_type_id', $charge->id)
-                                                                   ->where('status', 1)
-                                                                   ->first();
-                                                
-                                                // For registration fees, check member level
-                                                $isRegFee = stripos($charge->name, 'registration') !== false;
-                                                if ($isRegFee && !$chargePaidFee && isset($memberId)) {
+                                                $chargePaidFee = $loanFees->where('fees_type_id', $charge->id)->where('status', 1)->first();
+                                                if (!$chargePaidFee && stripos($charge->name, 'registration') !== false && isset($memberId)) {
                                                     $chargePaidFee = \App\Models\Fee::where('member_id', $memberId)
-                                                                       ->where('fees_type_id', $charge->id)
-                                                                       ->where('status', 1)
-                                                                       ->first();
+                                                        ->where('fees_type_id', $charge->id)->where('status', 1)->first();
                                                 }
                                             @endphp
                                             <td class="text-center">
@@ -917,17 +899,9 @@
                                                 @else
                                                     @php
                                                         // Check if there's a pending mobile money payment
-                                                        $pendingFee = \App\Models\Fee::where('loan_id', $loan->id)
-                                                                       ->where('fees_type_id', $charge->id)
-                                                                       ->where('status', 0) // Pending
-                                                                       ->where('payment_type', 1) // Mobile Money
-                                                                       ->first();
-                                                        
-                                                        $failedFee = \App\Models\Fee::where('loan_id', $loan->id)
-                                                                       ->where('fees_type_id', $charge->id)
-                                                                       ->where('status', 2) // Failed
-                                                                       ->where('payment_type', 1) // Mobile Money
-                                                                       ->first();
+                                                        // Accept payment_type 1 (new coding) and 2 (old coding) for backward compat
+                                                        $pendingFee = $loanFees->where('fees_type_id', $charge->id)->where('status', 0)->whereIn('payment_type', [1, 2])->first();
+                                                        $failedFee  = $loanFees->where('fees_type_id', $charge->id)->where('status', 2)->whereIn('payment_type', [1, 2])->first();
                                                     @endphp
                                                     
                                                     @if($pendingFee)
@@ -944,7 +918,10 @@
                                                     {{-- For deducted charges, no action needed --}}
                                                     <small class="text-muted">Auto-deducted</small>
                                                 @elseif($chargePaidFee)
-                                                    <small class="text-success">✓ Paid</small>
+                                                    <a href="{{ route('admin.fees.receipt', $chargePaidFee->id) }}" 
+                                                       class="btn btn-sm btn-outline-success" target="_blank" title="View Receipt">
+                                                        <i class="mdi mdi-receipt"></i> Receipt
+                                                    </a>
                                                 @elseif($failedFee && $loan->status == 0)
                                                     {{-- Show retry button for failed payments --}}
                                                     <button class="btn btn-sm btn-danger retry-loan-fee-btn" 
@@ -1016,58 +993,16 @@
 
                             <!-- Upfront Charges Payment Status -->
                             @if($loan->charge_type == 2 && count($upfrontFees) > 0)
-                            <hr>
-                            <h6 class="mb-3">Upfront Charges Payment Status</h6>
-                            <div class="table-responsive">
-                                <table class="table table-bordered table-sm">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Fee Type</th>
-                                            <th class="text-end">Amount (UGX)</th>
-                                            <th class="text-center">Payment Status</th>
-                                            <th>Payment Date</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($upfrontFees as $fee)
-                                        <tr>
-                                            <td>{{ $fee['name'] }}</td>
-                                            <td class="text-end">{{ number_format($fee['amount'], 0) }}</td>
-                                            <td class="text-center">
-                                                @if($fee['paid'])
-                                                    <span class="badge bg-success"><i class="mdi mdi-check"></i> Paid</span>
-                                                @elseif($fee['status'] == 0 && $fee['payment_type'] == 1)
-                                                    <span class="badge bg-warning text-dark"><i class="mdi mdi-timer-sand"></i> Processing</span>
-                                                @elseif($fee['status'] == 2 && $fee['payment_type'] == 1)
-                                                    <span class="badge bg-danger"><i class="mdi mdi-close-circle"></i> Failed</span>
-                                                @else
-                                                    <span class="badge bg-danger"><i class="mdi mdi-close"></i> Not Paid</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @if($fee['payment_date'])
-                                                    {{ \Carbon\Carbon::parse($fee['payment_date'])->format('M d, Y H:i') }}
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                            
                             @php
                                 $allUpfrontPaid = collect($upfrontFees)->where('paid', false)->count() == 0;
                             @endphp
-                            
                             @if(!$allUpfrontPaid)
-                            <div class="alert alert-danger">
+                            <div class="alert alert-danger mt-3">
                                 <i class="mdi mdi-alert-circle me-1"></i>
                                 <strong>Warning:</strong> All upfront charges must be paid before this loan can be disbursed!
                             </div>
                             @else
-                            <div class="alert alert-success">
+                            <div class="alert alert-success mt-3">
                                 <i class="mdi mdi-check-circle me-1"></i>
                                 <strong>Good!</strong> All upfront charges have been paid. This loan is ready for disbursement.
                             </div>
@@ -1994,18 +1929,38 @@ function processLoanFeeMobileMoneyPayment() {
     });
 }
 
-function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
+function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0, alertId = 'loanFeeMmProcessingAlert', statusId = 'loanFeeMmStatusText') {
     const maxAttempts = 60; // Poll for up to 5 minutes (60 checks × 5 seconds = 300 seconds)
-    const processingAlert = document.getElementById('loanFeeMmProcessingAlert');
-    const statusText = document.getElementById('loanFeeMmStatusText');
+    const processingAlert = document.getElementById(alertId);
+    const statusText = document.getElementById(statusId);
     
     if (attempts >= maxAttempts) {
         processingAlert.className = 'alert alert-warning';
-        statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Payment status check timed out after 5 minutes. The payment may still be processing. Page will refresh to check final status...';
+        statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Polling window expired. Doing one final check...';
         
-        setTimeout(() => {
-            location.reload();
-        }, 3000);
+        // Final status check before giving up
+        fetch(`/admin/loans/check-mm-status/${transactionRef}`, {
+            method: 'GET',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'completed') {
+                processingAlert.className = 'alert alert-success';
+                statusText.innerHTML = '<i class="mdi mdi-check-circle me-1"></i> Payment confirmed! Reloading page...';
+                setTimeout(() => { location.reload(); }, 2000);
+            } else {
+                statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Payment still pending after 5 minutes. Page will refresh — use the "Check Status" button to verify.';
+                setTimeout(() => { location.reload(); }, 3000);
+            }
+        })
+        .catch(() => {
+            statusText.innerHTML = '<i class="mdi mdi-clock-alert-outline me-1"></i> Timed out. Page will refresh — use the "Check Status" button to verify.';
+            setTimeout(() => { location.reload(); }, 3000);
+        });
         return;
     }
     
@@ -2022,7 +1977,7 @@ function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
         if (data.status === 'completed') {
             // Payment successful
             processingAlert.className = 'alert alert-success';
-            statusText.innerHTML = '<i class="mdi mdi-check-circle me-1"></i> Payment received successfully! Reloading...';
+            statusText.innerHTML = '<i class="mdi mdi-check-circle me-1"></i> Payment received successfully! Reloading page...';
             
             setTimeout(() => {
                 location.reload();
@@ -2042,7 +1997,7 @@ function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
             const elapsedSeconds = (attempts + 1) * 5;
             statusText.innerHTML = `<i class="mdi mdi-timer-sand me-1"></i> Waiting for member to authorize payment... (${elapsedSeconds}s elapsed)`;
             setTimeout(() => {
-                pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1);
+                pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1, alertId, statusId);
             }, 5000); // Check every 5 seconds
         }
     })
@@ -2052,7 +2007,7 @@ function pollLoanFeePaymentStatus(transactionRef, feeId, attempts = 0) {
         const elapsedSeconds = (attempts + 1) * 5;
         statusText.innerHTML = `<i class="mdi mdi-timer-sand me-1"></i> Checking status... (${elapsedSeconds}s elapsed)`;
         setTimeout(() => {
-            pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1);
+            pollLoanFeePaymentStatus(transactionRef, feeId, attempts + 1, alertId, statusId);
         }, 5000);
     });
 }
@@ -2117,8 +2072,8 @@ document.getElementById('retryLoanFeeForm').addEventListener('submit', function(
             // Wait 30 seconds before starting to poll
             setTimeout(() => {
                 statusText.innerHTML = '<i class="mdi mdi-refresh me-1"></i> Checking payment status...';
-                // Start polling (using same function, 120s max, 5s intervals)
-                pollLoanFeePaymentStatus(data.transaction_reference, data.fee_id);
+                // Start polling using the retry modal's own status elements
+                pollLoanFeePaymentStatus(data.transaction_reference, data.fee_id, 0, 'retryLoanFeeMmProcessingAlert', 'retryLoanFeeMmStatusText');
             }, 30000); // 30 seconds
         } else {
             // Retry failed
@@ -2168,8 +2123,7 @@ document.addEventListener('click', function(e) {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'completed') {
-                // Payment successful - reload page
-                alert('Payment completed successfully!');
+                // Payment successful - reload page to show Paid badge + Receipt button
                 location.reload();
             } else if (data.status === 'failed') {
                 // Payment failed - reload to show retry button
