@@ -1,0 +1,7 @@
+[
+  {
+    "install": "composer run setup",
+    "start": "composer run dev",
+    "resourceSize": "medium"
+  }
+]
