@@ -1441,15 +1441,9 @@ class UmraReportController extends Controller
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 
-        $writer = new Xlsx($spreadsheet);
         $filename = 'UMRA-Dashboard-' . now()->format('Y-m-d-H-i-s') . '.xlsx';
 
-        return response()->streamDownload(function () use ($writer, $spreadsheet) {
-            $writer->save('php://output');
-            $spreadsheet->disconnectWorksheets();
-        }, $filename, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+        return $this->downloadSpreadsheet($spreadsheet, $filename);
     }
 
     /**
@@ -1600,15 +1594,41 @@ class UmraReportController extends Controller
             $detailSheet->getColumnDimension($column)->setAutoSize(true);
         }
 
-        $writer = new Xlsx($spreadsheet);
         $filename = 'UMRA-Schedule-3-Risk-Classification-' . now()->format('Y-m-d-H-i-s') . '.xlsx';
 
-        return response()->streamDownload(function () use ($writer, $spreadsheet) {
-            $writer->save('php://output');
-            $spreadsheet->disconnectWorksheets();
-        }, $filename, [
+        return $this->downloadSpreadsheet($spreadsheet, $filename);
+    }
+
+    /**
+     * Save XLSX to disk before download so browser output cannot corrupt the ZIP package.
+     */
+    private function downloadSpreadsheet(Spreadsheet $spreadsheet, string $filename)
+    {
+        $exportDir = storage_path('app/umra-exports');
+
+        if (!is_dir($exportDir)) {
+            mkdir($exportDir, 0775, true);
+        }
+
+        $path = tempnam($exportDir, 'umra_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($path);
+        $spreadsheet->disconnectWorksheets();
+
+        if (function_exists('ini_set')) {
+            @ini_set('zlib.output_compression', 'Off');
+        }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        return response()->download($path, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+            'Content-Transfer-Encoding' => 'binary',
+            'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma' => 'public',
+        ])->deleteFileAfterSend(true);
     }
 
     /**

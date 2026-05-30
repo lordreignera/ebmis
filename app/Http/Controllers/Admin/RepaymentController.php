@@ -248,6 +248,100 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Calculate repayment KPI totals with SQL aggregates so the index page does not
+     * load every matching repayment into memory before pagination.
+     */
+    protected function calculateRepaymentKpiTotalsFast(Request $request, ?Carbon $kpiStart, ?Carbon $kpiEnd, float $feesTotal = 0.0): array
+    {
+        $query = DB::table('repayments as r')
+            ->leftJoin('loan_schedules as s', 's.id', '=', 'r.schedule_id')
+            ->leftJoin('personal_loans as l', 'l.id', '=', 'r.loan_id')
+            ->leftJoin('members as m', 'm.id', '=', 'l.member_id')
+            ->where(function ($q) {
+                $q->where('r.status', 1)
+                    ->orWhere('r.payment_status', 'Completed');
+            })
+            ->where('r.amount', '>', 0);
+
+        if ($kpiStart && $kpiEnd) {
+            $query->whereBetween('r.date_created', [$kpiStart, $kpiEnd]);
+        } else {
+            if ($request->filled('start_date')) {
+                $query->whereDate('r.date_created', '>=', $request->start_date);
+            }
+
+            if ($request->filled('end_date')) {
+                $query->whereDate('r.date_created', '<=', $request->end_date);
+            }
+        }
+
+        if ($request->filled('method')) {
+            $query->where('r.type', $request->method);
+        }
+
+        if ($request->filled('branch_id')) {
+            $query->where('l.branch_id', $request->branch_id);
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('l.code', 'like', "%{$search}%")
+                    ->orWhere('m.fname', 'like', "%{$search}%")
+                    ->orWhere('m.lname', 'like', "%{$search}%")
+                    ->orWhere('m.code', 'like', "%{$search}%")
+                    ->orWhere('m.contact', 'like', "%{$search}%")
+                    ->orWhere('r.transaction_reference', 'like', "%{$search}%")
+                    ->orWhere('r.txn_id', 'like', "%{$search}%");
+            });
+        }
+
+        $summary = (clone $query)
+            ->selectRaw('COUNT(*) as record_count, COALESCE(SUM(r.amount), 0) as total_amount')
+            ->first();
+
+        $scheduleRows = (clone $query)
+            ->whereNotNull('r.schedule_id')
+            ->where('r.schedule_id', '>', 0)
+            ->groupBy('r.schedule_id', 's.interest', 's.principal')
+            ->selectRaw('
+                r.schedule_id,
+                COALESCE(s.interest, 0) as schedule_interest,
+                COALESCE(s.principal, 0) as schedule_principal,
+                COALESCE(SUM(r.amount), 0) as paid_amount
+            ')
+            ->get();
+
+        $totalInterest = 0.0;
+        $totalPrincipal = 0.0;
+        $totalPenalty = 0.0;
+
+        foreach ($scheduleRows as $row) {
+            $paidAmount = (float) $row->paid_amount;
+            $interestPaid = min($paidAmount, (float) $row->schedule_interest);
+            $principalPaid = min(max(0, $paidAmount - $interestPaid), (float) $row->schedule_principal);
+            $penaltyPaid = max(0, $paidAmount - $interestPaid - $principalPaid);
+
+            $totalInterest += $interestPaid;
+            $totalPrincipal += $principalPaid;
+            $totalPenalty += $penaltyPaid;
+        }
+
+        $recordCount = (int) ($summary->record_count ?? 0);
+        $totalAmount = (float) ($summary->total_amount ?? 0);
+
+        return [
+            'total_amount' => $totalAmount,
+            'total_principal' => $totalPrincipal,
+            'total_interest' => $totalInterest,
+            'total_penalty' => $totalPenalty,
+            'total_fees' => $feesTotal,
+            'record_count' => $recordCount,
+            'average_payment' => $recordCount > 0 ? $totalAmount / $recordCount : 0,
+        ];
+    }
+
+    /**
      * Check if all earlier schedules (by date) are fully paid
      * 
      * @param int $scheduleId - Current schedule ID to check
@@ -2883,16 +2977,6 @@ class RepaymentController extends Controller
             $kpiPeriodLabel = "{$from} to {$to}";
         }
 
-        $kpiQuery = clone $query;
-        if ($kpiStart && $kpiEnd) {
-            $kpiQuery->whereBetween('date_created', [$kpiStart, $kpiEnd]);
-        }
-
-        $kpiRepayments = $kpiQuery
-            ->with(['schedule', 'loan.product'])
-            ->orderBy('date_created', 'asc')
-            ->get();
-
         $feesQuery = Fee::paid()->where('amount', '>', 0);
         if ($kpiStart && $kpiEnd) {
             $feesQuery->whereBetween('datecreated', [$kpiStart, $kpiEnd]);
@@ -2937,7 +3021,7 @@ class RepaymentController extends Controller
             });
         }
 
-        $totals = $this->calculateRepaymentKpiTotals($kpiRepayments, (float) $feesQuery->sum('amount'));
+        $totals = $this->calculateRepaymentKpiTotalsFast($request, $kpiStart, $kpiEnd, (float) $feesQuery->sum('amount'));
 
         $repayments = (clone $query)
             ->orderBy('date_created', 'desc')

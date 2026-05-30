@@ -11,6 +11,7 @@
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#4fd1c7">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="ERA Audit">
@@ -18,6 +19,7 @@
     <meta name="msapplication-tap-highlight" content="no">
     
     <title>EBIMS - @yield('title', 'Dashboard')</title>
+    <link rel="shortcut icon" href="{{ asset('admin/assets/images/ebims-logo.jpg') }}">
     <!-- plugins:css -->
     @include('admin.css')
     <!-- Custom Health Audit System Styles -->
@@ -828,7 +830,6 @@
                     
                     // Force logout even if token is expired
             */ 
-        });
 
             // Global AJAX error handler for 419 errors
             if (typeof $ !== 'undefined') {
