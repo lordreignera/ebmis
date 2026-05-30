@@ -70,9 +70,9 @@
                                             <td class="fw-medium">Payment Method</td>
                                             <td>
                                                 @if($fee->payment_type == 1)
-                                                    Cash Payment
-                                                @elseif($fee->payment_type == 2)
                                                     Mobile Money
+                                                @elseif($fee->payment_type == 2)
+                                                    Cash Payment
                                                 @elseif($fee->payment_type == 3)
                                                     Bank Transfer
                                                 @endif
@@ -139,7 +139,7 @@
                         <div class="alert alert-warning mt-3">
                             <i class="fas fa-exclamation-triangle"></i>
                             <strong>Note:</strong> This payment is still pending confirmation. 
-                            @if($fee->payment_type == 2)
+                            @if($fee->payment_type == 1)
                                 The member should complete the mobile money transaction on their phone.
                             @endif
                         </div>

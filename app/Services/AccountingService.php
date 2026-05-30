@@ -30,6 +30,20 @@ class AccountingService
                 throw new \Exception("Loan not found for disbursement {$disbursement->id}");
             }
 
+            $existingDisbursementJE = JournalEntry::where('reference_type', 'Disbursement')
+                ->where('reference_id', $disbursement->id)
+                ->where('status', '!=', 'reversed')
+                ->orderByDesc('Id')
+                ->first();
+            if ($existingDisbursementJE) {
+                Log::warning('Skipped duplicate disbursement GL posting', [
+                    'disbursement_id' => $disbursement->id,
+                    'existing_journal_id' => $existingDisbursementJE->Id,
+                    'existing_journal_number' => $existingDisbursementJE->journal_number,
+                ]);
+                return $existingDisbursementJE;
+            }
+
             // MAP PRODUCT TO SUB-CODE (same logic as repayment)
             $productName = strtolower($loan->product->name ?? '');
             $codes = $this->productSubCodes($loan->product->name ?? '');
@@ -49,6 +63,9 @@ class AccountingService
 
             // Capture investor reference (inv_id from investment table)
             $invId = $disbursement->inv_id ?? null;
+            $investment = $invId
+                ? DB::table('investment')->where('id', $invId)->first()
+                : null;
 
             // Prepare journal entry data
             $borrowerName = $this->borrowerName($loan);
@@ -62,7 +79,7 @@ class AccountingService
                 'transaction_date' => $transactionDate->format('Y-m-d'),
                 'reference_type' => 'Disbursement',
                 'reference_id' => $disbursement->id,
-                'narrative' => "Loan disbursement to {$borrowerName} - {$loan->code}",
+                'narrative' => "Loan disbursement via FAN to {$borrowerName} - {$loan->code}",
                 'cost_center_id' => $loan->branch_id ?? null,
                 'product_id'     => $loan->product_type ?? null,
                 'officer_id'     => $disbursement->added_by ?? $loan->added_by ?? $loan->assigned_to ?? null,
@@ -80,6 +97,11 @@ class AccountingService
             }
 
             $amount = $disbursement->amount;
+            $fundingSourceName = $cashAccount->name ?? 'Funding bank account';
+            $investmentName = $investment->name ?? null;
+            $sourceLabel = $investmentName
+                ? "{$fundingSourceName} / {$investmentName}"
+                : $fundingSourceName;
 
             $journalLines = [
                 // Step 1A — DR FAN (funds enter the control account)
@@ -87,28 +109,28 @@ class AccountingService
                     'account_id' => $fanAccount->Id,
                     'debit'      => $amount,
                     'credit'     => 0,
-                    'narrative'  => "FAN: funds staged for disbursement",
+                    'narrative'  => "FAN receives disbursement funds from {$sourceLabel}",
                 ],
                 // Step 1A — CR Bank/Cash (bank pays out)
                 [
                     'account_id' => $cashAccount->Id,
                     'debit'      => 0,
                     'credit'     => $amount,
-                    'narrative'  => "Bank/cash disbursed to borrower",
+                    'narrative'  => "{$sourceLabel}: funds transferred to FAN for disbursement",
                 ],
                 // Step 1B — DR Loan Receivable (loan asset created)
                 [
                     'account_id' => $loanReceivableAccount->Id,
                     'debit'      => $amount,
                     'credit'     => 0,
-                    'narrative'  => "Loan principal receivable created",
+                    'narrative'  => "Client loan account created for {$borrowerName}",
                 ],
                 // Step 1B — CR FAN (FAN cleared — net FAN movement = zero)
                 [
                     'account_id' => $fanAccount->Id,
                     'debit'      => 0,
                     'credit'     => $amount,
-                    'narrative'  => "FAN: cleared after loan creation",
+                    'narrative'  => "FAN releases funds to client loan account for {$borrowerName}",
                 ],
             ];
 

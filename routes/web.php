@@ -201,6 +201,7 @@ Route::middleware([
     Route::get('/loans/export', [\App\Http\Controllers\Admin\LoanController::class, 'export'])->name('loans.export');
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
+    Route::post('/loans/follow-ups', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeFollowUp'])->name('loans.follow-ups.store');
     Route::get('/loans/rejected', [\App\Http\Controllers\Admin\LoanController::class, 'rejectedLoans'])->name('loans.rejected');
     Route::get('/loans/rejected/export', [\App\Http\Controllers\Admin\LoanController::class, 'exportRejectedLoans'])->name('loans.rejected.export');
     
@@ -456,6 +457,19 @@ Route::middleware([
     Route::get('/reports/loan-interest', [\App\Http\Controllers\Admin\ReportsController::class, 'loanInterest'])->name('reports.loan-interest');
     Route::get('/reports/cash-securities', [\App\Http\Controllers\Admin\ReportsController::class, 'cashSecurities'])->name('reports.cash-securities');
     Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
+
+    // UMRA Regulatory Reporting Routes (Tier 4 ND-MFI Compliance)
+    Route::prefix('umra')->name('umra.')->group(function () {
+        Route::get('/dashboard', [\App\Http\Controllers\Admin\UmraReportController::class, 'dashboard'])->name('dashboard');
+        Route::get('/loan-preview', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanPreview'])->name('loan-preview');
+        Route::get('/loan-records', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanRecords'])->name('loan-records');
+        Route::get('/collateral-register', [\App\Http\Controllers\Admin\UmraReportController::class, 'collateralRegister'])->name('collateral-register');
+        Route::get('/schedule3', [\App\Http\Controllers\Admin\UmraReportController::class, 'schedule3Report'])->name('schedule3');
+        Route::get('/schedule3/export', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportSchedule3'])->name('schedule3.export');
+        Route::get('/export-excel', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportExcel'])->name('export-excel');
+        Route::get('/export-preview', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportPreview'])->name('export-preview');
+        Route::get('/export-pdf', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportPdf'])->name('export-pdf');
+    });
 });
 
 // Super Admin Only Routes (School Management, Access Control, System Settings)
@@ -659,5 +673,3 @@ Route::middleware([
     // Staff Management
     Route::resource('staff', \App\Http\Controllers\School\StaffController::class);
 });
-
-

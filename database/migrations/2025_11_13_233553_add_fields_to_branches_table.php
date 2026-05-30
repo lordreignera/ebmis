@@ -34,15 +34,20 @@ return new class extends Migration
                 $table->unsignedBigInteger('added_by')->nullable()->after('is_active');
             }
             if (!Schema::hasColumn('branches', 'created_at')) {
-                $table->timestamp('created_at')->nullable()->after('date_created');
+                $column = $table->timestamp('created_at')->nullable();
+
+                if (Schema::hasColumn('branches', 'date_created')) {
+                    $column->after('date_created');
+                }
             }
             if (!Schema::hasColumn('branches', 'updated_at')) {
                 $table->timestamp('updated_at')->nullable()->after('created_at');
             }
         });
-        
-        // Copy existing date_created values to created_at
-        \DB::statement('UPDATE branches SET created_at = date_created WHERE created_at IS NULL');
+
+        if (Schema::hasColumn('branches', 'date_created') && Schema::hasColumn('branches', 'created_at')) {
+            \DB::statement('UPDATE branches SET created_at = date_created WHERE created_at IS NULL');
+        }
     }
 
     /**
@@ -50,11 +55,19 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('branches', function (Blueprint $table) {
-            $table->dropColumn([
-                'code', 'phone', 'email', 'country', 'description', 
-                'is_active', 'added_by', 'created_at', 'updated_at'
-            ]);
-        });
+        $columns = array_values(array_filter([
+            'code',
+            'country',
+            'description',
+            'added_by',
+        ], function ($column) {
+            return Schema::hasColumn('branches', $column);
+        }));
+
+        if (!empty($columns)) {
+            Schema::table('branches', function (Blueprint $table) use ($columns) {
+                $table->dropColumn($columns);
+            });
+        }
     }
 };

@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('loan_schedules', function (Blueprint $table) {
-            $table->decimal('paid', 15, 2)->default(0)->after('balance');
-        });
+        if (!Schema::hasColumn('loan_schedules', 'paid')) {
+            Schema::table('loan_schedules', function (Blueprint $table) {
+                $table->decimal('paid', 15, 2)->default(0)->after('balance');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('loan_schedules', function (Blueprint $table) {
-            $table->dropColumn('paid');
-        });
+        if (Schema::hasColumn('loan_schedules', 'paid')) {
+            Schema::table('loan_schedules', function (Blueprint $table) {
+                $table->dropColumn('paid');
+            });
+        }
     }
 };

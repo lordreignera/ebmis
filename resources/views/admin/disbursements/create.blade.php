@@ -73,11 +73,9 @@
                             <div class="col-md-6">
                                 <div class="form-group">
                                     <label for="payment_type">Payment Method <span class="text-danger">*</span></label>
-                                    <select name="payment_type" id="payment_type" class="form-control" required>
-                                        <option value="">-- Select Payment Method --</option>
-                                        <option value="1" {{ old('payment_type') == '1' ? 'selected' : '' }}>Mobile Money</option>
-                                        <option value="2" {{ old('payment_type') == '2' ? 'selected' : '' }}>Bank Transfer/Cheque</option>
-                                    </select>
+                                    <input type="hidden" name="payment_type" id="payment_type" value="1">
+                                    <input type="text" class="form-control bg-light" value="Mobile Money" readonly>
+                                    <small class="form-text text-muted">Client disbursement is restricted to mobile money only.</small>
                                 </div>
                             </div>
                             
@@ -225,30 +223,15 @@ $(document).ready(function() {
         }
     });
     
-    // Handle payment type change
-    $('#payment_type').on('change', function() {
-        const paymentType = $(this).val();
-        
-        if (paymentType === '1') { // Mobile Money
-            $('#paymentMediumDiv').show();
-            $('#payment_medium').prop('required', true);
-            $('#accountLabel').text('Phone Number *');
-            $('#account_number').attr('placeholder', 'Enter phone number (e.g., 256701234567)');
-        } else if (paymentType === '2') { // Bank Transfer
-            $('#paymentMediumDiv').hide();
-            $('#payment_medium').prop('required', false);
-            $('#accountLabel').text('Account Number *');
-            $('#account_number').attr('placeholder', 'Enter bank account number');
-        } else {
-            $('#paymentMediumDiv').hide();
-            $('#payment_medium').prop('required', false);
-            $('#accountLabel').text('Phone Number / Account Number *');
-            $('#account_number').attr('placeholder', 'Enter phone number or account number');
-        }
-    });
+    function prepareMobileMoneyFields() {
+        $('#paymentMediumDiv').show();
+        $('#payment_medium').prop('required', true);
+        $('#accountLabel').text('Phone Number *');
+        $('#account_number').attr('placeholder', 'Enter phone number (e.g., 256701234567)');
+    }
     
     // Trigger change event if value is already selected (for form errors)
-    $('#payment_type').trigger('change');
+    prepareMobileMoneyFields();
     $('#loan_id').trigger('change');
     
     // Form validation before submit

@@ -32,7 +32,15 @@ class RepaymentService
             
             $scheduleId = $paymentData['schedule_id'];
             $amount = (float) $paymentData['amount'];
-            $paymentType = $paymentData['type'] ?? '3'; // default to bank: 1=cash, 2=mobile money, 3=bank
+            $paymentType = $paymentData['type'] ?? '2'; // 1=cash, 2=mobile money, 3=bank
+
+            if ((int) $paymentType !== 2 && (!auth()->check() || !auth()->user()?->isSuperAdmin())) {
+                DB::rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Only the Super Administrator can confirm cash or bank repayments. Please use Mobile Money.'
+                ];
+            }
             
             // Get schedule details
             $schedule = LoanSchedule::with('loan')->find($scheduleId);
@@ -76,7 +84,7 @@ class RepaymentService
                     return $mobileResult;
                 }
             } else {
-                // Cash or bank payment - auto approve
+                // Cash or bank payment - already restricted to Super Administrator above.
                 $approvalResult = $this->approveRepayment($repayment->id, 'SUCCESS', 'Manual payment verified');
                 if (!$approvalResult['success']) {
                     DB::rollBack();
@@ -134,25 +142,36 @@ class RepaymentService
             // Extract transaction reference — Stanbic returns 'reference', Emuria returns 'transaction_reference'
             $transactionRef = $paymentResult['transaction_reference'] ?? $paymentResult['reference'] ?? '';
 
-            // Update repayment with transaction details - set both fields for consistency
+            if (!$paymentResult['success']) {
+                return [
+                    'success' => false,
+                    'message' => $paymentResult['message'] ?? 'Mobile money collection failed',
+                    'transaction_reference' => $transactionRef
+                ];
+            }
+
+            if (!$transactionRef) {
+                return [
+                    'success' => false,
+                    'message' => 'Mobile money collection was initiated without a transaction reference'
+                ];
+            }
+
+            // Update repayment with transaction details and leave it pending.
+            // Mobile money is completed only by callback/status confirmation.
             $repayment->update([
                 'txn_id' => $transactionRef,
                 'transaction_reference' => $transactionRef,
-                'pay_status' => $paymentResult['status_code'] ?? 'ERROR'
+                'payment_status' => 'Pending',
+                'pay_status' => 'PENDING',
+                'pay_message' => $paymentResult['message'] ?? 'Mobile money collection initiated',
+                'payment_phone' => $phone,
+                'network' => $network
             ]);
             
-            // If payment was successful, approve it
-            if ($paymentResult['success']) {
-                $this->approveRepayment(
-                    $repayment->id,
-                    $paymentResult['status_code'],
-                    $paymentResult['message']
-                );
-            }
-            
             return [
-                'success' => $paymentResult['success'],
-                'message' => $paymentResult['message'],
+                'success' => true,
+                'message' => 'Mobile money collection initiated. Awaiting callback confirmation.',
                 'transaction_reference' => $transactionRef
             ];
             
@@ -224,102 +243,50 @@ class RepaymentService
                 ];
             }
             
-            // Check if schedule is already fully paid
-            if ($schedule->status == '1') {
+            $loanResult = $this->getLoanForAccounting((int) $schedule->loan_id);
+            $beforePayment = $this->getScheduleOutstandingComponents($schedule, $loanResult);
+
+            // Check if schedule is already fully paid by the official balance rule.
+            if ($beforePayment['outstanding'] <= 1) {
                 DB::rollBack();
                 return [
                     'success' => false,
                     'message' => 'This installment has already been fully paid'
                 ];
             }
+
+            if (abs((float) $repayment->amount - $beforePayment['outstanding']) > 1) {
+                DB::rollBack();
+                return [
+                    'success' => false,
+                    'message' => sprintf(
+                        'Payment must equal the exact schedule balance. Required UGX %s, received UGX %s.',
+                        number_format($beforePayment['outstanding'], 0),
+                        number_format((float) $repayment->amount, 0)
+                    )
+                ];
+            }
             
             // Update repayment status
             $repayment->update([
                 'status' => '1', // Approved
-                'payment_status' => 'Completed',
+                'payment_status' => (int) $repayment->type === 2 ? 'Completed' : 'Confirmed',
                 'pay_status' => $statusCode,
                 'pay_message' => $statusMessage
             ]);
             
-            // Update schedule and handle overpayment redistribution
-            $schedule->increment('paid', $repayment->amount);
+            // Exact schedule balance has been paid. Close this schedule and freeze late fees.
+            $schedule->update([
+                'paid' => $schedule->payment,
+                'status' => 1,
+                'date_cleared' => now(),
+            ]);
 
-            // Load the loan so we can calculate dynamic late fees
-            $loanResult = null;
-            if (class_exists('\App\Models\PersonalLoan')) {
-                $loanResult = \App\Models\PersonalLoan::with('product')->find($schedule->loan_id);
-            }
-            if (!$loanResult) {
-                $loanResult = \App\Models\GroupLoan::with('product')->find($schedule->loan_id);
-            }
-
-            $svcLateFees = 0.0;
-            if ($loanResult) {
-                $svcLateFeeData = $this->calculateLateFee($schedule, $loanResult);
-                $svcLateFees    = $svcLateFeeData['net'] ?? 0.0;
-            }
-            $svcTotalDue = $schedule->payment + $svcLateFees;
-
-            if ($schedule->paid >= $svcTotalDue) {
-                // P+I AND late fees fully paid — redistribute only the true excess
-                $overpayment = $schedule->paid - $svcTotalDue;
-
-                $schedule->update([
-                    'paid'         => $schedule->payment,
-                    'status'       => 1,
-                    'date_cleared' => now() // Safe: late fees also settled
-                ]);
-
-                Log::info("Schedule fully settled (P+I + late fees): schedule ID {$schedule->id}");
-
-                if ($overpayment > 1) {
-                    $nextSchedule = \App\Models\LoanSchedule::where('loan_id', $schedule->loan_id)
-                        ->where('status', '!=', 1)
-                        ->where('id', '>', $schedule->id)
-                        ->orderBy('id')
-                        ->first();
-
-                    if ($nextSchedule) {
-                        $nextSchedule->increment('paid', $overpayment);
-
-                        Log::info("Redistributed overpayment: {$overpayment} UGX to schedule ID: {$nextSchedule->id}");
-
-                        $nextLateFees = DB::table('late_fees')
-                            ->where('schedule_id', $nextSchedule->id)
-                            ->where('status', 0)
-                            ->sum('amount');
-                        $nextTotalDue = $nextSchedule->payment + $nextLateFees;
-
-                        if ($nextSchedule->paid >= $nextTotalDue) {
-                            $nextUpdateData = ['status' => 1];
-                            if ($nextLateFees <= 0.01) {
-                                $nextUpdateData['date_cleared'] = now();
-                            }
-                            $nextSchedule->update($nextUpdateData);
-
-                            Log::info("Next schedule fully paid after overpayment allocation");
-                        }
-                    }
-                }
-            } elseif ($schedule->paid >= $schedule->payment && $svcLateFees > 0.01) {
-                // P+I paid but late fees still outstanding — do NOT set date_cleared
-                $schedule->update([
-                    'paid'   => $schedule->payment,
-                    'status' => 1,
-                ]);
-            } elseif ($schedule->paid >= $schedule->payment) {
-                // P+I paid, no late fees — fully settled
-                $schedule->update([
-                    'status'       => 1,
-                    'date_cleared' => now()
-                ]);
-            }
-            
             // Check if all schedules are paid - close the loan
             $this->checkAndCloseLoanIfComplete($schedule->loan_id);
 
             // Post repayment journal for service-based approvals.
-            $loanForAccounting = $this->getLoanForAccounting((int) $schedule->loan_id);
+            $loanForAccounting = $loanResult ?: $this->getLoanForAccounting((int) $schedule->loan_id);
             if ($loanForAccounting) {
                 $journal = $this->accountingService->postRepaymentEntry($repayment->fresh(), $loanForAccounting);
                 if (!$journal) {
@@ -338,7 +305,7 @@ class RepaymentService
             DB::commit();
             
             // Calculate outstanding balance
-            $outstandingBalance = max(0, $schedule->payment - $schedule->paid);
+            $outstandingBalance = $this->getScheduleOutstandingComponents($schedule->fresh(), $loanResult)['outstanding'];
             
             Log::info("Repayment approved", [
                 'repayment_id' => $repaymentId,
@@ -454,7 +421,7 @@ class RepaymentService
                 if ($isSuccessfulStatus) {
                     $fee->update([
                         'status' => 1,
-                        'payment_status' => 'Paid',
+                        'payment_status' => 'Completed',
                         'payment_description' => 'Payment confirmed via callback',
                         'payment_raw' => json_encode($callbackResult)
                     ]);
@@ -510,7 +477,7 @@ class RepaymentService
                 if ($isSuccessfulStatus) {
                     $cashSecurity->update([
                         'status' => 1,
-                        'payment_status' => 'Paid',
+                        'payment_status' => 'Completed',
                         'payment_description' => 'Payment confirmed via callback',
                         'payment_raw' => json_encode($callbackResult)
                     ]);
@@ -548,7 +515,7 @@ class RepaymentService
                 if ($isSuccessfulStatus) {
                     $saving->update([
                         'status' => 1,
-                        'pay_status' => 'PAID',
+                        'pay_status' => 'COMPLETED',
                         'pay_message' => json_encode($callbackResult)
                     ]);
                     
@@ -638,6 +605,54 @@ class RepaymentService
     }
     
     /**
+     * Sum payments that are valid for balance calculations.
+     */
+    public function getValidPaidForSchedule(int $scheduleId): float
+    {
+        return (float) Repayment::where('schedule_id', $scheduleId)
+            ->where('amount', '>', 0)
+            ->whereNotIn('status', [-1, 2])
+            ->where(function ($query) {
+                $query->where('status', 1)
+                    ->orWhere('payment_status', 'Completed');
+            })
+            ->sum('amount');
+    }
+
+    /**
+     * Official schedule balance rule:
+     * principal + interest + net late fees - valid payments.
+     */
+    public function getScheduleOutstandingComponents(LoanSchedule $schedule, $loan = null): array
+    {
+        $loan = $loan ?: $this->getLoanForAccounting((int) $schedule->loan_id);
+        if ($loan && method_exists($loan, 'loadMissing')) {
+            $loan->loadMissing('product');
+        }
+
+        $principal = (float) ($schedule->principal ?? 0);
+        $interest = (float) ($schedule->interest ?? 0);
+        $lateFeeData = $loan
+            ? $this->calculateLateFee($schedule, $loan)
+            : ['gross' => 0.0, 'net' => 0.0, 'waived' => 0.0, 'days_overdue' => 0, 'periods_overdue' => 0];
+        $validPaid = $this->getValidPaidForSchedule((int) $schedule->id);
+        $totalDue = $principal + $interest + (float) $lateFeeData['net'];
+
+        return [
+            'principal' => $principal,
+            'interest' => $interest,
+            'late_fee_gross' => (float) $lateFeeData['gross'],
+            'late_fee_waived' => (float) $lateFeeData['waived'],
+            'late_fee_net' => (float) $lateFeeData['net'],
+            'valid_paid' => $validPaid,
+            'total_due' => $totalDue,
+            'outstanding' => max(0, $totalDue - $validPaid),
+            'days_overdue' => (int) $lateFeeData['days_overdue'],
+            'periods_overdue' => (int) $lateFeeData['periods_overdue'],
+        ];
+    }
+
+    /**
      * Validate payment amount
      */
     private function validatePaymentAmount(LoanSchedule $schedule, float $amount): array
@@ -649,14 +664,31 @@ class RepaymentService
             ];
         }
         
-        $remainingBalance = $schedule->balance ?: $schedule->payment;
-        
-        if ($amount > $remainingBalance + 1000) { // Allow small overpayment
+        $remainingBalance = $this->getScheduleOutstandingComponents($schedule)['outstanding'];
+
+        if ($remainingBalance <= 1) {
+            return [
+                'valid' => false,
+                'message' => 'This installment has already been fully paid'
+            ];
+        }
+
+        if ($amount > $remainingBalance + 1) {
             return [
                 'valid' => false,
                 'message' => sprintf(
-                    'Payment amount (UGX %s) exceeds remaining balance (UGX %s)',
+                    'Payment amount (UGX %s) exceeds the exact schedule balance (UGX %s)',
                     number_format($amount),
+                    number_format($remainingBalance)
+                )
+            ];
+        }
+
+        if ($amount < $remainingBalance - 1) {
+            return [
+                'valid' => false,
+                'message' => sprintf(
+                    'Partial payments are not allowed. Please pay the exact schedule balance of UGX %s.',
                     number_format($remainingBalance)
                 )
             ];
@@ -676,11 +708,11 @@ class RepaymentService
     {
         try {
             // Try PersonalLoan first, then GroupLoan
-            $loan = PersonalLoan::find($loanId);
+            $loan = PersonalLoan::with('product')->find($loanId);
             $loanType = 'personal';
             
             if (!$loan) {
-                $loan = GroupLoan::find($loanId);
+                $loan = GroupLoan::with('product')->find($loanId);
                 $loanType = 'group';
             }
             
@@ -701,27 +733,14 @@ class RepaymentService
                 return false;
             }
             
-            // Calculate total amount due (principal + interest + late fees - waivers)
+            // Calculate total amount due (principal + interest + net late fees - valid payments)
             $totalDue = 0;
             $allSchedulesPaid = true;
             
             foreach ($schedules as $schedule) {
-                $scheduleDue = $schedule->principal + $schedule->interest;
-                
-                // Calculate late fee with waiver support
-                $lateFee = $this->calculateNetLateFee($schedule, $loan);
-                
-                // Calculate total paid for this schedule
-                // Use BOTH repayments table AND schedule.paid column (for backward compatibility)
-                $totalPaidFromRepayments = Repayment::where('schedule_id', $schedule->id)
-                    ->where('status', 1)
-                    ->sum('amount');
-                
-                // Use the greater of: repayments table sum OR schedule.paid column
-                $totalPaid = max($totalPaidFromRepayments, $schedule->paid ?? 0);
-                
-                $scheduleBalance = ($scheduleDue + $lateFee) - $totalPaid;
-                $totalDue += max(0, $scheduleBalance);
+                $components = $this->getScheduleOutstandingComponents($schedule, $loan);
+                $scheduleBalance = $components['outstanding'];
+                $totalDue += $scheduleBalance;
                 
                 if ($scheduleBalance >= 1) {
                     $allSchedulesPaid = false;
@@ -871,6 +890,20 @@ class RepaymentService
             return [
                 'success' => false,
                 'message' => 'Repayment already verified'
+            ];
+        }
+
+        if ((int) $repayment->type === 2) {
+            return [
+                'success' => false,
+                'message' => 'Mobile money repayments can only be completed by callback or status confirmation'
+            ];
+        }
+
+        if (!auth()->check() || !auth()->user()?->isSuperAdmin()) {
+            return [
+                'success' => false,
+                'message' => 'Only the Super Administrator can manually verify cash or bank repayments'
             ];
         }
         

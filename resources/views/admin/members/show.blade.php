@@ -1553,7 +1553,7 @@ body.modal-open {
                         <label for="payment_type" class="form-label" style="color: #000;">Payment Method <span class="text-danger">*</span></label>
                         <select name="payment_type" id="payment_type" class="form-select" required>
                             <option value="">Select Payment Method</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="1">Mobile Money</option>
                                 <option value="2">Cash</option>
                                 <option value="3">Bank Transfer</option>
@@ -1629,7 +1629,7 @@ body.modal-open {
                         <label for="cash_payment_type" class="form-label" style="color: #000;">Payment Method <span class="text-danger">*</span></label>
                         <select name="payment_type" id="cash_payment_type" class="form-select" required>
                             <option value="">Select Payment Method</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="1">Mobile Money</option>
                                 <option value="2">Cash</option>
                                 <option value="3">Bank Transfer</option>
@@ -2102,7 +2102,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </label>
                         <select class="form-select" id="savings_payment_type" name="payment_type" required>
                             <option value="">Select Payment Method</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="1">Mobile Money</option>
                                 <option value="2">Cash</option>
                                 <option value="3">Bank Transfer</option>

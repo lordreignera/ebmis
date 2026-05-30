@@ -7,36 +7,42 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Add safety constraints to prevent duplicate disbursements
+     * Add safety constraints to prevent duplicate disbursements.
      */
     public function up(): void
     {
-        Schema::table('disbursement_txn', function (Blueprint $table) {
-            // Add disbursement_id column if not exists
-            if (!Schema::hasColumn('disbursement_txn', 'disbursement_id')) {
-                $table->unsignedBigInteger('disbursement_id')->nullable()->after('id');
-            }
-            
-            // Add unique index on txnref to prevent duplicate Stanbic requests
-            if (!Schema::hasColumn('disbursement_txn', 'txnref') || 
-                collect(Schema::getIndexes('disbursement_txn'))->where('name', 'disbursement_txn_txnref_unique')->isEmpty()) {
-                $table->unique('txnref', 'disbursement_txn_txnref_unique');
-            }
-        });
+        if (Schema::hasTable('disbursement_txn')) {
+            Schema::table('disbursement_txn', function (Blueprint $table) {
+                if (!Schema::hasColumn('disbursement_txn', 'disbursement_id')) {
+                    $table->unsignedBigInteger('disbursement_id')->nullable()->after('id');
+                }
+            });
 
-        Schema::table('disbursements', function (Blueprint $table) {
-            // Add index on loan_id + status for faster duplicate checking
-            if (collect(Schema::getIndexes('disbursements'))->where('name', 'disbursements_loan_status_check')->isEmpty()) {
+            if (
+                Schema::hasColumn('disbursement_txn', 'txnref') &&
+                !$this->tableHasIndex('disbursement_txn', 'disbursement_txn_txnref_unique')
+            ) {
+                Schema::table('disbursement_txn', function (Blueprint $table) {
+                    $table->unique('txnref', 'disbursement_txn_txnref_unique');
+                });
+            }
+        }
+
+        if (Schema::hasTable('disbursements') && !$this->tableHasIndex('disbursements', 'disbursements_loan_status_check')) {
+            Schema::table('disbursements', function (Blueprint $table) {
                 $table->index(['loan_id', 'status'], 'disbursements_loan_status_check');
-            }
-        });
+            });
+        }
 
-        Schema::table('raw_payments', function (Blueprint $table) {
-            // Add unique constraint on txn_id to prevent duplicate tracking
-            if (collect(Schema::getIndexes('raw_payments'))->where('name', 'raw_payments_txn_id_unique')->isEmpty()) {
+        if (
+            Schema::hasTable('raw_payments') &&
+            Schema::hasColumn('raw_payments', 'txn_id') &&
+            !$this->tableHasIndex('raw_payments', 'raw_payments_txn_id_unique')
+        ) {
+            Schema::table('raw_payments', function (Blueprint $table) {
                 $table->unique('txn_id', 'raw_payments_txn_id_unique');
-            }
-        });
+            });
+        }
     }
 
     /**
@@ -44,16 +50,32 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('disbursement_txn', function (Blueprint $table) {
-            $table->dropUnique('disbursement_txn_txnref_unique');
-        });
+        if ($this->tableHasIndex('disbursement_txn', 'disbursement_txn_txnref_unique')) {
+            Schema::table('disbursement_txn', function (Blueprint $table) {
+                $table->dropUnique('disbursement_txn_txnref_unique');
+            });
+        }
 
-        Schema::table('disbursements', function (Blueprint $table) {
-            $table->dropIndex('disbursements_loan_status_check');
-        });
+        if ($this->tableHasIndex('disbursements', 'disbursements_loan_status_check')) {
+            Schema::table('disbursements', function (Blueprint $table) {
+                $table->dropIndex('disbursements_loan_status_check');
+            });
+        }
 
-        Schema::table('raw_payments', function (Blueprint $table) {
-            $table->dropUnique('raw_payments_txn_id_unique');
-        });
+        if ($this->tableHasIndex('raw_payments', 'raw_payments_txn_id_unique')) {
+            Schema::table('raw_payments', function (Blueprint $table) {
+                $table->dropUnique('raw_payments_txn_id_unique');
+            });
+        }
+    }
+
+    private function tableHasIndex(string $table, string $index): bool
+    {
+        if (!Schema::hasTable($table)) {
+            return false;
+        }
+
+        return collect(Schema::getIndexes($table))
+            ->contains(fn ($existingIndex) => ($existingIndex['name'] ?? null) === $index);
     }
 };

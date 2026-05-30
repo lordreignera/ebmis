@@ -72,7 +72,7 @@ class Disbursement extends Model
      */
     public function investment()
     {
-        return $this->belongsTo(Investment::class, 'investment_id');
+        return $this->belongsTo(Investment::class, 'inv_id');
     }
 
     /**
@@ -129,9 +129,9 @@ class Disbursement extends Model
     public function getPaymentTypeNameAttribute()
     {
         $paymentTypes = [
-            1 => 'Cash',
-            2 => 'Bank Transfer',
-            3 => 'Mobile Money',
+            1 => 'Mobile Money',
+            2 => 'Bank/Cash/Cheque',
+            3 => 'Mobile Money (Legacy)',
             4 => 'Cheque'
         ];
 
@@ -203,7 +203,7 @@ class Disbursement extends Model
      */
     public function scopeCash($query)
     {
-        return $query->where('payment_type', 1);
+        return $query->where('payment_type', 2);
     }
 
     /**
@@ -211,6 +211,6 @@ class Disbursement extends Model
      */
     public function scopeMobileMoney($query)
     {
-        return $query->where('payment_type', 3);
+        return $query->whereIn('payment_type', [1, 3]);
     }
 }

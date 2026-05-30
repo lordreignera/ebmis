@@ -170,9 +170,9 @@
                             
                             <div class="col-md-6">
                                 <label class="form-label">Payment Method <span class="text-danger">*</span></label>
-                                <select class="form-control" name="type" required>
+                                <select class="form-control" name="type" id="paymentTypeSelect" required>
                                     <option value="">Select method...</option>
-                                    @if(auth()->user()->hasRole(['superadmin', 'administrator']))
+                                    @if(auth()->user()->isSuperAdmin())
                                         <option value="1" {{ old('type') == '1' ? 'selected' : '' }}>Cash</option>
                                         <option value="2" {{ old('type') == '2' ? 'selected' : '' }}>Mobile Money</option>
                                         <option value="3" {{ old('type') == '3' ? 'selected' : '' }}>Bank Transfer</option>
@@ -214,14 +214,14 @@
                             </div>
 
                             <div class="col-12">
-                                <div class="form-check">
+                                <div class="form-check" id="manualConfirmWrap">
                                     <input class="form-check-input" type="checkbox" name="status" value="1" 
-                                           {{ old('status') == '1' ? 'checked' : '' }}>
+                                           id="manualConfirmCheckbox" {{ old('status') == '1' ? 'checked' : '' }}>
                                     <label class="form-check-label">
-                                        Confirm payment immediately
+                                        Confirm cash/bank payment immediately
                                     </label>
                                 </div>
-                                <small class="text-muted">Uncheck to save as pending for later verification</small>
+                                <small class="text-muted" id="manualConfirmHint">Mobile Money is completed only after the gateway callback/status confirmation.</small>
                             </div>
 
                             <div class="col-12 mt-4">
@@ -251,6 +251,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const loanDetailsContent = document.getElementById('loanDetailsContent');
     const scheduleDetails = document.getElementById('scheduleDetails');
     const scheduleContent = document.getElementById('scheduleContent');
+    const paymentTypeSelect = document.getElementById('paymentTypeSelect');
+    const manualConfirmCheckbox = document.getElementById('manualConfirmCheckbox');
+    const manualConfirmWrap = document.getElementById('manualConfirmWrap');
+
+    function syncManualConfirmation() {
+        if (!paymentTypeSelect || !manualConfirmCheckbox || !manualConfirmWrap) {
+            return;
+        }
+
+        const isMobileMoney = paymentTypeSelect.value === '2';
+        manualConfirmCheckbox.disabled = isMobileMoney;
+        manualConfirmWrap.classList.toggle('text-muted', isMobileMoney);
+
+        if (isMobileMoney) {
+            manualConfirmCheckbox.checked = false;
+        }
+    }
+
+    if (paymentTypeSelect) {
+        paymentTypeSelect.addEventListener('change', syncManualConfirmation);
+        syncManualConfirmation();
+    }
 
     // Load loan details when selection changes or button is clicked
     function loadLoanDetails() {

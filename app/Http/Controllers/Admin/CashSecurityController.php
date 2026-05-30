@@ -30,6 +30,21 @@ class CashSecurityController extends Controller
         // Get member info
         $member = Member::findOrFail($validated['member_id']);
 
+        if (!$request->user()?->isSuperAdmin() && (int) $validated['payment_type'] !== 1) {
+            $message = 'Access denied. Only the Super Administrator can confirm cash or bank cash-security payments. Please use Mobile Money.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message
+                ], 403);
+            }
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', $message);
+        }
+
         try {
             DB::beginTransaction();
 
@@ -100,8 +115,8 @@ class CashSecurityController extends Controller
                     'description' => $validated['description'],
                     'added_by' => auth()->id(),
                     'status' => 1, // Paid
-                    'payment_status' => 'Paid',
-                    'payment_description' => 'Manual payment recorded',
+                    'payment_status' => 'Confirmed',
+                    'payment_description' => 'Manual payment confirmed',
                     'datecreated' => now()
                 ]);
                 
@@ -212,7 +227,7 @@ class CashSecurityController extends Controller
                 if (in_array($statusResult['status_code'], ['00', '01', 'SUCCESSFUL', 'SUCCESS'])) {
                     $cashSecurity->update([
                         'status' => 1,
-                        'payment_status' => 'Paid',
+                        'payment_status' => 'Completed',
                         'payment_description' => 'Payment confirmed via status check',
                         'payment_raw' => json_encode($statusResult)
                     ]);

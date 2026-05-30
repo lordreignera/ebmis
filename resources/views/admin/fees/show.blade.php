@@ -59,9 +59,9 @@
                                 <label class="form-label text-muted">Payment Type</label>
                                 <div class="fw-medium">
                                     @if($fee->payment_type == 1)
-                                        <i class="fas fa-money-bill-wave text-success"></i> Cash
-                                    @elseif($fee->payment_type == 2)
                                         <i class="fas fa-mobile-alt text-info"></i> Mobile Money
+                                    @elseif($fee->payment_type == 2)
+                                        <i class="fas fa-money-bill-wave text-success"></i> Cash
                                     @elseif($fee->payment_type == 3)
                                         <i class="fas fa-university text-primary"></i> Bank Transfer
                                     @endif
@@ -110,7 +110,7 @@
                         @endif
                     </div>
 
-                    @if($fee->status == 0 && $fee->payment_type == 2)
+                    @if($fee->status == 0 && $fee->payment_type == 1)
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i>
                         <strong>Mobile Money Payment Initiated:</strong> USSD prompt has been sent to member's phone ({{ $fee->member->mobile_no }}). Payment is pending confirmation.
@@ -122,7 +122,7 @@
                             <i class="fas fa-arrow-left"></i> Back to Fees
                         </a>
                         <div>
-                            @if($fee->status == 0)
+                            @if($fee->status == 0 && auth()->user()->isSuperAdmin() && $fee->payment_type != 1)
                                 <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#markPaidModal">
                                     <i class="fas fa-check"></i> Mark as Paid
                                 </button>
@@ -242,8 +242,7 @@
                     <div class="mb-3">
                         <label for="payment_type_confirm" class="form-label">Payment Type</label>
                         <select name="payment_type" id="payment_type_confirm" class="form-select" required>
-                            <option value="1" {{ $fee->payment_type == 1 ? 'selected' : '' }}>Cash</option>
-                            <option value="2" {{ $fee->payment_type == 2 ? 'selected' : '' }}>Mobile Money</option>
+                            <option value="2" {{ $fee->payment_type == 2 ? 'selected' : '' }}>Cash</option>
                             <option value="3" {{ $fee->payment_type == 3 ? 'selected' : '' }}>Bank Transfer</option>
                         </select>
                     </div>

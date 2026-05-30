@@ -23,7 +23,11 @@ return new class extends Migration
             $table->string('interest', 15)->nullable();
             $table->integer('period_type');
             $table->integer('added_by');
-            $table->timestamp('datecreated')->default(DB::raw('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'));
+            if (DB::connection()->getDriverName() === 'sqlite') {
+                $table->timestamp('datecreated')->useCurrent();
+            } else {
+                $table->timestamp('datecreated')->default(DB::raw('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'));
+            }
             $table->integer('isactive')->default(1);
             $table->string('cash_sceurity', 20)->default('25'); // Keep original typo for compatibility
             $table->integer('account');

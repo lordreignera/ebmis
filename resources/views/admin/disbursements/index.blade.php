@@ -164,11 +164,10 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <select name="method" class="form-control">
+                        <select name="payment_type" class="form-control">
                             <option value="">All Methods</option>
-                            <option value="cash" {{ request('method') == 'cash' ? 'selected' : '' }}>Cash</option>
-                            <option value="bank" {{ request('method') == 'bank' ? 'selected' : '' }}>Bank Transfer</option>
-                            <option value="mobile_money" {{ request('method') == 'mobile_money' ? 'selected' : '' }}>Mobile Money</option>
+                            <option value="1" {{ request('payment_type') == '1' ? 'selected' : '' }}>Mobile Money</option>
+                            <option value="3" {{ request('payment_type') == '3' ? 'selected' : '' }}>Mobile Money (Legacy)</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -273,7 +272,12 @@
                                             @break
                                         @case(2)
                                             <span class="badge badge-info">
-                                                <i class="mdi mdi-bank"></i> Bank Transfer/Cheque
+                                                <i class="mdi mdi-bank"></i> Bank/Cheque (Historical)
+                                            </span>
+                                            @break
+                                        @case(3)
+                                            <span class="badge badge-success">
+                                                <i class="mdi mdi-cellphone"></i> Mobile Money (Legacy)
                                             </span>
                                             @break
                                         @default

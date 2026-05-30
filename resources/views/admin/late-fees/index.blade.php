@@ -6,9 +6,11 @@
 <div class="container-fluid px-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3 mb-0">Late Fees Management</h1>
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#bulkWaiveModal">
-            <i class="fas fa-eraser"></i> Bulk Waive
-        </button>
+        @if(auth()->user()->isSuperAdmin())
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#bulkWaiveModal">
+                <i class="fas fa-eraser"></i> Bulk Waive
+            </button>
+        @endif
     </div>
 
     @if(session('success'))
@@ -194,12 +196,14 @@
                                 </td>
                                 <td>{{ date('d-m-Y H:i', strtotime($lateFee->calculated_date)) }}</td>
                                 <td>
-                                    @if($lateFee->status == 0)
+                                    @if($lateFee->status == 0 && auth()->user()->isSuperAdmin())
                                         <button type="button" class="btn btn-sm btn-info" 
                                                 data-bs-toggle="modal" 
                                                 data-bs-target="#waiveModal{{ $lateFee->id }}">
                                             <i class="fas fa-eraser"></i> Waive
                                         </button>
+                                    @elseif($lateFee->status == 0)
+                                        <small class="text-muted">Super Admin only</small>
                                     @elseif($lateFee->status == 2)
                                         <small class="text-muted">
                                             Waived: {{ $lateFee->waiver_reason }}
@@ -208,32 +212,34 @@
                                 </td>
                             </tr>
 
-                            <!-- Waive Modal -->
-                            <div class="modal fade" id="waiveModal{{ $lateFee->id }}" tabindex="-1">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form method="POST" action="{{ route('admin.late-fees.waive', $lateFee->id) }}">
-                                            @csrf
-                                            <div class="modal-header">
-                                                <h5 class="modal-title">Waive Late Fee</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <p><strong>Member:</strong> {{ $lateFee->member->fname ?? '' }} {{ $lateFee->member->lname ?? '' }}</p>
-                                                <p><strong>Amount:</strong> UGX {{ number_format($lateFee->amount, 0) }}</p>
-                                                <div class="mb-3">
-                                                    <label class="form-label">Reason for Waiver <span class="text-danger">*</span></label>
-                                                    <textarea name="reason" class="form-control" rows="3" required></textarea>
+                            @if(auth()->user()->isSuperAdmin())
+                                <!-- Waive Modal -->
+                                <div class="modal fade" id="waiveModal{{ $lateFee->id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <form method="POST" action="{{ route('admin.late-fees.waive', $lateFee->id) }}">
+                                                @csrf
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">Waive Late Fee</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                 </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                <button type="submit" class="btn btn-info">Waive Late Fee</button>
-                                            </div>
-                                        </form>
+                                                <div class="modal-body">
+                                                    <p><strong>Member:</strong> {{ $lateFee->member->fname ?? '' }} {{ $lateFee->member->lname ?? '' }}</p>
+                                                    <p><strong>Amount:</strong> UGX {{ number_format($lateFee->amount, 0) }}</p>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Reason for Waiver <span class="text-danger">*</span></label>
+                                                        <textarea name="reason" class="form-control" rows="3" required></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                    <button type="submit" class="btn btn-info">Waive Late Fee</button>
+                                                </div>
+                                            </form>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            @endif
                         @empty
                             <tr>
                                 <td colspan="10" class="text-center text-muted py-4">
@@ -252,7 +258,7 @@
     </div>
 </div>
 
-<!-- Bulk Waive Modal -->
+@if(auth()->user()->isSuperAdmin())
 <div class="modal fade" id="bulkWaiveModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -292,6 +298,7 @@
         </div>
     </div>
 </div>
+@endif
 @endsection
 
 

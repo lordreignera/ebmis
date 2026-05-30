@@ -96,9 +96,13 @@
                                     <label for="payment_type" class="form-label">Payment Type <span class="text-danger">*</span></label>
                                     <select name="payment_type" id="payment_type" class="form-select" required>
                                         <option value="">Select Payment Type</option>
-                                        <option value="1" {{ old('payment_type') == '1' ? 'selected' : '' }}>Cash</option>
-                                        <option value="2" {{ old('payment_type') == '2' ? 'selected' : '' }}>Mobile Money</option>
-                                        <option value="3" {{ old('payment_type') == '3' ? 'selected' : '' }}>Bank Transfer</option>
+                                        @if(auth()->user()->isSuperAdmin())
+                                            <option value="1" {{ old('payment_type') == '1' ? 'selected' : '' }}>Mobile Money</option>
+                                            <option value="2" {{ old('payment_type') == '2' ? 'selected' : '' }}>Cash</option>
+                                            <option value="3" {{ old('payment_type') == '3' ? 'selected' : '' }}>Bank Transfer</option>
+                                        @else
+                                            <option value="1" {{ old('payment_type') == '1' ? 'selected' : '' }}>Mobile Money</option>
+                                        @endif
                                     </select>
                                     <small class="text-muted">Mobile Money will send USSD prompt to member's phone</small>
                                 </div>

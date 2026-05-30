@@ -307,11 +307,10 @@
                                 <label for="payment_method">Payment Method *</label>
                                 <select class="form-control" name="payment_method" id="payment_method" required>
                                     <option value="">Select payment method</option>
-                                    @if(auth()->user()->hasRole(['superadmin', 'administrator']))
+                                    @if(auth()->user()->isSuperAdmin())
                                         <option value="cash">Cash</option>
                                         <option value="mobile_money">Mobile Money</option>
                                         <option value="bank_transfer">Bank Transfer</option>
-                                        <option value="check">Check</option>
                                     @else
                                         <option value="mobile_money">Mobile Money</option>
                                     @endif
@@ -360,10 +359,15 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label for="auto_waive">Auto-waive Charges</label>
-                                <select class="form-control" name="auto_waive" id="auto_waive">
-                                    <option value="0">No</option>
-                                    <option value="1">Yes - waive late fees if applicable</option>
-                                </select>
+                                @if(auth()->user()->isSuperAdmin())
+                                    <select class="form-control" name="auto_waive" id="auto_waive">
+                                        <option value="0">No</option>
+                                        <option value="1">Yes - waive late fees if applicable</option>
+                                    </select>
+                                @else
+                                    <input type="hidden" name="auto_waive" value="0">
+                                    <div class="form-control bg-light">No - Super Administrator only</div>
+                                @endif
                             </div>
                         </div>
                     </div>

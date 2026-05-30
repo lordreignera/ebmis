@@ -45,6 +45,79 @@
         transform: translateY(-1px);
         box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
+
+    .disbursement-confirm-modal .modal-content {
+        border: 0;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.28);
+    }
+
+    .disbursement-confirm-modal .modal-header {
+        background: linear-gradient(135deg, #0f766e, #0ea5e9);
+        color: #fff;
+        border-bottom: 0;
+        padding: 18px 22px;
+    }
+
+    .disbursement-confirm-modal .modal-body {
+        padding: 22px;
+    }
+
+    .disbursement-confirm-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.18);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+        font-size: 24px;
+    }
+
+    .confirm-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin: 18px 0;
+    }
+
+    .confirm-summary-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px;
+        background: #f8fafc;
+    }
+
+    .confirm-summary-item small {
+        display: block;
+        color: #64748b;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 11px;
+        margin-bottom: 4px;
+    }
+
+    .confirm-summary-item strong {
+        color: #0f172a;
+        font-size: 15px;
+    }
+
+    .confirm-risk-note {
+        border-left: 4px solid #f59e0b;
+        background: #fffbeb;
+        color: #92400e;
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+
+    @media (max-width: 576px) {
+        .confirm-summary {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 @endpush
 
@@ -179,19 +252,19 @@
                                 </div>
                             </div>
 
-                            <!-- Investment Account -->
+                            <!-- Funding Account -->
                             <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="investment_id" class="form-label">
-                                        <i class="mdi mdi-bank me-1"></i>Investment Account <span class="text-danger">*</span>
+                                        <i class="mdi mdi-bank me-1"></i>Funding Account <span class="text-danger">*</span>
                                     </label>
                                     <select class="form-select" id="investment_id" name="investment_id" required>
-                                        <option value="">Select Investment Account</option>
+                                        <option value="">Select Funding Account</option>
                                         @foreach($investment_accounts as $investment)
                                             <option value="{{ $investment->id }}">{{ $investment->name }}</option>
                                         @endforeach
                                     </select>
-                                    <div class="form-text">Select the account from which funds will be disbursed</div>
+                                    <div class="form-text">Journal flow: Stanbic/Funding account to FAN, then FAN to the client loan account.</div>
                                 </div>
                             </div>
 
@@ -201,13 +274,9 @@
                                     <label for="payment_type" class="form-label">
                                         <i class="mdi mdi-cash-multiple me-1"></i>Payment Type <span class="text-danger">*</span>
                                     </label>
-                                    <select class="form-select" id="payment_type" name="payment_type" required>
-                                        <option value="">Select Payment Type</option>
-                                        <option value="mobile_money" selected>📱 Mobile Money</option>
-                                        <option value="bank_transfer">🏦 Bank Transfer</option>
-                                        <option value="cash">💵 Cash</option>
-                                        <option value="cheque">📝 Cheque</option>
-                                    </select>
+                                    <input type="hidden" id="payment_type" name="payment_type" value="mobile_money">
+                                    <input type="text" class="form-control bg-light" value="Mobile Money" readonly>
+                                    <div class="form-text">Client disbursement is restricted to mobile money only.</div>
                                 </div>
                             </div>
 
@@ -315,6 +384,69 @@
     </div>
 </div>
 
+<div class="modal fade disbursement-confirm-modal" id="disbursementConfirmModal" tabindex="-1" aria-labelledby="disbursementConfirmTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center">
+                    <span class="disbursement-confirm-icon">
+                        <i class="mdi mdi-cellphone-arrow-down"></i>
+                    </span>
+                    <div>
+                        <h5 class="modal-title mb-0" id="disbursementConfirmTitle">Confirm Mobile Money Disbursement</h5>
+                        <small class="text-white-50">Review before sending funds to the borrower</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0 text-muted">
+                    This will initiate a real mobile money transfer. Please confirm the amount, recipient and network before continuing.
+                </p>
+
+                <div class="confirm-summary">
+                    <div class="confirm-summary-item">
+                        <small>Amount</small>
+                        <strong>UGX {{ number_format($loan->disbursement_amount, 0) }}</strong>
+                    </div>
+                    <div class="confirm-summary-item">
+                        <small>Borrower</small>
+                        <strong>{{ $loan->borrower_name }}</strong>
+                    </div>
+                    <div class="confirm-summary-item">
+                        <small>Phone</small>
+                        <strong id="confirmPhone">{{ $loan->phone_number }}</strong>
+                    </div>
+                    <div class="confirm-summary-item">
+                        <small>Network</small>
+                        <strong id="confirmNetwork">Mobile Money</strong>
+                    </div>
+                    <div class="confirm-summary-item">
+                        <small>Funding Account</small>
+                        <strong id="confirmFundingAccount">Selected funding account</strong>
+                    </div>
+                    <div class="confirm-summary-item">
+                        <small>Loan Code</small>
+                        <strong>{{ $loan->loan_code }}</strong>
+                    </div>
+                </div>
+
+                <div class="confirm-risk-note">
+                    Once submitted, the system will send the mobile money request and wait for provider confirmation/callback.
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="mdi mdi-close me-1"></i> Review Again
+                </button>
+                <button type="button" class="btn btn-success" id="confirmDisbursementBtn">
+                    <i class="mdi mdi-send-check me-1"></i> Confirm and Send
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 $(document).ready(function() {
@@ -356,44 +488,19 @@ $(document).ready(function() {
         }
     }
 
-    // Handle payment type change
-    $('#payment_type').change(function() {
-        var paymentType = $(this).val();
-        
-        if (paymentType === 'mobile_money') {
-            $('#network_div').show();
-            $('#network').prop('required', true);
-            $('#account_number').attr('placeholder', '256XXXXXXXXX (e.g., 256782743720)');
-            $('#account_number').prop('readonly', true).addClass('bg-light');
-            $('#mobile_money_warning').show();
-            
-            // Auto-fill phone number if available and detect network
-            if ('{{ $loan->phone_number }}') {
-                $('#account_number').val('{{ $loan->phone_number }}');
-                var detection = detectNetwork('{{ $loan->phone_number }}');
-                updateNetworkDisplay(detection);
-            }
-        } else {
-            $('#network_div').hide();
-            $('#network').prop('required', false);
-            $('#mobile_money_warning').hide();
-            $('#network_detected').hide();
-            $('#account_number').prop('readonly', true).addClass('bg-light');
-            
-            if (paymentType === 'bank_transfer') {
-                $('#account_number').attr('placeholder', 'Member phone: {{ $loan->phone_number }}');
-                $('#account_number').val('{{ $loan->phone_number }}');
-            } else if (paymentType === 'cash') {
-                $('#account_number').attr('placeholder', 'Cash disbursement');
-                $('#account_number').val('CASH_DISBURSEMENT');
-            } else if (paymentType === 'cheque') {
-                $('#account_number').attr('placeholder', 'Member phone: {{ $loan->phone_number }}');
-                $('#account_number').val('{{ $loan->phone_number }}');
-            } else {
-                $('#account_number').val('{{ $loan->phone_number }}');
-            }
+    function prepareMobileMoneyFields() {
+        $('#network_div').show();
+        $('#network').prop('required', true);
+        $('#account_number').attr('placeholder', '256XXXXXXXXX (e.g., 256782743720)');
+        $('#account_number').prop('readonly', true).addClass('bg-light');
+        $('#mobile_money_warning').show();
+
+        if ('{{ $loan->phone_number }}') {
+            $('#account_number').val('{{ $loan->phone_number }}');
+            var detection = detectNetwork('{{ $loan->phone_number }}');
+            updateNetworkDisplay(detection);
         }
-    });
+    }
 
     // Auto-detect network on phone number input
     $('#account_number').on('input', function() {
@@ -406,6 +513,32 @@ $(document).ready(function() {
 
     // Form submission handling with simple button state
     var isSubmitting = false;
+    var confirmationApproved = false;
+
+    function showDisbursementConfirmation() {
+        var selectedFunding = $('#investment_id option:selected').text() || 'Selected funding account';
+        var networkName = $('#detected_network_name').text() || $('#network option:selected').text() || $('#network').val();
+
+        $('#confirmPhone').text($('#account_number').val());
+        $('#confirmNetwork').text(networkName);
+        $('#confirmFundingAccount').text(selectedFunding);
+
+        var modalElement = document.getElementById('disbursementConfirmModal');
+        if (window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        } else {
+            $('#disbursementConfirmModal').modal('show');
+        }
+    }
+
+    function hideDisbursementConfirmation() {
+        var modalElement = document.getElementById('disbursementConfirmModal');
+        if (window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalElement).hide();
+        } else {
+            $('#disbursementConfirmModal').modal('hide');
+        }
+    }
     
     $('#approveForm').on('submit', function(e) {
         // Prevent double submission
@@ -419,7 +552,7 @@ $(document).ready(function() {
             return false;
         }
         
-        var paymentType = $('#payment_type').val();
+        var paymentType = 'mobile_money';
         var accountNumber = $('#account_number').val();
         
         // Validate mobile money network is selected
@@ -430,27 +563,17 @@ $(document).ready(function() {
                 e.preventDefault();
                 return false;
             }
-            // Re-enable network field before submission so value is sent
-            $('#network').prop('disabled', false);
         }
-        
-        // Confirm action
-        var confirmMsg = 'Are you sure you want to disburse UGX {{ number_format($loan->disbursement_amount, 0) }}';
-        if (paymentType === 'mobile_money') {
-            var networkName = $('#detected_network_name').text() || $('#network').val();
-            confirmMsg += ' to ' + accountNumber + ' via ' + networkName;
-        }
-        confirmMsg += '?\n\nThis action cannot be undone.';
-        
-        if (!confirm(confirmMsg)) {
+
+        if (!confirmationApproved) {
             e.preventDefault();
-            // Re-disable network if user cancels
-            if (paymentType === 'mobile_money') {
-                $('#network').prop('disabled', true);
-            }
+            showDisbursementConfirmation();
             return false;
         }
         
+        // Re-enable network field before submission so value is sent.
+        $('#network').prop('disabled', false);
+
         // Set flag to prevent double submission
         isSubmitting = true;
         
@@ -463,8 +586,14 @@ $(document).ready(function() {
         return true;
     });
 
-    // Trigger initial payment type change to show mobile money by default
-    $('#payment_type').trigger('change');
+    $('#confirmDisbursementBtn').on('click', function() {
+        confirmationApproved = true;
+        hideDisbursementConfirmation();
+        $('#approveForm').trigger('submit');
+    });
+
+    // Show mobile money fields by default because all client disbursements use mobile money.
+    prepareMobileMoneyFields();
 });
 </script>
 @endpush

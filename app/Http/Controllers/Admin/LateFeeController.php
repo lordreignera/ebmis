@@ -10,6 +10,13 @@ use Illuminate\Support\Facades\DB;
 
 class LateFeeController extends Controller
 {
+    private function requireSuperAdmin()
+    {
+        if (!auth()->user()?->isSuperAdmin()) {
+            abort(403, 'Only the Super Administrator can waive late fees.');
+        }
+    }
+
     /**
      * Display a listing of late fees
      */
@@ -63,6 +70,8 @@ class LateFeeController extends Controller
      */
     public function waive(Request $request, LateFee $lateFee)
     {
+        $this->requireSuperAdmin();
+
         $request->validate([
             'reason' => 'required|string|max:500'
         ]);
@@ -81,6 +90,8 @@ class LateFeeController extends Controller
      */
     public function bulkWaive(Request $request)
     {
+        $this->requireSuperAdmin();
+
         $request->validate([
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
@@ -112,6 +123,8 @@ class LateFeeController extends Controller
      */
     public function showWaiveUpgrade()
     {
+        $this->requireSuperAdmin();
+
         return view('admin.late-fees.waive-upgrade');
     }
     
@@ -120,6 +133,8 @@ class LateFeeController extends Controller
      */
     public function waiveUpgradePeriod(Request $request)
     {
+        $this->requireSuperAdmin();
+
         $request->validate([
             'confirm' => 'required|accepted'
         ]);

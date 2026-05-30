@@ -12,17 +12,22 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('agency', function (Blueprint $table) {
-            // Add created_at and updated_at columns if they don't exist
             if (!Schema::hasColumn('agency', 'created_at')) {
-                $table->timestamp('created_at')->nullable()->after('datecreated');
+                $column = $table->timestamp('created_at')->nullable();
+
+                if (Schema::hasColumn('agency', 'datecreated')) {
+                    $column->after('datecreated');
+                }
             }
+
             if (!Schema::hasColumn('agency', 'updated_at')) {
                 $table->timestamp('updated_at')->nullable()->after('created_at');
             }
         });
-        
-        // Copy existing datecreated values to created_at
-        \DB::statement('UPDATE agency SET created_at = datecreated WHERE created_at IS NULL');
+
+        if (Schema::hasColumn('agency', 'datecreated') && Schema::hasColumn('agency', 'created_at')) {
+            \DB::statement('UPDATE agency SET created_at = datecreated WHERE created_at IS NULL');
+        }
     }
 
     /**
@@ -30,8 +35,14 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('agency', function (Blueprint $table) {
-            $table->dropColumn(['created_at', 'updated_at']);
-        });
+        $columns = array_values(array_filter(['created_at', 'updated_at'], function ($column) {
+            return Schema::hasColumn('agency', $column);
+        }));
+
+        if (!empty($columns)) {
+            Schema::table('agency', function (Blueprint $table) use ($columns) {
+                $table->dropColumn($columns);
+            });
+        }
     }
 };

@@ -826,9 +826,16 @@ class LoanController extends Controller
             $paymentRef = $request->input('payment_reference');
             $paymentNotes = $request->input('payment_notes');
 
+            if (!$request->user()?->isSuperAdmin() && (int) $paymentMethod !== 3) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Access denied. Only the Super Administrator can confirm cash or bank fee payments. Please use Mobile Money.');
+            }
+
             // Mobile money must go through the individual MM flow (storeLoanMobileMoneyPayment)
             // to ensure GL is only posted after the transaction actually confirms
-            if ($paymentMethod == 2) {
+            if ((int) $paymentMethod === 3) {
                 DB::rollBack();
                 return redirect()->back()
                     ->withInput()
@@ -893,7 +900,7 @@ class LoanController extends Controller
                     'amount' => $chargeAmount,
                     'description' => 'Upfront payment for ' . $charge->name . ' - Loan ' . $loan->code,
                     'added_by' => auth()->id(),
-                    'payment_status' => 'Paid',
+                    'payment_status' => 'Confirmed',
                     'payment_description' => $paymentNotes,
                     'pay_ref' => $paymentRef,
                     'status' => 1, // Paid
@@ -972,8 +979,15 @@ class LoanController extends Controller
             $paymentRef = $request->input('payment_reference');
             $paymentNotes = $request->input('payment_notes');
 
+            if (!$request->user()?->isSuperAdmin() && in_array((int) $paymentMethod, [2, 3, 4], true)) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Access denied. Only the Super Administrator can confirm cash or bank fee payments. Please use Mobile Money.');
+            }
+
             // Mobile money must go through storeLoanMobileMoneyPayment so GL posts on confirmation
-            if ($paymentMethod == 2) {
+            if ((int) $paymentMethod === 1) {
                 DB::rollBack();
                 return redirect()->back()
                     ->withInput()
@@ -1033,7 +1047,7 @@ class LoanController extends Controller
                 'amount' => $chargeAmount,
                 'description' => 'Upfront payment for ' . $charge->name . ' - Loan ' . $loan->code,
                 'added_by' => auth()->id(),
-                'payment_status' => 'Paid',
+                'payment_status' => 'Confirmed',
                 'payment_description' => $paymentNotes,
                 'pay_ref' => $paymentRef,
                 'status' => 1, // Paid
@@ -1225,7 +1239,7 @@ class LoanController extends Controller
             if ($statusResult['status'] === 'completed') {
                 $fee->update([
                     'status' => 1, // Paid
-                    'payment_status' => 'Paid',
+                    'payment_status' => 'Completed',
                     'payment_description' => $statusResult['message'] ?? 'Payment completed',
                     'payment_raw' => json_encode($statusResult)
                 ]);

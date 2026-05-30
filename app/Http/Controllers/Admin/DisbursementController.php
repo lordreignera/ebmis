@@ -357,9 +357,9 @@ class DisbursementController extends Controller
 
         $validator = Validator::make($request->all(), [
             'disbursement_date' => 'required|date|before_or_equal:today',
-            'payment_type' => 'required|in:mobile_money,bank_transfer,cash,cheque',
+            'payment_type' => 'required|in:mobile_money',
             'account_number' => 'required|string|max:50',
-            'network' => 'required_if:payment_type,mobile_money|in:MTN,AIRTEL',
+            'network' => 'required|in:MTN,AIRTEL',
             'investment_id' => 'required|exists:investment,id',
             'assigned_to' => 'nullable|exists:users,id',
             'comments' => 'nullable|string|max:100',
@@ -444,19 +444,8 @@ class DisbursementController extends Controller
                 $loan->save();
             }
 
-            // Convert payment_type to legacy format
-            $paymentTypeMapping = [
-                'mobile_money' => 1,
-                'cheque' => 2,
-                'bank_transfer' => 2,
-                'cash' => 2
-            ];
-
-            // Convert network to payment_medium
-            $paymentMedium = null;
-            if ($request->payment_type === 'mobile_money') {
-                $paymentMedium = $request->network === 'AIRTEL' ? 1 : 2; // 1=Airtel, 2=MTN
-            }
+            // Disbursement to clients is mobile money only. Funding still moves through FAN in accounting.
+            $paymentMedium = $request->network === 'AIRTEL' ? 1 : 2; // 1=Airtel, 2=MTN
 
             // Get account name based on loan type
             $accountName = $loanType == 1 
@@ -468,7 +457,7 @@ class DisbursementController extends Controller
                 'loan_type' => $loanType,
                 'amount' => $disbursementAmount,
                 'comments' => $request->filled('comments') ? substr($request->comments, 0, 100) : null,
-                'payment_type' => $paymentTypeMapping[$request->payment_type],
+                'payment_type' => 1,
                 'account_name' => $accountName,
                 'account_number' => $request->account_number,
                 'inv_id' => $request->investment_id,
@@ -485,99 +474,89 @@ class DisbursementController extends Controller
             // Record all charges and auto-deducted fees
             $this->recordAllCharges($loan, $chargeCalculation);
 
-            // Handle mobile money disbursement
-            if ($request->payment_type === 'mobile_money') {
-                $mobileMoneyResult = $this->processNewMobileMoneyDisbursement(
-                    $disbursement,
-                    $request->account_number,
-                    $request->network
-                );
+            $mobileMoneyResult = $this->processNewMobileMoneyDisbursement(
+                $disbursement,
+                $request->account_number,
+                $request->network
+            );
 
-                // Check if it's a timeout error
-                $isTimeout = isset($mobileMoneyResult['message']) && 
-                            (strpos($mobileMoneyResult['message'], 'cURL error 28') !== false ||
-                             strpos($mobileMoneyResult['message'], 'timed out') !== false ||
-                             strpos($mobileMoneyResult['message'], 'Operation timed out') !== false);
+            // Check if it's a timeout error
+            $isTimeout = isset($mobileMoneyResult['message']) && 
+                        (strpos($mobileMoneyResult['message'], 'cURL error 28') !== false ||
+                         strpos($mobileMoneyResult['message'], 'timed out') !== false ||
+                         strpos($mobileMoneyResult['message'], 'Operation timed out') !== false);
 
-                // CRITICAL: Check if money was sent (success OR timeout means money likely sent)
-                $moneySent = $mobileMoneyResult['success'] || $isTimeout;
+            // CRITICAL: Check if money was sent (success OR timeout means money likely sent)
+            $moneySent = $mobileMoneyResult['success'] || $isTimeout;
 
-                if ($moneySent) {
-                    // MONEY HAS LEFT - MUST complete disbursement no matter what
-                    // Wrap in try-catch to force completion even if there are DB errors
-                    try {
-                        $disbursement->update(['status' => 1]); // Processing
-                        $this->completeDisbursement($disbursement); // Creates schedules
-                        
-                        DB::commit();
-                        
-                        if ($isTimeout) {
-                            Log::warning('Disbursement completed despite timeout', [
-                                'loan_id' => $loan->id,
-                                'disbursement_id' => $disbursement->id,
-                                'message' => $mobileMoneyResult['message']
-                            ]);
-                            
-                            return redirect()->route('admin.loans.active')
-                                ->with('warning', 'Loan disbursed successfully. Mobile money payment initiated but confirmation pending due to slow network response.');
-                        }
-                    } catch (\Exception $completionError) {
-                        // CRITICAL: Money was sent but completion failed
-                        // Force schedule creation in a separate transaction
-                        Log::error('Money sent but disbursement completion failed - forcing schedule creation', [
+            if ($moneySent) {
+                // MONEY HAS LEFT - MUST complete disbursement no matter what
+                // Wrap in try-catch to force completion even if there are DB errors
+                try {
+                    $disbursement->update(['status' => 1]); // Processing
+                    $this->completeDisbursement($disbursement); // Creates schedules
+                    
+                    DB::commit();
+                    
+                    if ($isTimeout) {
+                        Log::warning('Disbursement completed despite timeout', [
                             'loan_id' => $loan->id,
                             'disbursement_id' => $disbursement->id,
-                            'error' => $completionError->getMessage()
+                            'message' => $mobileMoneyResult['message']
                         ]);
                         
-                        // Commit what we have so far
-                        try {
-                            DB::commit();
-                        } catch (\Exception $commitError) {
-                            // Transaction may already be rolled back
-                        }
-                        
-                        // Force schedule creation in new transaction
-                        try {
-                            DB::beginTransaction();
-                            $this->forceCompleteDisbursement($disbursement);
-                            DB::commit();
-                            
-                            Log::info('Successfully forced disbursement completion after error', [
-                                'loan_id' => $loan->id,
-                                'disbursement_id' => $disbursement->id
-                            ]);
-                            
-                            return redirect()->route('admin.loans.active')
-                                ->with('warning', 'Loan disbursed successfully. Money was sent but there were some database issues. Schedules have been created.');
-                        } catch (\Exception $forceError) {
-                            // Last resort failed - log for manual intervention
-                            Log::critical('MANUAL INTERVENTION REQUIRED: Money sent but could not create schedules', [
-                                'loan_id' => $loan->id,
-                                'disbursement_id' => $disbursement->id,
-                                'phone' => $request->account_number,
-                                'amount' => $disbursement->amount,
-                                'error' => $forceError->getMessage()
-                            ]);
-                            
-                            return redirect()->route('admin.loans.active')
-                                ->with('error', 'CRITICAL: Money was sent to customer but schedules could not be created. Please create schedules manually for loan ' . $loan->code);
-                        }
+                        return redirect()->route('admin.loans.active')
+                            ->with('warning', 'Loan disbursed successfully. Mobile money payment initiated but confirmation pending due to slow network response.');
                     }
-                } else {
-                    // Actual failure - money NOT sent - safe to rollback
-                    DB::rollBack();
-                    return redirect()->back()
-                        ->with('error', 'Mobile money disbursement failed: ' . $mobileMoneyResult['message'])
-                        ->withInput();
+                } catch (\Exception $completionError) {
+                    // CRITICAL: Money was sent but completion failed
+                    // Force schedule creation in a separate transaction
+                    Log::error('Money sent but disbursement completion failed - forcing schedule creation', [
+                        'loan_id' => $loan->id,
+                        'disbursement_id' => $disbursement->id,
+                        'error' => $completionError->getMessage()
+                    ]);
+                    
+                    // Commit what we have so far
+                    try {
+                        DB::commit();
+                    } catch (\Exception $commitError) {
+                        // Transaction may already be rolled back
+                    }
+                    
+                    // Force schedule creation in new transaction
+                    try {
+                        DB::beginTransaction();
+                        $this->forceCompleteDisbursement($disbursement);
+                        DB::commit();
+                        
+                        Log::info('Successfully forced disbursement completion after error', [
+                            'loan_id' => $loan->id,
+                            'disbursement_id' => $disbursement->id
+                        ]);
+                        
+                        return redirect()->route('admin.loans.active')
+                            ->with('warning', 'Loan disbursed successfully. Money was sent but there were some database issues. Schedules have been created.');
+                    } catch (\Exception $forceError) {
+                        // Last resort failed - log for manual intervention
+                        Log::critical('MANUAL INTERVENTION REQUIRED: Money sent but could not create schedules', [
+                            'loan_id' => $loan->id,
+                            'disbursement_id' => $disbursement->id,
+                            'phone' => $request->account_number,
+                            'amount' => $disbursement->amount,
+                            'error' => $forceError->getMessage()
+                        ]);
+                        
+                        return redirect()->route('admin.loans.active')
+                            ->with('error', 'CRITICAL: Money was sent to customer but schedules could not be created. Please create schedules manually for loan ' . $loan->code);
+                    }
                 }
             } else {
-                // For non-mobile money, mark as completed immediately and process
-                $result = $this->processChequeDisburstement($disbursement, $request->account_number);
-                if ($result['success']) {
-                    $disbursement->update(['status' => 1]);
-                    $this->completeDisbursement($disbursement);
-                }
+                // Actual failure - money NOT sent - safe to rollback
+                DB::rollBack();
+                return redirect()->back()
+                    ->with('error', 'Mobile money disbursement failed: ' . $mobileMoneyResult['message'])
+                    ->withInput();
             }
 
             DB::commit();
@@ -590,10 +569,7 @@ class DisbursementController extends Controller
                 'approved_by' => auth()->id(),
             ]);
 
-            $message = "Loan {$loan->code} disbursement approved successfully.";
-            if ($request->payment_type === 'mobile_money') {
-                $message .= " Mobile money transfer initiated.";
-            }
+            $message = "Loan {$loan->code} disbursement approved successfully. Mobile money transfer initiated.";
 
             return redirect()->route('admin.loans.active')
                 ->with('success', $message);
@@ -824,9 +800,9 @@ class DisbursementController extends Controller
         $validated = $request->validate([
             'loan_id' => 'required|exists:loans,id',
             'disbursement_date' => 'required|date',
-            'payment_type' => 'required|integer|in:1,2', // 1=Mobile Money, 2=Cheque
-            'payment_medium' => 'required_if:payment_type,1|integer|in:1,2', // 1=Airtel, 2=MTN
-            'account_number' => 'required|string|max:20', // Phone for MM, Account for cheque
+            'payment_type' => 'required|integer|in:1', // 1=Mobile Money
+            'payment_medium' => 'required|integer|in:1,2', // 1=Airtel, 2=MTN
+            'account_number' => 'required|string|max:20', // Mobile money phone number
             'investment_id' => 'required|exists:investments,id',
             'assigned_to' => 'nullable|exists:users,id',
             'notes' => 'nullable|string|max:1000',
@@ -932,14 +908,8 @@ class DisbursementController extends Controller
             // Record all charges and auto-deducted fees
             $this->recordAllCharges($loan, $chargeCalculation);
 
-            // Process disbursement based on payment type
-            if ($validated['payment_type'] == 1) {
-                // Mobile Money disbursement via FlexiPay
-                $result = $this->processMobileMoneyDisbursement($disbursement, $validated['account_number'], $validated['payment_medium']);
-            } else {
-                // Cheque disbursement
-                $result = $this->processChequeDisburstement($disbursement, $validated['account_number']);
-            }
+            // Client disbursement is mobile money only.
+            $result = $this->processMobileMoneyDisbursement($disbursement, $validated['account_number'], $validated['payment_medium']);
 
             if ($result['success']) {
                 // Complete disbursement if immediately successful
@@ -1304,6 +1274,18 @@ class DisbursementController extends Controller
             }
         } catch (\Exception $e) {
             Log::warning('Failed to deduct from investment but disbursement complete', ['error' => $e->getMessage()]);
+        }
+
+        // Step 6: Post GL if possible. AccountingService has an idempotency guard,
+        // so this is safe even if a previous completion attempt already posted it.
+        try {
+            $accountingService = new \App\Services\AccountingService();
+            $accountingService->postDisbursementEntry($disbursement->fresh());
+        } catch (\Exception $e) {
+            Log::warning('Failed to post GL during forced disbursement completion', [
+                'disbursement_id' => $disbursement->id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         Log::info('Force disbursement completion successful');

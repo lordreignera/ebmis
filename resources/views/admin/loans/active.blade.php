@@ -4,6 +4,289 @@
 
 @push('styles')
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+<style>
+    .followup-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: .75rem;
+        margin-bottom: 1rem;
+    }
+
+    .followup-chip {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: .75rem .9rem;
+        background: #fff;
+        min-width: 0;
+    }
+
+    .followup-chip span {
+        display: block;
+        color: #64748b;
+        font-size: .75rem;
+        text-transform: uppercase;
+        letter-spacing: .02em;
+    }
+
+    .followup-chip strong {
+        display: block;
+        color: #0f172a;
+        font-size: 1.15rem;
+        line-height: 1.2;
+        margin-top: .15rem;
+    }
+
+    .loan-list {
+        display: grid;
+        gap: .65rem;
+        overflow-x: visible;
+    }
+
+    .loan-list-head,
+    .loan-list-row {
+        display: grid;
+        grid-template-columns: 1.45fr .9fr .9fr .9fr .9fr 1fr 1.15fr 1.35fr;
+        gap: .75rem;
+        align-items: center;
+    }
+
+    .loan-list-head {
+        padding: .65rem .85rem;
+        color: #64748b;
+        font-size: .72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .02em;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .loan-list-row {
+        padding: .85rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .loan-list-row.is-warning {
+        border-color: #facc15;
+        background: #fffbeb;
+    }
+
+    .loan-cell {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .loan-cell-label {
+        display: none;
+        color: #64748b;
+        font-size: .72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: .2rem;
+    }
+
+    .loan-money {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .loan-subtext {
+        color: #64748b;
+        font-size: .78rem;
+    }
+
+    .loan-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .35rem;
+    }
+
+    .loan-actions .btn {
+        white-space: normal;
+        line-height: 1.15;
+    }
+
+    .table-container {
+        overflow-x: visible;
+    }
+
+    .table-header,
+    .table-actions {
+        flex-wrap: wrap;
+        gap: .5rem;
+    }
+
+    .table-search,
+    .table-search input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    #followUpModal .modal-dialog {
+        width: min(720px, calc(100% - 2rem));
+        max-width: 720px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    #followUpModal .modal-content {
+        border: 0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    #followUpModal .modal-header,
+    #followUpModal .modal-footer {
+        padding: .65rem 1rem;
+    }
+
+    #followUpModal .modal-body {
+        max-height: calc(100vh - 190px);
+        overflow-y: auto;
+        padding: .9rem 1rem;
+    }
+
+    #followUpModal .form-label {
+        margin-bottom: .25rem;
+        font-size: .82rem;
+    }
+
+    #followUpModal .form-control,
+    #followUpModal .form-select {
+        min-height: 36px;
+        padding-top: .4rem;
+        padding-bottom: .4rem;
+    }
+
+    .active-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .active-kpi-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, .06);
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .active-kpi-card .card-body {
+        min-height: 136px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: .75rem;
+    }
+
+    .active-kpi-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: .75rem;
+    }
+
+    .active-kpi-label {
+        color: #64748b;
+        font-size: .78rem;
+        font-weight: 700;
+        line-height: 1.2;
+        text-transform: uppercase;
+    }
+
+    .active-kpi-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        font-size: 1.05rem;
+    }
+
+    .active-kpi-value {
+        color: #0f172a;
+        font-size: clamp(1.25rem, 1.7vw, 1.75rem);
+        font-weight: 800;
+        line-height: 1.08;
+        overflow-wrap: anywhere;
+    }
+
+    .active-kpi-subtext {
+        color: #64748b;
+        font-size: .78rem;
+        line-height: 1.25;
+    }
+
+    .kpi-blue .active-kpi-icon {
+        color: #0f5fb8;
+        background: #e0f2fe;
+    }
+
+    .kpi-teal .active-kpi-icon {
+        color: #0f766e;
+        background: #ccfbf1;
+    }
+
+    .kpi-amber .active-kpi-icon {
+        color: #a16207;
+        background: #fef3c7;
+    }
+
+    .kpi-rose .active-kpi-icon {
+        color: #be123c;
+        background: #ffe4e6;
+    }
+
+    .kpi-red .active-kpi-icon {
+        color: #b91c1c;
+        background: #fee2e2;
+    }
+
+    .kpi-green .active-kpi-icon {
+        color: #15803d;
+        background: #dcfce7;
+    }
+
+    @media (max-width: 1199.98px) {
+        .active-kpi-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .loan-list-head {
+            display: none;
+        }
+
+        .loan-list-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .loan-cell-label {
+            display: block;
+        }
+
+        .followup-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .active-kpi-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .loan-list-row,
+        .followup-strip {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
 @endpush
 
 @section('content')
@@ -39,88 +322,89 @@
         </div>
     @endif
 
-    <!-- Stats Cards -->
-    <div class="row">
-        <div class="col-xl-3 col-md-6">
-            <div class="card" style="height: 150px;">
-                <div class="card-body d-flex align-items-center">
-                    <div class="row align-items-center w-100">
-                        <div class="col-6">
-                            <h5 class="text-muted fw-normal mt-0 text-truncate" title="Total Active Loans">Active Loans</h5>
-                            <h3 class="my-2 py-1">{{ $stats['total_active'] ?? 0 }}</h3>
-                            <p class="mb-0 text-muted">
-                                <span class="text-nowrap">Total Count</span>
-                            </p>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-end">
-                                <div id="active-loans-chart" data-colors="#0066cc"></div>
-                            </div>
-                        </div>
-                    </div>
+    @if($errors->any())
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle me-2"></i>
+            {{ $errors->first() }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    <div class="active-kpi-grid">
+        <div class="active-kpi-card kpi-blue">
+            <div class="card-body">
+                <div class="active-kpi-top">
+                    <div class="active-kpi-label">Active Loans</div>
+                    <span class="active-kpi-icon"><i class="mdi mdi-account-multiple-outline"></i></span>
+                </div>
+                <div>
+                    <div class="active-kpi-value">{{ number_format($stats['total_active'] ?? 0, 0) }}</div>
+                    <div class="active-kpi-subtext">Loans with unpaid balances</div>
                 </div>
             </div>
         </div>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card" style="height: 150px;">
-                <div class="card-body d-flex align-items-center">
-                    <div class="row align-items-center w-100">
-                        <div class="col-6">
-                            <h5 class="text-muted fw-normal mt-0 text-truncate" title="Outstanding Amount">Outstanding</h5>
-                            <h3 class="my-2 py-1" style="font-size: 1.5rem;">{{ number_format($stats['outstanding_amount'] ?? 0, 0) }}</h3>
-                            <p class="mb-0 text-muted">
-                                <span class="text-nowrap">UGX</span>
-                            </p>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-end">
-                                <div id="outstanding-chart" data-colors="#ff6b35"></div>
-                            </div>
-                        </div>
-                    </div>
+        <div class="active-kpi-card kpi-teal">
+            <div class="card-body">
+                <div class="active-kpi-top">
+                    <div class="active-kpi-label">Principal Due</div>
+                    <span class="active-kpi-icon"><i class="mdi mdi-cash-multiple"></i></span>
+                </div>
+                <div>
+                    <div class="active-kpi-value">{{ number_format($stats['outstanding_principal'] ?? 0, 0) }}</div>
+                    <div class="active-kpi-subtext">UGX unpaid principal</div>
                 </div>
             </div>
         </div>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card" style="height: 150px;">
-                <div class="card-body d-flex align-items-center">
-                    <div class="row align-items-center w-100">
-                        <div class="col-6">
-                            <h5 class="text-muted fw-normal mt-0 text-truncate" title="Overdue Loans">Overdue</h5>
-                            <h3 class="my-2 py-1 text-danger">{{ $stats['overdue_count'] ?? 0 }}</h3>
-                            <p class="mb-0 text-muted">
-                                <span class="text-nowrap">Loans</span>
-                            </p>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-end">
-                                <div id="overdue-chart" data-colors="#dc3545"></div>
-                            </div>
-                        </div>
-                    </div>
+        <div class="active-kpi-card kpi-amber">
+            <div class="card-body">
+                <div class="active-kpi-top">
+                    <div class="active-kpi-label">Interest Due</div>
+                    <span class="active-kpi-icon"><i class="mdi mdi-percent-outline"></i></span>
+                </div>
+                <div>
+                    <div class="active-kpi-value">{{ number_format($stats['outstanding_interest'] ?? 0, 0) }}</div>
+                    <div class="active-kpi-subtext">UGX unpaid interest</div>
                 </div>
             </div>
         </div>
 
-        <div class="col-xl-3 col-md-6">
-            <div class="card" style="height: 150px;">
-                <div class="card-body d-flex align-items-center">
-                    <div class="row align-items-center w-100">
-                        <div class="col-6">
-                            <h5 class="text-muted fw-normal mt-0 text-truncate" title="Collections Today">Today's Collections</h5>
-                            <h3 class="my-2 py-1 text-success">{{ number_format($stats['collections_today'] ?? 0, 0) }}</h3>
-                            <p class="mb-0 text-muted">
-                                <span class="text-nowrap">UGX</span>
-                            </p>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-end">
-                                <div id="collections-chart" data-colors="#28a745"></div>
-                            </div>
-                        </div>
-                    </div>
+        <div class="active-kpi-card kpi-rose">
+            <div class="card-body">
+                <div class="active-kpi-top">
+                    <div class="active-kpi-label">Late Fees Due</div>
+                    <span class="active-kpi-icon"><i class="mdi mdi-alert-circle-outline"></i></span>
+                </div>
+                <div>
+                    <div class="active-kpi-value">{{ number_format($stats['outstanding_late_fees'] ?? 0, 0) }}</div>
+                    <div class="active-kpi-subtext">UGX after waivers</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="active-kpi-card kpi-red">
+            <div class="card-body">
+                <div class="active-kpi-top">
+                    <div class="active-kpi-label">Overdue Loans</div>
+                    <span class="active-kpi-icon"><i class="mdi mdi-calendar-alert"></i></span>
+                </div>
+                <div>
+                    <div class="active-kpi-value">{{ number_format($stats['overdue_count'] ?? 0, 0) }}</div>
+                    <div class="active-kpi-subtext">Loans past due date</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="active-kpi-card kpi-green">
+            <div class="card-body">
+                <div class="active-kpi-top">
+                    <div class="active-kpi-label">Today's Collections</div>
+                    <span class="active-kpi-icon"><i class="mdi mdi-cash-check"></i></span>
+                </div>
+                <div>
+                    <div class="active-kpi-value">{{ number_format($stats['collections_today'] ?? 0, 0) }}</div>
+                    <div class="active-kpi-subtext">UGX collected today</div>
                 </div>
             </div>
         </div>
@@ -172,6 +456,8 @@
                                 <option value="current" {{ request('status') == 'current' ? 'selected' : '' }}>Current</option>
                                 <option value="overdue" {{ request('status') == 'overdue' ? 'selected' : '' }}>Overdue</option>
                                 <option value="restructured" {{ request('status') == 'restructured' ? 'selected' : '' }}>Restructured</option>
+                                <option value="risk_followup" {{ request('status') == 'risk_followup' ? 'selected' : '' }}>Risk Follow-up</option>
+                                <option value="missing_followup" {{ request('status') == 'missing_followup' ? 'selected' : '' }}>No Follow-up</option>
                             </select>
                         </div>
                         
@@ -220,6 +506,24 @@
                 </div>
                 <div class="card-body">
                     @if($loans->count() > 0)
+                        <div class="followup-strip">
+                            <div class="followup-chip">
+                                <span>Risk follow-up</span>
+                                <strong>{{ $stats['risk_followup_count'] ?? 0 }}</strong>
+                            </div>
+                            <div class="followup-chip">
+                                <span>Recorded</span>
+                                <strong class="text-success">{{ $stats['followed_up_count'] ?? 0 }}</strong>
+                            </div>
+                            <div class="followup-chip">
+                                <span>Missing</span>
+                                <strong class="text-danger">{{ $stats['missing_followup_count'] ?? 0 }}</strong>
+                            </div>
+                            <div class="followup-chip">
+                                <span>Due today</span>
+                                <strong class="text-warning">{{ $stats['followup_due_count'] ?? 0 }}</strong>
+                            </div>
+                        </div>
                         <div class="table-container">
                             <div class="table-header">
                                 <div class="table-search">
@@ -228,8 +532,9 @@
                                 <div class="table-actions">
                                     <div class="table-show-entries">
                                         Show 
-                                        <select onchange="window.location.href='{{ url()->current() }}?per_page='+this.value">
-                                            <option value="10" {{ request('per_page', 10) == 10 ? 'selected' : '' }}>10</option>
+                                        <select onchange="const url = new URL(window.location.href); url.searchParams.set('per_page', this.value); url.searchParams.delete('page'); window.location.href = url.toString();">
+                                            <option value="10" {{ request('per_page', 20) == 10 ? 'selected' : '' }}>10</option>
+                                            <option value="20" {{ request('per_page', 20) == 20 ? 'selected' : '' }}>20</option>
                                             <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
                                             <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
                                             <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
@@ -251,21 +556,17 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="table-responsive">
-                                <table class="modern-table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 5%;">#</th>
-                                        <th style="width: 20%;">Member Name</th>
-                                        <th style="width: 15%;">Branch</th>
-                                        <th style="width: 15%;">Code</th>
-                                        <th style="width: 10%;">Loan Type</th>
-                                        <th style="width: 12%;">Principal</th>
-                                        <th style="width: 13%;">Date Disbursed</th>
-                                        <th style="width: 10%;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                            <div class="loan-list">
+                                <div class="loan-list-head">
+                                    <div>Borrower</div>
+                                    <div>Branch</div>
+                                    <div>Loan</div>
+                                    <div>Principal</div>
+                                    <div>Outstanding</div>
+                                    <div>Risk</div>
+                                    <div>Follow-up</div>
+                                    <div>Actions</div>
+                                </div>
                                     @foreach($loans as $index => $loan)
                                         @php
                                             // Determine loan type based on product's period_type
@@ -278,44 +579,84 @@
                                             } elseif($periodType == 3) {
                                                 $loanTypeLabel = 'Daily';
                                             }
+                                            $latestFollowUp = $loan->latest_follow_up ?? null;
                                         @endphp
-                                        <tr class="{{ ($loan->is_potential_duplicate ?? false) ? 'table-warning' : '' }}">
-                                            <td>{{ $loans->firstItem() + $index }}</td>
-                                            <td>
-                                                <div class="fw-medium">{{ $loan->borrower_name }}</div>
+                                        <div class="loan-list-row {{ ($loan->is_potential_duplicate ?? false) ? 'is-warning' : '' }}" data-loan-search="{{ strtolower($loan->borrower_name . ' ' . $loan->loan_code . ' ' . ($loan->branch_name ?? '') . ' ' . ($loan->risk_classification ?? '')) }}">
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Borrower</span>
+                                                <div class="fw-semibold">{{ $loans->firstItem() + $index }}. {{ $loan->borrower_name }}</div>
+                                                <div class="loan-subtext">{{ $loan->phone_number ?? 'N/A' }}</div>
                                                 @if($loan->is_potential_duplicate ?? false)
                                                     <small class="badge bg-warning text-dark">{{ $loan->duplicate_loans_count ?? 0 }} loans in 2025</small>
                                                 @endif
-                                            </td>
-                                            <td>
-                                                <small class="text-muted">{{ $loan->branch_name ?? 'No Branch' }}</small>
-                                            </td>
-                                            <td>
-                                                <span class="account-number">{{ $loan->loan_code }}</span>
-                                            </td>
-                                            <td>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Branch</span>
+                                                <div>{{ $loan->branch_name ?? 'No Branch' }}</div>
+                                                <div class="loan-subtext">{{ $loan->product_name ?? 'N/A' }}</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Loan</span>
+                                                <div class="account-number">{{ $loan->loan_code }}</div>
                                                 <span class="status-badge status-{{ $periodType == 1 ? 'verified' : ($periodType == 2 ? 'pending' : 'individual') }}">
                                                     {{ $loanTypeLabel }}
                                                 </span>
-                                            </td>
-                                            <td class="text-end">
-                                                <span class="fw-semibold">{{ number_format($loan->principal_amount, 0) }}</span>
-                                            </td>
-                                            <td class="text-center">
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Principal</span>
+                                                <div class="loan-money">{{ number_format($loan->principal_amount, 0) }}</div>
                                                 @if(isset($loan->disbursement_date))
-                                                    <small>{{ date('Y-m-d H:i', strtotime($loan->disbursement_date)) }}</small>
-                                                @else
-                                                    <small class="text-muted">N/A</small>
+                                                    <div class="loan-subtext">{{ date('Y-m-d', strtotime($loan->disbursement_date)) }}</div>
                                                 @endif
-                                            </td>
-                                            <td>
-                                                <div class="d-flex gap-1">
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Outstanding</span>
+                                                <div class="loan-money">{{ number_format($loan->outstanding_balance ?? 0, 0) }}</div>
+                                                <div class="loan-subtext">P {{ number_format($loan->outstanding_principal ?? 0, 0) }} / I {{ number_format($loan->outstanding_interest ?? 0, 0) }} / L {{ number_format($loan->outstanding_late_fees ?? 0, 0) }}</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Risk</span>
+                                                <span class="badge bg-{{ $loan->risk_badge ?? 'secondary' }}">{{ $loan->risk_classification ?? 'Unknown' }}</span>
+                                                <div class="loan-subtext">{{ $loan->risk_dpd ?? 0 }} DPD, {{ $loan->risk_overdue_installments ?? 0 }} missed</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Follow-up</span>
+                                                @if($latestFollowUp)
+                                                    <div class="fw-semibold">{{ ucwords(str_replace('_', ' ', $latestFollowUp->outcome)) }}</div>
+                                                    <div class="loan-subtext">{{ optional($latestFollowUp->follow_up_at)->format('Y-m-d H:i') }} by {{ $latestFollowUp->createdBy->name ?? 'Staff' }}</div>
+                                                    @if($latestFollowUp->next_follow_up_date)
+                                                        <span class="badge {{ ($loan->follow_up_due ?? false) ? 'bg-warning text-dark' : 'bg-light text-dark' }}">
+                                                            Next {{ $latestFollowUp->next_follow_up_date->format('Y-m-d') }}
+                                                        </span>
+                                                    @endif
+                                                @elseif($loan->requires_follow_up ?? false)
+                                                    <span class="badge bg-danger">Pending</span>
+                                                @else
+                                                    <span class="badge bg-light text-dark">Not due</span>
+                                                @endif
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Actions</span>
+                                                <div class="loan-actions">
                                                     <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
-                                                       class="btn btn-sm btn-primary">
-                                                        <i class="mdi mdi-calendar-clock"></i> View Schedules
+                                                       class="btn btn-sm btn-primary" title="View repayment schedules">
+                                                        <i class="mdi mdi-calendar-clock"></i> Schedules
                                                     </a>
+                                                    <button type="button"
+                                                            class="btn btn-sm {{ ($loan->requires_follow_up ?? false) && !($loan->has_follow_up ?? false) ? 'btn-warning' : 'btn-outline-secondary' }} btn-follow-up"
+                                                            data-loan-id="{{ $loan->id }}"
+                                                            data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                            data-loan-code="{{ $loan->loan_code }}"
+                                                            data-borrower-name="{{ $loan->borrower_name }}"
+                                                            data-risk-classification="{{ $loan->risk_classification ?? 'Unknown' }}"
+                                                            data-dpd="{{ $loan->risk_dpd ?? 0 }}"
+                                                            data-next-due-amount="{{ $loan->next_due_amount ?? 0 }}"
+                                                            data-next-due-date="{{ $loan->next_due_date ?? '' }}"
+                                                            title="Record collection follow-up">
+                                                        <i class="mdi mdi-phone-forward"></i> Follow-up
+                                                    </button>
                                                     
-                                                    @if(($loan->is_potential_duplicate ?? false) && (auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator'])))
+                                                    @if(($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
                                                         <button type="button" 
                                                                 class="btn btn-sm btn-danger btn-stop-loan"
                                                                 data-loan-id="{{ $loan->id }}"
@@ -328,11 +669,9 @@
                                                         </button>
                                                     @endif
                                                 </div>
-                                            </td>
-                                        </tr>
+                                            </div>
+                                        </div>
                                     @endforeach
-                                </tbody>
-                            </table>
                             </div>
                             <div class="modern-pagination">
                                 <div class="pagination-info">
@@ -412,6 +751,116 @@
     </div>
 </div>
 
+<!-- Follow-up Modal -->
+<div class="modal fade" id="followUpModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white !important;">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title"><i class="mdi mdi-phone-forward me-2"></i>Loan Follow-up</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ route('admin.loans.follow-ups.store') }}" id="followUpForm">
+                @csrf
+                <div class="modal-body" style="background: white !important;">
+                    <input type="hidden" name="loan_id" id="followup_loan_id">
+                    <input type="hidden" name="loan_type" id="followup_loan_type">
+
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Loan Code</label>
+                            <input type="text" class="form-control" id="followup_loan_code" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Borrower</label>
+                            <input type="text" class="form-control" id="followup_borrower_name" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Risk Class</label>
+                            <input type="text" class="form-control" id="followup_risk" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Contact Method <span class="text-danger">*</span></label>
+                            <select class="form-select" name="contact_method" id="followup_contact_method" required>
+                                <option value="">Select method</option>
+                                <option value="call">Phone Call</option>
+                                <option value="sms">SMS</option>
+                                <option value="field_visit">Field Visit</option>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="office_visit">Office Visit</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Outcome <span class="text-danger">*</span></label>
+                            <select class="form-select" name="outcome" id="followup_outcome" required>
+                                <option value="">Select outcome</option>
+                                <option value="promised_to_pay">Promised to Pay</option>
+                                <option value="willing_to_pay">Willing to Pay</option>
+                                <option value="not_reachable">Not Reachable</option>
+                                <option value="refused">Refused</option>
+                                <option value="reschedule_requested">Reschedule Requested</option>
+                                <option value="dispute">Dispute Raised</option>
+                                <option value="paid_after_contact">Paid After Contact</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Next Action</label>
+                            <select class="form-select" name="next_action" id="followup_next_action">
+                                <option value="">Select next action</option>
+                                <option value="call_again">Call Again</option>
+                                <option value="send_sms">Send SMS</option>
+                                <option value="field_visit">Field Visit</option>
+                                <option value="escalate_to_manager">Escalate to Manager</option>
+                                <option value="restructure">Restructure Review</option>
+                                <option value="legal_recovery">Legal Recovery</option>
+                                <option value="none">No Further Action</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Promise Date</label>
+                            <input type="date" class="form-control" name="promise_date" id="followup_promise_date">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Promise Amount</label>
+                            <input type="number" class="form-control" name="promise_amount" id="followup_promise_amount" min="0" step="0.01">
+                            <div class="form-text" id="followup_promise_amount_hint"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Next Follow-up</label>
+                            <input type="date" class="form-control" name="next_follow_up_date" id="followup_next_date">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input type="hidden" name="sms_sent" value="0">
+                                <input class="form-check-input" type="checkbox" name="sms_sent" value="1" id="followup_sms_sent">
+                                <label class="form-check-label" for="followup_sms_sent">SMS was sent or should be sent</label>
+                            </div>
+                        </div>
+                        <div class="col-12" id="followup_sms_message_wrap" style="display: none;">
+                            <label class="form-label fw-bold">SMS Message</label>
+                            <textarea class="form-control" name="sms_message" id="followup_sms_message" rows="2" maxlength="1000">Dear client, please contact us about your loan repayment. Thank you.</textarea>
+                            <div class="form-text">This will create an SMS record and mark it as sent through the existing SMS module.</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold">Notes <span class="text-danger">*</span></label>
+                            <textarea class="form-control" name="notes" id="followup_notes" rows="2" required></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background: white !important; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="mdi mdi-content-save me-1"></i>Save Follow-up
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Reschedule Modal -->
 <div class="modal fade" id="rescheduleModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -459,10 +908,15 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-bold" style="color: #000;">Apply Late Fee Waiver?</label>
-                        <select class="form-select" id="reschedule_waive_fees">
-                            <option value="0">No - Keep existing late fees</option>
-                            <option value="1">Yes - Waive all late fees</option>
-                        </select>
+                        @if(auth()->user()->isSuperAdmin())
+                            <select class="form-select" id="reschedule_waive_fees">
+                                <option value="0">No - Keep existing late fees</option>
+                                <option value="1">Yes - Waive all late fees</option>
+                            </select>
+                        @else
+                            <input type="hidden" id="reschedule_waive_fees" value="0">
+                            <div class="form-control bg-light">No - only the Super Administrator can waive late fees</div>
+                        @endif
                     </div>
                 </div>
                 <div class="modal-footer" style="background: white !important; border-top: 1px solid #dee2e6;">
@@ -520,7 +974,7 @@
                         <label class="form-label" style="color: #000; font-weight: 500;">Payment Method <span class="text-danger">*</span></label>
                         <select class="form-select" id="modal_payment_method" required>
                             <option value="">Select Payment Method</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="2">Mobile Money</option>
                                 <option value="1">Cash</option>
                                 <option value="3">Bank Transfer</option>
@@ -604,14 +1058,91 @@ $(document).ready(function() {
         var disbursementDate = $(this).data('disbursement-date');
         var duplicateCount = $(this).data('duplicate-count');
         
-        console.log('Stop button clicked', {loanId, borrowerName, loanCode, disbursementDate, duplicateCount});
-        
         confirmStopLoan(loanId, borrowerName, loanCode, disbursementDate, duplicateCount);
     });
+
+    $(document).on('click', '.btn-follow-up', function() {
+        $('#followUpForm')[0].reset();
+        $('#followup_loan_id').val($(this).data('loan-id'));
+        $('#followup_loan_type').val($(this).data('loan-type'));
+        $('#followup_loan_code').val($(this).data('loan-code'));
+        $('#followup_borrower_name').val($(this).data('borrower-name'));
+        $('#followup_risk').val(($(this).data('risk-classification') || 'Unknown') + ' / ' + ($(this).data('dpd') || 0) + ' DPD');
+
+        const nextDueAmount = parseFloat($(this).data('next-due-amount')) || 0;
+        const nextDueDate = $(this).data('next-due-date') || '';
+        $('#followup_promise_amount').val(nextDueAmount > 0 ? nextDueAmount.toFixed(2) : '');
+        $('#followup_promise_amount_hint').text(
+            nextDueAmount > 0
+                ? 'Auto-filled from next unpaid schedule' + (nextDueDate ? ' due ' + nextDueDate : '') + '.'
+                : 'No unpaid schedule amount found.'
+        );
+
+        toggleFollowUpSmsFields();
+        $('#followUpModal').modal('show');
+    });
+
+    $('#followup_contact_method, #followup_next_action, #followup_sms_sent').on('change', function() {
+        if ($('#followup_contact_method').val() === 'sms' || $('#followup_next_action').val() === 'send_sms') {
+            $('#followup_sms_sent').prop('checked', true);
+        }
+
+        toggleFollowUpSmsFields();
+    });
+
+    $('#followUpForm').on('submit', function(e) {
+        e.preventDefault();
+
+        const form = $(this);
+        const submitButton = form.find('button[type="submit"]');
+        const originalHtml = submitButton.html();
+
+        submitButton.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i>Saving...');
+
+        $.ajax({
+            url: form.attr('action'),
+            method: 'POST',
+            data: form.serialize(),
+            headers: {
+                'Accept': 'application/json'
+            },
+            success: function(response) {
+                $('#followUpModal').modal('hide');
+                Swal.fire('Saved', response.message || 'Follow-up recorded successfully.', 'success')
+                    .then(() => window.location.reload());
+            },
+            error: function(xhr) {
+                const errors = xhr.responseJSON?.errors;
+                let message = xhr.responseJSON?.message || 'Failed to save follow-up.';
+
+                if (errors) {
+                    const firstField = Object.keys(errors)[0];
+                    if (firstField && errors[firstField] && errors[firstField][0]) {
+                        message = errors[firstField][0];
+                    }
+                }
+
+                Swal.fire('Not saved', message, 'error');
+            },
+            complete: function() {
+                submitButton.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
     
-    // Debug: Check if buttons exist
-    console.log('Stop loan buttons found:', $('.btn-stop-loan').length);
 });
+
+function toggleFollowUpSmsFields() {
+    if ($('#followup_sms_sent').is(':checked')) {
+        $('#followup_sms_message_wrap').show();
+        if (!$('#followup_sms_message').val().trim()) {
+            $('#followup_sms_message').val('Dear client, please contact us about your loan repayment. Thank you.');
+        }
+    } else {
+        $('#followup_sms_message_wrap').hide();
+        $('#followup_sms_message').val('');
+    }
+}
 
 function quickRepay(loanId, loanCode, dueAmount, phone) {
     $('#modal_loan_id').val(loanId);
@@ -697,7 +1228,7 @@ $('#quickRepayForm').on('submit', function(e) {
 
 // Auto-detect network from phone number
 $('#modal_phone').on('input', function() {
-    if ($('#modal_payment_method').val() === 'mobile_money') {
+    if ($('#modal_payment_method').val() === '2') {
         var phone = $(this).val().replace(/[^0-9]/g, '');
         
         if (phone.length >= 9) {

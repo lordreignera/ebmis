@@ -10,8 +10,7 @@ use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 use App\Services\DisbursementService;
 use App\Models\PersonalLoan;
-use App\Models\Product;
-use App\Models\Member;
+use App\Models\User;
 use App\Models\FeeType;
 use App\Models\ProductCharge;
 
@@ -52,40 +51,35 @@ class LoanManagementWorkflowTest extends TestCase
      */
     public function test_fee_calculation_service()
     {
-        // Create a simple product
-        $product = new Product();
-        $product->name = 'Test Loan Product';
-        $product->interest = 15.0;
-        $product->type = 1; // Loan product
-        $product->isactive = true;
-        $product->save();
+        $user = User::factory()->create();
+        $loan = PersonalLoan::factory()->create([
+            'principal' => 1000000,
+            'interest' => 15.0,
+        ]);
 
-        // Create a fee type
-        $feeType = new FeeType();
-        $feeType->name = 'Processing Fee';
-        $feeType->active = true;
-        $feeType->save();
+        $feeType = FeeType::create([
+            'name' => 'Processing Fee',
+            'account' => 1,
+            'added_by' => $user->id,
+            'isactive' => 1,
+            'required_disbursement' => 1,
+        ]);
 
-        // Create a product charge
-        $charge = new ProductCharge();
-        $charge->product_id = $product->id;
-        $charge->fee_type_id = $feeType->id;
-        $charge->charge_type = 'deducted';
-        $charge->amount_type = 'percentage';
-        $charge->amount = 2.5;
-        $charge->mandatory = true;
-        $charge->active = true;
-        $charge->save();
+        ProductCharge::create([
+            'product_id' => $loan->product_type,
+            'name' => $feeType->name,
+            'type' => 2,
+            'value' => '2.5',
+            'added_by' => $user->id,
+            'isactive' => 1,
+        ]);
 
         $feeService = app(FeeManagementService::class);
-        $principal = 1000000; // 1M UGX
+        $fees = $feeService->calculateLoanFees($loan);
 
-        $result = $feeService->calculateLoanFees($product->id, $principal);
-
-        $this->assertTrue($result['success']);
-        $this->assertArrayHasKey('total_fees', $result);
-        $this->assertArrayHasKey('disbursement_amount', $result);
-        $this->assertGreaterThan(0, $result['total_fees']);
+        $this->assertCount(1, $fees);
+        $this->assertEquals(25000.0, $fees->first()['calculated_amount']);
+        $this->assertTrue($fees->first()['is_mandatory']);
         
         echo "✅ Fee calculation service works correctly\n";
     }
@@ -96,26 +90,22 @@ class LoanManagementWorkflowTest extends TestCase
     public function test_schedule_generation_service()
     {
         $scheduleService = app(LoanScheduleService::class);
-        
-        // Create a mock loan object with necessary data
-        $mockLoan = (object) [
-            'principal' => 1000000, // 1M UGX
-            'interest' => 15.0, // 15% annual
-            'period' => 12, // 12 months
-            'period_type' => 'months',
-            'date_disbursed' => now()->format('Y-m-d')
-        ];
+        $loan = PersonalLoan::factory()->create([
+            'principal' => 1000000,
+            'interest' => 15.0,
+            'period' => 12,
+        ]);
 
-        $schedule = $scheduleService->generateSchedule($mockLoan);
+        $schedule = $scheduleService->generateSchedule($loan);
 
         $this->assertInstanceOf(Collection::class, $schedule);
         $this->assertGreaterThan(0, $schedule->count());
         if ($schedule->count() > 0) {
             $firstPayment = $schedule->first();
             $this->assertArrayHasKey('payment_date', $firstPayment);
-            $this->assertArrayHasKey('total_payment', $firstPayment);
-            $this->assertArrayHasKey('principal_payment', $firstPayment);
-            $this->assertArrayHasKey('interest_payment', $firstPayment);
+            $this->assertArrayHasKey('payment', $firstPayment);
+            $this->assertArrayHasKey('principal', $firstPayment);
+            $this->assertArrayHasKey('interest', $firstPayment);
         }
 
         echo "✅ Schedule generation service works correctly\n";
@@ -136,7 +126,7 @@ class LoanManagementWorkflowTest extends TestCase
         // Test Airtel number
         $airtelNumber = '256750123456';
         $network = $mobileMoneyService->detectNetwork($airtelNumber);
-        $this->assertEquals('Airtel', $network); // Returns string 'Airtel'
+        $this->assertEquals('AIRTEL', $network);
 
         echo "✅ Mobile money network detection works correctly\n";
     }

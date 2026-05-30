@@ -7,6 +7,9 @@ use App\Models\Repayment;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
+use App\Models\LoanFollowUp;
+use App\Models\BulkSms;
+use App\Models\SmsLog;
 use App\Models\Member;
 use App\Models\Branch;
 use App\Models\LoanSchedule;
@@ -20,6 +23,7 @@ use App\Services\RepaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
@@ -171,14 +175,16 @@ class RepaymentController extends Controller
     /**
      * Calculate KPI totals (principal/interest/penalties/fees) from repayments
      */
-    protected function calculateRepaymentKpiTotals($repayments, $kpiStart = null, $kpiEnd = null)
+    protected function calculateRepaymentKpiTotals($repayments, float $feesTotal = 0.0)
     {
         $totals = [
             'total_amount' => 0,
             'total_principal' => 0,
             'total_interest' => 0,
             'total_penalty' => 0,
-            'total_fees' => 0,
+            'total_fees' => $feesTotal,
+            'record_count' => 0,
+            'average_payment' => 0,
         ];
 
         $state = [];
@@ -189,6 +195,7 @@ class RepaymentController extends Controller
             }
 
             $totals['total_amount'] += (float) $repayment->amount;
+            $totals['record_count']++;
 
             if (!$repayment->schedule || !$repayment->loan) {
                 continue;
@@ -233,11 +240,9 @@ class RepaymentController extends Controller
             $totals['total_penalty'] += $lateFeesPaid;
         }
 
-        $feesQuery = Fee::paid();
-        if ($kpiStart && $kpiEnd) {
-            $feesQuery->whereBetween('datecreated', [$kpiStart, $kpiEnd]);
-        }
-        $totals['total_fees'] = (float) $feesQuery->sum('amount');
+        $totals['average_payment'] = $totals['record_count'] > 0
+            ? $totals['total_amount'] / $totals['record_count']
+            : 0;
 
         return $totals;
     }
@@ -343,6 +348,12 @@ class RepaymentController extends Controller
      */
     protected function parsePaymentDate($dateString)
     {
+        if ($dateString instanceof \DateTimeInterface) {
+            return $dateString->getTimestamp();
+        }
+
+        $dateString = (string) $dateString;
+
         // Parse DD-MM-YYYY format correctly
         if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $dateString, $matches)) {
             // DD-MM-YYYY format
@@ -354,6 +365,386 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Confirmed schedule payments keyed by schedule_id.
+     */
+    protected function getConfirmedSchedulePayments(array $scheduleIds, string $table = 'repayments'): array
+    {
+        $scheduleIds = array_values(array_unique(array_filter($scheduleIds)));
+
+        if (empty($scheduleIds)) {
+            return [];
+        }
+
+        $query = DB::table($table)
+            ->whereIn('schedule_id', $scheduleIds)
+            ->where('amount', '>', 0);
+
+        if ($table === 'repayments') {
+            $query->whereNotIn('status', [-1, 2])
+                ->where(function ($query) {
+                    $query->where('status', 1)
+                        ->orWhere('payment_status', 'Completed');
+                });
+        }
+
+        return $query
+            ->groupBy('schedule_id')
+            ->select('schedule_id', DB::raw('SUM(amount) as total_paid'))
+            ->pluck('total_paid', 'schedule_id')
+            ->map(function ($amount) {
+                return (float) $amount;
+            })
+            ->toArray();
+    }
+
+    /**
+     * Remaining installment balance using principal + interest + net late fees - valid payments.
+     */
+    protected function getScheduleInstallmentOutstanding($schedule, $loan, array $paidBySchedule): array
+    {
+        $principal = (float) ($schedule->principal ?? 0);
+        $interest = (float) ($schedule->interest ?? 0);
+        $lateFeeData = $this->repaymentService->calculateLateFee($schedule, $loan);
+        $lateFees = (float) ($lateFeeData['net'] ?? 0);
+        $paidFromRepayments = (float) ($paidBySchedule[$schedule->id] ?? 0);
+        $paid = $paidFromRepayments;
+
+        $interestPaid = min($interest, $paid);
+        $principalPaid = min($principal, max(0, $paid - $interestPaid));
+        $lateFeesPaid = min($lateFees, max(0, $paid - $interest - $principal));
+        $outstandingInterest = max(0, $interest - $interestPaid);
+        $outstandingPrincipal = max(0, $principal - $principalPaid);
+        $outstandingLateFees = max(0, $lateFees - $lateFeesPaid);
+
+        return [
+            'principal' => $outstandingPrincipal,
+            'interest' => $outstandingInterest,
+            'late_fees' => $outstandingLateFees,
+            'total' => $outstandingPrincipal + $outstandingInterest + $outstandingLateFees,
+        ];
+    }
+
+    /**
+     * Sum unpaid schedule balances for a loan.
+     */
+    protected function getLoanInstallmentOutstanding($loan, array $paidBySchedule): array
+    {
+        $totals = [
+            'principal' => 0.0,
+            'interest' => 0.0,
+            'late_fees' => 0.0,
+            'total' => 0.0,
+        ];
+
+        foreach (($loan->schedules ?? collect()) as $schedule) {
+            $components = $this->getScheduleInstallmentOutstanding($schedule, $loan, $paidBySchedule);
+            $totals['principal'] += $components['principal'];
+            $totals['interest'] += $components['interest'];
+            $totals['late_fees'] = ($totals['late_fees'] ?? 0) + $components['late_fees'];
+            $totals['total'] += $components['total'];
+        }
+
+        return $totals;
+    }
+
+    /**
+     * First unpaid schedule that still has principal/interest remaining.
+     */
+    protected function getNextOutstandingSchedule($loan, array $paidBySchedule): ?array
+    {
+        $schedules = ($loan->schedules ?? collect())
+            ->sortBy(function ($schedule) {
+                $timestamp = $this->parsePaymentDate($schedule->payment_date);
+                return $timestamp ?: PHP_INT_MAX;
+            });
+
+        foreach ($schedules as $schedule) {
+            $components = $this->getScheduleInstallmentOutstanding($schedule, $loan, $paidBySchedule);
+
+            if ($components['total'] <= 0) {
+                continue;
+            }
+
+            $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
+            $todayTimestamp = strtotime(date('Y-m-d') . ' 00:00:00');
+            $dueDateTimestamp = $dueTimestamp ? strtotime(date('Y-m-d', $dueTimestamp) . ' 00:00:00') : null;
+
+            return [
+                'payment_date' => $schedule->payment_date,
+                'amount' => $components['total'],
+                'days_overdue' => $dueDateTimestamp && $dueDateTimestamp < $todayTimestamp
+                    ? (int) floor(($todayTimestamp - $dueDateTimestamp) / 86400)
+                    : 0,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Risk profile used on the active-loans follow-up list.
+     */
+    protected function getActiveLoanRiskProfile($loan): array
+    {
+        $maxDays = 0;
+        $overdueInstallments = 0;
+        $todayTimestamp = strtotime(date('Y-m-d') . ' 00:00:00');
+
+        foreach (($loan->schedules ?? collect()) as $schedule) {
+            if ((int) ($schedule->status ?? 0) === 1 || !$schedule->payment_date) {
+                continue;
+            }
+
+            $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
+
+            if (!$dueTimestamp) {
+                continue;
+            }
+
+            $dueDateTimestamp = strtotime(date('Y-m-d', $dueTimestamp) . ' 00:00:00');
+
+            if ($dueDateTimestamp >= $todayTimestamp) {
+                continue;
+            }
+
+            $days = (int) floor(($todayTimestamp - $dueDateTimestamp) / 86400);
+            $maxDays = max($maxDays, $days);
+            $overdueInstallments++;
+        }
+
+        $daysClass = $this->getRiskClassByDays($maxDays);
+        $installmentsClass = $this->getRiskClassByInstallments($overdueInstallments);
+        $classification = $this->getWorseRiskClass($daysClass, $installmentsClass);
+
+        return [
+            'classification' => $classification,
+            'dpd' => $maxDays,
+            'overdue_installments' => $overdueInstallments,
+            'badge' => match ($classification) {
+                'Performing' => 'success',
+                'Watch' => 'warning',
+                'Substandard' => 'info',
+                'Doubtful' => 'danger',
+                'Loss' => 'dark',
+                default => 'secondary',
+            },
+            'requires_follow_up' => $classification !== 'Performing',
+        ];
+    }
+
+    protected function getRiskClassByDays(int $daysOverdue): string
+    {
+        if ($daysOverdue <= 0) {
+            return 'Performing';
+        }
+
+        if ($daysOverdue <= 30) {
+            return 'Watch';
+        }
+
+        if ($daysOverdue <= 90) {
+            return 'Substandard';
+        }
+
+        if ($daysOverdue <= 180) {
+            return 'Doubtful';
+        }
+
+        return 'Loss';
+    }
+
+    protected function getRiskClassByInstallments(int $overdueInstallments): string
+    {
+        if ($overdueInstallments <= 0) {
+            return 'Performing';
+        }
+
+        if ($overdueInstallments > 6) {
+            return 'Loss';
+        }
+
+        if ($overdueInstallments >= 4) {
+            return 'Doubtful';
+        }
+
+        if ($overdueInstallments >= 2) {
+            return 'Substandard';
+        }
+
+        return 'Watch';
+    }
+
+    protected function getWorseRiskClass(string $firstClass, string $secondClass): string
+    {
+        $rank = [
+            'Performing' => 0,
+            'Watch' => 1,
+            'Substandard' => 2,
+            'Doubtful' => 3,
+            'Loss' => 4,
+        ];
+
+        return ($rank[$firstClass] ?? 0) >= ($rank[$secondClass] ?? 0)
+            ? $firstClass
+            : $secondClass;
+    }
+
+    /**
+     * Attach latest follow-up metadata without doing per-row queries.
+     */
+    protected function attachLoanFollowUps($loans): void
+    {
+        foreach ($loans as $loan) {
+            $loan->latest_follow_up = null;
+            $loan->follow_up_count = 0;
+            $loan->has_follow_up = false;
+            $loan->follow_up_due = false;
+        }
+
+        if ($loans->isEmpty() || !Schema::hasTable('loan_follow_ups')) {
+            return;
+        }
+
+        $personalIds = $loans
+            ->filter(fn ($loan) => ($loan->loan_type ?? null) === 'personal')
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        $groupIds = $loans
+            ->filter(fn ($loan) => ($loan->loan_type ?? null) === 'group')
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        if (empty($personalIds) && empty($groupIds)) {
+            return;
+        }
+
+        $baseScope = function ($query) use ($personalIds, $groupIds) {
+            $query->where(function ($query) use ($personalIds, $groupIds) {
+                if (!empty($personalIds)) {
+                    $query->orWhere(function ($query) use ($personalIds) {
+                        $query->where('loan_type', 'personal')
+                            ->whereIn('loan_id', $personalIds);
+                    });
+                }
+
+                if (!empty($groupIds)) {
+                    $query->orWhere(function ($query) use ($groupIds) {
+                        $query->where('loan_type', 'group')
+                            ->whereIn('loan_id', $groupIds);
+                    });
+                }
+            });
+        };
+
+        $counts = LoanFollowUp::query()
+            ->where($baseScope)
+            ->groupBy('loan_type', 'loan_id')
+            ->select('loan_type', 'loan_id', DB::raw('COUNT(*) as total'))
+            ->get()
+            ->keyBy(fn ($row) => $row->loan_type . ':' . $row->loan_id);
+
+        $latestIds = LoanFollowUp::query()
+            ->where($baseScope)
+            ->groupBy('loan_type', 'loan_id')
+            ->select(DB::raw('MAX(id) as id'))
+            ->pluck('id')
+            ->filter()
+            ->all();
+
+        $latestFollowUps = empty($latestIds)
+            ? collect()
+            : LoanFollowUp::with('createdBy:id,name')
+                ->whereIn('id', $latestIds)
+                ->get()
+                ->keyBy(fn ($followUp) => $followUp->loan_type . ':' . $followUp->loan_id);
+
+        foreach ($loans as $loan) {
+            $key = ($loan->loan_type ?? 'personal') . ':' . $loan->id;
+            $latest = $latestFollowUps->get($key);
+
+            $loan->latest_follow_up = $latest;
+            $loan->follow_up_count = (int) ($counts->get($key)->total ?? 0);
+            $loan->has_follow_up = $loan->follow_up_count > 0;
+            $loan->follow_up_due = $latest && $latest->next_follow_up_date
+                ? $latest->next_follow_up_date->isPast() || $latest->next_follow_up_date->isToday()
+                : false;
+        }
+    }
+
+    /**
+     * Contact details for one loan follow-up recipient.
+     */
+    protected function getFollowUpSmsRecipient($loan, string $loanType): array
+    {
+        if ($loanType === 'personal') {
+            $loan->loadMissing('member');
+
+            return [
+                'member_id' => $loan->member_id ?? null,
+                'phone' => $loan->member->contact ?? null,
+                'name' => trim(($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '')) ?: ($loan->member->code ?? 'Client'),
+            ];
+        }
+
+        $loan->loadMissing('group');
+
+        return [
+            'member_id' => null,
+            'phone' => $loan->group->contact
+                ?? $loan->group_representative_phone
+                ?? null,
+            'name' => $loan->group->name ?? 'Group client',
+        ];
+    }
+
+    /**
+     * Send a follow-up SMS through the existing bulk SMS log flow.
+     */
+    protected function sendFollowUpSms($loan, string $loanType, string $message): array
+    {
+        $recipient = $this->getFollowUpSmsRecipient($loan, $loanType);
+        $phone = preg_replace('/\s+/', '', (string) ($recipient['phone'] ?? ''));
+
+        if ($phone === '') {
+            return [
+                'sent' => false,
+                'message' => 'SMS not sent: borrower phone number is missing.',
+            ];
+        }
+
+        $bulkSms = BulkSms::create([
+            'title' => 'Loan follow-up: ' . ($loan->code ?? $loan->id),
+            'message' => $message,
+            'recipient_type' => 'individual',
+            'recipient_group' => null,
+            'recipients_count' => 1,
+            'successful_count' => 1,
+            'failed_count' => 0,
+            'status' => 'completed',
+            'scheduled_at' => now(),
+            'completed_at' => now(),
+            'sent_by' => auth()->id(),
+        ]);
+
+        SmsLog::create([
+            'sms_id' => $bulkSms->id,
+            'member_id' => $recipient['member_id'],
+            'phone' => $phone,
+            'message' => $message,
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+
+        return [
+            'sent' => true,
+            'message' => 'SMS logged as sent to ' . $phone . '.',
+        ];
+    }
+
+    /**
      * Display active loans for repayment management
      */
     public function activeLoans(Request $request)
@@ -362,24 +753,28 @@ class RepaymentController extends Controller
         // Include status 2 (Disbursed) AND status 3 (marked as closed but may have unpaid schedules)
         // We'll filter out truly closed loans later using getActualStatus()
         $personalLoansQuery = PersonalLoan::whereIn('status', [2, 3])
+            ->whereHas('schedules', function ($query) {
+                $query->where('status', '!=', 1);
+            })
             ->with([
                 'member:id,fname,lname,contact', 
                 'branch:id,name', 
                 'product:id,name,period_type',
                 'schedules',
-                'repayments',
                 'disbursements' => function($query) {
                     $query->where('status', 2)->orderBy('created_at', 'desc');
                 }
             ]);
 
         $groupLoansQuery = GroupLoan::whereIn('status', [2, 3])
+            ->whereHas('schedules', function ($query) {
+                $query->where('status', '!=', 1);
+            })
             ->with([
                 'group:id,name', 
                 'branch:id,name', 
                 'product:id,name,period_type',
                 'schedules',
-                'repayments',
                 'disbursements' => function($query) {
                     $query->where('status', 2)->orderBy('created_at', 'desc');
                 }
@@ -453,23 +848,11 @@ class RepaymentController extends Controller
         // - Status 2 (Disbursed) with unpaid schedules = Active loans
         // - Status 3 (marked closed) but with unpaid schedules = Incorrectly closed
         // Exclude: pending, approved, rejected, stopped, restructured, and truly closed
-        $beforeFilterCount = $allLoans->count();
-        
         $allLoans = $allLoans->filter(function($loan) {
             $actualStatus = $loan->getActualStatus();
-            
-            // Debug: Log what we're checking
             $schedules = $loan->schedules ?? collect();
             $unpaidCount = $schedules->where('status', '!=', 1)->count();
-            
-            \Log::info("Active Loans Filter - Loan {$loan->id} | Code: {$loan->code}", [
-                'database_status' => $loan->status,
-                'actual_status' => $actualStatus,
-                'schedules_count' => $schedules->count(),
-                'unpaid_schedules' => $unpaidCount,
-                'included' => $actualStatus === 'running' && $unpaidCount > 0 ? 'YES' : 'NO'
-            ]);
-            
+
             // ONLY include loans that are 'running' (disbursed + unpaid schedules)
             if ($actualStatus !== 'running') {
                 return false;
@@ -482,35 +865,19 @@ class RepaymentController extends Controller
             
             return $unpaidCount > 0; // Only include if has unpaid schedules
         })->values();
-        
-        $afterFilterCount = $allLoans->count();
-        \Log::info("Active Loans Filter Complete", [
-            'before_filter' => $beforeFilterCount,
-            'after_filter' => $afterFilterCount,
-            'filtered_out' => $beforeFilterCount - $afterFilterCount
-        ]);
-        
-        \Log::info("Active Loans IDs after filter", [
-            'loan_ids' => $allLoans->pluck('id')->toArray()
-        ]);
 
-        // Pre-calculate schedule totals with single query per loan type (huge performance boost!)
-        $loanIds = $allLoans->pluck('id')->toArray();
-        $scheduleTotals = [];
-        
-        if (!empty($loanIds)) {
-            // Get all schedule totals in one query
-            $scheduleTotals = DB::table('loan_schedules')
-                ->whereIn('loan_id', $loanIds)
-                ->groupBy('loan_id')
-                ->select('loan_id', 
-                    DB::raw('SUM(principal + interest) as total_payable'),
-                    DB::raw('MIN(CASE WHEN status = 0 THEN payment_date END) as next_due_date'),
-                    DB::raw('MIN(CASE WHEN status = 0 THEN payment END) as next_due_amount')
-                )
-                ->get()
-                ->keyBy('loan_id');
-        }
+        $personalScheduleIds = $allLoans
+            ->filter(fn ($loan) => $loan instanceof PersonalLoan)
+            ->flatMap(fn ($loan) => $loan->schedules->pluck('id'))
+            ->all();
+
+        $groupScheduleIds = $allLoans
+            ->filter(fn ($loan) => $loan instanceof GroupLoan)
+            ->flatMap(fn ($loan) => $loan->schedules->pluck('id'))
+            ->all();
+
+        $personalPaidBySchedule = $this->getConfirmedSchedulePayments($personalScheduleIds, 'repayments');
+        $groupPaidBySchedule = $this->getConfirmedSchedulePayments($groupScheduleIds, 'group_repayments');
         
         // Detect potential duplicate loans (same member, multiple loans from 2025 onwards)
         $memberLoanCounts = [];
@@ -536,7 +903,7 @@ class RepaymentController extends Controller
         }
         
         // Map and calculate loan details
-        $loans = $allLoans->map(function($loan) use ($scheduleTotals, $memberLoanCounts) {
+        $loans = $allLoans->map(function($loan) use ($personalPaidBySchedule, $groupPaidBySchedule, $memberLoanCounts) {
             try {
                 // Determine loan type and set borrower info
                 if (isset($loan->member)) {
@@ -575,46 +942,27 @@ class RepaymentController extends Controller
                 }
             }
             
-            // Calculate outstanding balance using pre-calculated totals (optimized!)
-            $totalPaid = (float) $loan->repayments->where('status', 1)->sum('amount');
-            
-            // Use pre-calculated total from single query
-            $scheduleData = $scheduleTotals[$loan->id] ?? null;
-            $totalPayable = $scheduleData ? (float) $scheduleData->total_payable : 0.0;
-            
-            // If no schedules, calculate using declining balance (NOT flat * 2!)
-            if ($totalPayable == 0 && $loan->period > 0) {
-                $interestRate = (float) $loan->interest / 100;
-                $principalPerPeriod = (float) $loan->principal / (float) $loan->period;
-                $remainingPrincipal = (float) $loan->principal;
-                $totalInterest = 0.0;
-                
-                for ($i = 0; $i < $loan->period; $i++) {
-                    $totalInterest += $remainingPrincipal * $interestRate;
-                    $remainingPrincipal -= $principalPerPeriod;
-                }
-                
-                $totalPayable = (float) $loan->principal + $totalInterest;
-            }
-            
-            $loan->outstanding_balance = $totalPayable - $totalPaid;
-            
-            // Use pre-calculated next due date/amount from single query (optimized!)
-            if ($scheduleData && $scheduleData->next_due_date) {
-                $loan->next_due_date = $scheduleData->next_due_date;
-                $loan->next_due_amount = (float) ($scheduleData->next_due_amount ?? 0);
-                
-                // Calculate days overdue - handle date parsing errors
-                try {
-                    $paymentDate = \Carbon\Carbon::createFromFormat('d-m-Y', $scheduleData->next_due_date);
-                    if (!$paymentDate) {
-                        $paymentDate = \Carbon\Carbon::parse($scheduleData->next_due_date);
-                    }
-                    $loan->days_overdue = $paymentDate->isPast() ? 
-                                         (int) $paymentDate->diffInDays(now(), false) : 0;
-                } catch (\Exception $e) {
-                    $loan->days_overdue = 0;
-                }
+            $paidBySchedule = $loan instanceof GroupLoan ? $groupPaidBySchedule : $personalPaidBySchedule;
+            $outstanding = $this->getLoanInstallmentOutstanding($loan, $paidBySchedule);
+
+            $loan->outstanding_principal = $outstanding['principal'];
+            $loan->outstanding_interest = $outstanding['interest'];
+            $loan->outstanding_late_fees = $outstanding['late_fees'];
+            $loan->outstanding_balance = $outstanding['total'];
+
+            $risk = $this->getActiveLoanRiskProfile($loan);
+            $loan->risk_classification = $risk['classification'];
+            $loan->risk_dpd = $risk['dpd'];
+            $loan->risk_overdue_installments = $risk['overdue_installments'];
+            $loan->risk_badge = $risk['badge'];
+            $loan->requires_follow_up = $risk['requires_follow_up'];
+
+            $nextOutstandingSchedule = $this->getNextOutstandingSchedule($loan, $paidBySchedule);
+
+            if ($nextOutstandingSchedule) {
+                $loan->next_due_date = $nextOutstandingSchedule['payment_date'];
+                $loan->next_due_amount = $nextOutstandingSchedule['amount'];
+                $loan->days_overdue = $nextOutstandingSchedule['days_overdue'];
             } else {
                 $loan->next_due_date = null;
                 $loan->next_due_amount = 0.0;
@@ -626,6 +974,9 @@ class RepaymentController extends Controller
                 // Log error but don't break - return loan with default values
                 \Log::error("Error processing loan {$loan->id}: " . $e->getMessage());
                 $loan->outstanding_balance = 0;
+                $loan->outstanding_principal = 0;
+                $loan->outstanding_interest = 0;
+                $loan->outstanding_late_fees = 0;
                 $loan->next_due_date = null;
                 $loan->next_due_amount = 0;
                 $loan->days_overdue = 0;
@@ -634,7 +985,6 @@ class RepaymentController extends Controller
         });
 
         // Filter loans with outstanding balance (include overpayments as they need refunds)
-        $beforeBalanceFilter = $loans->count();
         $loans = $loans->filter(function($loan) {
             $hasBalance = isset($loan->outstanding_balance) && $loan->outstanding_balance != 0;
 
@@ -643,38 +993,34 @@ class RepaymentController extends Controller
             // until late fees are also settled. So any loan still in status=2 is genuinely open.
             $isStillActive = isset($loan->status) && $loan->status == 2;
 
-            if (!$hasBalance && !$isStillActive && in_array($loan->id, [119, 116, 118, 120, 121, 123, 125, 126])) {
-                \Log::warning("Loan {$loan->id} filtered out by outstanding_balance", [
-                    'database_status' => $loan->status,
-                    'outstanding_balance' => $loan->outstanding_balance ?? 'not set',
-                    'total_paid' => $loan->repayments ? $loan->repayments->where('status', 1)->sum('amount') : 0
-                ]);
-            }
-
             return $hasBalance || $isStillActive;
         });
-        
-        \Log::info("Outstanding balance filter complete", [
-            'before' => $beforeBalanceFilter,
-            'after' => $loans->count(),
-            'filtered_out' => $beforeBalanceFilter - $loans->count()
-        ]);
+
+        $this->attachLoanFollowUps($loans);
+
+        if ($request->filled('status')) {
+            $statusFilter = $request->get('status');
+            $loans = $loans->filter(function ($loan) use ($statusFilter) {
+                return match ($statusFilter) {
+                    'current' => (int) ($loan->risk_dpd ?? 0) === 0,
+                    'overdue' => (int) ($loan->risk_dpd ?? 0) > 0,
+                    'restructured' => (int) ($loan->restructured ?? 0) === 1,
+                    'risk_followup' => (bool) ($loan->requires_follow_up ?? false),
+                    'missing_followup' => (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false),
+                    default => true,
+                };
+            })->values();
+        }
 
         // Store the full collection for stats calculation
         $allActiveLoansForStats = $loans;
 
         // Paginate manually
         $currentPage = \Illuminate\Pagination\Paginator::resolveCurrentPage();
-        $perPage = 20;
+        $perPage = (int) $request->get('per_page', 20);
+        $perPage = in_array($perPage, [10, 20, 25, 50, 100], true) ? $perPage : 20;
         $totalLoans = $loans->count();
         $currentItems = $loans->slice(($currentPage - 1) * $perPage, $perPage)->all();
-        
-        \Log::info("Active Loans Pagination", [
-            'total_loans' => $totalLoans,
-            'current_page' => $currentPage,
-            'per_page' => $perPage,
-            'current_page_loan_ids' => collect($currentItems)->pluck('id')->toArray()
-        ]);
         
         $loans = new \Illuminate\Pagination\LengthAwarePaginator(
             $currentItems,
@@ -692,25 +1038,127 @@ class RepaymentController extends Controller
         $stats = [
             'total_active' => $totalLoans, // Use the actual count of filtered loans
             'outstanding_amount' => $allActiveLoansForStats->sum('outstanding_balance'), // Use pre-calculated values
+            'outstanding_principal' => $allActiveLoansForStats->sum('outstanding_principal'),
+            'outstanding_interest' => $allActiveLoansForStats->sum('outstanding_interest'),
+            'outstanding_late_fees' => $allActiveLoansForStats->sum('outstanding_late_fees'),
             'overdue_count' => $allActiveLoansForStats->filter(function($loan) {
-                return $loan->schedules->where('status', 0)
-                                      ->filter(function($schedule) {
-                                          try {
-                                              // Use parsePaymentDate to handle DD-MM-YYYY format correctly
-                                              $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
-                                              return $dueTimestamp !== false && $dueTimestamp < time();
-                                          } catch (\Exception $e) {
-                                              return false;
-                                          }
-                                      })
-                                      ->count() > 0;
+                return (int) ($loan->days_overdue ?? 0) > 0;
             })->count(),
+            'risk_followup_count' => $allActiveLoansForStats->where('requires_follow_up', true)->count(),
+            'followed_up_count' => $allActiveLoansForStats->filter(function ($loan) {
+                return (bool) ($loan->requires_follow_up ?? false) && (bool) ($loan->has_follow_up ?? false);
+            })->count(),
+            'missing_followup_count' => $allActiveLoansForStats->filter(function ($loan) {
+                return (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false);
+            })->count(),
+            'followup_due_count' => $allActiveLoansForStats->where('follow_up_due', true)->count(),
             'collections_today' => (float) (Repayment::whereDate('date_created', today())
                                           ->where('status', 1)
                                           ->sum('amount') ?? 0),
         ];
 
         return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
+    }
+
+    /**
+     * Store a collection follow-up note for an active loan.
+     */
+    public function storeFollowUp(Request $request)
+    {
+        $validated = $request->validate([
+            'loan_id' => ['required', 'integer'],
+            'loan_type' => ['required', 'in:personal,group'],
+            'contact_method' => ['required', 'in:call,sms,field_visit,whatsapp,office_visit,other'],
+            'outcome' => ['required', 'in:promised_to_pay,willing_to_pay,not_reachable,refused,reschedule_requested,dispute,paid_after_contact,other'],
+            'promise_date' => ['nullable', 'date'],
+            'promise_amount' => ['nullable', 'numeric', 'min:0'],
+            'next_action' => ['nullable', 'in:call_again,send_sms,field_visit,escalate_to_manager,restructure,legal_recovery,none'],
+            'next_follow_up_date' => ['nullable', 'date'],
+            'sms_sent' => ['nullable', 'boolean'],
+            'sms_message' => ['nullable', 'string', 'max:1000'],
+            'notes' => ['required', 'string', 'min:5', 'max:3000'],
+        ]);
+
+        $loan = $validated['loan_type'] === 'group'
+            ? GroupLoan::find($validated['loan_id'])
+            : PersonalLoan::find($validated['loan_id']);
+
+        if (!$loan) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Loan not found for follow-up.',
+                ], 404);
+            }
+
+            return back()->with('error', 'Loan not found for follow-up.');
+        }
+
+        $smsRequested = $request->boolean('sms_sent');
+        $smsMessage = $validated['sms_message'] ?? null;
+        $smsResult = [
+            'sent' => false,
+            'message' => null,
+        ];
+
+        if ($smsRequested) {
+            if (!$smsMessage) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Please enter the SMS message before sending.',
+                    ], 422);
+                }
+
+                return back()
+                    ->withInput()
+                    ->with('error', 'Please enter the SMS message before sending.');
+            }
+
+            $smsResult = $this->sendFollowUpSms($loan, $validated['loan_type'], $smsMessage);
+        }
+
+        $followUp = LoanFollowUp::create([
+            'loan_type' => $validated['loan_type'],
+            'loan_id' => $loan->id,
+            'member_id' => $validated['loan_type'] === 'personal' ? ($loan->member_id ?? null) : null,
+            'branch_id' => $loan->branch_id ?? null,
+            'assigned_to' => $loan->assigned_to ?? null,
+            'created_by' => auth()->id(),
+            'follow_up_at' => now(),
+            'contact_method' => $validated['contact_method'],
+            'outcome' => $validated['outcome'],
+            'willing_to_pay' => in_array($validated['outcome'], ['promised_to_pay', 'willing_to_pay', 'paid_after_contact'], true),
+            'promise_date' => $validated['promise_date'] ?? null,
+            'promise_amount' => $validated['promise_amount'] ?? null,
+            'next_action' => $validated['next_action'] ?? null,
+            'next_follow_up_date' => $validated['next_follow_up_date'] ?? null,
+            'sms_sent' => $smsResult['sent'],
+            'sms_message' => $smsMessage,
+            'notes' => $validated['notes'],
+        ]);
+
+        $message = 'Follow-up recorded successfully.';
+        if ($smsRequested) {
+            $message .= ' ' . $smsResult['message'];
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'follow_up' => [
+                    'id' => $followUp->id,
+                    'loan_id' => $followUp->loan_id,
+                    'loan_type' => $followUp->loan_type,
+                    'outcome' => $followUp->outcome,
+                    'contact_method' => $followUp->contact_method,
+                    'created_at' => $followUp->created_at?->format('Y-m-d H:i:s'),
+                ],
+            ]);
+        }
+
+        return back()->with($smsRequested && !$smsResult['sent'] ? 'error' : 'success', $message);
     }
 
     /**
@@ -1309,6 +1757,14 @@ class RepaymentController extends Controller
             $paymentTypeCode = is_numeric($paymentMethod) 
                 ? (int)$paymentMethod 
                 : $this->getPaymentTypeCode($paymentMethod);
+
+            if (in_array($paymentTypeCode, [1, 3], true) && !auth()->user()?->isSuperAdmin()) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Access denied. Only the Super Administrator can confirm cash or bank repayment records. Please use Mobile Money.'
+                ], 403);
+            }
             
             $scheduleId = (int) ($request->input('schedule_id') ?: $request->input('s_id') ?: 0);
             if ($scheduleId <= 0) {
@@ -1412,8 +1868,9 @@ class RepaymentController extends Controller
                 $reference = 'EbP' . str_pad($microtime, 8, '0', STR_PAD_LEFT) . str_pad($random, 4, '0', STR_PAD_LEFT);
                 
                 $repaymentData['status'] = 1;
+                $repaymentData['payment_status'] = 'Confirmed';
                 $repaymentData['pay_status'] = 'SUCCESS';
-                $repaymentData['pay_message'] = 'Payment confirmed';
+                $repaymentData['pay_message'] = 'Cash/Bank payment confirmed by ' . auth()->user()->name;
                 $repaymentData['txn_id'] = $reference;
                 $repaymentData['transaction_reference'] = $reference; // Set both fields for consistency
             }
@@ -1436,7 +1893,7 @@ class RepaymentController extends Controller
             DB::commit();
 
             $message = "Payment recorded successfully.";
-            if ($paymentTypeCode == 1) {
+            if ($paymentTypeCode == 2) {
                 $message = "Collection request sent to " . $request->phone . ". Please check your phone and enter your Mobile Money PIN to complete the payment.";
             }
 
@@ -1511,8 +1968,8 @@ class RepaymentController extends Controller
                 ->with('error', 'Please fill in all required fields correctly.');
         }
 
-        // Security check: Only Super Administrator and Administrator can use Cash (1) or Bank Transfer (3)
-        if (in_array($request->type, [1, 3]) && !auth()->user()->hasRole(['Super Administrator', 'Administrator'])) {
+        // Security check: only the Super Administrator can use Cash (1) or Bank Transfer (3).
+        if (in_array((int) $request->type, [1, 3], true) && !auth()->user()?->isSuperAdmin()) {
             \Log::warning('Unauthorized payment type attempt', [
                 'user_id' => auth()->id(),
                 'user_name' => auth()->user()->name,
@@ -1524,12 +1981,12 @@ class RepaymentController extends Controller
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Access denied. Only Super Administrator and Administrator can record Cash or Bank Transfer payments.'
+                    'message' => 'Access denied. Only the Super Administrator can confirm Cash or Bank Transfer payments. Please use Mobile Money.'
                 ], 403);
             }
             
             return redirect()->back()
-                ->with('error', 'Access denied. Only Super Administrator and Administrator can record Cash or Bank Transfer payments.')
+                ->with('error', 'Access denied. Only the Super Administrator can confirm Cash or Bank Transfer payments. Please use Mobile Money.')
                 ->withInput();
         }
 
@@ -1806,7 +2263,7 @@ class RepaymentController extends Controller
                         ->with('error', 'Mobile money collection failed: ' . $mobileMoneyResult['message']);
                 }
             } else {
-                // Cash (type=1) or Bank Transfer (type=3) - immediately confirmed by Super Admin/Administrator
+                // Cash (type=1) or Bank Transfer (type=3) - confirmed by Super Admin only
                 // Generate truly unique reference using microtime + random + schedule ID
                 $microFraction = intval((microtime(true) - intval(microtime(true))) * 1000000);
                 $reference = 'EbP' . str_pad((time() % 1000000000) . str_pad($microFraction % 1000, 4, '0', STR_PAD_LEFT), 10, '0', STR_PAD_LEFT);
@@ -1814,6 +2271,7 @@ class RepaymentController extends Controller
                 $paymentMethodName = $request->type == 1 ? 'Cash' : 'Bank Transfer';
                 
                 $repaymentData['status'] = 1; // Confirmed immediately
+                $repaymentData['payment_status'] = 'Confirmed';
                 $repaymentData['pay_status'] = 'SUCCESS';
                 $repaymentData['pay_message'] = $paymentMethodName . ' payment confirmed by ' . auth()->user()->name;
                 $repaymentData['txn_id'] = $reference;
@@ -1960,8 +2418,50 @@ class RepaymentController extends Controller
             ], 422);
         }
 
+        $scheduleBalances = [];
+        $requiredTotal = 0.0;
+        foreach ($schedules as $scheduleData) {
+            $scheduleId = (int) ($scheduleData['schedule_id'] ?? 0);
+            $schedule = LoanSchedule::find($scheduleId);
+
+            if (!$schedule || (int) $schedule->loan_id !== (int) $loan->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'One of the selected schedules does not belong to this loan.'
+                ], 422);
+            }
+
+            $components = $this->repaymentService->getScheduleOutstandingComponents($schedule, $loan);
+            $balance = round((float) $components['outstanding']);
+
+            if ($balance <= 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'One of the selected schedules is already fully paid.'
+                ], 422);
+            }
+
+            $scheduleBalances[$scheduleId] = $balance;
+            $requiredTotal += $balance;
+        }
+
+        if (abs((float) $request->amount - $requiredTotal) > 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment must equal the exact selected schedule balance: UGX ' . number_format($requiredTotal, 0),
+                'required_amount' => $requiredTotal,
+            ], 422);
+        }
+
         // Get payment type code
         $paymentTypeCode = $this->getPaymentTypeCode($request->payment_method);
+
+        if (in_array($paymentTypeCode, [1, 3], true) && !auth()->user()?->isSuperAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access denied. Only the Super Administrator can confirm cash or bank balance payments. Please use Mobile Money.'
+            ], 403);
+        }
 
         // For mobile money, get member's phone number and initiate collection first
         if ($paymentTypeCode == 2) {
@@ -2038,19 +2538,13 @@ class RepaymentController extends Controller
         DB::beginTransaction();
 
         try {
-            $totalAmount = floatval($request->amount);
-            $remainingAmount = $totalAmount;
             $paymentsCreated = 0;
             $schedulesPaid = [];
 
             // Process each selected schedule
             foreach ($schedules as $scheduleData) {
-                if ($remainingAmount <= 0) {
-                    break;
-                }
-
                 $scheduleId = $scheduleData['schedule_id'];
-                $scheduleBalance = floatval($scheduleData['balance']);
+                $scheduleBalance = (float) ($scheduleBalances[$scheduleId] ?? 0);
 
                 // Get the actual schedule from database
                 $schedule = LoanSchedule::find($scheduleId);
@@ -2058,8 +2552,8 @@ class RepaymentController extends Controller
                     continue;
                 }
 
-                // Determine payment amount for this schedule
-                $paymentAmount = min($remainingAmount, $scheduleBalance);
+                // Exact balance for this schedule only; no partial allocation.
+                $paymentAmount = $scheduleBalance;
 
                 // Create repayment record
                 $repaymentData = [
@@ -2107,6 +2601,7 @@ class RepaymentController extends Controller
                     }
                     
                     $repaymentData['status'] = 1; // Confirmed immediately
+                    $repaymentData['payment_status'] = 'Confirmed';
                     $repaymentData['txn_id'] = $reference;
                     $repaymentData['transaction_reference'] = $reference;
                     $repaymentData['pay_status'] = 'SUCCESS';
@@ -2130,8 +2625,6 @@ class RepaymentController extends Controller
 
                     $this->postGLEntry($repayment, $loan, ['loan_id' => $loan->id, 'schedule_id' => $scheduleId]);
                 }
-
-                $remainingAmount -= $paymentAmount;
             }
 
             // For mobile money, create raw_payments record for tracking
@@ -2284,8 +2777,7 @@ class RepaymentController extends Controller
     {
         // Get loan type filter (school, student, staff, or default to personal/group)
         $loanType = $request->type ?? null;
-        
-        $query = Repayment::with(['loan.member', 'loan.product', 'addedBy']);
+        $perPage = 20;
 
         // Filter by loan type if specified (school, student, staff)
         if (in_array($loanType, ['school', 'student', 'staff'])) {
@@ -2298,7 +2790,7 @@ class RepaymentController extends Controller
             $repayments = new \Illuminate\Pagination\LengthAwarePaginator(
                 [],
                 0,
-                20,
+                $perPage,
                 1,
                 ['path' => $request->url(), 'query' => $request->query()]
             );
@@ -2309,51 +2801,61 @@ class RepaymentController extends Controller
                 'total_interest' => 0,
                 'total_fees' => 0,
                 'total_penalty' => 0,
+                'record_count' => 0,
+                'average_payment' => 0,
             ];
             
             $branches = Branch::active()->get() ?? collect();
+            $kpiMonth = $request->get('kpi_month');
+            $kpiPeriodLabel = 'No supported repayment records';
             
-            return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType'))
+            return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType', 'kpiMonth', 'kpiPeriodLabel'))
                 ->with('info', 'Repayment tracking for ' . ucfirst($loanType) . ' loans will be available once loans are disbursed and repayments begin. The system is ready to track repayments for school, student, and staff loans.');
         }
 
-                // Default behavior: show personal and group loan repayments only
-                // Filter to show only successful repayments and exclude negative/zero amounts
-                $query->where(function($q) {
-                        $q->where('status', 1) // Traditional successful payments
-                            ->orWhere('payment_status', 'Completed'); // Mobile money completed payments
-                })->where('amount', '>', 0);
+        // Default behavior: show successful personal repayments only.
+        $query = Repayment::with(['loan.member', 'loan.product', 'loan.branch', 'addedBy'])
+            ->where(function ($q) {
+                $q->where('status', 1)
+                    ->orWhere('payment_status', 'Completed');
+            })
+            ->where('amount', '>', 0);
         
         // Search functionality
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->whereHas('loan', function($loanQuery) use ($search) {
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('loan', function ($loanQuery) use ($search) {
                     $loanQuery->where('code', 'like', "%{$search}%")
-                             ->orWhereHas('member', function($memberQuery) use ($search) {
-                                 $memberQuery->where('fname', 'like', "%{$search}%")
-                                           ->orWhere('lname', 'like', "%{$search}%")
-                                           ->orWhere('code', 'like', "%{$search}%");
-                             });
+                        ->orWhereHas('member', function ($memberQuery) use ($search) {
+                            $memberQuery->where('fname', 'like', "%{$search}%")
+                                ->orWhere('lname', 'like', "%{$search}%")
+                                ->orWhere('code', 'like', "%{$search}%")
+                                ->orWhere('contact', 'like', "%{$search}%");
+                        });
                 });
             });
         }
 
         // Filter by date range
-        if ($request->has('start_date') && $request->start_date) {
+        if ($request->filled('start_date')) {
             $query->whereDate('date_created', '>=', $request->start_date);
         }
 
-        if ($request->has('end_date') && $request->end_date) {
+        if ($request->filled('end_date')) {
             $query->whereDate('date_created', '<=', $request->end_date);
         }
 
         // Filter by payment method
-        if ($request->has('method') && $request->method !== '') {
+        if ($request->filled('method')) {
             $query->where('type', $request->method);
         }
 
-        $repayments = $query->orderBy('date_created', 'desc')->paginate(20);
+        if ($request->filled('branch_id')) {
+            $query->whereHas('loan', function ($loanQuery) use ($request) {
+                $loanQuery->where('branch_id', $request->branch_id);
+            });
+        }
 
         $branches = Branch::active()->get() ?? collect();
 
@@ -2361,14 +2863,24 @@ class RepaymentController extends Controller
         $kpiMonth = $request->get('kpi_month');
         $kpiStart = null;
         $kpiEnd = null;
+        $kpiPeriodLabel = 'All matching repayments';
         if ($kpiMonth) {
             try {
                 $kpiStart = Carbon::createFromFormat('Y-m', $kpiMonth)->startOfMonth();
                 $kpiEnd = Carbon::createFromFormat('Y-m', $kpiMonth)->endOfMonth();
+                $kpiPeriodLabel = $kpiStart->format('F Y');
             } catch (\Exception $e) {
                 $kpiStart = null;
                 $kpiEnd = null;
             }
+        } elseif ($request->filled('start_date') || $request->filled('end_date')) {
+            $from = $request->filled('start_date')
+                ? Carbon::parse($request->start_date)->format('d M Y')
+                : 'Beginning';
+            $to = $request->filled('end_date')
+                ? Carbon::parse($request->end_date)->format('d M Y')
+                : 'Today';
+            $kpiPeriodLabel = "{$from} to {$to}";
         }
 
         $kpiQuery = clone $query;
@@ -2376,10 +2888,63 @@ class RepaymentController extends Controller
             $kpiQuery->whereBetween('date_created', [$kpiStart, $kpiEnd]);
         }
 
-        $kpiRepayments = $kpiQuery->where('amount', '>', 0)->with(['schedule', 'loan.product'])->orderBy('date_created', 'asc')->get();
-        $totals = $this->calculateRepaymentKpiTotals($kpiRepayments, $kpiStart, $kpiEnd);
+        $kpiRepayments = $kpiQuery
+            ->with(['schedule', 'loan.product'])
+            ->orderBy('date_created', 'asc')
+            ->get();
 
-        return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType', 'kpiMonth'));
+        $feesQuery = Fee::paid()->where('amount', '>', 0);
+        if ($kpiStart && $kpiEnd) {
+            $feesQuery->whereBetween('datecreated', [$kpiStart, $kpiEnd]);
+        } else {
+            if ($request->filled('start_date')) {
+                $feesQuery->whereDate('datecreated', '>=', $request->start_date);
+            }
+            if ($request->filled('end_date')) {
+                $feesQuery->whereDate('datecreated', '<=', $request->end_date);
+            }
+        }
+
+        if ($request->filled('method')) {
+            $feesQuery->where('payment_type', $request->method);
+        }
+
+        if ($request->filled('branch_id')) {
+            $feesQuery->whereHas('loan', function ($loanQuery) use ($request) {
+                $loanQuery->where('branch_id', $request->branch_id);
+            });
+        }
+
+        if ($search !== '') {
+            $feesQuery->where(function ($feeQuery) use ($search) {
+                $feeQuery->where('pay_ref', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('loan', function ($loanQuery) use ($search) {
+                        $loanQuery->where('code', 'like', "%{$search}%")
+                            ->orWhereHas('member', function ($memberQuery) use ($search) {
+                                $memberQuery->where('fname', 'like', "%{$search}%")
+                                    ->orWhere('lname', 'like', "%{$search}%")
+                                    ->orWhere('code', 'like', "%{$search}%")
+                                    ->orWhere('contact', 'like', "%{$search}%");
+                            });
+                    })
+                    ->orWhereHas('member', function ($memberQuery) use ($search) {
+                        $memberQuery->where('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%")
+                            ->orWhere('contact', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $totals = $this->calculateRepaymentKpiTotals($kpiRepayments, (float) $feesQuery->sum('amount'));
+
+        $repayments = (clone $query)
+            ->orderBy('date_created', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType', 'kpiMonth', 'kpiPeriodLabel'));
     }
 
     /**
@@ -2421,6 +2986,22 @@ class RepaymentController extends Controller
             'date' => 'nullable|date',
         ]);
 
+        if (!$request->user()?->isSuperAdmin() && (int) $validated['type'] !== 2) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Access denied. Only the Super Administrator can confirm cash or bank repayments. Please use Mobile Money.');
+        }
+
+        $isMobileMoney = (int) $validated['type'] === 2;
+
+        if ($isMobileMoney && $request->boolean('status')) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Mobile money repayments can only be completed after the gateway callback or status confirmation.');
+        }
+
+        $isConfirmed = !$isMobileMoney && $request->boolean('status');
+
         try {
             DB::beginTransaction();
 
@@ -2443,18 +3024,19 @@ class RepaymentController extends Controller
                 'amount' => $validated['amount'],
                 'date_created' => $validated['date'] ?? now(),
                 'added_by' => auth()->id(),
-                'status' => $validated['status'] ? 1 : 0,
+                'status' => $isConfirmed ? 1 : 0,
+                'payment_status' => $isConfirmed ? 'Confirmed' : 'Pending',
                 'platform' => 'Web',
                 'txn_id' => $validated['txn_id'],
-                'pay_status' => $validated['status'] ? 'SUCCESS' : 'PENDING',
-                'pay_message' => $validated['status'] ? 'Payment confirmed' : 'Payment pending verification',
+                'pay_status' => $isConfirmed ? 'SUCCESS' : 'PENDING',
+                'pay_message' => $isConfirmed ? 'Payment confirmed' : 'Payment pending verification',
             ];
 
             $repayment = Repayment::create($repaymentData);
 
             // NOTE: personal_loans table doesn't have 'paid' column
             // Payment tracking is done via loan_schedules.paid only
-            if ($validated['status']) {
+            if ($isConfirmed) {
                 // Check if loan is fully paid - validates ALL schedules before closing
                 $this->repaymentService->checkAndCloseLoanIfComplete($validated['loan_id']);
                 
@@ -2529,6 +3111,22 @@ class RepaymentController extends Controller
             'date' => 'nullable|date',
         ]);
 
+        if (!$request->user()?->isSuperAdmin() && (int) $validated['type'] !== 2) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Access denied. Only the Super Administrator can confirm cash or bank repayments. Please use Mobile Money.');
+        }
+
+        $isMobileMoney = (int) $validated['type'] === 2;
+
+        if ($isMobileMoney && $request->boolean('status')) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Mobile money repayments can only be completed after the gateway callback or status confirmation.');
+        }
+
+        $isConfirmed = !$isMobileMoney && $request->boolean('status');
+
         try {
             DB::beginTransaction();
 
@@ -2546,10 +3144,14 @@ class RepaymentController extends Controller
                 'amount' => $validated['amount'],
                 'details' => $validated['details'],
                 'txn_id' => $validated['txn_id'],
-                'status' => $validated['status'] ? 1 : 0,
-                'pay_status' => $validated['status'] ? 'SUCCESS' : 'PENDING',
-                'pay_message' => $validated['status'] ? 'Payment confirmed' : 'Payment pending verification',
             ];
+
+            if (!$isMobileMoney) {
+                $updateData['status'] = $isConfirmed ? 1 : 0;
+                $updateData['payment_status'] = $isConfirmed ? 'Confirmed' : 'Pending';
+                $updateData['pay_status'] = $isConfirmed ? 'SUCCESS' : 'PENDING';
+                $updateData['pay_message'] = $isConfirmed ? 'Payment confirmed' : 'Payment pending verification';
+            }
 
             if (isset($validated['date'])) {
                 $updateData['date_created'] = $validated['date'];
@@ -2559,7 +3161,7 @@ class RepaymentController extends Controller
 
             // NOTE: personal_loans table doesn't have 'paid' column
             // Payment tracking is done via loan_schedules.paid only
-            if ($validated['status']) {
+            if ($isConfirmed) {
                 // Check if loan is fully paid - validates ALL schedules before closing
                 $this->repaymentService->checkAndCloseLoanIfComplete($repayment->loan_id);
             }
@@ -2941,6 +3543,7 @@ class RepaymentController extends Controller
                         // Update repayment status
                         $repayment->update([
                             'status' => 1, // Confirmed
+                            'payment_status' => 'Completed',
                             'pay_status' => 'SUCCESS',
                             'pay_message' => 'Payment confirmed via mobile money'
                         ]);
@@ -3584,17 +4187,17 @@ class RepaymentController extends Controller
 
     /**
      * Stop a loan (mark as stopped - status 6)
-     * Only Super Administrator and Administrator can stop loans
+     * Only Super Administrator can stop loans
      */
     public function stopLoan(Request $request, $loanId)
     {
         try {
-            // Check authorization - only superadmin and administrator
+            // Check authorization - only superadmin
             $user = auth()->user();
-            if (!$user->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator'])) {
+            if (!$user?->isSuperAdmin()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized. Only Super Administrator and Administrator can stop loans.'
+                    'message' => 'Unauthorized. Only the Super Administrator can stop loans.'
                 ], 403);
             }
 
@@ -3730,6 +4333,13 @@ class RepaymentController extends Controller
 
             $reason = $request->input('reason');
             $waiveFees = $request->input('waive_fees') == '1';
+
+            if ($waiveFees && !auth()->user()?->isSuperAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized. Only the Super Administrator can waive late fees during rescheduling.'
+                ], 403);
+            }
 
             // Get all unpaid schedules for this loan
             $unpaidSchedules = LoanSchedule::where('loan_id', $loanId)
@@ -3905,27 +4515,18 @@ class RepaymentController extends Controller
 
     /**
      * Waive selected late fees for a loan
-     * Only accessible by superadmin and administrator roles
+     * Only accessible by the superadmin role
      */
     public function waiveLateFees(Request $request)
     {
         try {
-            // Authorization check - only superadmin and administrator can waive late fees
+            // Authorization check - only superadmin can waive late fees
             $user = auth()->user();
-            $allowedRoles = ['Super Administrator', 'superadmin', 'Administrator', 'administrator'];
-            $hasPermission = false;
-            
-            foreach ($allowedRoles as $role) {
-                if ($user->hasRole($role)) {
-                    $hasPermission = true;
-                    break;
-                }
-            }
-            
-            if (!$hasPermission) {
+
+            if (!$user?->isSuperAdmin()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized. Only administrators can waive late fees.'
+                    'message' => 'Unauthorized. Only the Super Administrator can waive late fees.'
                 ], 403);
             }
             
@@ -4110,10 +4711,10 @@ class RepaymentController extends Controller
     public function carryOverExcess(Request $request)
     {
         try {
-            // Authorization check - only superadmin and administrator can carry over
+            // Authorization check - only superadmin can carry over payment allocations
             $user = auth()->user();
-            if (!$user->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator'])) {
-                return redirect()->back()->with('error', 'Unauthorized. Only administrators can carry over excess payments.');
+            if (!$user?->isSuperAdmin()) {
+                return redirect()->back()->with('error', 'Unauthorized. Only the Super Administrator can carry over excess payments.');
             }
 
             $validated = $request->validate([

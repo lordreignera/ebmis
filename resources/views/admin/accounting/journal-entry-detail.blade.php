@@ -213,6 +213,53 @@
                 </div>
                 @endif
 
+                @if($entry->reference_type === 'Disbursement' && $entry->lines && $entry->lines->count() > 0)
+                @php
+                    $sortedLines = $entry->lines->sortBy('line_number');
+                    $fundingSource = $sortedLines
+                        ->filter(fn($line) => ($line->account->code ?? null) === '10000' && (float) $line->credit_amount > 0)
+                        ->first();
+                    $fanDebit = (float) $sortedLines
+                        ->filter(fn($line) => ($line->account->code ?? null) === '20010')
+                        ->sum('debit_amount');
+                    $fanCredit = (float) $sortedLines
+                        ->filter(fn($line) => ($line->account->code ?? null) === '20010')
+                        ->sum('credit_amount');
+                    $loanAccount = $sortedLines
+                        ->filter(fn($line) => ($line->account->code ?? null) === '11000' && (float) $line->debit_amount > 0)
+                        ->first();
+                    $sourceAmount = (float) ($fundingSource->credit_amount ?? 0);
+                    $loanAmount = (float) ($loanAccount->debit_amount ?? 0);
+                @endphp
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <div class="alert alert-info mb-0">
+                            <h6 class="mb-2"><i class="mdi mdi-bank-transfer me-1"></i>Disbursement Funding Flow</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>1. Source Bank/Fund</strong><br>
+                                    {{ optional(optional($fundingSource)->account)->name ?? 'Funding account' }}<br>
+                                    <span class="text-danger">Out: UGX {{ number_format($sourceAmount, 2) }}</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>2. FAN Transit</strong><br>
+                                    In: UGX {{ number_format($fanDebit, 2) }}<br>
+                                    Out: UGX {{ number_format($fanCredit, 2) }}
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>3. Client Loan Account</strong><br>
+                                    {{ optional(optional($loanAccount)->account)->name ?? 'Loan receivable' }}<br>
+                                    <span class="text-success">Created: UGX {{ number_format($loanAmount, 2) }}</span>
+                                </div>
+                            </div>
+                            <div class="mt-2 small text-muted">
+                                The totals include FAN transit lines, so debit and credit totals are higher than the cash sent. Net FAN movement should be zero.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @endif
+
                 @if(($relatedReclassEntries ?? collect())->count() > 0)
                 <div class="row mt-3">
                     <div class="col-md-12">

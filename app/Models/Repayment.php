@@ -26,7 +26,10 @@ class Repayment extends Model
         'payment_status',
         'transaction_reference',
         'payment_phone',
-        'original_amount'
+        'original_amount',
+        'payment_raw',
+        'medium',
+        'network'
     ];
 
     protected $dates = [

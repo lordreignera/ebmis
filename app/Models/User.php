@@ -178,6 +178,15 @@ class User extends Authenticatable
         return $query->where('user_type', 'super_admin');
     }
 
+    /**
+     * True only for the system superadmin account/roles.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->user_type === 'super_admin'
+            || $this->hasRole(['Super Administrator', 'superadmin']);
+    }
+
     public function scopeSchoolUsers($query)
     {
         return $query->where('user_type', 'school');

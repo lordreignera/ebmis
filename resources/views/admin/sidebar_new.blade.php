@@ -535,6 +535,23 @@
       </div>
     </li>
 
+    <!-- UMRA Regulatory Compliance Dashboard -->
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#umra" aria-expanded="false" aria-controls="umra">
+        <span class="menu-icon">
+          <i class="mdi mdi-clipboard-check-outline"></i>
+        </span>
+        <span class="menu-title">UMRA Compliance</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="umra">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.umra.dashboard') }}">Portfolio Indicators</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.umra.schedule3') }}">Schedule 3 - Risk Classification</a></li>
+        </ul>
+      </div>
+    </li>
+
     <!-- <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#settings" aria-expanded="false" aria-controls="settings">
         <span class="menu-icon">

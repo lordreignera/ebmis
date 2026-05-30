@@ -5,25 +5,84 @@
 @push('styles')
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 <style>
+    .schedules-table-wrap {
+        overflow-x: visible;
+    }
+
     #schedulesTable.schedules-table-compact {
         table-layout: fixed;
         width: 100%;
-        font-size: 0.72rem;
+        font-size: 0.76rem;
     }
 
     #schedulesTable.schedules-table-compact th,
     #schedulesTable.schedules-table-compact td {
-        padding: 0.2rem 0.25rem;
+        padding: 0.42rem 0.45rem;
         vertical-align: middle;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     #schedulesTable.schedules-table-compact th {
         white-space: normal;
-        line-height: 1.1;
+        line-height: 1.15;
     }
 
-    #schedulesTable.schedules-table-compact td {
-        white-space: nowrap;
+    #schedulesTable.schedules-table-compact .schedule-index { width: 4%; }
+    #schedulesTable.schedules-table-compact .schedule-date { width: 8%; }
+    #schedulesTable.schedules-table-compact .schedule-principal { width: 9%; }
+    #schedulesTable.schedules-table-compact .schedule-interest { width: 9%; }
+    #schedulesTable.schedules-table-compact .schedule-arrears { width: 6%; }
+    #schedulesTable.schedules-table-compact .schedule-late { width: 10%; }
+    #schedulesTable.schedules-table-compact .schedule-total { width: 10%; }
+    #schedulesTable.schedules-table-compact .schedule-paid { width: 14%; }
+    #schedulesTable.schedules-table-compact .schedule-balance { width: 10%; }
+    #schedulesTable.schedules-table-compact .schedule-status { width: 8%; }
+    #schedulesTable.schedules-table-compact .schedule-action { width: 12%; }
+
+    #schedulesTable .schedule-metric {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.6rem;
+        line-height: 1.25;
+        margin-bottom: 0.12rem;
+    }
+
+    #schedulesTable .schedule-metric:last-child {
+        margin-bottom: 0;
+    }
+
+    #schedulesTable .schedule-metric span {
+        color: #64748b;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    #schedulesTable .schedule-metric strong {
+        color: #0f172a;
+        font-weight: 800;
+        text-align: right;
+    }
+
+    #schedulesTable .schedule-main-amount {
+        display: block;
+        font-size: 0.86rem;
+        font-weight: 800;
+        line-height: 1.15;
+    }
+
+    #schedulesTable .schedule-note {
+        color: #64748b;
+        display: block;
+        font-size: 0.66rem;
+        line-height: 1.2;
+        margin-top: 0.12rem;
+    }
+
+    #schedulesTable .schedule-metric.total strong,
+    #schedulesTable .schedule-metric.balance strong {
+        font-size: 0.82rem;
     }
 
     #schedulesTable.schedules-table-compact .btn.btn-sm {
@@ -38,6 +97,61 @@
 
     #schedulesTable.schedules-table-compact small {
         font-size: 0.62rem;
+    }
+
+    #schedulesTable.schedules-table-compact .btn-group,
+    #schedulesTable.schedules-table-compact .schedule-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        justify-content: center;
+    }
+
+    @media (max-width: 991.98px) {
+        .schedules-table-wrap {
+            padding: 0.75rem;
+        }
+
+        #schedulesTable.schedules-table-compact,
+        #schedulesTable.schedules-table-compact thead,
+        #schedulesTable.schedules-table-compact tbody,
+        #schedulesTable.schedules-table-compact tfoot,
+        #schedulesTable.schedules-table-compact tr,
+        #schedulesTable.schedules-table-compact td,
+        #schedulesTable.schedules-table-compact th {
+            display: block;
+            width: 100%;
+        }
+
+        #schedulesTable.schedules-table-compact thead {
+            display: none;
+        }
+
+        #schedulesTable.schedules-table-compact tbody tr {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            padding: 0.65rem;
+        }
+
+        #schedulesTable.schedules-table-compact td {
+            border: 0;
+            padding: 0.35rem 0;
+        }
+
+        #schedulesTable.schedules-table-compact td::before {
+            content: attr(data-label);
+            display: block;
+            color: #64748b;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: 0.15rem;
+        }
+
+        #schedulesTable.schedules-table-compact tfoot {
+            display: none;
+        }
     }
 </style>
 @endpush
@@ -223,7 +337,7 @@
                             </button>
                         </div>
                         
-                        @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                        @if(auth()->user()->isSuperAdmin())
                             @php
                                 // Check for pending late fees in late_fees table (already recorded)
                                 $unpaidLateFees = DB::table('late_fees')
@@ -329,31 +443,21 @@
                     }
                 @endphp
                 <div class="card-body">
-                    <div class="table-responsive">
+                    <div class="table-responsive schedules-table-wrap">
                         <table class="table table-sm table-bordered table-hover schedules-table-compact" id="schedulesTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 3%;">#</th>
-                                    <th style="width: 6%;">Date</th>
-                                    <th style="width: 5%;">Principal</th>
-                                    {{-- <th style="width: 6%;">Original Interest</th> --}}
-                                    {{-- <th style="width: 6%;">Principal cal Intrest</th> --}}
-                                    {{-- <th style="width: 6%;">Principal Bal</th> --}}
-                                    {{-- <th style="width: 6%;">Principal for Intrest payable</th> --}}
-                                    <th style="width: 5%;">Int. Pay.</th>
-                                    <th style="width: 4%;">Arrears</th>
-                                    <th style="width: 5%;">Late Fees</th>
-                                    <th style="width: 5%;">Total Pay.</th>
-                                    <th style="width: 5%;">Prin. Paid</th>
-                                    <th style="width: 5%;">Int. Paid</th>
-                                    <th style="width: 5%;">Late Paid</th>
-                                    <th style="width: 6%;">Paid</th>
-                                    <th style="width: 5%;">Balance</th>
-                                    @if($hasExcessAmounts)
-                                        <th style="width: 5%;">Excess</th>
-                                    @endif
-                                    <th style="width: 4%;">Status</th>
-                                    <th style="width: 5%;">Action</th>
+                                    <th class="schedule-index">#</th>
+                                    <th class="schedule-date">Due Date</th>
+                                    <th class="schedule-principal">Principal</th>
+                                    <th class="schedule-interest">Interest</th>
+                                    <th class="schedule-arrears">Arrears</th>
+                                    <th class="schedule-late">Late Fees</th>
+                                    <th class="schedule-total">Total Due</th>
+                                    <th class="schedule-paid">Paid</th>
+                                    <th class="schedule-balance">Balance</th>
+                                    <th class="schedule-status">Status</th>
+                                    <th class="schedule-action">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -386,90 +490,57 @@
                                     @endphp
                                     
                                     <tr class="{{ $statusClass }} schedule-row" data-filter="{{ $statusFilter }}">
-                                        <td class="text-center">{{ $loop->iteration }}</td>
-                                        <td class="text-center">{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</td>
-                                        <td class="text-end">{{ number_format($schedule->principal, 0) }}</td>
-                                        {{-- <td class="text-end">{{ number_format($schedule->interest, 0) }}</td> --}}
-                                        {{-- <td class="text-end">{{ number_format($schedule->pricipalcalIntrest, 0) }}</td> --}}
-                                        {{-- <td class="text-end">{{ number_format($schedule->principal_balance, 0) }}</td> --}}
-                                        {{-- <td class="text-end">{{ number_format($schedule->globalprincipal, 0) }}</td> --}}
-                                        <td class="text-end">{{ number_format($schedule->intrestamtpayable, 0) }}</td>
-                                        <td class="text-center">{{ number_format($schedule->periods_in_arrears, 0) }}</td>
-                                        <td class="text-end">
-                                            @php
-                                                $originalLateFee = $schedule->penalty_original ?? $schedule->penalty;
-                                                $waivedAmount = $schedule->penalty_waived ?? 0;
-                                            @endphp
-                                            @if($originalLateFee > 0)
-                                                <span class="text-danger">{{ number_format($originalLateFee, 0) }}</span>
-                                                @if($waivedAmount > 0)
-                                                    <br><small class="text-info">({{ number_format($waivedAmount, 0) }} waived)</small>
-                                                @endif
-                                            @else
-                                                0
+                                        @php
+                                            $originalLateFee = $schedule->penalty_original ?? $schedule->penalty;
+                                            $waivedAmount = $schedule->penalty_waived ?? 0;
+                                            $displayBalance = (float) ($schedule->total_balance ?? 0);
+                                            $excessAmount = $schedule->excess_amount ?? 0;
+                                        @endphp
+                                        <td class="text-center" data-label="#">{{ $loop->iteration }}</td>
+                                        <td class="text-center" data-label="Due Date">{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</td>
+                                        <td class="text-end" data-label="Principal">
+                                            <span class="schedule-main-amount">{{ number_format($schedule->principal, 0) }}</span>
+                                        </td>
+                                        <td class="text-end" data-label="Interest">
+                                            <span class="schedule-main-amount">{{ number_format($schedule->intrestamtpayable, 0) }}</span>
+                                        </td>
+                                        <td class="text-center" data-label="Arrears">
+                                            <span class="schedule-main-amount">{{ number_format($schedule->periods_in_arrears, 0) }}</span>
+                                        </td>
+                                        <td class="text-end" data-label="Late Fees">
+                                            <span class="schedule-main-amount {{ $originalLateFee > 0 ? 'text-danger' : '' }}">{{ number_format($originalLateFee, 0) }}</span>
+                                            @if($waivedAmount > 0)
+                                                <span class="schedule-note text-info">{{ number_format($waivedAmount, 0) }} waived</span>
                                             @endif
                                         </td>
-                                        <td class="text-end"><strong>{{ number_format($schedule->total_payment, 0) }}</strong></td>
-                                        <td class="text-end">
-                                            @if($schedule->principal_paid > 0)
-                                                <span class="text-success">{{ number_format($schedule->principal_paid, 0) }}</span>
-                                            @else
-                                                0
-                                            @endif
+                                        <td class="text-end" data-label="Total Due">
+                                            <span class="schedule-main-amount">{{ number_format($schedule->total_payment, 0) }}</span>
                                         </td>
-                                        <td class="text-end">
-                                            @if($schedule->interest_paid > 0)
-                                                <span class="text-success">{{ number_format($schedule->interest_paid, 0) }}</span>
-                                            @else
-                                                0
-                                            @endif
+                                        <td class="text-end" data-label="Paid">
+                                            <span class="schedule-main-amount {{ $schedule->paid > 0 ? 'text-success' : '' }}">{{ number_format($schedule->paid, 0) }}</span>
+                                            <span class="schedule-note">
+                                                P {{ number_format($schedule->principal_paid, 0) }} / I {{ number_format($schedule->interest_paid, 0) }} / L {{ number_format($schedule->penalty_paid, 0) }}
+                                            </span>
                                         </td>
-                                        <td class="text-end">
-                                            @if($schedule->penalty_paid > 0)
-                                                <span class="text-success">{{ number_format($schedule->penalty_paid, 0) }}</span>
-                                            @else
-                                                0
-                                            @endif
-                                        </td>
-                                        <td class="text-end">
-                                            @if($schedule->paid > 0)
-                                                <strong class="text-success">{{ number_format($schedule->paid, 0) }}</strong>
-                                            @else
-                                                0
-                                            @endif
-                                        </td>
-                                        <td class="text-end">
-                                            @php
-                                                $displayBalance = (float) ($schedule->total_balance ?? 0);
-                                            @endphp
+                                        <td data-label="Balance">
                                             @if($displayBalance > 1)
-                                                <strong class="text-danger">{{ number_format($displayBalance, 0) }}</strong>
+                                                <span class="schedule-main-amount text-danger text-end">{{ number_format($displayBalance, 0) }}</span>
                                             @else
-                                                <span class="text-success">0</span>
+                                                <span class="schedule-main-amount text-success text-end">0</span>
+                                            @endif
+                                            @if($excessAmount > 1)
+                                                <span class="schedule-note text-success">Excess {{ number_format($excessAmount, 0) }}</span>
+                                                @if(auth()->user()->isSuperAdmin())
+                                                    <button type="button" class="btn btn-info btn-sm px-2 py-1 mt-1" 
+                                                            onclick="openCarryOverModal({{ $schedule->id }}, {{ $excessAmount }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}')"
+                                                            title="Carry Over Excess to Next Schedule">
+                                                        <i class="fas fa-arrow-right"></i> Carry Over
+                                                    </button>
+                                                @endif
                                             @endif
                                         </td>
-                                        @if($hasExcessAmounts)
-                                            <td class="text-center">
-                                                @php
-                                                    $excessAmount = $schedule->excess_amount ?? 0;
-                                                @endphp
-                                                @if($excessAmount > 1)
-                                                    <span class="text-success fw-bold">{{ number_format($excessAmount, 0) }}</span>
-                                                    <br>
-                                                    @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
-                                                        <button type="button" class="btn btn-info btn-sm px-2 py-1 mt-1" 
-                                                                onclick="openCarryOverModal({{ $schedule->id }}, {{ $excessAmount }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}')"
-                                                                title="Carry Over Excess to Next Schedule">
-                                                            <i class="fas fa-arrow-right"></i> Carry Over
-                                                        </button>
-                                                    @endif
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                        @endif
-                                        <td class="text-center">{!! $statusBadge !!}</td>
-                                        <td class="text-center">
+                                        <td class="text-center" data-label="Status">{!! $statusBadge !!}</td>
+                                        <td class="text-center" data-label="Action">
                                             @php
                                                 // ── Shared: confirmed repayments for this schedule ──────────────────
                                                 $confirmedPayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
@@ -601,10 +672,6 @@
                                     <th class="text-end">
                                         <strong>{{ number_format($schedules->sum('principal'), 0) }}</strong>
                                     </th>
-                                    {{-- <th></th> --}}
-                                    {{-- <th></th> --}}
-                                    {{-- <th></th> --}}
-                                    {{-- <th></th> --}}
                                     <th class="text-end">
                                         <strong>{{ number_format($schedules->sum('intrestamtpayable'), 0) }}</strong>
                                     </th>
@@ -614,23 +681,22 @@
                                     <th class="text-end">
                                         <strong>{{ number_format($schedules->sum('penalty_original'), 0) }}</strong>
                                         @if($schedules->sum('penalty_waived') > 0)
-                                            <br><small class="text-info">({{ number_format($schedules->sum('penalty_waived'), 0) }} waived)</small>
+                                            <br><small class="text-info">{{ number_format($schedules->sum('penalty_waived'), 0) }} waived</small>
                                         @endif
                                     </th>
-                                    <th></th>
-                                    <th class="text-end text-success">
-                                        <strong>{{ number_format($schedules->sum('principal_paid'), 0) }}</strong>
-                                    </th>
-                                    <th class="text-end text-success">
-                                        <strong>{{ number_format($schedules->sum('interest_paid'), 0) }}</strong>
-                                    </th>
-                                    <th class="text-end text-success">
-                                        <strong>{{ number_format($schedules->sum('penalty_paid'), 0) }}</strong>
+                                    <th class="text-end">
+                                        <strong>{{ number_format($schedules->sum('total_payment'), 0) }}</strong>
                                     </th>
                                     <th class="text-end text-success">
                                         <strong>{{ number_format($schedules->sum('paid'), 0) }}</strong>
+                                        <br>
+                                        <small>
+                                            P {{ number_format($schedules->sum('principal_paid'), 0) }} /
+                                            I {{ number_format($schedules->sum('interest_paid'), 0) }} /
+                                            L {{ number_format($schedules->sum('penalty_paid'), 0) }}
+                                        </small>
                                     </th>
-                                    <th class="text-end text-danger">
+                                    <th class="text-end">
                                         @php
                                             // Only sum positive balances (unpaid amounts)
                                             // Negative balances (overpayments) should not reduce the total
@@ -639,7 +705,10 @@
                                                 return $balance > 1 ? $balance : 0;
                                             });
                                         @endphp
-                                        <strong>{{ number_format($totalOutstanding, 0) }}</strong>
+                                        <strong class="text-danger">{{ number_format($totalOutstanding, 0) }}</strong>
+                                        @if($hasExcessAmounts)
+                                            <br><small class="text-success">Excess {{ number_format($schedules->sum('excess_amount'), 0) }}</small>
+                                        @endif
                                     </th>
                                     <th colspan="2"></th>
                                 </tr>
@@ -691,7 +760,7 @@
                         <label class="form-label text-dark">Payment Type</label>
                         <select class="form-select bg-white" id="payment_type" name="type" required onchange="toggleMedium()">
                             <option value="">Select Payment Type</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'Administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="1">Cash (Instant Confirmation)</option>
                                 <option value="3">Direct Bank Transfer (Instant Confirmation)</option>
                                 <option value="2">Mobile Money (Requires Callback)</option>
@@ -700,7 +769,7 @@
                             @endif
                         </select>
                         <small class="text-muted">
-                            @if(auth()->user()->hasRole(['Super Administrator', 'Administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 Cash & Bank Transfer are confirmed instantly. Mobile Money requires customer approval.
                             @else
                                 Only Mobile Money payments available for your role.
@@ -1001,7 +1070,7 @@
                         <label class="form-label">Payment Method <span class="text-danger">*</span></label>
                         <select class="form-select" name="payment_method" id="balance_payment_method" required onchange="toggleBalanceMedium()">
                             <option value="">Select Method</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="mobile_money">Mobile Money</option>
                                 <option value="cash">Cash</option>
                                 <option value="bank_transfer">Bank Transfer</option>
@@ -1070,11 +1139,16 @@
 
                     <div class="mb-3">
                         <label class="form-label">Waive Late Fees? <span class="text-danger">*</span></label>
-                        <select class="form-select" name="waive_fees" required>
-                            <option value="1" selected>Yes - Waive all late fees</option>
-                            <option value="0">No - Keep late fees</option>
-                        </select>
-                        <div class="form-text">Recommended: Waive late fees if delay was due to system upgrade</div>
+                        @if(auth()->user()->isSuperAdmin())
+                            <select class="form-select" name="waive_fees" required>
+                                <option value="1" selected>Yes - Waive all late fees</option>
+                                <option value="0">No - Keep late fees</option>
+                            </select>
+                            <div class="form-text">Super Administrator approval is required for any waiver</div>
+                        @else
+                            <input type="hidden" name="waive_fees" value="0">
+                            <div class="form-control bg-light">No - only the Super Administrator can waive late fees</div>
+                        @endif
                     </div>
 
                     <div class="mb-3">
@@ -2679,7 +2753,7 @@ function exportToPDF() {
                 if (cells.length > 0) {
                     const rowData = [];
                     for (let i = 0; i < cells.length - 1; i++) { // Skip action column
-                        let text = cells[i].textContent.trim();
+                        let text = cells[i].textContent.trim().replace(/\s+/g, ' ');
                         // Clean up status badges
                         if (i === cells.length - 2) {
                             const badge = cells[i].querySelector('.badge');
@@ -2697,10 +2771,7 @@ function exportToPDF() {
             doc.autoTable({
                 startY: yPos + 5,
                 head: [[
-                    '#', 'Inst. Date', 'Principal', 'Orig. Interest', 'Principal cal Int', 
-                    'Principal Bal', 'Principal for Int', 'Interest Pay', 'Periods Arr', 
-                    'Late Fees', 'Total Pay', 'Principal Pd', 'Interest Pd', 'Late fees Pd', 
-                    'Total Amt Pd', 'Total Bal', 'Status'
+                    '#', 'Due Date', 'Principal', 'Interest', 'Arrears', 'Late Fees', 'Total Due', 'Paid', 'Balance', 'Status'
                 ]],
                 body: tableData,
                 theme: 'grid',
@@ -2720,21 +2791,14 @@ function exportToPDF() {
                 columnStyles: {
                     0: { halign: 'center', cellWidth: 6 },
                     1: { halign: 'center', cellWidth: 16 },
-                    2: { halign: 'right', cellWidth: 14 },
-                    3: { halign: 'right', cellWidth: 14 },
-                    4: { halign: 'right', cellWidth: 14 },
-                    5: { halign: 'right', cellWidth: 14 },
-                    6: { halign: 'right', cellWidth: 14 },
-                    7: { halign: 'right', cellWidth: 14 },
-                    8: { halign: 'center', cellWidth: 10 },
-                    9: { halign: 'right', cellWidth: 12 },
-                    10: { halign: 'right', cellWidth: 14 },
-                    11: { halign: 'right', cellWidth: 14 },
-                    12: { halign: 'right', cellWidth: 14 },
-                    13: { halign: 'right', cellWidth: 12 },
-                    14: { halign: 'right', cellWidth: 14 },
-                    15: { halign: 'right', cellWidth: 14 },
-                    16: { halign: 'center', cellWidth: 14 }
+                    2: { halign: 'right', cellWidth: 24 },
+                    3: { halign: 'right', cellWidth: 24 },
+                    4: { halign: 'center', cellWidth: 14 },
+                    5: { halign: 'right', cellWidth: 28 },
+                    6: { halign: 'right', cellWidth: 28 },
+                    7: { halign: 'right', cellWidth: 42 },
+                    8: { halign: 'right', cellWidth: 28 },
+                    9: { halign: 'center', cellWidth: 24 }
                 },
                 margin: { left: 10, right: 10 }
             });
@@ -2786,7 +2850,7 @@ function exportToExcel() {
     csvContent += '\n';
     
     // Add column headers
-    csvContent += '#,Installment Date,Principal,Original Interest,Principal cal Interest,Principal Bal,Principal for Interest payable,Interest payable,Periods in Arrears,Late Fees,Total Payment,Principal Paid,Interest Paid,Late fees Paid,Total Amount Paid,Total Balance,Status\n';
+    csvContent += '#,Due Date,Principal,Interest,Arrears,Late Fees,Total Due,Paid,Balance,Status\n';
     
     // Add rows data
     rows.forEach((row, index) => {
@@ -2795,7 +2859,7 @@ function exportToExcel() {
         
         // Skip the last cell (Action column)
         for (let i = 0; i < cells.length - 1; i++) {
-            let cellText = cells[i].textContent.trim();
+            let cellText = cells[i].textContent.trim().replace(/\s+/g, ' ');
             // Remove commas from numbers for Excel
             cellText = cellText.replace(/,/g, '');
             // Handle status badges - extract text only
@@ -2817,7 +2881,7 @@ function exportToExcel() {
         const footerCells = tfoot.querySelectorAll('th');
         const footerData = [];
         for (let i = 0; i < footerCells.length - 2; i++) { // Skip last 2 cells
-            let cellText = footerCells[i].textContent.trim();
+            let cellText = footerCells[i].textContent.trim().replace(/\s+/g, ' ');
             cellText = cellText.replace(/,/g, '');
             footerData.push(cellText);
         }

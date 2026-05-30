@@ -92,6 +92,12 @@ class SavingController extends Controller
             'description' => 'nullable|string',
         ]);
 
+        if (!$request->user()?->isSuperAdmin() && (int) $validated['payment_type'] !== 1) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Access denied. Only the Super Administrator can confirm cash or bank savings deposits. Please use Mobile Money.');
+        }
+
         try {
             DB::beginTransaction();
 
@@ -142,8 +148,8 @@ class SavingController extends Controller
             } else { // Cash or Bank
                 $savingData['status'] = 1; // Paid (manual payments are auto-approved)
                 $savingData['platform'] = $validated['payment_type'];
-                $savingData['pay_status'] = 'PAID';
-                $savingData['pay_message'] = json_encode(['type' => $validated['payment_type'] == 2 ? 'Cash' : 'Bank', 'status' => 'Manual payment recorded']);
+                $savingData['pay_status'] = 'CONFIRMED';
+                $savingData['pay_message'] = json_encode(['type' => $validated['payment_type'] == 2 ? 'Cash' : 'Bank', 'status' => 'Manual payment confirmed']);
             }
 
             // Insert using DB query to bypass model casts
@@ -516,7 +522,7 @@ class SavingController extends Controller
                 if (in_array($statusCode, ['00', '01', 'SUCCESSFUL', 'SUCCESS'])) {
                     $saving->update([
                         'status' => 1,
-                        'pay_status' => 'PAID',
+                        'pay_status' => 'COMPLETED',
                         'pay_message' => json_encode($statusResult)
                     ]);
 

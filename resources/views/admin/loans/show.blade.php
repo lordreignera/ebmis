@@ -68,7 +68,7 @@
                         }
                     @endphp
                     
-                    @if($hasUnpaidFees)
+                    @if($hasUnpaidFees && auth()->user()->isSuperAdmin())
                     <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#payFeesModal">
                         <i class="mdi mdi-cash me-1"></i> Pay Upfront Fees
                     </button>
@@ -1316,10 +1316,12 @@
                             <label class="form-label">Payment Method <span class="text-danger">*</span></label>
                             <select class="form-select" name="payment_method" required>
                                 <option value="">Select Payment Method</option>
-                                <option value="1">Cash</option>
-                                <option value="2">Bank Transfer</option>
-                                <option value="3">Mobile Money</option>
-                                <option value="4">Card Payment</option>
+                                @if(auth()->user()->isSuperAdmin())
+                                    <option value="1">Cash</option>
+                                    <option value="2">Bank Transfer</option>
+                                @else
+                                    <option value="3">Mobile Money</option>
+                                @endif
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -1501,7 +1503,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <label class="form-label">Payment Method <span class="text-danger">*</span></label>
                         <select class="form-select" name="payment_method" id="loanFeePaymentMethod" required>
                             <option value="">Select Payment Method</option>
-                            @if(auth()->user()->hasRole(['Super Administrator', 'superadmin', 'Administrator', 'administrator']))
+                            @if(auth()->user()->isSuperAdmin())
                                 <option value="1">Mobile Money</option>
                                 <option value="2">Cash</option>
                                 <option value="3">Bank Transfer</option>

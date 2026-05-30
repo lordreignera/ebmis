@@ -237,6 +237,13 @@ class LoanManagementController extends Controller
             'amount' => 'required|numeric|min:100',
             'type' => 'required|string|in:1,2,3' // 1=cash, 2=mobile money, 3=bank
         ]);
+
+        if (in_array((int) $request->type, [1, 3], true) && !$request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access denied. Only the Super Administrator can confirm cash or bank repayments. Please use Mobile Money.'
+            ], 403);
+        }
         
         // Additional validation for mobile money
         if ($request->type == '2') {

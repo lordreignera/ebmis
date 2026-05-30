@@ -99,7 +99,7 @@ class FeeController extends Controller
             'member_id' => 'required|exists:members,id',
             'loan_id' => 'nullable|exists:loans,id',
             'fees_type_id' => 'required|exists:fees_types,id',
-            'payment_type' => 'required|integer|in:1,2,3', // 1=Cash, 2=Mobile Money, 3=Bank Transfer
+            'payment_type' => 'required|integer|in:1,2,3', // 1=Mobile Money, 2=Cash, 3=Bank Transfer
             'amount' => 'required|numeric|min:0.01',
             'description' => 'nullable|string|max:100',
             'pay_ref' => 'nullable|string|max:100',
@@ -109,9 +109,11 @@ class FeeController extends Controller
         $member = Member::find($validated['member_id']);
         $feeType = FeeType::find($validated['fees_type_id']);
 
-        // Get member and fee type info
-        $member = Member::find($validated['member_id']);
-        $feeType = FeeType::find($validated['fees_type_id']);
+        if (!$request->user()?->isSuperAdmin() && (int) $validated['payment_type'] !== 1) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Access denied. Only the Super Administrator can confirm cash or bank fee payments. Please use Mobile Money.');
+        }
 
         // Set default amount for registration fees
         if ($feeType->name === 'Registration fees' && $validated['amount'] <= 0) {
@@ -158,7 +160,7 @@ class FeeController extends Controller
             $validated['added_by'] = auth()->id();
             
             // Handle payment processing based on payment type
-            if ($validated['payment_type'] == 2) { // Mobile Money
+            if ((int) $validated['payment_type'] === 1) { // Mobile Money
                 // For mobile money, initiate USSD payment
                 $validated['status'] = 0; // Pending payment
                 $validated['payment_status'] = 'Pending';
@@ -176,8 +178,8 @@ class FeeController extends Controller
                                 
             } else { // Cash or Bank Transfer
                 $validated['status'] = 1; // Paid
-                $validated['payment_status'] = 'Paid';
-                $validated['payment_description'] = 'Manual payment recorded';
+                $validated['payment_status'] = 'Confirmed';
+                $validated['payment_description'] = 'Manual payment confirmed';
                 
                 $fee = Fee::create($validated);
                 
@@ -263,6 +265,12 @@ class FeeController extends Controller
             'pay_ref' => 'nullable|string|max:100',
         ]);
 
+        if (!$request->user()?->isSuperAdmin() && (int) $validated['payment_type'] !== 1) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Access denied. Only the Super Administrator can edit cash or bank fee payments. Please use Mobile Money.');
+        }
+
         $fee->update($validated);
 
         return redirect()->route('admin.fees.show', $fee)
@@ -280,11 +288,21 @@ class FeeController extends Controller
             'payment_description' => 'nullable|string|max:500',
         ]);
 
+        if (!$request->user()?->isSuperAdmin()) {
+            return redirect()->back()
+                ->with('error', 'Access denied. Only the Super Administrator can manually confirm fee payments.');
+        }
+
+        if ((int) $validated['payment_type'] === 1) {
+            return redirect()->back()
+                ->with('error', 'Mobile money fee payments can only be completed by callback or status confirmation.');
+        }
+
         $fee->update([
             'payment_type' => $validated['payment_type'],
             'pay_ref' => $validated['pay_ref'],
             'payment_description' => $validated['payment_description'] ?? 'Manual payment confirmation',
-            'payment_status' => 'Paid',
+            'payment_status' => 'Confirmed',
             'status' => 1,
         ]);
 
@@ -429,7 +447,7 @@ class FeeController extends Controller
         // For now, we'll create a pending payment record
 
         $fee->update([
-            'payment_type' => 2, // Mobile Money
+            'payment_type' => 1, // Mobile Money
             'payment_status' => 'Pending',
             'payment_description' => 'Mobile money payment initiated for ' . $validated['network'],
             'pay_ref' => 'MM-' . time(),
@@ -704,7 +722,7 @@ class FeeController extends Controller
             if ($statusResult['status'] === 'completed') {
                 $fee->update([
                     'status' => 1, // Paid
-                    'payment_status' => 'Paid',
+                    'payment_status' => 'Completed',
                     'payment_description' => 'Payment completed via mobile money',
                     'payment_raw' => json_encode($statusResult)
                 ]);
