@@ -665,6 +665,643 @@ class UmraReportController extends Controller
     }
 
     /**
+     * BOU-style internal prudential monitoring pack.
+     *
+     * This is a management pack, not an official UMRA statutory form. It uses
+     * UMRA Schedule 3 provision logic plus available GL balances.
+     */
+    public function prudentialPack(Request $request)
+    {
+        $asOfDate = $request->filled('as_of_date')
+            ? Carbon::parse($request->query('as_of_date'))->endOfDay()
+            : Carbon::now();
+        $period = $this->resolvePrudentialPeriod($request, $asOfDate);
+
+        return view('admin.umra.prudential-pack', [
+            'pack' => $this->getPrudentialPackData($asOfDate, $period['start'], $period['end'], $period['label']),
+            'asOfDate' => $asOfDate,
+            'periodMode' => $period['mode'],
+        ]);
+    }
+
+    /**
+     * Export the internal prudential monitoring pack.
+     */
+    public function exportPrudentialPack(Request $request)
+    {
+        $asOfDate = $request->filled('as_of_date')
+            ? Carbon::parse($request->query('as_of_date'))->endOfDay()
+            : Carbon::now();
+        $period = $this->resolvePrudentialPeriod($request, $asOfDate);
+
+        $pack = $this->getPrudentialPackData($asOfDate, $period['start'], $period['end'], $period['label']);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Prudential Pack');
+
+        $row = 1;
+        $sheet->setCellValue('A' . $row, 'As of date');
+        $sheet->setCellValue('B' . $row, $asOfDate->format('d-M-Y'));
+        $row++;
+        $sheet->setCellValue('A' . $row, 'Income period');
+        $sheet->setCellValue('B' . $row, $pack['period_label']);
+        $row += 2;
+
+        foreach ([
+            'Statement of Financial Position - Management Draft' => [
+                ['Assets', 'UGX'],
+                ...$pack['assets'],
+            ],
+            'Liabilities and Equity - Management Draft' => [
+                ['Liabilities and Equity', 'UGX'],
+                ...$pack['liabilities_equity'],
+            ],
+            'Income Statement - Management Draft' => [
+                ['Income / Expense', 'UGX'],
+                ...$pack['income_statement'],
+            ],
+            'Prudential Ratios - Internal Monitoring' => [
+                ['Ratio', 'Result', 'Comment'],
+                ...array_map(function ($ratio) {
+                    return [$ratio['label'], $ratio['result'], $ratio['comment']];
+                }, $pack['ratios']),
+            ],
+            'Confirmed Repayments by Payment Method' => [
+                ['Payment Method', 'Transactions', 'Amount UGX'],
+                ...array_map(function ($method) {
+                    return [$method['label'], $method['transactions'], $method['amount']];
+                }, $pack['payment_methods']),
+            ],
+            'Chart of Accounts Mapping Check' => [
+                ['Report Bucket', 'Mapped GL Accounts', 'Status'],
+                ...array_map(function ($label, $accounts) {
+                    return [
+                        $label,
+                        empty($accounts) ? 'No active mapped account found' : implode('; ', $accounts),
+                        empty($accounts) ? 'Review' : 'Mapped',
+                    ];
+                }, [
+                    'Cash/Bank Balances',
+                    'Fixed Assets',
+                    'Other Assets',
+                    'Borrowings',
+                    'Accounts Payable',
+                    'Other Liabilities',
+                    'Core Capital',
+                    'Retained Earnings',
+                    'Interest Income',
+                    'Fee Income',
+                    'Recovery Income',
+                    'Operating Expenses',
+                ], [
+                    $pack['mapping']['cash_bank'] ?? [],
+                    $pack['mapping']['fixed_assets'] ?? [],
+                    $pack['mapping']['other_assets'] ?? [],
+                    $pack['mapping']['borrowings'] ?? [],
+                    $pack['mapping']['accounts_payable'] ?? [],
+                    $pack['mapping']['other_liabilities'] ?? [],
+                    $pack['mapping']['core_capital'] ?? [],
+                    $pack['mapping']['retained_earnings'] ?? [],
+                    $pack['mapping']['interest_income'] ?? [],
+                    $pack['mapping']['fee_income'] ?? [],
+                    $pack['mapping']['recovery_income'] ?? [],
+                    $pack['mapping']['operating_expenses'] ?? [],
+                ]),
+            ],
+        ] as $title => $rows) {
+            $sheet->setCellValue('A' . $row, $title);
+            $sheet->mergeCells('A' . $row . ':C' . $row);
+            $sheet->getStyle('A' . $row . ':C' . $row)->getFont()->setBold(true);
+            $row++;
+
+            foreach ($rows as $tableRow) {
+                $sheet->fromArray([$tableRow], null, 'A' . $row);
+                if ($row === 2 || in_array($tableRow[0] ?? '', ['Assets', 'Liabilities and Equity', 'Income / Expense', 'Ratio'], true)) {
+                    $sheet->getStyle('A' . $row . ':C' . $row)->getFont()->setBold(true);
+                }
+                $row++;
+            }
+
+            $row += 2;
+        }
+
+        foreach (range('A', 'C') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $filename = 'UMRA-Internal-Prudential-Pack-' . now()->format('Y-m-d-H-i-s') . '.xlsx';
+
+        return $this->downloadSpreadsheet($spreadsheet, $filename);
+    }
+
+    /**
+     * Export the internal prudential monitoring pack as PDF.
+     */
+    public function exportPrudentialPackPdf(Request $request)
+    {
+        $asOfDate = $request->filled('as_of_date')
+            ? Carbon::parse($request->query('as_of_date'))->endOfDay()
+            : Carbon::now();
+        $period = $this->resolvePrudentialPeriod($request, $asOfDate);
+        $pack = $this->getPrudentialPackData($asOfDate, $period['start'], $period['end'], $period['label']);
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', false);
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($this->renderPrudentialPackPdfHtml($pack, $asOfDate));
+        $dompdf->setPaper('A4', 'landscape');
+        $dompdf->render();
+
+        $filename = 'UMRA-Internal-Prudential-Pack-' . now()->format('Y-m-d-H-i-s') . '.pdf';
+
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    private function renderPrudentialPackPdfHtml(array $pack, Carbon $asOfDate): string
+    {
+        $money = function ($value) {
+            $value = (float) $value;
+            $formatted = number_format(abs($value), 0);
+            return $value < 0 ? '(' . $formatted . ')' : $formatted;
+        };
+
+        $text = fn ($value) => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        $amountRows = function (array $rows) use ($money, $text) {
+            return implode('', array_map(function ($row) use ($money, $text) {
+                $class = (float) $row[1] < 0 ? ' class="negative right"' : ' class="right"';
+                return '<tr><td>' . $text($row[0]) . '</td><td' . $class . '>' . $money($row[1]) . '</td></tr>';
+            }, $rows));
+        };
+
+        $ratioRows = implode('', array_map(function ($ratio) use ($text) {
+            return '<tr><td>' . $text($ratio['label']) . '</td><td class="right">' . $text($ratio['result']) . '</td><td>' . $text($ratio['comment']) . '</td></tr>';
+        }, $pack['ratios']));
+
+        $paymentRows = implode('', array_map(function ($method) use ($money, $text) {
+            return '<tr><td>' . $text($method['label']) . '</td><td class="right">' . number_format((int) $method['transactions']) . '</td><td class="right">' . $money($method['amount']) . '</td></tr>';
+        }, $pack['payment_methods']));
+
+        $mappingLabels = [
+            'cash_bank' => 'Cash/Bank Balances',
+            'fixed_assets' => 'Fixed Assets',
+            'other_assets' => 'Other Assets',
+            'borrowings' => 'Borrowings',
+            'accounts_payable' => 'Accounts Payable',
+            'other_liabilities' => 'Other Liabilities',
+            'core_capital' => 'Core Capital',
+            'retained_earnings' => 'Retained Earnings',
+            'interest_income' => 'Interest Income',
+            'fee_income' => 'Fee Income',
+            'recovery_income' => 'Recovery Income',
+            'operating_expenses' => 'Operating Expenses',
+        ];
+
+        $mappingRows = '';
+        foreach ($mappingLabels as $key => $label) {
+            $accounts = $pack['mapping'][$key] ?? [];
+            $mappingRows .= '<tr><td>' . $text($label) . '</td><td>' . $text(empty($accounts) ? 'No active mapped account found' : implode('; ', $accounts)) . '</td><td>' . (empty($accounts) ? 'Review' : 'Mapped') . '</td></tr>';
+        }
+
+        $sourceNote = $text(implode(' ', $pack['sources'] ?? []));
+
+        return '<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { color: #0f172a; font-family: DejaVu Sans, Arial, sans-serif; font-size: 10px; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        .muted { color: #475569; margin: 0 0 12px; }
+        .note { background: #f8fafc; border: 1px solid #d1d5db; margin: 0 0 12px; padding: 8px; }
+        table { border-collapse: collapse; margin-bottom: 14px; width: 100%; }
+        th { background: #020617; color: #fff; font-weight: bold; padding: 7px; text-align: left; }
+        td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
+        .section { background: #020617; color: #fff; font-size: 12px; font-weight: bold; padding: 7px; }
+        .right { text-align: right; white-space: nowrap; }
+        .negative { color: #dc2626; }
+    </style>
+</head>
+<body>
+    <h1>UMRA Internal Prudential Pack</h1>
+    <p class="muted">Management draft as at ' . $text($asOfDate->format('d M Y')) . ' | Income period: ' . $text($pack['period_label']) . '</p>
+    <div class="note">This is an internal management pack. Gross loan portfolio, allowance and PAR 30 are generated from the UMRA Schedule 3 loan classification engine. GL balances are used where chart of accounts mappings are available.</div>
+
+    <div class="section">Statement of Financial Position - Management Draft</div>
+    <table><thead><tr><th>Assets</th><th class="right">UGX</th></tr></thead><tbody>' . $amountRows($pack['assets']) . '</tbody></table>
+
+    <div class="section">Liabilities and Equity - Management Draft</div>
+    <table><thead><tr><th>Liabilities and Equity</th><th class="right">UGX</th></tr></thead><tbody>' . $amountRows($pack['liabilities_equity']) . '</tbody></table>
+
+    <div class="section">Income Statement - Management Draft</div>
+    <table><thead><tr><th>Income / Expense</th><th class="right">UGX</th></tr></thead><tbody>' . $amountRows($pack['income_statement']) . '</tbody></table>
+
+    <div class="section">Prudential Ratios - Internal Monitoring</div>
+    <table><thead><tr><th>Ratio</th><th class="right">Result</th><th>Comment</th></tr></thead><tbody>' . $ratioRows . '</tbody></table>
+
+    <div class="section">Confirmed Repayments by Payment Method</div>
+    <table><thead><tr><th>Payment Method</th><th class="right">Transactions</th><th class="right">UGX</th></tr></thead><tbody>' . $paymentRows . '</tbody></table>
+
+    <div class="section">Chart of Accounts Mapping Check</div>
+    <table><thead><tr><th>Report Bucket</th><th>Mapped GL Accounts</th><th>Status</th></tr></thead><tbody>' . $mappingRows . '</tbody></table>
+
+    <div class="note"><strong>Source note:</strong> ' . $sourceNote . '</div>
+</body>
+</html>';
+    }
+
+    /**
+     * Assemble management prudential pack values.
+     */
+    private function getPrudentialPackData(Carbon $asOfDate, Carbon $periodStart, Carbon $periodEnd, string $periodLabel): array
+    {
+        $riskClassifications = $this->getRiskClassifications();
+        $schedule3Summary = $this->getSchedule3Summary($riskClassifications);
+        $branchSummary = $this->getBranchSummary($asOfDate);
+        $gl = $this->getPrudentialGlBalances($asOfDate, $periodStart, $periodEnd);
+        $paymentMethods = $this->getPrudentialPaymentMethodBreakdown($periodStart, $periodEnd);
+        $repaymentIncome = $this->getPrudentialRepaymentIncome($periodStart, $periodEnd);
+
+        $grossLoanPortfolio = (float) $schedule3Summary['grand_total']['outstanding'];
+        $loanLossAllowance = (float) $schedule3Summary['grand_total']['required_provision'];
+        $netLoanPortfolio = max(0, $grossLoanPortfolio - $loanLossAllowance);
+        $par30Exposure = array_sum(array_column($branchSummary, 'par30_exposure'));
+
+        $cashAndBank = $gl['cash_bank'];
+        $fixedAssets = $gl['fixed_assets'];
+        $otherAssets = $gl['other_assets'];
+        $totalAssets = $cashAndBank + $netLoanPortfolio + $fixedAssets + $otherAssets;
+
+        $borrowings = $gl['borrowings'];
+        $accountsPayable = $gl['accounts_payable'];
+        $otherLiabilities = $gl['other_liabilities'];
+        $coreCapital = $gl['core_capital'];
+        $retainedEarnings = $gl['retained_earnings'];
+        $totalLiabilitiesEquity = $borrowings + $accountsPayable + $otherLiabilities + $coreCapital + $retainedEarnings;
+
+        $interestIncome = max($gl['interest_income'], $repaymentIncome['interest_collected']);
+        $feeIncome = $gl['fee_income'];
+        $recoveryIncome = $gl['recovery_income'];
+        $operatingExpenses = $gl['operating_expenses'];
+        $loanLossProvisionExpense = $loanLossAllowance;
+        $netSurplus = $interestIncome + $feeIncome + $recoveryIncome - $operatingExpenses - $loanLossProvisionExpense;
+
+        $assets = [
+            ['Cash and Bank Balances', $cashAndBank],
+            ['Gross Loan Portfolio', $grossLoanPortfolio],
+            ['Less: Loan Loss Allowance', -$loanLossAllowance],
+            ['Net Loan Portfolio', $netLoanPortfolio],
+            ['Fixed Assets', $fixedAssets],
+            ['Other Assets', $otherAssets],
+            ['Total Assets', $totalAssets],
+        ];
+
+        $liabilitiesEquity = [
+            ['Borrowings', $borrowings],
+            ['Accounts Payable', $accountsPayable],
+            ['Other Liabilities', $otherLiabilities],
+            ['Core Capital / Shareholders Equity', $coreCapital],
+            ['Retained Earnings', $retainedEarnings],
+            ['Total Liabilities and Equity', $totalLiabilitiesEquity],
+        ];
+
+        $incomeStatement = [
+            ['Interest Income', $interestIncome],
+            ['Fee Income', $feeIncome],
+            ['Recovery Income', $recoveryIncome],
+            ['Operating Expenses', -$operatingExpenses],
+            ['Loan Loss Provision Expense', -$loanLossProvisionExpense],
+            ['Net Surplus / (Deficit)', $netSurplus],
+        ];
+
+        $ratios = [
+            [
+                'label' => 'Capital to Assets',
+                'result' => $this->formatRatio($coreCapital, $totalAssets),
+                'comment' => 'Monitor capital strength. Regulation flags capital below 2% of assets as unsafe.',
+            ],
+            [
+                'label' => 'Loan Loss Allowance / Gross Loan Portfolio',
+                'result' => $this->formatRatio($loanLossAllowance, $grossLoanPortfolio),
+                'comment' => 'Provision coverage from UMRA risk classification rates.',
+            ],
+            [
+                'label' => 'PAR 30',
+                'result' => $this->formatRatio($par30Exposure, $grossLoanPortfolio),
+                'comment' => 'Portfolio quality: PAR30 exposure divided by gross loan portfolio.',
+            ],
+            [
+                'label' => 'Liquidity / Total Assets',
+                'result' => $this->formatRatio($cashAndBank, $totalAssets),
+                'comment' => 'Cash buffer available against total assets.',
+            ],
+            [
+                'label' => 'Operating Expense Ratio',
+                'result' => $this->formatRatio($operatingExpenses, $grossLoanPortfolio),
+                'comment' => 'Efficiency: operating expenses divided by gross loan portfolio.',
+            ],
+        ];
+
+        return [
+            'assets' => $assets,
+            'liabilities_equity' => $liabilitiesEquity,
+            'income_statement' => $incomeStatement,
+            'ratios' => $ratios,
+            'payment_methods' => $paymentMethods,
+            'sources' => $gl['sources'],
+            'mapping' => $gl['mapping'],
+            'as_of_date' => $asOfDate->format('d-M-Y'),
+            'period_label' => $periodLabel,
+        ];
+    }
+
+    /**
+     * Pull available GL balances into prudential pack buckets.
+     */
+    private function getPrudentialGlBalances(Carbon $asOfDate, Carbon $periodStart, Carbon $periodEnd): array
+    {
+        if (!DB::getSchemaBuilder()->hasTable('system_accounts') || !DB::getSchemaBuilder()->hasTable('journal_lines')) {
+            return $this->blankPrudentialGlBalances('GL tables not available');
+        }
+
+        $accounts = DB::table('system_accounts')
+            ->where('status', 1)
+            ->select('Id', 'code', 'sub_code', 'name', 'category', 'accountType', 'accountSubType', 'is_cash_bank', 'is_loan_receivable')
+            ->get();
+
+        if ($accounts->isEmpty()) {
+            return $this->blankPrudentialGlBalances('No active GL accounts found');
+        }
+
+        $balanceRows = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'jl.journal_entry_id', '=', 'je.Id')
+            ->where('je.status', 'posted')
+            ->whereDate('je.transaction_date', '<=', $asOfDate->toDateString())
+            ->select('jl.account_id', DB::raw('SUM(jl.debit_amount) as debits'), DB::raw('SUM(jl.credit_amount) as credits'))
+            ->groupBy('jl.account_id')
+            ->get()
+            ->keyBy('account_id');
+
+        $periodRows = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'jl.journal_entry_id', '=', 'je.Id')
+            ->where('je.status', 'posted')
+            ->whereBetween('je.transaction_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->select('jl.account_id', DB::raw('SUM(jl.debit_amount) as debits'), DB::raw('SUM(jl.credit_amount) as credits'))
+            ->groupBy('jl.account_id')
+            ->get()
+            ->keyBy('account_id');
+
+        $bucket = [
+            'cash_bank' => 0.0,
+            'fixed_assets' => 0.0,
+            'other_assets' => 0.0,
+            'borrowings' => 0.0,
+            'accounts_payable' => 0.0,
+            'other_liabilities' => 0.0,
+            'core_capital' => 0.0,
+            'retained_earnings' => 0.0,
+            'interest_income' => 0.0,
+            'fee_income' => 0.0,
+            'recovery_income' => 0.0,
+            'operating_expenses' => 0.0,
+            'sources' => [
+                'GL statement of financial position balances are as at ' . $asOfDate->format('d-M-Y') . '.',
+                'Income and expense GL balances are for ' . $periodStart->format('d-M-Y') . ' to ' . $periodEnd->format('d-M-Y') . '.',
+                'Interest income includes confirmed repayment interest cleared through Interest Receivable where the repayment journal used an accrued-interest account.',
+                'Portfolio/provision values come from UMRA Schedule 3 calculations.',
+            ],
+            'mapping' => $this->blankPrudentialMapping(),
+        ];
+
+        foreach ($accounts as $account) {
+            $category = $this->normalizeAccountCategory($account);
+            $name = strtolower(trim(($account->name ?? '') . ' ' . ($account->accountSubType ?? '')));
+            $accountLabel = trim(($account->sub_code ?: $account->code) . ' - ' . $account->name);
+            $asOfBalance = $this->accountNaturalBalance($account, $balanceRows->get($account->Id), $category);
+            $periodBalance = $this->accountNaturalBalance($account, $periodRows->get($account->Id), $category);
+
+            if ($category === 'Asset') {
+                if ((int) ($account->is_cash_bank ?? 0) === 1 || str_contains($name, 'cash') || str_contains($name, 'bank')) {
+                    $bucket['cash_bank'] += $asOfBalance;
+                    $bucket['mapping']['cash_bank'][] = $accountLabel;
+                } elseif (str_contains($name, 'fixed') || str_contains($name, 'equipment') || str_contains($name, 'furniture') || str_contains($name, 'property') || str_contains($name, 'motor')) {
+                    $bucket['fixed_assets'] += $asOfBalance;
+                    $bucket['mapping']['fixed_assets'][] = $accountLabel;
+                } elseif ((int) ($account->is_loan_receivable ?? 0) !== 1 && !str_contains($name, 'loan receivable')) {
+                    $bucket['other_assets'] += $asOfBalance;
+                    $bucket['mapping']['other_assets'][] = $accountLabel;
+                }
+            } elseif ($category === 'Liability') {
+                if (str_contains($name, 'borrow') || str_contains($name, 'loan payable') || str_contains($name, 'funding')) {
+                    $bucket['borrowings'] += $asOfBalance;
+                    $bucket['mapping']['borrowings'][] = $accountLabel;
+                } elseif (str_contains($name, 'payable')) {
+                    $bucket['accounts_payable'] += $asOfBalance;
+                    $bucket['mapping']['accounts_payable'][] = $accountLabel;
+                } else {
+                    $bucket['other_liabilities'] += $asOfBalance;
+                    $bucket['mapping']['other_liabilities'][] = $accountLabel;
+                }
+            } elseif ($category === 'Equity') {
+                if (str_contains($name, 'retained') || str_contains($name, 'surplus')) {
+                    $bucket['retained_earnings'] += $asOfBalance;
+                    $bucket['mapping']['retained_earnings'][] = $accountLabel;
+                } else {
+                    $bucket['core_capital'] += $asOfBalance;
+                    $bucket['mapping']['core_capital'][] = $accountLabel;
+                }
+            } elseif ($category === 'Income') {
+                if (str_contains($name, 'interest')) {
+                    $bucket['interest_income'] += $periodBalance;
+                    $bucket['mapping']['interest_income'][] = $accountLabel;
+                } elseif (str_contains($name, 'recover')) {
+                    $bucket['recovery_income'] += $periodBalance;
+                    $bucket['mapping']['recovery_income'][] = $accountLabel;
+                } else {
+                    $bucket['fee_income'] += $periodBalance;
+                    $bucket['mapping']['fee_income'][] = $accountLabel;
+                }
+            } elseif ($category === 'Expense') {
+                if (!str_contains($name, 'provision') && !str_contains($name, 'loan loss')) {
+                    $bucket['operating_expenses'] += $periodBalance;
+                    $bucket['mapping']['operating_expenses'][] = $accountLabel;
+                }
+            }
+        }
+
+        return $bucket;
+    }
+
+    private function blankPrudentialGlBalances(string $reason): array
+    {
+        return [
+            'cash_bank' => 0.0,
+            'fixed_assets' => 0.0,
+            'other_assets' => 0.0,
+            'borrowings' => 0.0,
+            'accounts_payable' => 0.0,
+            'other_liabilities' => 0.0,
+            'core_capital' => 0.0,
+            'retained_earnings' => 0.0,
+            'interest_income' => 0.0,
+            'fee_income' => 0.0,
+            'recovery_income' => 0.0,
+            'operating_expenses' => 0.0,
+            'sources' => [$reason],
+            'mapping' => $this->blankPrudentialMapping(),
+        ];
+    }
+
+    private function getPrudentialPaymentMethodBreakdown(Carbon $periodStart, Carbon $periodEnd): array
+    {
+        $breakdown = [
+            1 => ['label' => 'Cash', 'transactions' => 0, 'amount' => 0.0],
+            2 => ['label' => 'Mobile Money', 'transactions' => 0, 'amount' => 0.0],
+            3 => ['label' => 'Bank Transfer', 'transactions' => 0, 'amount' => 0.0],
+            0 => ['label' => 'Other / Unmapped', 'transactions' => 0, 'amount' => 0.0],
+        ];
+
+        if (!DB::getSchemaBuilder()->hasTable('repayments')) {
+            return array_values($breakdown);
+        }
+
+        $rows = DB::table('repayments as r')
+            ->where('r.status', 1)
+            ->whereBetween(DB::raw('DATE(r.date_created)'), [
+                $periodStart->toDateString(),
+                $periodEnd->toDateString(),
+            ])
+            ->select(
+                DB::raw('COALESCE(r.type, 0) as repayment_type'),
+                DB::raw('COUNT(*) as transactions'),
+                DB::raw('SUM(r.amount) as amount')
+            )
+            ->groupBy(DB::raw('COALESCE(r.type, 0)'))
+            ->get();
+
+        foreach ($rows as $row) {
+            $type = in_array((int) $row->repayment_type, [1, 2, 3], true)
+                ? (int) $row->repayment_type
+                : 0;
+
+            $breakdown[$type]['transactions'] += (int) $row->transactions;
+            $breakdown[$type]['amount'] += (float) $row->amount;
+        }
+
+        return array_values($breakdown);
+    }
+
+    private function getPrudentialRepaymentIncome(Carbon $periodStart, Carbon $periodEnd): array
+    {
+        $income = [
+            'interest_collected' => 0.0,
+            'fee_collected' => 0.0,
+        ];
+
+        if (!DB::getSchemaBuilder()->hasTable('journal_entries') || !DB::getSchemaBuilder()->hasTable('journal_lines')) {
+            return $income;
+        }
+
+        $rows = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'jl.journal_entry_id', '=', 'je.Id')
+            ->join('system_accounts as a', 'a.Id', '=', 'jl.account_id')
+            ->where('je.status', 'posted')
+            ->where('je.reference_type', 'Repayment')
+            ->whereBetween('je.transaction_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->whereIn('a.code', ['11200', '41000', '42000'])
+            ->select('a.code', DB::raw('SUM(jl.credit_amount - jl.debit_amount) as amount'))
+            ->groupBy('a.code')
+            ->get();
+
+        foreach ($rows as $row) {
+            $amount = max(0, (float) $row->amount);
+
+            if (in_array($row->code, ['11200', '41000'], true)) {
+                $income['interest_collected'] += $amount;
+            } elseif ($row->code === '42000') {
+                $income['fee_collected'] += $amount;
+            }
+        }
+
+        return $income;
+    }
+
+    private function blankPrudentialMapping(): array
+    {
+        return [
+            'cash_bank' => [],
+            'fixed_assets' => [],
+            'other_assets' => [],
+            'borrowings' => [],
+            'accounts_payable' => [],
+            'other_liabilities' => [],
+            'core_capital' => [],
+            'retained_earnings' => [],
+            'interest_income' => [],
+            'fee_income' => [],
+            'recovery_income' => [],
+            'operating_expenses' => [],
+        ];
+    }
+
+    private function resolvePrudentialPeriod(Request $request, Carbon $asOfDate): array
+    {
+        $mode = $request->query('period', 'month') === 'ytd' ? 'ytd' : 'month';
+
+        $start = $mode === 'ytd'
+            ? $asOfDate->copy()->startOfYear()
+            : $asOfDate->copy()->startOfMonth();
+
+        return [
+            'mode' => $mode,
+            'start' => $start->startOfDay(),
+            'end' => $asOfDate->copy()->endOfDay(),
+            'label' => $mode === 'ytd'
+                ? 'Year to date: ' . $start->format('d M Y') . ' to ' . $asOfDate->format('d M Y')
+                : 'Current month: ' . $start->format('d M Y') . ' to ' . $asOfDate->format('d M Y'),
+        ];
+    }
+
+    private function normalizeAccountCategory($account): string
+    {
+        $category = trim((string) ($account->category ?? ''));
+        if ($category !== '') {
+            return ucfirst(strtolower($category));
+        }
+
+        $type = strtolower((string) ($account->accountType ?? ''));
+        return match (true) {
+            str_contains($type, 'asset') => 'Asset',
+            str_contains($type, 'liabil') => 'Liability',
+            str_contains($type, 'equity'), str_contains($type, 'capital') => 'Equity',
+            str_contains($type, 'income'), str_contains($type, 'revenue') => 'Income',
+            str_contains($type, 'expense') => 'Expense',
+            default => 'Other',
+        };
+    }
+
+    private function accountNaturalBalance($account, $row, string $category): float
+    {
+        $debits = (float) ($row->debits ?? 0);
+        $credits = (float) ($row->credits ?? 0);
+
+        return in_array($category, ['Asset', 'Expense'], true)
+            ? $debits - $credits
+            : $credits - $debits;
+    }
+
+    private function formatRatio(float $numerator, float $denominator): string
+    {
+        return $denominator > 0
+            ? number_format(($numerator / $denominator) * 100, 1) . '%'
+            : '0.0%';
+    }
+
+    /**
      * Group active loans into UMRA Schedule 3 risk buckets.
      */
     private function getRiskClassifications()

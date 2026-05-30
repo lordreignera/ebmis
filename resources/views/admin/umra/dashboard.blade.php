@@ -221,6 +221,9 @@
             <a href="{{ route('admin.umra.schedule3.export') }}" class="btn btn-sm btn-outline-primary">
                 <i class="mdi mdi-download"></i> Schedule 3
             </a>
+            <a href="{{ route('admin.umra.prudential-pack') }}" class="btn btn-sm btn-outline-dark">
+                <i class="mdi mdi-chart-box"></i> Prudential Pack
+            </a>
         </div>
     </div>
 

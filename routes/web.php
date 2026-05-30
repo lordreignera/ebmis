@@ -466,6 +466,9 @@ Route::middleware([
         Route::get('/collateral-register', [\App\Http\Controllers\Admin\UmraReportController::class, 'collateralRegister'])->name('collateral-register');
         Route::get('/schedule3', [\App\Http\Controllers\Admin\UmraReportController::class, 'schedule3Report'])->name('schedule3');
         Route::get('/schedule3/export', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportSchedule3'])->name('schedule3.export');
+        Route::get('/prudential-pack', [\App\Http\Controllers\Admin\UmraReportController::class, 'prudentialPack'])->name('prudential-pack');
+        Route::get('/prudential-pack/export', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportPrudentialPack'])->name('prudential-pack.export');
+        Route::get('/prudential-pack/pdf', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportPrudentialPackPdf'])->name('prudential-pack.pdf');
         Route::get('/export-excel', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportExcel'])->name('export-excel');
         Route::get('/export-preview', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportPreview'])->name('export-preview');
         Route::get('/export-pdf', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportPdf'])->name('export-pdf');
