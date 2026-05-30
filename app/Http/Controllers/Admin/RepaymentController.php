@@ -21,6 +21,7 @@ use App\Services\AccountingService;
 use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -494,11 +495,13 @@ class RepaymentController extends Controller
     /**
      * Remaining installment balance using principal + interest + net late fees - valid payments.
      */
-    protected function getScheduleInstallmentOutstanding($schedule, $loan, array $paidBySchedule): array
+    protected function getScheduleInstallmentOutstanding($schedule, $loan, array $paidBySchedule, array $waivedBySchedule = []): array
     {
         $principal = (float) ($schedule->principal ?? 0);
         $interest = (float) ($schedule->interest ?? 0);
-        $lateFeeData = $this->repaymentService->calculateLateFee($schedule, $loan);
+        $lateFeeData = array_key_exists($schedule->id, $waivedBySchedule)
+            ? $this->calculateLateFeeWithWaiverAmount($schedule, $loan, (float) $waivedBySchedule[$schedule->id])
+            : $this->repaymentService->calculateLateFee($schedule, $loan);
         $lateFees = (float) ($lateFeeData['net'] ?? 0);
         $paidFromRepayments = (float) ($paidBySchedule[$schedule->id] ?? 0);
         $paid = $paidFromRepayments;
@@ -521,7 +524,7 @@ class RepaymentController extends Controller
     /**
      * Sum unpaid schedule balances for a loan.
      */
-    protected function getLoanInstallmentOutstanding($loan, array $paidBySchedule): array
+    protected function getLoanInstallmentOutstanding($loan, array $paidBySchedule, array $waivedBySchedule = []): array
     {
         $totals = [
             'principal' => 0.0,
@@ -531,7 +534,7 @@ class RepaymentController extends Controller
         ];
 
         foreach (($loan->schedules ?? collect()) as $schedule) {
-            $components = $this->getScheduleInstallmentOutstanding($schedule, $loan, $paidBySchedule);
+            $components = $this->getScheduleInstallmentOutstanding($schedule, $loan, $paidBySchedule, $waivedBySchedule);
             $totals['principal'] += $components['principal'];
             $totals['interest'] += $components['interest'];
             $totals['late_fees'] = ($totals['late_fees'] ?? 0) + $components['late_fees'];
@@ -541,10 +544,35 @@ class RepaymentController extends Controller
         return $totals;
     }
 
+    protected function calculateLateFeeWithWaiverAmount($schedule, $loan, float $waivedAmount): array
+    {
+        $now = $schedule->date_cleared ? strtotime($schedule->date_cleared) : time();
+        $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
+        $daysOverdue = max(0, floor(($now - $dueTimestamp) / 86400));
+
+        $periodsOverdue = 0;
+        if ($daysOverdue > 0) {
+            $periodType = $loan->product ? $loan->product->period_type : '1';
+            $periodsOverdue = $periodType == '1'
+                ? ceil($daysOverdue / 7)
+                : ($periodType == '2' ? ceil($daysOverdue / 30) : $daysOverdue);
+        }
+
+        $gross = (((float) $schedule->principal + (float) $schedule->interest) * 0.06) * $periodsOverdue;
+
+        return [
+            'gross' => $gross,
+            'net' => max(0, $gross - $waivedAmount),
+            'waived' => $waivedAmount,
+            'days_overdue' => $daysOverdue,
+            'periods_overdue' => $periodsOverdue,
+        ];
+    }
+
     /**
      * First unpaid schedule that still has principal/interest remaining.
      */
-    protected function getNextOutstandingSchedule($loan, array $paidBySchedule): ?array
+    protected function getNextOutstandingSchedule($loan, array $paidBySchedule, array $waivedBySchedule = []): ?array
     {
         $schedules = ($loan->schedules ?? collect())
             ->sortBy(function ($schedule) {
@@ -553,7 +581,7 @@ class RepaymentController extends Controller
             });
 
         foreach ($schedules as $schedule) {
-            $components = $this->getScheduleInstallmentOutstanding($schedule, $loan, $paidBySchedule);
+            $components = $this->getScheduleInstallmentOutstanding($schedule, $loan, $paidBySchedule, $waivedBySchedule);
 
             if ($components['total'] <= 0) {
                 continue;
@@ -843,6 +871,10 @@ class RepaymentController extends Controller
      */
     public function activeLoans(Request $request)
     {
+        if ($request->get('type') === 'personal') {
+            return $this->activePersonalLoansOptimized($request);
+        }
+
         // Get active loans from both personal and group loans tables
         // Include status 2 (Disbursed) AND status 3 (marked as closed but may have unpaid schedules)
         // We'll filter out truly closed loans later using getActualStatus()
@@ -1152,6 +1184,352 @@ class RepaymentController extends Controller
         ];
 
         return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
+    }
+
+    /**
+     * Fast path for the personal active-loans page: paginate before per-loan
+     * schedule/risk calculations so production does not process the whole book.
+     */
+    protected function activePersonalLoansOptimized(Request $request)
+    {
+        $perPage = (int) $request->get('per_page', 20);
+        $perPage = in_array($perPage, [10, 20, 25, 50, 100], true) ? $perPage : 20;
+
+        $baseQuery = PersonalLoan::query()
+            ->whereIn('status', [2, 3])
+            ->whereHas('schedules', function ($query) {
+                $query->where('status', '!=', 1);
+            });
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $baseQuery->where(function ($query) use ($search) {
+                $query->where('code', 'like', "%{$search}%")
+                    ->orWhereHas('member', function ($memberQuery) use ($search) {
+                        $memberQuery->where('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%")
+                            ->orWhere('contact', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('branch')) {
+            $baseQuery->where('branch_id', $request->get('branch'));
+        }
+
+        if ($request->filled('product')) {
+            $baseQuery->where('product_type', $request->get('product'));
+        }
+
+        $loans = (clone $baseQuery)
+            ->with([
+                'member:id,fname,lname,contact',
+                'branch:id,name',
+                'product:id,name,period_type',
+                'schedules' => function ($query) {
+                    $query->where('status', '!=', 1)
+                        ->select('id', 'loan_id', 'payment_date', 'principal', 'interest', 'payment', 'paid', 'status', 'date_cleared')
+                        ->orderBy('payment_date');
+                },
+                'disbursements' => function ($query) {
+                    $query->where('status', 2)->orderBy('created_at', 'desc');
+                },
+            ])
+            ->orderBy('datecreated', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $pageLoans = $loans->getCollection();
+        $scheduleIds = $pageLoans->flatMap(fn ($loan) => $loan->schedules->pluck('id'))->all();
+        $paidBySchedule = $this->getConfirmedSchedulePayments($scheduleIds, 'repayments');
+        $waivedBySchedule = $this->getWaivedLateFeesBySchedule($scheduleIds);
+        $memberLoanCounts = $this->getPotentialDuplicateLoanCounts($pageLoans->pluck('member_id')->filter()->all());
+
+        $pageLoans = $pageLoans->map(function ($loan) use ($paidBySchedule, $waivedBySchedule, $memberLoanCounts) {
+            return $this->decorateActiveLoan($loan, $paidBySchedule, [], $memberLoanCounts, $waivedBySchedule);
+        })->filter(function ($loan) {
+            return ((float) ($loan->outstanding_balance ?? 0) != 0.0) || (int) ($loan->status ?? 0) === 2;
+        })->values();
+
+        $this->attachLoanFollowUps($pageLoans);
+
+        if ($request->filled('status')) {
+            $statusFilter = $request->get('status');
+            $pageLoans = $pageLoans->filter(function ($loan) use ($statusFilter) {
+                return match ($statusFilter) {
+                    'current' => (int) ($loan->risk_dpd ?? 0) === 0,
+                    'overdue' => (int) ($loan->risk_dpd ?? 0) > 0,
+                    'restructured' => (int) ($loan->restructured ?? 0) === 1,
+                    'risk_followup' => (bool) ($loan->requires_follow_up ?? false),
+                    'missing_followup' => (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false),
+                    default => true,
+                };
+            })->values();
+        }
+
+        $loans->setCollection($pageLoans);
+
+        $branches = Branch::active()->orderBy('name')->get();
+        $products = Product::loanProducts()->active()->orderBy('name')->get();
+        $stats = $this->getFastActivePersonalLoanStats($request);
+
+        return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
+    }
+
+    protected function decorateActiveLoan($loan, array $personalPaidBySchedule, array $groupPaidBySchedule = [], array $memberLoanCounts = [], array $waivedBySchedule = [])
+    {
+        try {
+            if (isset($loan->member)) {
+                $loan->loan_type = 'personal';
+                $loan->borrower_name = trim(($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? ''));
+                $loan->phone_number = $loan->member->contact ?? 'N/A';
+                $loan->member_id_value = $loan->member_id;
+            } elseif (isset($loan->group)) {
+                $loan->loan_type = 'group';
+                $loan->borrower_name = $loan->group->name ?? 'N/A';
+                $loan->phone_number = 'Group Loan';
+                $loan->member_id_value = null;
+            } else {
+                $loan->loan_type = 'unknown';
+                $loan->borrower_name = 'N/A';
+                $loan->phone_number = 'N/A';
+                $loan->member_id_value = null;
+            }
+
+            $loan->branch_name = $loan->branch->name ?? 'N/A';
+            $loan->product_name = $loan->product->name ?? 'N/A';
+            $loan->loan_code = $loan->code;
+            $loan->principal_amount = (float) $loan->principal;
+            $loan->disbursement_date = $this->getDisbursementDate($loan);
+            $loan->is_potential_duplicate = false;
+
+            if (isset($loan->member_id_value, $memberLoanCounts[$loan->member_id_value]) && $memberLoanCounts[$loan->member_id_value] > 1) {
+                $loan->is_potential_duplicate = true;
+                $loan->duplicate_loans_count = $memberLoanCounts[$loan->member_id_value];
+            }
+
+            $paidBySchedule = $loan instanceof GroupLoan ? $groupPaidBySchedule : $personalPaidBySchedule;
+            $outstanding = $this->getLoanInstallmentOutstanding($loan, $paidBySchedule, $waivedBySchedule);
+
+            $loan->outstanding_principal = $outstanding['principal'];
+            $loan->outstanding_interest = $outstanding['interest'];
+            $loan->outstanding_late_fees = $outstanding['late_fees'];
+            $loan->outstanding_balance = $outstanding['total'];
+
+            $risk = $this->getActiveLoanRiskProfile($loan);
+            $loan->risk_classification = $risk['classification'];
+            $loan->risk_dpd = $risk['dpd'];
+            $loan->risk_overdue_installments = $risk['overdue_installments'];
+            $loan->risk_badge = $risk['badge'];
+            $loan->requires_follow_up = $risk['requires_follow_up'];
+
+            $nextOutstandingSchedule = $this->getNextOutstandingSchedule($loan, $paidBySchedule, $waivedBySchedule);
+            $loan->next_due_date = $nextOutstandingSchedule['payment_date'] ?? null;
+            $loan->next_due_amount = $nextOutstandingSchedule['amount'] ?? 0.0;
+            $loan->days_overdue = $nextOutstandingSchedule['days_overdue'] ?? 0;
+        } catch (\Exception $e) {
+            Log::error("Error processing active loan {$loan->id}: " . $e->getMessage());
+            $loan->outstanding_balance = 0;
+            $loan->outstanding_principal = 0;
+            $loan->outstanding_interest = 0;
+            $loan->outstanding_late_fees = 0;
+            $loan->next_due_date = null;
+            $loan->next_due_amount = 0;
+            $loan->days_overdue = 0;
+        }
+
+        return $loan;
+    }
+
+    protected function getPotentialDuplicateLoanCounts(array $memberIds): array
+    {
+        $memberIds = array_values(array_unique(array_filter($memberIds)));
+        if (empty($memberIds)) {
+            return [];
+        }
+
+        return PersonalLoan::query()
+            ->whereIn('member_id', $memberIds)
+            ->whereYear('datecreated', '>=', 2025)
+            ->groupBy('member_id')
+            ->select('member_id', DB::raw('COUNT(*) as total'))
+            ->pluck('total', 'member_id')
+            ->map(fn ($total) => (int) $total)
+            ->toArray();
+    }
+
+    protected function getWaivedLateFeesBySchedule(array $scheduleIds): array
+    {
+        $scheduleIds = array_values(array_unique(array_filter($scheduleIds)));
+        if (empty($scheduleIds) || !Schema::hasTable('late_fees')) {
+            return [];
+        }
+
+        return DB::table('late_fees')
+            ->whereIn('schedule_id', $scheduleIds)
+            ->where('status', 2)
+            ->groupBy('schedule_id')
+            ->select('schedule_id', DB::raw('SUM(amount) as total_waived'))
+            ->pluck('total_waived', 'schedule_id')
+            ->map(fn ($amount) => (float) $amount)
+            ->toArray();
+    }
+
+    protected function getFastActivePersonalLoanStats(Request $request): array
+    {
+        $cacheKey = 'active-personal-stats:' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
+
+        return Cache::remember($cacheKey, now()->addMinutes(3), function () use ($request) {
+            $query = DB::table('personal_loans as l')
+                ->whereIn('l.status', [2, 3])
+                ->whereExists(function ($subquery) {
+                    $subquery->select(DB::raw(1))
+                        ->from('loan_schedules as sx')
+                        ->whereColumn('sx.loan_id', 'l.id')
+                        ->where('sx.status', '!=', 1);
+                });
+
+            if ($request->filled('search')) {
+                $search = $request->get('search');
+                $query->leftJoin('members as m', 'm.id', '=', 'l.member_id')
+                    ->where(function ($searchQuery) use ($search) {
+                        $searchQuery->where('l.code', 'like', "%{$search}%")
+                            ->orWhere('m.fname', 'like', "%{$search}%")
+                            ->orWhere('m.lname', 'like', "%{$search}%")
+                            ->orWhere('m.contact', 'like', "%{$search}%");
+                    });
+            }
+
+            if ($request->filled('branch')) {
+                $query->where('l.branch_id', $request->get('branch'));
+            }
+
+            if ($request->filled('product')) {
+                $query->where('l.product_type', $request->get('product'));
+            }
+
+            $loanIds = (clone $query)->pluck('l.id')->all();
+            $totalActive = count($loanIds);
+
+            $principal = 0.0;
+            $interest = 0.0;
+            $lateFees = 0.0;
+            $overdueCount = 0;
+            $riskFollowupCount = 0;
+            $followedUpCount = 0;
+            $followupDueCount = 0;
+
+            if (!empty($loanIds)) {
+                $paidSubquery = DB::table('repayments')
+                    ->where('amount', '>', 0)
+                    ->whereNotIn('status', [-1, 2])
+                    ->where(function ($query) {
+                        $query->where('status', 1)
+                            ->orWhere('payment_status', 'Completed');
+                    })
+                    ->groupBy('schedule_id')
+                    ->select('schedule_id', DB::raw('SUM(amount) as paid'));
+
+                $waivedSubquery = DB::table('late_fees')
+                    ->where('status', 2)
+                    ->groupBy('schedule_id')
+                    ->select('schedule_id', DB::raw('SUM(amount) as waived'));
+
+                $dueDateExpression = "COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date))";
+                $daysOverdueExpression = "GREATEST(0, DATEDIFF(CURDATE(), {$dueDateExpression}))";
+                $periodsExpression = "
+                    CASE
+                        WHEN {$daysOverdueExpression} <= 0 THEN 0
+                        WHEN pr.period_type = 1 THEN CEIL({$daysOverdueExpression} / 7)
+                        WHEN pr.period_type = 2 THEN CEIL({$daysOverdueExpression} / 30)
+                        ELSE {$daysOverdueExpression}
+                    END
+                ";
+                $grossLateFeeExpression = "((s.principal + s.interest) * 0.06 * ({$periodsExpression}))";
+                $lateFeePaidExpression = "GREATEST(0, COALESCE(p.paid, 0) - s.interest - s.principal)";
+
+                $aggregate = DB::table('loan_schedules as s')
+                    ->join('personal_loans as l', 'l.id', '=', 's.loan_id')
+                    ->leftJoin('products as pr', 'pr.id', '=', 'l.product_type')
+                    ->leftJoinSub($paidSubquery, 'p', 'p.schedule_id', '=', 's.id')
+                    ->leftJoinSub($waivedSubquery, 'w', 'w.schedule_id', '=', 's.id')
+                    ->whereIn('s.loan_id', $loanIds)
+                    ->where('s.status', '!=', 1)
+                    ->selectRaw("
+                        SUM(GREATEST(0, s.interest - COALESCE(p.paid, 0))) as outstanding_interest,
+                        SUM(GREATEST(0, s.principal - GREATEST(0, COALESCE(p.paid, 0) - s.interest))) as outstanding_principal,
+                        SUM(GREATEST(0, {$grossLateFeeExpression} - COALESCE(w.waived, 0) - {$lateFeePaidExpression})) as outstanding_late_fees
+                    ")
+                    ->first();
+
+                $principal = (float) ($aggregate->outstanding_principal ?? 0);
+                $interest = (float) ($aggregate->outstanding_interest ?? 0);
+                $lateFees = (float) ($aggregate->outstanding_late_fees ?? 0);
+
+                $overdueCount = DB::table('personal_loans as l')
+                    ->whereIn('l.id', $loanIds)
+                    ->whereExists(function ($subquery) {
+                        $subquery->select(DB::raw(1))
+                            ->from('loan_schedules as s')
+                            ->whereColumn('s.loan_id', 'l.id')
+                            ->where('s.status', '!=', 1)
+                            ->whereRaw("COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date)) < CURDATE()");
+                    })
+                    ->count();
+
+                $riskLoanIds = DB::table('personal_loans as l')
+                    ->whereIn('l.id', $loanIds)
+                    ->whereExists(function ($subquery) {
+                        $subquery->select(DB::raw(1))
+                            ->from('loan_schedules as s')
+                            ->whereColumn('s.loan_id', 'l.id')
+                            ->where('s.status', '!=', 1)
+                            ->whereRaw("COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date)) < CURDATE()");
+                    })
+                    ->pluck('l.id')
+                    ->all();
+
+                $riskFollowupCount = count($riskLoanIds);
+
+                if (!empty($riskLoanIds) && Schema::hasTable('loan_follow_ups')) {
+                    $followedUpCount = DB::table('loan_follow_ups')
+                        ->where('loan_type', 'personal')
+                        ->whereIn('loan_id', $riskLoanIds)
+                        ->distinct()
+                        ->count('loan_id');
+
+                    $latestFollowUps = DB::table('loan_follow_ups')
+                        ->where('loan_type', 'personal')
+                        ->whereIn('loan_id', $riskLoanIds)
+                        ->groupBy('loan_id')
+                        ->select('loan_id', DB::raw('MAX(id) as id'));
+
+                    $followupDueCount = DB::table('loan_follow_ups as f')
+                        ->joinSub($latestFollowUps, 'latest', function ($join) {
+                            $join->on('latest.id', '=', 'f.id');
+                        })
+                        ->whereNotNull('f.next_follow_up_date')
+                        ->whereDate('f.next_follow_up_date', '<=', today())
+                        ->count();
+                }
+            }
+
+            return [
+                'total_active' => $totalActive,
+                'outstanding_amount' => $principal + $interest + $lateFees,
+                'outstanding_principal' => $principal,
+                'outstanding_interest' => $interest,
+                'outstanding_late_fees' => $lateFees,
+                'overdue_count' => $overdueCount,
+                'risk_followup_count' => $riskFollowupCount,
+                'followed_up_count' => $followedUpCount,
+                'missing_followup_count' => max(0, $riskFollowupCount - $followedUpCount),
+                'followup_due_count' => $followupDueCount,
+                'collections_today' => (float) (Repayment::whereDate('date_created', today())
+                    ->where('status', 1)
+                    ->sum('amount') ?? 0),
+            ];
+        });
     }
 
     /**
