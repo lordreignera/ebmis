@@ -170,21 +170,21 @@ class LoanManagementController extends Controller
      */
     public function processDisbursement(Request $request)
     {
+        if (!$request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'status' => false,
+                'msg' => 'Access denied. Only the Super Administrator can disburse loans.'
+            ], 403);
+        }
+
         $request->validate([
             'disbursement_id' => 'required|integer',
-            'type' => 'required|string|in:0,1,2', // 0=cash, 1=mobile money, 2=bank
-            'account_number' => 'nullable|string',
+            'type' => 'required|string|in:1', // 1=mobile money
+            'account_number' => 'required|string|min:10',
             'd_date' => 'required|date',
-            'inv_id' => 'nullable|integer'
+            'inv_id' => 'nullable|integer',
+            'loan_amt' => 'required|numeric|min:1000'
         ]);
-        
-        // Additional validation for mobile money
-        if ($request->type == '1') {
-            $request->validate([
-                'account_number' => 'required|string|min:10',
-                'loan_amt' => 'required|numeric|min:1000'
-            ]);
-        }
         
         try {
             $disbursementData = [

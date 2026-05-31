@@ -440,9 +440,4 @@ class AdminController extends Controller
         return array_slice($activities, 0, 10);
     }
 
-    public function editUser($user)
-    {
-        // You can load the user model and pass to the view if needed
-        return view('admin.user-management.users.edit', compact('user'));
-    }
 }

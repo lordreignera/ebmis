@@ -359,7 +359,7 @@
     <!-- END SCHOOL PORTAL SECTION -->
 
     @if(auth()->user()->user_type !== 'school')
-    <!-- EBIMS MODULES (For Super Admin & Branch Managers) -->
+    <!-- EBIMS MODULES (For operational EBIMS staff) -->
     <li class="nav-item nav-category">
       <span class="nav-link">EBIMS MODULES</span>
     </li>
@@ -714,8 +714,8 @@
 @endif
 <!-- END ADMIN ONLY: ACCESS CONTROL -->
 
-@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin') || auth()->user()->hasRole('Branch Manager') || auth()->user()->hasRole('Administrator'))
-    <!-- SYSTEM SETTINGS SECTION - ADMIN, BRANCH MANAGERS & ADMINISTRATORS -->
+@if(auth()->user()->isSuperAdmin())
+    <!-- SYSTEM SETTINGS SECTION - SUPER ADMIN ONLY -->
     <li class="nav-item nav-category">
       <span class="nav-link">SYSTEM SETTINGS</span>
     </li>

@@ -6,13 +6,6 @@ use App\Models\User;
 
 class LoanAccessService
 {
-    public function isFieldOfficer(?User $user = null): bool
-    {
-        $user ??= auth()->user();
-
-        return (bool) $user?->hasAnyRole(['Loan Officer', 'Field Officer']);
-    }
-
     public function canMakeLoanDecision(?User $user = null): bool
     {
         $user ??= auth()->user();
@@ -47,16 +40,12 @@ class LoanAccessService
         ?User $user = null
     ) {
         $user ??= auth()->user();
-        $query = $this->scopeBranchQuery($query, $branchColumn, $user);
 
-        if (!$user || $user->isSuperAdmin() || !$this->isFieldOfficer($user)) {
-            return $query;
-        }
-
-        return $query->where(function ($query) use ($assignedColumn, $addedByColumn, $user) {
-            $query->where($assignedColumn, $user->id)
-                ->orWhere($addedByColumn, $user->id);
-        });
+        // Retain the assignment column parameters for callers using the legacy
+        // signature; loan visibility itself is now intentionally branch-based.
+        // Officers may collect repayments or record collateral for another
+        // officer's loan, while branch separation still remains enforced.
+        return $this->scopeBranchQuery($query, $branchColumn, $user);
     }
 
     public function ensureBranchAccess($record, string $branchKey = 'branch_id', ?User $user = null): void
@@ -80,15 +69,6 @@ class LoanAccessService
     {
         $user ??= auth()->user();
         $this->ensureBranchAccess($loan, 'branch_id', $user);
-
-        if (!$user || $user->isSuperAdmin() || !$this->isFieldOfficer($user)) {
-            return;
-        }
-
-        if ((int) ($loan->assigned_to ?? 0) !== (int) $user->id
-            && (int) ($loan->added_by ?? 0) !== (int) $user->id) {
-            abort(403, 'Access denied. This loan is not assigned to you.');
-        }
     }
 
     public function ensureLoanDecisionAccess($loan, ?User $user = null): void

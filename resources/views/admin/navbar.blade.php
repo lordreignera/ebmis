@@ -266,12 +266,14 @@
                             @endif
                         </div>
                     </a>
-                    <a class="dropdown-item d-flex align-items-center" 
-                       href="#" 
-                       style="padding: 12px 20px !important; transition: background 0.2s !important;">
-                        <i class="mdi mdi-settings-outline me-3" style="font-size: 1.25rem; color: #48bb78;"></i>
-                        <span>Settings</span>
-                    </a>
+                    @if(Auth::user()->isSuperAdmin())
+                        <a class="dropdown-item d-flex align-items-center"
+                           href="{{ route('admin.settings.dashboard') }}"
+                           style="padding: 12px 20px !important; transition: background 0.2s !important;">
+                            <i class="mdi mdi-settings-outline me-3" style="font-size: 1.25rem; color: #48bb78;"></i>
+                            <span>Settings</span>
+                        </a>
+                    @endif
                     <a class="dropdown-item d-flex align-items-center" 
                        href="#" 
                        style="padding: 12px 20px !important; transition: background 0.2s !important;">

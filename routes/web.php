@@ -52,18 +52,14 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
-    'super_admin',
 ])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
         
-        // Redirect Super Admin to admin dashboard
-        if ($user->hasRole('Super Administrator') || $user->hasRole('superadmin')) {
-            return redirect()->route('admin.home');
-        }
-        
-        // Redirect Branch Managers to admin dashboard
-        if ($user->hasRole('Branch Manager')) {
+        // EBIMS staff begin from the operational dashboard.
+        if ($user->isSuperAdmin()
+            || $user->hasRole('Branch Manager')
+            || $user->hasAnyRole(['Loan Officer', 'Field Officer'])) {
             return redirect()->route('admin.home');
         }
         
@@ -76,25 +72,18 @@ Route::middleware([
         return view('dashboard');
     })->name('dashboard');
 
-    Route::get('/admin/home', [\App\Http\Controllers\AdminController::class, 'home'])->name('admin.home');
+    Route::get('/admin/home', [\App\Http\Controllers\AdminController::class, 'home'])
+        ->middleware('ebims_module')
+        ->name('admin.home');
     
     // Table Demo Route (for testing enhanced tables)
     Route::get('/admin/tables-demo', function() {
         return view('admin.tables-demo');
-    })->name('admin.tables.demo');
+    })->middleware('super_admin')->name('admin.tables.demo');
     
     // School Dashboard Route
     Route::get('/school/dashboard', [\App\Http\Controllers\School\SchoolDashboardController::class, 'index'])
         ->name('school.dashboard');
-});
-
-// Admin user management routes
-Route::middleware([
-    'auth:sanctum',
-    config('jetstream.auth_session'),
-    'verified',
-])->group(function () {
-    Route::get('/admin/users/{user}/edit', [\App\Http\Controllers\AdminController::class, 'editUser'])->name('admin.users.edit');
 });
 
 // EBIMS Module Routes (Super Admin + Branch Manager access)
@@ -258,7 +247,9 @@ Route::middleware([
         
         // Disbursement Routes
         Route::get('/disbursements', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showDisbursements'])->name('disbursements');
-        Route::post('/disbursements/process', [\App\Http\Controllers\Admin\LoanManagementController::class, 'processDisbursement'])->name('disbursements.process');
+        Route::post('/disbursements/process', [\App\Http\Controllers\Admin\LoanManagementController::class, 'processDisbursement'])
+            ->middleware('super_admin')
+            ->name('disbursements.process');
         
         // Repayment Routes
         Route::get('/repayments', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showRepayments'])->name('repayments');
@@ -277,20 +268,23 @@ Route::middleware([
     });
     
     // Disbursement Management Routes
-    Route::resource('disbursements', \App\Http\Controllers\Admin\DisbursementController::class);
+    Route::resource('disbursements', \App\Http\Controllers\Admin\DisbursementController::class)->only(['index', 'show']);
+    Route::resource('disbursements', \App\Http\Controllers\Admin\DisbursementController::class)
+        ->except(['index', 'show'])
+        ->middleware('super_admin');
     Route::get('/disbursements/loan-details/{loan}', [\App\Http\Controllers\Admin\DisbursementController::class, 'getLoanDetails'])->name('disbursements.loan-details');
-    Route::post('/disbursements/{disbursement}/complete', [\App\Http\Controllers\Admin\DisbursementController::class, 'complete'])->name('disbursements.complete');
-    Route::post('/disbursements/{disbursement}/cancel', [\App\Http\Controllers\Admin\DisbursementController::class, 'cancel'])->name('disbursements.cancel');
-    Route::post('/disbursements/{disbursement}/retry', [\App\Http\Controllers\Admin\DisbursementController::class, 'retry'])->name('disbursements.retry');
-    Route::get('/disbursements/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'showApprove'])->name('disbursements.approve.show');
-    Route::post('/disbursements/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'approve'])->name('disbursements.approve');
+    Route::post('/disbursements/{disbursement}/complete', [\App\Http\Controllers\Admin\DisbursementController::class, 'complete'])->middleware('super_admin')->name('disbursements.complete');
+    Route::post('/disbursements/{disbursement}/cancel', [\App\Http\Controllers\Admin\DisbursementController::class, 'cancel'])->middleware('super_admin')->name('disbursements.cancel');
+    Route::post('/disbursements/{disbursement}/retry', [\App\Http\Controllers\Admin\DisbursementController::class, 'retry'])->middleware('super_admin')->name('disbursements.retry');
+    Route::get('/disbursements/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'showApprove'])->middleware('super_admin')->name('disbursements.approve.show');
+    Route::post('/disbursements/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'approve'])->middleware('super_admin')->name('disbursements.approve');
     
     // NEW: Enhanced Disbursement Routes for UI
     Route::prefix('loans/disbursements')->name('loans.disbursements.')->group(function () {
         Route::get('/pending', [\App\Http\Controllers\Admin\DisbursementController::class, 'pending'])->name('pending');
-        Route::get('/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'showApprove'])->name('approve.show');
-        Route::put('/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'approve'])->name('approve');
-        Route::post('/check-status/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'checkStatus'])->name('check-status');
+        Route::get('/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'showApprove'])->middleware('super_admin')->name('approve.show');
+        Route::put('/approve/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'approve'])->middleware('super_admin')->name('approve');
+        Route::post('/check-status/{id}', [\App\Http\Controllers\Admin\DisbursementController::class, 'checkStatus'])->middleware('super_admin')->name('check-status');
         Route::get('/export', [\App\Http\Controllers\Admin\DisbursementController::class, 'export'])->name('export');
     });
     
@@ -339,7 +333,7 @@ Route::middleware([
     Route::post('/loans/{loan}/reschedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'rescheduleLoan'])->name('loans.reschedule');
     
     // Stop Loan Route (for duplicate/mistaken loans)
-    Route::post('/loans/{loan}/stop', [\App\Http\Controllers\Admin\RepaymentController::class, 'stopLoan'])->name('loans.stop');
+    Route::post('/loans/{loan}/stop', [\App\Http\Controllers\Admin\RepaymentController::class, 'stopLoan'])->middleware('super_admin')->name('loans.stop');
     
     // Mobile money payment status check (for 60-second polling)
     Route::get('/check-payment-status/{transactionId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'checkPaymentStatus'])->name('check-payment-status');
@@ -462,7 +456,7 @@ Route::middleware([
     Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
 
     // UMRA Regulatory Reporting Routes (Tier 4 ND-MFI Compliance)
-    Route::prefix('umra')->name('umra.')->middleware('super_admin')->group(function () {
+    Route::prefix('umra')->name('umra.')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\Admin\UmraReportController::class, 'dashboard'])->name('dashboard');
         Route::get('/loan-preview', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanPreview'])->name('loan-preview');
         Route::get('/loan-records', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanRecords'])->name('loan-records');
