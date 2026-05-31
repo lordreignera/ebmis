@@ -930,6 +930,7 @@ class MobileMoneyService
             
             if (!$transactionRef) {
                 return [
+                    'valid' => false,
                     'success' => false,
                     'message' => 'Missing transaction reference number',
                     'callback_data' => $callbackData
@@ -942,6 +943,7 @@ class MobileMoneyService
             $isSuccessful = in_array($statusCodeString, ['00', '01']);
             
             $result = [
+                'valid' => true,
                 'success' => $isSuccessful,
                 'transaction_reference' => $transactionRef,
                 'status_code' => $statusCodeString,
@@ -961,6 +963,7 @@ class MobileMoneyService
             ]);
             
             return [
+                'valid' => false,
                 'success' => false,
                 'message' => 'Callback processing failed: ' . $e->getMessage(),
                 'callback_data' => $callbackData

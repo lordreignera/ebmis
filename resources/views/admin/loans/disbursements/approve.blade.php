@@ -232,6 +232,31 @@
                         </div>
                     </div>
 
+                    @php
+                        $collateralGate = $loan->collateral_requirement ?? [
+                            'met' => false,
+                            'summary' => 'No loan collateral or completed cash security recorded.',
+                            'pending_cash' => 0,
+                        ];
+                    @endphp
+                    <div class="alert {{ $collateralGate['met'] ? 'alert-success' : 'alert-danger' }} border-start border-4 {{ $collateralGate['met'] ? 'border-success' : 'border-danger' }}">
+                        <div class="d-flex align-items-start">
+                            <i class="mdi {{ $collateralGate['met'] ? 'mdi-shield-check-outline' : 'mdi-shield-alert-outline' }} me-2" style="font-size: 24px;"></i>
+                            <div>
+                                <h6 class="alert-heading mb-1">Collateral Check</h6>
+                                <p class="mb-1">{{ $collateralGate['summary'] }}</p>
+                                @if(!$collateralGate['met'])
+                                    <small>
+                                        Disbursement is blocked until non-cash collateral evidence is uploaded or a loan-linked cash security deposit is completed.
+                                        @if(($collateralGate['pending_cash'] ?? 0) > 0)
+                                            Pending cash security cannot pass this check until mobile money is confirmed.
+                                        @endif
+                                    </small>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Disbursement Form -->
                     <form action="{{ route('admin.loans.disbursements.approve', $loan->id) }}" method="POST" class="form-validate" id="approveForm">
                         @csrf
@@ -371,7 +396,7 @@
                                     <a href="{{ route('admin.loans.disbursements.pending') }}" class="btn btn-secondary me-2">
                                         <i class="mdi mdi-arrow-left me-1"></i> Back to List
                                     </a>
-                                    <button type="submit" class="btn btn-success" id="approveBtn">
+                                    <button type="submit" class="btn btn-success" id="approveBtn" {{ $collateralGate['met'] ? '' : 'disabled' }}>
                                         <i class="mdi mdi-check me-1"></i> Approve Disbursement
                                     </button>
                                 </div>

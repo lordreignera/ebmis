@@ -16,6 +16,7 @@
 /public/build
 /public/hot
 /public/storage
+/public/uploads/loan-collateral-documents/
 /storage/*.key
 /storage/pail
 /vendor
@@ -67,4 +68,3 @@ schema_*.php
 # Documentation files (except deployment guide)
 *.md
 !README.md
-

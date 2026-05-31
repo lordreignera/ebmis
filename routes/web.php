@@ -201,6 +201,8 @@ Route::middleware([
     Route::get('/loans/export', [\App\Http\Controllers\Admin\LoanController::class, 'export'])->name('loans.export');
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
+    Route::get('/loans/collateral/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'showCollateral'])->name('loans.collateral.show');
+    Route::post('/loans/collateral', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeCollateral'])->name('loans.collateral.store');
     Route::post('/loans/follow-ups', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeFollowUp'])->name('loans.follow-ups.store');
     Route::get('/loans/rejected', [\App\Http\Controllers\Admin\LoanController::class, 'rejectedLoans'])->name('loans.rejected');
     Route::get('/loans/rejected/export', [\App\Http\Controllers\Admin\LoanController::class, 'exportRejectedLoans'])->name('loans.rejected.export');
@@ -464,6 +466,8 @@ Route::middleware([
         Route::get('/loan-preview', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanPreview'])->name('loan-preview');
         Route::get('/loan-records', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanRecords'])->name('loan-records');
         Route::get('/collateral-register', [\App\Http\Controllers\Admin\UmraReportController::class, 'collateralRegister'])->name('collateral-register');
+        Route::get('/collateral-register/export', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportCollateralRegister'])->name('collateral-register.export');
+        Route::get('/collateral-register/pdf', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportCollateralRegisterPdf'])->name('collateral-register.pdf');
         Route::get('/schedule3', [\App\Http\Controllers\Admin\UmraReportController::class, 'schedule3Report'])->name('schedule3');
         Route::get('/schedule3/export', [\App\Http\Controllers\Admin\UmraReportController::class, 'exportSchedule3'])->name('schedule3.export');
         Route::get('/prudential-pack', [\App\Http\Controllers\Admin\UmraReportController::class, 'prudentialPack'])->name('prudential-pack');

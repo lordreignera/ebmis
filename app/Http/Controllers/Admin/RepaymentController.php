@@ -9,6 +9,8 @@ use App\Models\GroupLoan;
 use App\Models\Loan;
 use App\Models\LoanFollowUp;
 use App\Models\BulkSms;
+use App\Models\CashSecurity;
+use App\Models\LoanCollateralDocument;
 use App\Models\SmsLog;
 use App\Models\Member;
 use App\Models\Branch;
@@ -18,6 +20,7 @@ use App\Models\User;
 use App\Models\RawPayment;
 use App\Models\Fee;
 use App\Services\AccountingService;
+use App\Services\FileStorageService;
 use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 use Illuminate\Http\Request;
@@ -797,6 +800,141 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Attach loan-level collateral status without per-row queries.
+     */
+    protected function attachLoanCollateralStatus($loans): void
+    {
+        foreach ($loans as $loan) {
+            $this->applyCollateralStatus($loan, collect());
+        }
+
+        if ($loans->isEmpty() || !Schema::hasTable('cash_securities')) {
+            return;
+        }
+
+        $personalIds = $loans
+            ->filter(fn ($loan) => ($loan->loan_type ?? null) === 'personal')
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        if (empty($personalIds)) {
+            return;
+        }
+
+        $cashSecurities = CashSecurity::query()
+            ->whereIn('loan_id', $personalIds)
+            ->where('returned', 0)
+            ->get()
+            ->groupBy('loan_id');
+        $documentCounts = $this->getCollateralDocumentCounts($personalIds);
+
+        foreach ($loans as $loan) {
+            $linkedCashSecurities = ($loan->loan_type ?? null) === 'personal'
+                ? $cashSecurities->get($loan->id, collect())
+                : collect();
+
+            $this->applyCollateralStatus($loan, $linkedCashSecurities, $documentCounts[(int) $loan->id] ?? 0);
+        }
+    }
+
+    protected function applyCollateralStatus($loan, $cashSecurities, int $documentCount = 0): void
+    {
+        $nonCashTypes = $this->getLoanNonCashCollateralTypes($loan);
+        $confirmedCash = (float) $cashSecurities->where('status', 1)->sum('amount');
+        $pendingCash = (float) $cashSecurities->where('status', 0)->sum('amount');
+
+        $summaryParts = $nonCashTypes;
+        $hasDocumentedNonCash = !empty($nonCashTypes) && $documentCount > 0;
+
+        if (!empty($nonCashTypes)) {
+            $summaryParts[] = $documentCount > 0
+                ? $documentCount . ' collateral document(s)'
+                : 'collateral document missing';
+        }
+
+        if ($confirmedCash > 0) {
+            $summaryParts[] = 'Cash security UGX ' . number_format($confirmedCash, 0);
+        }
+
+        if ($pendingCash > 0) {
+            $summaryParts[] = 'Pending cash security UGX ' . number_format($pendingCash, 0);
+        }
+
+        $loan->non_cash_collateral_types = $nonCashTypes;
+        $loan->collateral_document_count = $documentCount;
+        $loan->cash_security_amount = $confirmedCash;
+        $loan->pending_cash_security_amount = $pendingCash;
+        $loan->has_collateral = $hasDocumentedNonCash || $confirmedCash > 0;
+        $loan->collateral_summary = empty($summaryParts) ? 'No collateral recorded' : implode('; ', $summaryParts);
+    }
+
+    protected function getCollateralDocumentCounts(array $loanIds): array
+    {
+        $loanIds = array_values(array_unique(array_filter($loanIds)));
+        if (empty($loanIds)) {
+            return [];
+        }
+
+        $counts = [];
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $storedCounts = LoanCollateralDocument::query()
+                ->where('loan_type', 'personal')
+                ->whereIn('loan_id', $loanIds)
+                ->groupBy('loan_id')
+                ->select('loan_id', DB::raw('COUNT(*) as total'))
+                ->pluck('total', 'loan_id')
+                ->toArray();
+
+            foreach ($storedCounts as $loanId => $total) {
+                $counts[(int) $loanId] = ($counts[(int) $loanId] ?? 0) + (int) $total;
+            }
+        }
+
+        if (Schema::hasTable('client_loan_applications')) {
+            $applicationCounts = DB::table('client_loan_applications')
+                ->whereIn('loan_id', $loanIds)
+                ->groupBy('loan_id')
+                ->select('loan_id', DB::raw("
+                    SUM(
+                        CASE WHEN collateral_1_doc_photo IS NOT NULL AND collateral_1_doc_photo <> '' THEN 1 ELSE 0 END
+                        + CASE WHEN collateral_2_doc_photo IS NOT NULL AND collateral_2_doc_photo <> '' THEN 1 ELSE 0 END
+                    ) as total
+                "))
+                ->pluck('total', 'loan_id')
+                ->toArray();
+
+            foreach ($applicationCounts as $loanId => $total) {
+                $counts[(int) $loanId] = ($counts[(int) $loanId] ?? 0) + (int) $total;
+            }
+        }
+
+        return $counts;
+    }
+
+    protected function getLoanNonCashCollateralTypes($loan): array
+    {
+        $fields = [
+            'immovable_assets' => 'Immovable',
+            'moveable_assets' => 'Moveable',
+            'intellectual_property' => 'Intellectual property',
+            'stocks_collateral' => 'Stock',
+            'livestock_collateral' => 'Livestock',
+        ];
+
+        $types = [];
+
+        foreach ($fields as $field => $label) {
+            if (trim((string) ($loan->{$field} ?? '')) !== '') {
+                $types[] = $label;
+            }
+        }
+
+        return array_values(array_unique($types));
+    }
+
+    /**
      * Contact details for one loan follow-up recipient.
      */
     protected function getFollowUpSmsRecipient($loan, string $loanType): array
@@ -864,6 +1002,304 @@ class RepaymentController extends Controller
             'sent' => true,
             'message' => 'SMS logged as sent to ' . $phone . '.',
         ];
+    }
+
+    /**
+     * Store non-cash collateral directly against the active loan record.
+     */
+    public function storeCollateral(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'loan_id' => ['required', 'integer'],
+            'loan_type' => ['required', 'in:personal,group'],
+            'collateral_field' => ['required', 'in:immovable_assets,moveable_assets,intellectual_property,stocks_collateral,livestock_collateral'],
+            'description' => ['required', 'string', 'min:3', 'max:2000'],
+            'estimated_value' => ['required', 'numeric', 'min:1'],
+            'forced_sale_value' => ['nullable', 'numeric', 'min:0'],
+            'collateral_document' => ['required', 'file', 'max:20480'],
+        ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $estimatedValue = (float) $request->input('estimated_value', 0);
+            $forcedSaleValue = $request->input('forced_sale_value');
+
+            if ($forcedSaleValue !== null && $forcedSaleValue !== '' && (float) $forcedSaleValue > $estimatedValue) {
+                $validator->errors()->add('forced_sale_value', 'The forced sale value cannot be greater than the estimated value.');
+            }
+
+            $file = $request->file('collateral_document');
+
+            if (!$file || !$file->isValid()) {
+                $validator->errors()->add('collateral_document', 'The collateral document could not be uploaded. Please reselect the file and try again.');
+                return;
+            }
+
+            $realPath = $file->getRealPath();
+            if (!$realPath || !is_readable($realPath)) {
+                $validator->errors()->add('collateral_document', 'The collateral document could not be read after upload. Please reselect the file and try again.');
+                return;
+            }
+
+            if (!$this->isAcceptedCollateralDocument($file)) {
+                $validator->errors()->add('collateral_document', 'Upload a valid PDF, JPG, JPEG, or PNG collateral document.');
+            }
+        });
+
+        $validated = $validator->validate();
+
+        $loan = $validated['loan_type'] === 'group'
+            ? GroupLoan::find($validated['loan_id'])
+            : PersonalLoan::find($validated['loan_id']);
+
+        if (!$loan) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Loan not found for collateral capture.',
+                ], 404);
+            }
+
+            return back()->with('error', 'Loan not found for collateral capture.');
+        }
+
+        $field = $validated['collateral_field'];
+        $description = trim($validated['description']);
+        $estimatedValue = (float) $validated['estimated_value'];
+        $forcedSaleValue = isset($validated['forced_sale_value']) && $validated['forced_sale_value'] !== null
+            ? (float) $validated['forced_sale_value']
+            : null;
+        $current = trim((string) ($loan->{$field} ?? ''));
+        $file = $request->file('collateral_document');
+        $documentName = $file->getClientOriginalName();
+        $documentMimeType = $file->getMimeType();
+        $documentSize = $file->getSize();
+        $path = FileStorageService::storeFile(
+            $file,
+            'loan-collateral-documents/' . $validated['loan_type'] . '/' . $loan->id
+        );
+
+        $existingLines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $current)));
+        $loan->{$field} = in_array($description, $existingLines, true)
+            ? $current
+            : ($current === '' ? $description : $current . "\n" . $description);
+
+        $loan->save();
+
+        LoanCollateralDocument::create([
+            'loan_type' => $validated['loan_type'],
+            'loan_id' => $loan->id,
+            'member_id' => $loan->member_id ?? null,
+            'collateral_field' => $field,
+            'document_name' => $documentName,
+            'document_type' => 'collateral_evidence',
+            'estimated_value' => $estimatedValue,
+            'forced_sale_value' => $forcedSaleValue,
+            'file_path' => $path,
+            'file_type' => $documentMimeType,
+            'file_size' => $documentSize,
+            'description' => $description,
+            'uploaded_by' => auth()->id(),
+        ]);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Collateral recorded successfully.',
+            ]);
+        }
+
+        return back()->with('success', 'Collateral recorded successfully.');
+    }
+
+    protected function isAcceptedCollateralDocument($file): bool
+    {
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        $mimeType = strtolower((string) $file->getMimeType());
+        $realPath = $file->getRealPath();
+
+        if (in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+            return in_array($mimeType, ['image/jpeg', 'image/png'], true) || @getimagesize($realPath) !== false;
+        }
+
+        if ($extension !== 'pdf') {
+            return false;
+        }
+
+        $handle = @fopen($realPath, 'rb');
+        if (!$handle) {
+            return false;
+        }
+
+        $header = fread($handle, 1024);
+        fclose($handle);
+
+        return strpos($header, '%PDF-') !== false;
+    }
+
+    /**
+     * Return read-only collateral details for the active-loans view.
+     */
+    public function showCollateral(Request $request, $loanId)
+    {
+        $loanType = $request->get('loan_type', 'personal');
+
+        if (!in_array($loanType, ['personal', 'group'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid loan type.',
+            ], 422);
+        }
+
+        $loan = $loanType === 'group'
+            ? GroupLoan::with('group')->find($loanId)
+            : PersonalLoan::with('member')->find($loanId);
+
+        if (!$loan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Loan not found.',
+            ], 404);
+        }
+
+        $cashSecurities = Schema::hasTable('cash_securities')
+            ? CashSecurity::query()
+                ->where('loan_id', $loan->id)
+                ->where('returned', 0)
+                ->orderByDesc('datecreated')
+                ->get()
+            : collect();
+
+        $documents = $this->getLoanCollateralDocuments($loan, $loanType);
+        $this->applyCollateralStatus($loan, $cashSecurities, $documents->count());
+
+        return response()->json([
+            'success' => true,
+            'loan' => [
+                'id' => $loan->id,
+                'code' => $loan->code ?? $loan->id,
+                'borrower' => $loanType === 'group'
+                    ? ($loan->group->name ?? 'Group loan')
+                    : trim(($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '')),
+                'summary' => $loan->collateral_summary,
+                'has_collateral' => (bool) $loan->has_collateral,
+            ],
+            'non_cash' => $this->getLoanNonCashCollateralDetails($loan),
+            'cash_securities' => $cashSecurities->map(function ($security) {
+                return [
+                    'amount' => (float) $security->amount,
+                    'amount_formatted' => number_format((float) $security->amount, 0),
+                    'payment_type' => $security->payment_type_name ?? 'Unknown',
+                    'status' => (int) $security->status === 1 ? 'Paid' : ((int) $security->status === 0 ? 'Pending' : 'Failed'),
+                    'reference' => $security->transaction_reference ?: $security->pay_ref,
+                    'description' => $security->description ?: 'Cash security deposit',
+                    'date' => optional($security->datecreated)->format('Y-m-d H:i'),
+                ];
+            })->values(),
+            'documents' => $documents->values(),
+        ]);
+    }
+
+    protected function getLoanNonCashCollateralDetails($loan): array
+    {
+        $fields = [
+            'immovable_assets' => 'Immovable assets',
+            'moveable_assets' => 'Moveable assets',
+            'intellectual_property' => 'Intellectual property',
+            'stocks_collateral' => 'Business stock',
+            'livestock_collateral' => 'Livestock',
+        ];
+
+        $details = [];
+
+        foreach ($fields as $field => $label) {
+            $description = trim((string) ($loan->{$field} ?? ''));
+
+            if ($description === '') {
+                continue;
+            }
+
+            $details[] = [
+                'field' => $field,
+                'type' => $label,
+                'description' => $description,
+            ];
+        }
+
+        return $details;
+    }
+
+    protected function getLoanCollateralDocuments($loan, string $loanType)
+    {
+        $documents = collect();
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $documents = LoanCollateralDocument::query()
+                ->where('loan_type', $loanType)
+                ->where('loan_id', $loan->id)
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(function ($document) {
+                    return [
+                        'name' => $document->document_name,
+                        'type' => $document->document_type ?: 'Collateral evidence',
+                        'description' => $document->description,
+                        'estimated_value' => $document->estimated_value !== null ? (float) $document->estimated_value : null,
+                        'estimated_value_formatted' => $document->estimated_value !== null ? number_format((float) $document->estimated_value, 0) : null,
+                        'forced_sale_value' => $document->forced_sale_value !== null ? (float) $document->forced_sale_value : null,
+                        'forced_sale_value_formatted' => $document->forced_sale_value !== null ? number_format((float) $document->forced_sale_value, 0) : null,
+                        'url' => $document->file_url,
+                        'uploaded_at' => optional($document->created_at)->format('Y-m-d H:i'),
+                    ];
+                });
+        }
+
+        if ($loanType === 'personal' && Schema::hasTable('client_loan_applications')) {
+            $applicationDocs = DB::table('client_loan_applications')
+                ->where('loan_id', $loan->id)
+                ->select(
+                    'collateral_1_doc_photo',
+                    'collateral_2_doc_photo',
+                    'collateral_1_description',
+                    'collateral_2_description',
+                    'collateral_1_client_value',
+                    'collateral_2_client_value',
+                    'fsv_collateral_1',
+                    'fsv_collateral_2'
+                )
+                ->get()
+                ->flatMap(function ($application) {
+                    $rows = [];
+
+                    foreach ([1, 2] as $index) {
+                        $path = trim((string) ($application->{"collateral_{$index}_doc_photo"} ?? ''));
+
+                        if ($path === '') {
+                            continue;
+                        }
+
+                        $estimatedValue = (float) ($application->{"collateral_{$index}_client_value"} ?? 0);
+                        $forcedSaleValue = (float) ($application->{"fsv_collateral_{$index}"} ?? 0);
+
+                        $rows[] = [
+                            'name' => 'Collateral ' . $index . ' application document',
+                            'type' => 'Application collateral',
+                            'description' => $application->{"collateral_{$index}_description"} ?? null,
+                            'estimated_value' => $estimatedValue > 0 ? $estimatedValue : null,
+                            'estimated_value_formatted' => $estimatedValue > 0 ? number_format($estimatedValue, 0) : null,
+                            'forced_sale_value' => $forcedSaleValue > 0 ? $forcedSaleValue : null,
+                            'forced_sale_value_formatted' => $forcedSaleValue > 0 ? number_format($forcedSaleValue, 0) : null,
+                            'url' => FileStorageService::getFileUrl($path),
+                            'uploaded_at' => null,
+                        ];
+                    }
+
+                    return $rows;
+                });
+
+            $documents = $documents->merge($applicationDocs);
+        }
+
+        return $documents;
     }
 
     /**
@@ -1123,6 +1559,7 @@ class RepaymentController extends Controller
         });
 
         $this->attachLoanFollowUps($loans);
+        $this->attachLoanCollateralStatus($loans);
 
         if ($request->filled('status')) {
             $statusFilter = $request->get('status');
@@ -1133,6 +1570,7 @@ class RepaymentController extends Controller
                     'restructured' => (int) ($loan->restructured ?? 0) === 1,
                     'risk_followup' => (bool) ($loan->requires_follow_up ?? false),
                     'missing_followup' => (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false),
+                    'missing_collateral' => !(bool) ($loan->has_collateral ?? false),
                     default => true,
                 };
             })->values();
@@ -1178,6 +1616,9 @@ class RepaymentController extends Controller
                 return (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false);
             })->count(),
             'followup_due_count' => $allActiveLoansForStats->where('follow_up_due', true)->count(),
+            'missing_collateral_count' => $allActiveLoansForStats->filter(function ($loan) {
+                return !(bool) ($loan->has_collateral ?? false);
+            })->count(),
             'collections_today' => (float) (Repayment::whereDate('date_created', today())
                                           ->where('status', 1)
                                           ->sum('amount') ?? 0),
@@ -1252,6 +1693,7 @@ class RepaymentController extends Controller
         })->values();
 
         $this->attachLoanFollowUps($pageLoans);
+        $this->attachLoanCollateralStatus($pageLoans);
 
         if ($request->filled('status')) {
             $statusFilter = $request->get('status');
@@ -1262,6 +1704,7 @@ class RepaymentController extends Controller
                     'restructured' => (int) ($loan->restructured ?? 0) === 1,
                     'risk_followup' => (bool) ($loan->requires_follow_up ?? false),
                     'missing_followup' => (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false),
+                    'missing_collateral' => !(bool) ($loan->has_collateral ?? false),
                     default => true,
                 };
             })->values();
@@ -1418,6 +1861,7 @@ class RepaymentController extends Controller
             $riskFollowupCount = 0;
             $followedUpCount = 0;
             $followupDueCount = 0;
+            $missingCollateralCount = 0;
 
             if (!empty($loanIds)) {
                 $paidSubquery = DB::table('repayments')
@@ -1512,6 +1956,33 @@ class RepaymentController extends Controller
                         ->whereDate('f.next_follow_up_date', '<=', today())
                         ->count();
                 }
+
+                if (Schema::hasTable('cash_securities')) {
+                    $documentedLoanIds = array_keys(array_filter(
+                        $this->getCollateralDocumentCounts($loanIds),
+                        fn ($total) => (int) $total > 0
+                    ));
+
+                    $missingCollateralCount = DB::table('personal_loans as l')
+                        ->whereIn('l.id', $loanIds)
+                        ->whereNotExists(function ($subquery) {
+                            $subquery->select(DB::raw(1))
+                                ->from('cash_securities as cs')
+                                ->whereColumn('cs.loan_id', 'l.id')
+                                ->where('cs.status', 1)
+                                ->where('cs.returned', 0);
+                        })
+                        ->where(function ($query) use ($documentedLoanIds) {
+                            $query->whereRaw("COALESCE(NULLIF(TRIM(l.immovable_assets), ''), NULLIF(TRIM(l.moveable_assets), ''), NULLIF(TRIM(l.intellectual_property), ''), NULLIF(TRIM(l.stocks_collateral), ''), NULLIF(TRIM(l.livestock_collateral), '')) IS NULL");
+
+                            if (!empty($documentedLoanIds)) {
+                                $query->orWhereNotIn('l.id', $documentedLoanIds);
+                            } else {
+                                $query->orWhereRaw('1 = 1');
+                            }
+                        })
+                        ->count();
+                }
             }
 
             return [
@@ -1525,6 +1996,7 @@ class RepaymentController extends Controller
                 'followed_up_count' => $followedUpCount,
                 'missing_followup_count' => max(0, $riskFollowupCount - $followedUpCount),
                 'followup_due_count' => $followupDueCount,
+                'missing_collateral_count' => $missingCollateralCount,
                 'collections_today' => (float) (Repayment::whereDate('date_created', today())
                     ->where('status', 1)
                     ->sum('amount') ?? 0),

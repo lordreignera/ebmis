@@ -16,6 +16,8 @@ use App\Models\Fee;
 use App\Models\FeeType;
 use App\Models\ProductCharge;
 use App\Models\LoanCharge;
+use App\Models\CashSecurity;
+use App\Models\LoanCollateralDocument;
 use App\Models\User;
 use App\Models\Product;
 use App\Models\Member;
@@ -24,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 use App\Helpers\LoanScheduleHelper;
@@ -341,6 +344,7 @@ class DisbursementController extends Controller
         
         // Set current logged-in user as default
         $loan->assigned_to = auth()->id();
+        $loan->collateral_requirement = $this->getCollateralRequirementStatus($loan, $loanType);
 
         return view('admin.loans.disbursements.approve', compact('loan', 'staff_members', 'investment_accounts'));
     }
@@ -401,6 +405,13 @@ class DisbursementController extends Controller
         if ($existingDisbursement) {
             return redirect()->route('admin.loans.disbursements.pending')
                 ->with('error', 'This loan has already been disbursed successfully. Cannot disburse again.');
+        }
+
+        $collateralRequirement = $this->getCollateralRequirementStatus($loan, $loanType === 1 ? 'personal' : 'group');
+        if (!$collateralRequirement['met']) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', $collateralRequirement['message']);
         }
 
         DB::beginTransaction();
@@ -757,6 +768,98 @@ class DisbursementController extends Controller
         ];
         
         return $types[$periodType] ?? 'periods';
+    }
+
+    protected function getCollateralRequirementStatus($loan, string $loanType): array
+    {
+        $nonCashTypes = $this->getLoanNonCashCollateralTypes($loan);
+        $documentCount = $this->getLoanCollateralDocumentCount($loan, $loanType);
+
+        $cashSecurityQuery = CashSecurity::query()
+            ->where('loan_id', $loan->id)
+            ->where('returned', 0);
+
+        if ($loanType === 'personal' && isset($loan->member_id)) {
+            $cashSecurityQuery->where('member_id', $loan->member_id);
+        }
+
+        $cashSecurities = $cashSecurityQuery->get();
+        $confirmedCash = (float) $cashSecurities->where('status', 1)->sum('amount');
+        $pendingCash = (float) $cashSecurities->where('status', 0)->sum('amount');
+        $hasDocumentedNonCash = !empty($nonCashTypes) && $documentCount > 0;
+        $met = $hasDocumentedNonCash || $confirmedCash > 0;
+
+        $summaryParts = $nonCashTypes;
+        if (!empty($nonCashTypes)) {
+            $summaryParts[] = $documentCount > 0
+                ? $documentCount . ' collateral document(s)'
+                : 'collateral document missing';
+        }
+        if ($confirmedCash > 0) {
+            $summaryParts[] = 'Confirmed cash security UGX ' . number_format($confirmedCash, 0);
+        }
+        if ($pendingCash > 0) {
+            $summaryParts[] = 'Pending cash security UGX ' . number_format($pendingCash, 0);
+        }
+
+        return [
+            'met' => $met,
+            'non_cash_types' => $nonCashTypes,
+            'document_count' => $documentCount,
+            'confirmed_cash' => $confirmedCash,
+            'pending_cash' => $pendingCash,
+            'summary' => empty($summaryParts) ? 'No loan collateral or completed cash security recorded.' : implode('; ', $summaryParts),
+            'message' => $met
+                ? 'Collateral requirement met.'
+                : 'Collateral required before disbursement. Upload evidence for non-cash collateral or complete a cash security deposit linked to this loan.',
+        ];
+    }
+
+    protected function getLoanCollateralDocumentCount($loan, string $loanType): int
+    {
+        $count = 0;
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $count += (int) LoanCollateralDocument::query()
+                ->where('loan_type', $loanType)
+                ->where('loan_id', $loan->id)
+                ->count();
+        }
+
+        if ($loanType === 'personal' && Schema::hasTable('client_loan_applications')) {
+            $count += (int) DB::table('client_loan_applications')
+                ->where('loan_id', $loan->id)
+                ->selectRaw("
+                    SUM(
+                        CASE WHEN collateral_1_doc_photo IS NOT NULL AND collateral_1_doc_photo <> '' THEN 1 ELSE 0 END
+                        + CASE WHEN collateral_2_doc_photo IS NOT NULL AND collateral_2_doc_photo <> '' THEN 1 ELSE 0 END
+                    ) as total
+                ")
+                ->value('total');
+        }
+
+        return $count;
+    }
+
+    protected function getLoanNonCashCollateralTypes($loan): array
+    {
+        $fields = [
+            'immovable_assets' => 'Immovable assets',
+            'moveable_assets' => 'Moveable assets',
+            'intellectual_property' => 'Intellectual property',
+            'stocks_collateral' => 'Business stock',
+            'livestock_collateral' => 'Livestock',
+        ];
+
+        $types = [];
+
+        foreach ($fields as $field => $label) {
+            if (trim((string) ($loan->{$field} ?? '')) !== '') {
+                $types[] = $label;
+            }
+        }
+
+        return array_values(array_unique($types));
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\CashSecurity;
+use App\Models\LoanCollateralDocument;
 use App\Models\LoanFollowUp;
 use App\Models\PersonalLoan;
 use Carbon\Carbon;
@@ -11,6 +12,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -522,12 +524,267 @@ class UmraReportController extends Controller
     /**
      * UMRA collateral register.
      */
-    public function collateralRegister()
+    public function collateralRegister(Request $request)
     {
+        $allRows = collect($this->getCollateralRegister());
+        $filteredRows = $this->filterCollateralRegister($allRows, $request);
+
         return view('admin.umra.collateral-register', [
-            'collateralRegister' => collect($this->getCollateralRegister()),
+            'collateralRegister' => $filteredRows,
+            'totalCollateralRows' => $allRows->count(),
+            'filterOptions' => $this->getCollateralRegisterFilterOptions($allRows),
+            'filters' => $this->normalizeCollateralRegisterFilters($request),
             'generatedDate' => Carbon::now(),
         ]);
+    }
+
+    /**
+     * Export filtered collateral register to Excel.
+     */
+    public function exportCollateralRegister(Request $request)
+    {
+        $rows = $this->filterCollateralRegister(collect($this->getCollateralRegister()), $request);
+        $filters = $this->normalizeCollateralRegisterFilters($request);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Collateral Register');
+
+        $sheet->fromArray([
+            ['UMRA Collateral Register'],
+            ['Generated', Carbon::now()->format('d M Y H:i')],
+            ['Filter', $this->describeCollateralRegisterFilter($filters)],
+            [],
+            [
+                'Loan Account',
+                'Client',
+                'Branch',
+                'Assigned Officer',
+                'Collateral Type',
+                'Description',
+                'Estimated Value (UGX)',
+                'Forced Sale Value (UGX)',
+                'Source / Reference',
+                'Status',
+            ],
+        ], null, 'A1');
+
+        $rowNumber = 6;
+        foreach ($rows as $row) {
+            $sheet->fromArray([[
+                $row['loan_account_no'],
+                $row['client_name'],
+                $row['branch'],
+                $row['assigned_officer'],
+                $row['collateral_type'],
+                $row['description'],
+                $row['estimated_value'],
+                $row['forced_sale_value'],
+                $row['source'],
+                $row['status'],
+            ]], null, 'A' . $rowNumber);
+            $rowNumber++;
+        }
+
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A5:J5')->getFont()->setBold(true);
+        $sheet->getStyle('G6:H' . max($rowNumber, 6))->getNumberFormat()->setFormatCode('#,##0.00');
+
+        foreach (range('A', 'J') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $filename = 'UMRA-Collateral-Register-' . now()->format('Y-m-d-H-i-s') . '.xlsx';
+
+        return $this->downloadSpreadsheet($spreadsheet, $filename);
+    }
+
+    /**
+     * Export filtered collateral register to PDF.
+     */
+    public function exportCollateralRegisterPdf(Request $request)
+    {
+        $rows = $this->filterCollateralRegister(collect($this->getCollateralRegister()), $request);
+        $filters = $this->normalizeCollateralRegisterFilters($request);
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', false);
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($this->renderCollateralRegisterPdfHtml($rows, $filters));
+        $dompdf->setPaper('A4', 'landscape');
+        $dompdf->render();
+
+        $filename = 'UMRA-Collateral-Register-' . now()->format('Y-m-d-H-i-s') . '.pdf';
+
+        return response($dompdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+    }
+
+    /**
+     * Search and filter the UMRA collateral register.
+     */
+    private function filterCollateralRegister($rows, Request $request)
+    {
+        $filters = $this->normalizeCollateralRegisterFilters($request);
+
+        return $rows
+            ->filter(function ($row) use ($filters) {
+                if ($filters['q'] !== '') {
+                    $haystack = strtolower(implode(' ', [
+                        $row['loan_account_no'],
+                        $row['client_name'],
+                        $row['branch'],
+                        $row['assigned_officer'],
+                        $row['collateral_type'],
+                        $row['description'],
+                        $row['source'],
+                        $row['status'],
+                    ]));
+
+                    if (!str_contains($haystack, strtolower($filters['q']))) {
+                        return false;
+                    }
+                }
+
+                if ($filters['branch'] !== '' && $row['branch'] !== $filters['branch']) {
+                    return false;
+                }
+
+                return match ($filters['collateral_status']) {
+                    'with_collateral' => $this->collateralRowHasValidSecurity($row),
+                    'without_collateral' => !$this->collateralRowHasValidSecurity($row),
+                    'missing_document' => $row['status'] === 'Missing document',
+                    'pending_cash' => $row['status'] === 'Pending',
+                    default => true,
+                };
+            })
+            ->values();
+    }
+
+    private function normalizeCollateralRegisterFilters(Request $request): array
+    {
+        $status = $request->get('collateral_status', 'all');
+        $allowedStatuses = ['all', 'with_collateral', 'without_collateral', 'missing_document', 'pending_cash'];
+
+        return [
+            'q' => trim((string) $request->get('q', '')),
+            'branch' => trim((string) $request->get('branch', '')),
+            'collateral_status' => in_array($status, $allowedStatuses, true) ? $status : 'all',
+        ];
+    }
+
+    private function getCollateralRegisterFilterOptions($rows): array
+    {
+        return [
+            'branches' => $rows
+                ->pluck('branch')
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values()
+                ->all(),
+            'statuses' => [
+                'all' => 'All collateral rows',
+                'with_collateral' => 'Has valid collateral',
+                'without_collateral' => 'No valid collateral',
+                'missing_document' => 'Missing document',
+                'pending_cash' => 'Pending cash security',
+            ],
+        ];
+    }
+
+    private function collateralRowHasValidSecurity(array $row): bool
+    {
+        return !in_array($row['status'], ['Missing', 'Missing document', 'Pending', 'Returned'], true)
+            && $row['collateral_type'] !== 'Missing collateral';
+    }
+
+    private function describeCollateralRegisterFilter(array $filters): string
+    {
+        $labels = [
+            'all' => 'All collateral rows',
+            'with_collateral' => 'Has valid collateral',
+            'without_collateral' => 'No valid collateral',
+            'missing_document' => 'Missing document',
+            'pending_cash' => 'Pending cash security',
+        ];
+
+        $parts = [$labels[$filters['collateral_status']] ?? 'All collateral rows'];
+
+        if ($filters['branch'] !== '') {
+            $parts[] = 'Branch: ' . $filters['branch'];
+        }
+
+        if ($filters['q'] !== '') {
+            $parts[] = 'Search: ' . $filters['q'];
+        }
+
+        return implode(' | ', $parts);
+    }
+
+    private function renderCollateralRegisterPdfHtml($rows, array $filters): string
+    {
+        $tableRows = '';
+
+        foreach ($rows as $row) {
+            $tableRows .= '<tr>'
+                . '<td>' . htmlspecialchars((string) $row['loan_account_no']) . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['client_name']) . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['branch']) . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['assigned_officer']) . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['collateral_type']) . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['description']) . '</td>'
+                . '<td class="right">' . ($row['estimated_value'] !== null ? number_format((float) $row['estimated_value'], 2) : 'Not valued') . '</td>'
+                . '<td class="right">' . ($row['forced_sale_value'] !== null ? number_format((float) $row['forced_sale_value'], 2) : 'Not valued') . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['source']) . '</td>'
+                . '<td>' . htmlspecialchars((string) $row['status']) . '</td>'
+                . '</tr>';
+        }
+
+        if ($tableRows === '') {
+            $tableRows = '<tr><td colspan="10" class="muted">No collateral records match the selected filters.</td></tr>';
+        }
+
+        return '<!doctype html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    body { font-family: DejaVu Sans, sans-serif; color: #1f2937; font-size: 9px; }
+                    h1 { font-size: 18px; margin-bottom: 4px; }
+                    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+                    th, td { border: 1px solid #d1d5db; padding: 5px; text-align: left; vertical-align: top; }
+                    th { background: #111827; color: #ffffff; }
+                    .right { text-align: right; }
+                    .muted { color: #6b7280; }
+                    .note { font-size: 10px; color: #4b5563; margin: 2px 0; }
+                </style>
+            </head>
+            <body>
+                <h1>UMRA Collateral Register</h1>
+                <p class="note">Generated: ' . htmlspecialchars(Carbon::now()->format('d M Y H:i')) . '</p>
+                <p class="note">Filter: ' . htmlspecialchars($this->describeCollateralRegisterFilter($filters)) . '</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Loan Account</th>
+                            <th>Client</th>
+                            <th>Branch</th>
+                            <th>Officer</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Estimated</th>
+                            <th>FSV</th>
+                            <th>Source</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>' . $tableRows . '</tbody>
+                </table>
+            </body>
+            </html>';
     }
 
     /**
@@ -1583,6 +1840,7 @@ class UmraReportController extends Controller
         $cashSecuritiesByLoan = CashSecurity::whereIn('loan_id', $activeLoanIds)
             ->get()
             ->groupBy('loan_id');
+        $collateralValuesByLoan = $this->getLoanCollateralValuesByLoan($activeLoanIds);
 
         $followUpsByLoan = $this->getLoanFollowUpSummaries($activeLoanIds);
 
@@ -1625,7 +1883,7 @@ class UmraReportController extends Controller
 
             $loanCashSecurities = $cashSecuritiesByLoan->get($loan->id, collect());
             $collateralType = $this->getLoanCollateralType($loan, $loanCashSecurities);
-            $forcedSaleValue = $this->getLoanForcedSaleValue($loanCashSecurities);
+            $forcedSaleValue = $this->getLoanForcedSaleValue($loanCashSecurities, $collateralValuesByLoan[(int) $loan->id]['forced_sale_value'] ?? null);
             $fsvCoverageRatio = $this->getFsvCoverageRatio($forcedSaleValue, $totalOutstanding);
             $primaryDisbursement = $this->getPrimaryDisbursement($loan);
             $disbursementDate = $this->getLoanDisbursementDate($loan, $primaryDisbursement);
@@ -1819,11 +2077,11 @@ class UmraReportController extends Controller
     }
 
     /**
-     * Forced sale value available from captured cash security values.
+     * Forced sale value available from captured cash security and non-cash collateral values.
      */
-    private function getLoanForcedSaleValue($cashSecurities)
+    private function getLoanForcedSaleValue($cashSecurities, $nonCashForcedSaleValue = null)
     {
-        $value = (float) $cashSecurities->sum('amount');
+        $value = (float) $cashSecurities->sum('amount') + (float) ($nonCashForcedSaleValue ?? 0);
 
         return $value > 0 ? $value : null;
     }
@@ -1897,6 +2155,8 @@ class UmraReportController extends Controller
             'stocks_collateral' => 'Stocks collateral',
             'livestock_collateral' => 'Livestock collateral',
         ];
+        $loanIdsWithCollateral = [];
+        $collateralValues = $this->getLoanCollateralValuations($activeLoanIds);
 
         foreach ($loans as $loan) {
             foreach ($collateralFields as $field => $label) {
@@ -1906,7 +2166,18 @@ class UmraReportController extends Controller
                     continue;
                 }
 
-                $rows[] = $this->makeCollateralRow($loan, $label, $description, null, 'Loan agreement', 'Registered');
+                $valueDetails = $collateralValues[(int) $loan->id][$field] ?? [];
+                $hasDocuments = (int) ($valueDetails['document_count'] ?? 0) > 0;
+                $rows[] = $this->makeCollateralRow(
+                    $loan,
+                    $label,
+                    $description,
+                    $valueDetails['estimated_value'] ?? null,
+                    $valueDetails['forced_sale_value'] ?? null,
+                    $hasDocuments ? 'Loan agreement / uploaded evidence' : 'Loan agreement',
+                    $hasDocuments ? 'Documented' : 'Missing document'
+                );
+                $loanIdsWithCollateral[(int) $loan->id] = true;
             }
         }
 
@@ -1929,8 +2200,26 @@ class UmraReportController extends Controller
                 'Cash security',
                 $cashSecurity->description ?: 'Cash security deposit',
                 $cashSecurity->amount,
+                $cashSecurity->amount,
                 $cashSecurity->transaction_reference ?: $cashSecurity->pay_ref ?: 'Cash security',
                 $status
+            );
+            $loanIdsWithCollateral[(int) $loan->id] = true;
+        }
+
+        foreach ($loans as $loan) {
+            if (isset($loanIdsWithCollateral[(int) $loan->id])) {
+                continue;
+            }
+
+            $rows[] = $this->makeCollateralRow(
+                $loan,
+                'Missing collateral',
+                'No non-cash collateral or loan-linked cash security is recorded for this active loan.',
+                null,
+                null,
+                'System check',
+                'Missing'
             );
         }
 
@@ -1944,10 +2233,230 @@ class UmraReportController extends Controller
             ->all();
     }
 
+    private function getLoanCollateralDocumentCounts(array $loanIds): array
+    {
+        $loanIds = array_values(array_unique(array_filter($loanIds)));
+        if (empty($loanIds)) {
+            return [];
+        }
+
+        $counts = [];
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $storedCounts = LoanCollateralDocument::query()
+                ->where('loan_type', 'personal')
+                ->whereIn('loan_id', $loanIds)
+                ->groupBy('loan_id')
+                ->select('loan_id', DB::raw('COUNT(*) as total'))
+                ->pluck('total', 'loan_id')
+                ->toArray();
+
+            foreach ($storedCounts as $loanId => $total) {
+                $counts[(int) $loanId] = ($counts[(int) $loanId] ?? 0) + (int) $total;
+            }
+        }
+
+        if (Schema::hasTable('client_loan_applications')) {
+            $applicationCounts = DB::table('client_loan_applications')
+                ->whereIn('loan_id', $loanIds)
+                ->groupBy('loan_id')
+                ->select('loan_id', DB::raw("
+                    SUM(
+                        CASE WHEN collateral_1_doc_photo IS NOT NULL AND collateral_1_doc_photo <> '' THEN 1 ELSE 0 END
+                        + CASE WHEN collateral_2_doc_photo IS NOT NULL AND collateral_2_doc_photo <> '' THEN 1 ELSE 0 END
+                    ) as total
+                "))
+                ->pluck('total', 'loan_id')
+                ->toArray();
+
+            foreach ($applicationCounts as $loanId => $total) {
+                $counts[(int) $loanId] = ($counts[(int) $loanId] ?? 0) + (int) $total;
+            }
+        }
+
+        return $counts;
+    }
+
+    private function getLoanCollateralValuesByLoan(array $loanIds): array
+    {
+        $byField = $this->getLoanCollateralValuations($loanIds);
+        $totals = [];
+
+        foreach ($byField as $loanId => $fieldValues) {
+            foreach ($fieldValues as $values) {
+                $totals[(int) $loanId]['estimated_value'] = ($totals[(int) $loanId]['estimated_value'] ?? 0)
+                    + (float) ($values['estimated_value'] ?? 0);
+                $totals[(int) $loanId]['forced_sale_value'] = ($totals[(int) $loanId]['forced_sale_value'] ?? 0)
+                    + (float) ($values['forced_sale_value'] ?? 0);
+                $totals[(int) $loanId]['document_count'] = ($totals[(int) $loanId]['document_count'] ?? 0)
+                    + (int) ($values['document_count'] ?? 0);
+            }
+        }
+
+        foreach ($totals as $loanId => $values) {
+            $totals[$loanId]['estimated_value'] = $values['estimated_value'] > 0 ? $values['estimated_value'] : null;
+            $totals[$loanId]['forced_sale_value'] = $values['forced_sale_value'] > 0 ? $values['forced_sale_value'] : null;
+        }
+
+        return $totals;
+    }
+
+    private function getLoanCollateralValuations(array $loanIds): array
+    {
+        $loanIds = array_values(array_unique(array_filter($loanIds)));
+        if (empty($loanIds)) {
+            return [];
+        }
+
+        $valuations = [];
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $hasEstimatedValue = Schema::hasColumn('loan_collateral_documents', 'estimated_value');
+            $hasForcedSaleValue = Schema::hasColumn('loan_collateral_documents', 'forced_sale_value');
+
+            $storedRows = LoanCollateralDocument::query()
+                ->where('loan_type', 'personal')
+                ->whereIn('loan_id', $loanIds)
+                ->whereNotNull('collateral_field')
+                ->groupBy('loan_id', 'collateral_field')
+                ->select(
+                    'loan_id',
+                    'collateral_field',
+                    DB::raw('COUNT(*) as document_count'),
+                    DB::raw($hasEstimatedValue ? 'SUM(COALESCE(estimated_value, 0)) as estimated_total' : '0 as estimated_total'),
+                    DB::raw($hasForcedSaleValue ? 'SUM(COALESCE(forced_sale_value, 0)) as forced_sale_total' : '0 as forced_sale_total')
+                )
+                ->get();
+
+            foreach ($storedRows as $row) {
+                $loanId = (int) $row->loan_id;
+                $field = (string) $row->collateral_field;
+
+                $valuations[$loanId][$field] = [
+                    'estimated_value' => (float) $row->estimated_total > 0 ? (float) $row->estimated_total : null,
+                    'forced_sale_value' => (float) $row->forced_sale_total > 0 ? (float) $row->forced_sale_total : null,
+                    'document_count' => (int) $row->document_count,
+                    'stored_document_count' => (int) $row->document_count,
+                ];
+            }
+        }
+
+        if (Schema::hasTable('client_loan_applications')) {
+            $applicationRows = DB::table('client_loan_applications')
+                ->whereIn('loan_id', $loanIds)
+                ->select(
+                    'loan_id',
+                    'collateral_1_type',
+                    'collateral_1_description',
+                    'collateral_1_doc_photo',
+                    'collateral_1_client_value',
+                    'fsv_collateral_1',
+                    'collateral_2_type',
+                    'collateral_2_description',
+                    'collateral_2_doc_photo',
+                    'collateral_2_client_value',
+                    'fsv_collateral_2'
+                )
+                ->get();
+
+            foreach ($applicationRows as $application) {
+                $loanId = (int) $application->loan_id;
+
+                foreach ([1, 2] as $index) {
+                    $path = trim((string) ($application->{"collateral_{$index}_doc_photo"} ?? ''));
+                    if ($path === '') {
+                        continue;
+                    }
+
+                    $field = $this->mapApplicationCollateralFieldForUmra(
+                        (string) ($application->{"collateral_{$index}_type"} ?? ''),
+                        (string) ($application->{"collateral_{$index}_description"} ?? '')
+                    );
+
+                    if ((int) ($valuations[$loanId][$field]['stored_document_count'] ?? 0) > 0) {
+                        continue;
+                    }
+
+                    $estimatedValue = (float) ($application->{"collateral_{$index}_client_value"} ?? 0);
+                    $forcedSaleValue = (float) ($application->{"fsv_collateral_{$index}"} ?? 0);
+
+                    $existing = $valuations[$loanId][$field] ?? [
+                        'estimated_value' => 0,
+                        'forced_sale_value' => 0,
+                        'document_count' => 0,
+                        'stored_document_count' => 0,
+                    ];
+
+                    $existing['estimated_value'] = (float) ($existing['estimated_value'] ?? 0) + max($estimatedValue, 0);
+                    $existing['forced_sale_value'] = (float) ($existing['forced_sale_value'] ?? 0) + max($forcedSaleValue, 0);
+                    $existing['document_count'] = (int) ($existing['document_count'] ?? 0) + 1;
+
+                    $valuations[$loanId][$field] = $existing;
+                }
+            }
+        }
+
+        foreach ($valuations as $loanId => $fieldValues) {
+            foreach ($fieldValues as $field => $values) {
+                $valuations[$loanId][$field]['estimated_value'] = (float) ($values['estimated_value'] ?? 0) > 0
+                    ? (float) $values['estimated_value']
+                    : null;
+                $valuations[$loanId][$field]['forced_sale_value'] = (float) ($values['forced_sale_value'] ?? 0) > 0
+                    ? (float) $values['forced_sale_value']
+                    : null;
+            }
+        }
+
+        return $valuations;
+    }
+
+    private function mapApplicationCollateralFieldForUmra(string $type, string $description): string
+    {
+        $haystack = strtolower($type . ' ' . $description);
+
+        if (str_contains($haystack, 'land')
+            || str_contains($haystack, 'plot')
+            || str_contains($haystack, 'house')
+            || str_contains($haystack, 'building')
+            || str_contains($haystack, 'property')
+        ) {
+            return 'immovable_assets';
+        }
+
+        if (str_contains($haystack, 'stock')
+            || str_contains($haystack, 'inventory')
+            || str_contains($haystack, 'goods')
+            || str_contains($haystack, 'shop')
+        ) {
+            return 'stocks_collateral';
+        }
+
+        if (str_contains($haystack, 'livestock')
+            || str_contains($haystack, 'cattle')
+            || str_contains($haystack, 'cow')
+            || str_contains($haystack, 'goat')
+            || str_contains($haystack, 'pig')
+            || str_contains($haystack, 'poultry')
+            || str_contains($haystack, 'chicken')
+        ) {
+            return 'livestock_collateral';
+        }
+
+        if (str_contains($haystack, 'patent')
+            || str_contains($haystack, 'trademark')
+            || str_contains($haystack, 'copyright')
+            || str_contains($haystack, 'intellectual')
+        ) {
+            return 'intellectual_property';
+        }
+
+        return 'moveable_assets';
+    }
+
     /**
      * Create one collateral register row.
      */
-    private function makeCollateralRow($loan, string $type, string $description, $value, string $source, string $status)
+    private function makeCollateralRow($loan, string $type, string $description, $value, $forcedSaleValue, string $source, string $status)
     {
         return [
             'loan_id' => $loan->id,
@@ -1958,6 +2467,7 @@ class UmraReportController extends Controller
             'collateral_type' => $type,
             'description' => $description,
             'estimated_value' => $value,
+            'forced_sale_value' => $forcedSaleValue,
             'source' => $source,
             'status' => $status,
         ];

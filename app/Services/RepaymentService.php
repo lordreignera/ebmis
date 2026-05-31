@@ -343,7 +343,7 @@ class RepaymentService
             // Process callback through mobile money service
             $callbackResult = $this->mobileMoneyService->processCallback($callbackData);
             
-            if (!$callbackResult['success']) {
+            if (!($callbackResult['valid'] ?? false)) {
                 return [
                     'success' => false,
                     'message' => 'Invalid callback data: ' . $callbackResult['message']
@@ -468,7 +468,10 @@ class RepaymentService
             }
             
             // Try to find a cash security record
-            $cashSecurity = \App\Models\CashSecurity::where('pay_ref', $transactionRef)
+            $cashSecurity = \App\Models\CashSecurity::where(function ($query) use ($transactionRef) {
+                                    $query->where('pay_ref', $transactionRef)
+                                        ->orWhere('transaction_reference', $transactionRef);
+                                })
                                 ->where('status', 0)
                                 ->first();
             
@@ -483,6 +486,22 @@ class RepaymentService
                     ]);
                     
                     Log::info("Cash security payment confirmed via callback", ['cash_security_id' => $cashSecurity->id]);
+
+                    try {
+                        $journal = $this->accountingService->postCashSecurityEntry($cashSecurity);
+
+                        if ($journal) {
+                            Log::info('Cash security GL entry posted via callback', [
+                                'cash_security_id' => $cashSecurity->id,
+                                'journal_number' => $journal->journal_number,
+                            ]);
+                        }
+                    } catch (\Exception $glError) {
+                        Log::error('Cash security GL posting failed via callback', [
+                            'cash_security_id' => $cashSecurity->id,
+                            'error' => $glError->getMessage(),
+                        ]);
+                    }
                     
                     return [
                         'success' => true,

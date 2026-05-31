@@ -644,6 +644,20 @@ class AccountingService
     public function postCashSecurityEntry($cashSecurity)
     {
         try {
+            $existingCashSecurityJE = JournalEntry::where('reference_type', 'Cash Security')
+                ->where('reference_id', $cashSecurity->id)
+                ->where('status', '!=', 'reversed')
+                ->first();
+
+            if ($existingCashSecurityJE) {
+                Log::warning('Skipped duplicate cash security GL posting', [
+                    'cash_security_id' => $cashSecurity->id,
+                    'journal_number' => $existingCashSecurityJE->journal_number,
+                ]);
+
+                return $existingCashSecurityJE;
+            }
+
             // 1. Settlement account is always bank regardless of capture channel
             $paymentMethod = $cashSecurity->payment_method ?? null;
             $paymentSource = $cashSecurity->payment_source ?? $cashSecurity->source ?? null;

@@ -4,8 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\CashSecurity;
+use App\Models\GroupLoan;
 use App\Models\Member;
-use App\Models\Loan;
+use App\Models\PersonalLoan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,7 +20,8 @@ class CashSecurityController extends Controller
     {
         $validated = $request->validate([
             'member_id' => 'required|exists:members,id',
-            'loan_id' => 'nullable|exists:loans,id',
+            'loan_id' => 'nullable|integer',
+            'loan_type' => 'nullable|in:personal,group',
             'amount' => 'required|numeric|min:0.01',
             'payment_type' => 'required|integer|in:1,2,3', // 1=Mobile Money, 2=Cash, 3=Bank Transfer
             'description' => 'nullable|string|max:500',
@@ -29,6 +31,45 @@ class CashSecurityController extends Controller
 
         // Get member info
         $member = Member::findOrFail($validated['member_id']);
+        $loanType = $validated['loan_type'] ?? 'personal';
+
+        if (!empty($validated['loan_id'])) {
+            if ($loanType === 'personal') {
+                $loan = PersonalLoan::find($validated['loan_id']);
+
+                if (!$loan) {
+                    $message = 'Selected personal loan was not found for this cash security.';
+
+                    if ($request->expectsJson()) {
+                        return response()->json(['success' => false, 'message' => $message], 422);
+                    }
+
+                    return redirect()->back()->withInput()->with('error', $message);
+                }
+
+                if ((int) $loan->member_id !== (int) $member->id) {
+                    $message = 'Cash security must be linked to a loan owned by the selected member.';
+
+                    if ($request->expectsJson()) {
+                        return response()->json(['success' => false, 'message' => $message], 422);
+                    }
+
+                    return redirect()->back()->withInput()->with('error', $message);
+                }
+            } else {
+                $loan = GroupLoan::find($validated['loan_id']);
+
+                if (!$loan) {
+                    $message = 'Selected group loan was not found for this cash security.';
+
+                    if ($request->expectsJson()) {
+                        return response()->json(['success' => false, 'message' => $message], 422);
+                    }
+
+                    return redirect()->back()->withInput()->with('error', $message);
+                }
+            }
+        }
 
         if (!$request->user()?->isSuperAdmin() && (int) $validated['payment_type'] !== 1) {
             $message = 'Access denied. Only the Super Administrator can confirm cash or bank cash-security payments. Please use Mobile Money.';
@@ -221,10 +262,10 @@ class CashSecurityController extends Controller
                 'status_result' => $statusResult
             ]);
 
-            // Process the status result
-            if (isset($statusResult['status_code'])) {
-                // Check for successful payment codes (00, 01, SUCCESSFUL, SUCCESS)
-                if (in_array($statusResult['status_code'], ['00', '01', 'SUCCESSFUL', 'SUCCESS'])) {
+            // Process the normalized gateway status. Code 01 may still mean processing,
+            // so only the service's completed state can confirm received collateral money.
+            if (isset($statusResult['status'])) {
+                if ($statusResult['status'] === 'completed') {
                     $cashSecurity->update([
                         'status' => 1,
                         'payment_status' => 'Completed',
@@ -257,7 +298,7 @@ class CashSecurityController extends Controller
                         'status' => 'completed',
                         'message' => 'Payment successful'
                     ]);
-                } elseif ($statusResult['status_code'] === 'FAILED') {
+                } elseif ($statusResult['status'] === 'failed') {
                     $cashSecurity->update([
                         'status' => 2,
                         'payment_status' => 'Failed',

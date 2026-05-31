@@ -7,7 +7,7 @@
 <style>
     .followup-strip {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: .75rem;
         margin-bottom: 1rem;
     }
@@ -458,6 +458,7 @@
                                 <option value="restructured" {{ request('status') == 'restructured' ? 'selected' : '' }}>Restructured</option>
                                 <option value="risk_followup" {{ request('status') == 'risk_followup' ? 'selected' : '' }}>Risk Follow-up</option>
                                 <option value="missing_followup" {{ request('status') == 'missing_followup' ? 'selected' : '' }}>No Follow-up</option>
+                                <option value="missing_collateral" {{ request('status') == 'missing_collateral' ? 'selected' : '' }}>No Collateral</option>
                             </select>
                         </div>
                         
@@ -522,6 +523,10 @@
                             <div class="followup-chip">
                                 <span>Due today</span>
                                 <strong class="text-warning">{{ $stats['followup_due_count'] ?? 0 }}</strong>
+                            </div>
+                            <div class="followup-chip">
+                                <span>No collateral</span>
+                                <strong class="text-danger">{{ $stats['missing_collateral_count'] ?? 0 }}</strong>
                             </div>
                         </div>
                         <div class="table-container">
@@ -601,6 +606,12 @@
                                                 <span class="status-badge status-{{ $periodType == 1 ? 'verified' : ($periodType == 2 ? 'pending' : 'individual') }}">
                                                     {{ $loanTypeLabel }}
                                                 </span>
+                                                @if($loan->has_collateral ?? false)
+                                                    <span class="badge bg-success mt-1">Secured</span>
+                                                @else
+                                                    <span class="badge bg-danger mt-1">No security</span>
+                                                @endif
+                                                <div class="loan-subtext">{{ $loan->collateral_summary ?? 'No collateral recorded' }}</div>
                                             </div>
                                             <div class="loan-cell">
                                                 <span class="loan-cell-label">Principal</span>
@@ -655,6 +666,30 @@
                                                             title="Record collection follow-up">
                                                         <i class="mdi mdi-phone-forward"></i> Follow-up
                                                     </button>
+                                                    @if($loan->has_collateral ?? false)
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-success btn-view-collateral"
+                                                                data-loan-id="{{ $loan->id }}"
+                                                                data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                data-loan-code="{{ $loan->loan_code }}"
+                                                                data-borrower-name="{{ $loan->borrower_name }}"
+                                                                title="View collateral details">
+                                                            <i class="mdi mdi-shield-check-outline"></i> View Collateral
+                                                        </button>
+                                                    @else
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-danger btn-add-collateral"
+                                                                data-loan-id="{{ $loan->id }}"
+                                                                data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                data-loan-code="{{ $loan->loan_code }}"
+                                                                data-borrower-name="{{ $loan->borrower_name }}"
+                                                                data-member-id="{{ $loan->member_id_value ?? '' }}"
+                                                                data-phone="{{ $loan->phone_number ?? '' }}"
+                                                                data-collateral-summary="{{ $loan->collateral_summary ?? 'No collateral recorded' }}"
+                                                                title="Record collateral or cash security for this loan">
+                                                            <i class="mdi mdi-shield-plus-outline"></i> Add Collateral
+                                                        </button>
+                                                    @endif
                                                     
                                                     @if(($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
                                                         <button type="button" 
@@ -857,6 +892,161 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Collateral Modal -->
+<div class="modal fade" id="loanCollateralModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 640px;">
+        <div class="modal-content" style="background: white !important;">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="mdi mdi-shield-plus-outline me-2"></i>Loan Collateral</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="loanCollateralForm" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body" style="background: white !important;">
+                    <input type="hidden" id="collateral_loan_id" name="loan_id">
+                    <input type="hidden" id="collateral_loan_type" name="loan_type">
+                    <input type="hidden" id="collateral_member_id" name="member_id">
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Loan Code</label>
+                            <input type="text" class="form-control" id="collateral_loan_code" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Borrower</label>
+                            <input type="text" class="form-control" id="collateral_borrower_name" readonly>
+                        </div>
+                        <div class="col-12">
+                            <div class="small text-muted" id="collateral_current_summary"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Collateral Mode</label>
+                        <select class="form-select" id="collateral_mode" required>
+                            <option value="non_cash">Non-cash collateral</option>
+                            <option value="cash_security">Cash security deposit</option>
+                        </select>
+                        <div class="form-text">Cash security must be completed before the disbursement collateral check passes.</div>
+                    </div>
+
+                    <div id="nonCashCollateralFields">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Collateral Type <span class="text-danger">*</span></label>
+                            <select class="form-select" id="collateral_field" name="collateral_field">
+                                <option value="moveable_assets">Moveable assets</option>
+                                <option value="immovable_assets">Immovable assets</option>
+                                <option value="stocks_collateral">Business stock</option>
+                                <option value="livestock_collateral">Livestock</option>
+                                <option value="intellectual_property">Intellectual property</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Description <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="collateral_description" name="description" rows="3" placeholder="Describe the pledged asset, owner, location, document reference or estimated value."></textarea>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Estimated Value (UGX) <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control collateral-ugx-input" id="collateral_estimated_value" name="estimated_value" inputmode="decimal" autocomplete="off" placeholder="Market estimate">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Forced Sale Value (UGX)</label>
+                                <input type="text" class="form-control collateral-ugx-input" id="collateral_forced_sale_value" name="forced_sale_value" inputmode="decimal" autocomplete="off" placeholder="Optional recovery value">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Collateral Document / Photo <span class="text-danger">*</span></label>
+                            <input type="file" class="form-control" id="collateral_document" name="collateral_document" accept=".jpg,.jpeg,.png,.pdf">
+                            <div class="form-text">Stored through the same cloud storage flow used for member documents. Accepted: valid PDF, JPG, PNG, max 20MB.</div>
+                        </div>
+                    </div>
+
+                    <div id="cashSecurityFields" style="display: none;">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Cash Security Amount <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="cash_security_amount" min="1" step="0.01" placeholder="Amount">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Payment Method <span class="text-danger">*</span></label>
+                                <select class="form-select" id="cash_security_payment_type">
+                                    <option value="1">Mobile Money</option>
+                                    @if(auth()->user()->isSuperAdmin())
+                                        <option value="2">Cash</option>
+                                        <option value="3">Bank Transfer</option>
+                                    @endif
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Phone Number</label>
+                                <input type="text" class="form-control" id="cash_security_phone" placeholder="Client phone">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Reference / Notes</label>
+                                <input type="text" class="form-control" id="cash_security_description" placeholder="Cash security for this loan">
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3 mb-0 py-2">
+                            <i class="mdi mdi-information-outline me-1"></i>
+                            Mobile money requests are linked to this exact loan and become valid collateral after callback/status confirmation.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background: white !important; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="mdi mdi-close me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="mdi mdi-content-save me-1"></i>Save Collateral
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Collateral Modal -->
+<div class="modal fade" id="viewCollateralModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 680px;">
+        <div class="modal-content" style="background: white !important;">
+            <div class="modal-header bg-success text-white py-2">
+                <h6 class="modal-title"><i class="mdi mdi-shield-check-outline me-2"></i>Collateral Details</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3" style="background: white !important; max-height: 68vh; overflow-y: auto;">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold mb-1">Loan Code</label>
+                        <input type="text" class="form-control form-control-sm" id="view_collateral_loan_code" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold mb-1">Borrower</label>
+                        <input type="text" class="form-control form-control-sm" id="view_collateral_borrower" readonly>
+                    </div>
+                    <div class="col-12">
+                        <div class="alert alert-success small py-2 px-2 mb-0" id="view_collateral_summary"></div>
+                    </div>
+                </div>
+
+                <h6 class="small fw-bold mb-1 mt-3">Non-cash Collateral</h6>
+                <div id="view_non_cash_collateral" class="small mb-2"></div>
+
+                <h6 class="small fw-bold mb-1 mt-3">Cash Security</h6>
+                <div id="view_cash_security" class="small mb-2"></div>
+
+                <h6 class="small fw-bold mb-1 mt-3">Uploaded Evidence</h6>
+                <div id="view_collateral_documents" class="small"></div>
+            </div>
+            <div class="modal-footer py-2" style="background: white !important; border-top: 1px solid #dee2e6;">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">
+                    <i class="mdi mdi-close me-1"></i>Close
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1129,8 +1319,341 @@ $(document).ready(function() {
             }
         });
     });
+
+    $(document).on('click', '.btn-add-collateral', function() {
+        $('#loanCollateralForm')[0].reset();
+        $('#collateral_loan_id').val($(this).data('loan-id'));
+        $('#collateral_loan_type').val($(this).data('loan-type'));
+        $('#collateral_member_id').val($(this).data('member-id') || '');
+        $('#collateral_loan_code').val($(this).data('loan-code'));
+        $('#collateral_borrower_name').val($(this).data('borrower-name'));
+        $('#cash_security_phone').val($(this).data('phone') || '');
+        $('#cash_security_description').val('Cash security for loan ' + ($(this).data('loan-code') || ''));
+        $('#collateral_current_summary').text('Current collateral: ' + ($(this).data('collateral-summary') || 'No collateral recorded'));
+        toggleCollateralMode();
+        $('#loanCollateralModal').modal('show');
+    });
+
+    $(document).on('click', '.btn-view-collateral', function() {
+        const loanId = $(this).data('loan-id');
+        const loanType = $(this).data('loan-type') || 'personal';
+        const detailUrl = '{{ route("admin.loans.collateral.show", ":loan") }}'.replace(':loan', loanId);
+
+        $('#view_collateral_loan_code').val($(this).data('loan-code') || '');
+        $('#view_collateral_borrower').val($(this).data('borrower-name') || '');
+        $('#view_collateral_summary').html('<i class="mdi mdi-loading mdi-spin me-1"></i>Loading collateral details...');
+        $('#view_non_cash_collateral').html('<div class="text-muted">Loading...</div>');
+        $('#view_cash_security').html('<div class="text-muted">Loading...</div>');
+        $('#view_collateral_documents').html('<div class="text-muted">Loading...</div>');
+        $('#viewCollateralModal').modal('show');
+
+        $.ajax({
+            url: detailUrl,
+            method: 'GET',
+            data: {
+                loan_type: loanType
+            },
+            headers: {
+                'Accept': 'application/json'
+            },
+            success: function(response) {
+                if (!response.success) {
+                    $('#view_collateral_summary').removeClass('alert-success').addClass('alert-danger').text(response.message || 'Could not load collateral.');
+                    return;
+                }
+
+                $('#view_collateral_loan_code').val(response.loan?.code || '');
+                $('#view_collateral_borrower').val(response.loan?.borrower || '');
+                $('#view_collateral_summary').removeClass('alert-danger').addClass('alert-success').text(response.loan?.summary || 'Collateral recorded.');
+                renderCollateralDetails(response);
+            },
+            error: function(xhr) {
+                const message = xhr.responseJSON?.message || 'Could not load collateral details.';
+                $('#view_collateral_summary').removeClass('alert-success').addClass('alert-danger').text(message);
+                $('#view_non_cash_collateral').html('<div class="text-muted">No details loaded.</div>');
+                $('#view_cash_security').html('<div class="text-muted">No details loaded.</div>');
+                $('#view_collateral_documents').html('<div class="text-muted">No details loaded.</div>');
+            }
+        });
+    });
+
+    $('#collateral_mode').on('change', toggleCollateralMode);
+    $('.collateral-ugx-input').on('input', function() {
+        this.value = formatCollateralUgxInput(this.value);
+    });
+
+    $('#loanCollateralForm').on('submit', function(e) {
+        e.preventDefault();
+
+        const mode = $('#collateral_mode').val();
+        const submitButton = $(this).find('button[type="submit"]');
+        const originalHtml = submitButton.html();
+
+        submitButton.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i>Saving...');
+
+        if (mode === 'cash_security') {
+            saveLoanCashSecurity(submitButton, originalHtml);
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('loan_id', $('#collateral_loan_id').val());
+        formData.append('loan_type', $('#collateral_loan_type').val());
+        formData.append('collateral_field', $('#collateral_field').val());
+        formData.append('description', $('#collateral_description').val());
+        formData.append('estimated_value', parseCollateralUgxInput($('#collateral_estimated_value').val()));
+        formData.append('forced_sale_value', parseCollateralUgxInput($('#collateral_forced_sale_value').val()));
+        formData.append('_token', '{{ csrf_token() }}');
+
+        const documentFile = $('#collateral_document')[0]?.files?.[0];
+        if (documentFile) {
+            formData.append('collateral_document', documentFile);
+        }
+
+        $.ajax({
+            url: '{{ route("admin.loans.collateral.store") }}',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            headers: {
+                'Accept': 'application/json'
+            },
+            success: function(response) {
+                $('#loanCollateralModal').modal('hide');
+                Swal.fire('Saved', response.message || 'Collateral recorded successfully.', 'success')
+                    .then(() => window.location.reload());
+            },
+            error: function(xhr) {
+                const errors = xhr.responseJSON?.errors;
+                let message = xhr.responseJSON?.message || 'Failed to save collateral.';
+
+                if (errors) {
+                    const firstField = Object.keys(errors)[0];
+                    if (firstField && errors[firstField] && errors[firstField][0]) {
+                        message = errors[firstField][0];
+                    }
+                }
+
+                Swal.fire('Not saved', message, 'error');
+            },
+            complete: function() {
+                submitButton.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
     
 });
+
+function renderCollateralDetails(response) {
+    const nonCash = response.non_cash || [];
+    const cashSecurities = response.cash_securities || [];
+    const documents = response.documents || [];
+
+    if (nonCash.length) {
+        $('#view_non_cash_collateral').html(nonCash.map(function(item) {
+            return `
+                <div class="border rounded px-2 py-1 mb-1">
+                    <div class="fw-semibold">${escapeHtml(item.type || 'Collateral')}</div>
+                    <div class="small text-muted" style="white-space: pre-wrap;">${escapeHtml(item.description || '')}</div>
+                </div>
+            `;
+        }).join(''));
+    } else {
+        $('#view_non_cash_collateral').html('<div class="text-muted">No non-cash collateral recorded.</div>');
+    }
+
+    if (cashSecurities.length) {
+        $('#view_cash_security').html(cashSecurities.map(function(item) {
+            return `
+                <div class="border rounded px-2 py-1 mb-1">
+                    <div class="d-flex justify-content-between gap-2">
+                        <strong>UGX ${escapeHtml(item.amount_formatted || '0')}</strong>
+                        <span class="badge ${item.status === 'Paid' ? 'bg-success' : (item.status === 'Pending' ? 'bg-warning text-dark' : 'bg-danger')}">${escapeHtml(item.status || '')}</span>
+                    </div>
+                    <div class="small text-muted">${escapeHtml(item.payment_type || '')}${item.reference ? ' / Ref: ' + escapeHtml(item.reference) : ''}</div>
+                    <div class="small">${escapeHtml(item.description || '')}</div>
+                </div>
+            `;
+        }).join(''));
+    } else {
+        $('#view_cash_security').html('<div class="text-muted">No cash security linked to this loan.</div>');
+    }
+
+    if (documents.length) {
+        $('#view_collateral_documents').html(documents.map(function(item) {
+            return `
+                <div class="border rounded px-2 py-1 mb-1 d-flex justify-content-between align-items-center gap-2">
+                    <div>
+                        <div class="fw-semibold">${escapeHtml(item.name || 'Collateral document')}</div>
+                        <div class="small text-muted">${escapeHtml(item.type || '')}${item.uploaded_at ? ' / ' + escapeHtml(item.uploaded_at) : ''}</div>
+                        ${item.estimated_value_formatted ? '<div class="small"><strong>Estimated:</strong> UGX ' + escapeHtml(item.estimated_value_formatted) + '</div>' : ''}
+                        ${item.forced_sale_value_formatted ? '<div class="small"><strong>FSV:</strong> UGX ' + escapeHtml(item.forced_sale_value_formatted) + '</div>' : ''}
+                        ${item.description ? '<div class="small">' + escapeHtml(item.description) + '</div>' : ''}
+                    </div>
+                    ${item.url ? '<a class="btn btn-sm btn-outline-primary" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener"><i class="mdi mdi-open-in-new"></i> View</a>' : ''}
+                </div>
+            `;
+        }).join(''));
+    } else {
+        $('#view_collateral_documents').html('<div class="text-muted">No collateral evidence uploaded.</div>');
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatCollateralUgxInput(value) {
+    const sanitized = String(value ?? '').replace(/[^\d.]/g, '');
+    const parts = sanitized.split('.');
+    const whole = parts.shift().replace(/^0+(?=\d)/, '');
+    const decimal = parts.join('').slice(0, 2);
+    const formattedWhole = whole ? Number(whole).toLocaleString('en-US') : '';
+
+    return decimal || sanitized.endsWith('.')
+        ? `${formattedWhole}.${decimal}`
+        : formattedWhole;
+}
+
+function parseCollateralUgxInput(value) {
+    return String(value ?? '').replace(/,/g, '');
+}
+
+function toggleCollateralMode() {
+    const mode = $('#collateral_mode').val();
+    const memberId = $('#collateral_member_id').val();
+
+    $('#nonCashCollateralFields').toggle(mode === 'non_cash');
+    $('#cashSecurityFields').toggle(mode === 'cash_security');
+    $('#collateral_field, #collateral_description, #collateral_estimated_value').prop('required', mode === 'non_cash');
+    $('#collateral_document').prop('required', mode === 'non_cash');
+    $('#cash_security_amount').prop('required', mode === 'cash_security');
+
+    if (mode === 'cash_security' && !memberId) {
+        Swal.fire('Cash security unavailable', 'This loan has no member link on this page. Please record non-cash collateral or open the member account.', 'warning');
+        $('#collateral_mode').val('non_cash');
+        $('#nonCashCollateralFields').show();
+        $('#cashSecurityFields').hide();
+    }
+}
+
+function saveLoanCashSecurity(submitButton, originalHtml) {
+    const memberId = $('#collateral_member_id').val();
+    const amount = parseFloat($('#cash_security_amount').val() || '0');
+
+    if (!memberId) {
+        Swal.fire('Missing member', 'Cash security must be linked to a member.', 'error');
+        submitButton.prop('disabled', false).html(originalHtml);
+        return;
+    }
+
+    if (!amount || amount <= 0) {
+        Swal.fire('Amount required', 'Enter a valid cash security amount.', 'error');
+        submitButton.prop('disabled', false).html(originalHtml);
+        return;
+    }
+
+    $.ajax({
+        url: '{{ route("admin.cash-securities.store") }}',
+        method: 'POST',
+        data: {
+            member_id: memberId,
+            loan_id: $('#collateral_loan_id').val(),
+            loan_type: $('#collateral_loan_type').val(),
+            amount: amount,
+            payment_type: $('#cash_security_payment_type').val(),
+            description: $('#cash_security_description').val() || ('Cash security for loan ' + $('#collateral_loan_code').val()),
+            member_phone: $('#cash_security_phone').val(),
+            member_name: $('#collateral_borrower_name').val(),
+            _token: '{{ csrf_token() }}'
+        },
+        headers: {
+            'Accept': 'application/json'
+        },
+        success: function(response) {
+            if (!response.success) {
+                Swal.fire('Not saved', response.message || 'Cash security could not be recorded.', 'error');
+                return;
+            }
+
+            if (response.transaction_reference) {
+                Swal.fire({
+                    title: 'Payment request sent',
+                    text: 'Waiting for mobile money confirmation...',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    didOpen: () => Swal.showLoading()
+                });
+                pollLoanCashSecurityStatus(response.transaction_reference, 0);
+                return;
+            }
+
+            $('#loanCollateralModal').modal('hide');
+            Swal.fire('Saved', response.message || 'Cash security recorded successfully.', 'success')
+                .then(() => window.location.reload());
+        },
+        error: function(xhr) {
+            const errors = xhr.responseJSON?.errors;
+            let message = xhr.responseJSON?.message || 'Failed to record cash security.';
+
+            if (errors) {
+                const firstField = Object.keys(errors)[0];
+                if (firstField && errors[firstField] && errors[firstField][0]) {
+                    message = errors[firstField][0];
+                }
+            }
+
+            Swal.fire('Not saved', message, 'error');
+        },
+        complete: function() {
+            submitButton.prop('disabled', false).html(originalHtml);
+        }
+    });
+}
+
+function pollLoanCashSecurityStatus(transactionRef, attempts) {
+    if (attempts > 24) {
+        Swal.fire('Still pending', 'The mobile money request is still pending. Refresh later or check cash security status from the member account.', 'info')
+            .then(() => window.location.reload());
+        return;
+    }
+
+    $.ajax({
+        url: '/admin/cash-securities/check-status/' + encodeURIComponent(transactionRef),
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        },
+        success: function(response) {
+            if (response.status === 'completed') {
+                $('#loanCollateralModal').modal('hide');
+                Swal.fire('Confirmed', response.message || 'Cash security confirmed successfully.', 'success')
+                    .then(() => window.location.reload());
+                return;
+            }
+
+            if (response.status === 'failed') {
+                Swal.fire('Payment failed', response.message || 'The cash security mobile money payment failed.', 'error');
+                return;
+            }
+
+            setTimeout(function() {
+                pollLoanCashSecurityStatus(transactionRef, attempts + 1);
+            }, 5000);
+        },
+        error: function() {
+            setTimeout(function() {
+                pollLoanCashSecurityStatus(transactionRef, attempts + 1);
+            }, 5000);
+        }
+    });
+}
 
 function toggleFollowUpSmsFields() {
     if ($('#followup_sms_sent').is(':checked')) {

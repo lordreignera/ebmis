@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\ClientLoanApplication;
 use App\Models\FieldVerification;
+use App\Models\LoanCollateralDocument;
 use App\Models\Member;
 use App\Models\PersonalLoan;
 use App\Models\Product;
@@ -408,6 +409,7 @@ class ClientApplicationController extends Controller
         $periods      = (int) $app->tenure_periods;
         $total        = $principal + ($principal * $interestRate * $periods);
         $installment  = round($total / $periods, 2);
+        $loanCollateral = $this->buildLoanCollateralFromApplication($app);
 
         // ── Create PersonalLoan (status=0: pending fees + approval) ──────
         $loan = PersonalLoan::create([
@@ -427,13 +429,135 @@ class ClientApplicationController extends Controller
             'repay_name'      => $app->business_name,
             'repay_address'   => $app->business_location,
             'loan_purpose'    => $app->loan_purpose,
+            'immovable_assets' => $loanCollateral['immovable_assets'],
+            'moveable_assets' => $loanCollateral['moveable_assets'],
+            'intellectual_property' => $loanCollateral['intellectual_property'],
+            'stocks_collateral' => $loanCollateral['stocks_collateral'],
+            'livestock_collateral' => $loanCollateral['livestock_collateral'],
             'datecreated'     => now(),
             'sign_code'       => 0,
             'comments'        => 'Self-applied via client portal. App code: ' . $app->application_code
                 . ($extraNotes ? ' | Notes: ' . $extraNotes : ''),
         ]);
 
+        $this->recordApplicationCollateralDocuments($app, $loan);
+
         return [$member, $loan, $loanCode];
+    }
+
+    private function buildLoanCollateralFromApplication(ClientLoanApplication $app): array
+    {
+        $collateral = [
+            'immovable_assets' => [],
+            'moveable_assets' => [],
+            'intellectual_property' => [],
+            'stocks_collateral' => [],
+            'livestock_collateral' => [],
+        ];
+
+        foreach ([1, 2] as $index) {
+            $type = trim((string) ($app->{"collateral_{$index}_type"} ?? ''));
+            $description = trim((string) ($app->{"collateral_{$index}_description"} ?? ''));
+
+            if ($type === '' && $description === '') {
+                continue;
+            }
+
+            $field = $this->mapApplicationCollateralField($type, $description);
+            $collateral[$field][] = $this->formatApplicationCollateralLine($app, $index, $type, $description);
+        }
+
+        return array_map(function (array $lines) {
+            return empty($lines) ? null : implode("\n", $lines);
+        }, $collateral);
+    }
+
+    private function mapApplicationCollateralField(string $type, string $description): string
+    {
+        $text = strtolower($type . ' ' . $description);
+
+        if (preg_match('/land|plot|house|building|property|immovable/', $text)) {
+            return 'immovable_assets';
+        }
+
+        if (preg_match('/stock|inventory|merchandise|shop|goods/', $text)) {
+            return 'stocks_collateral';
+        }
+
+        if (preg_match('/livestock|cattle|cow|goat|pig|poultry|chicken/', $text)) {
+            return 'livestock_collateral';
+        }
+
+        if (preg_match('/patent|trademark|copyright|intellectual/', $text)) {
+            return 'intellectual_property';
+        }
+
+        return 'moveable_assets';
+    }
+
+    private function formatApplicationCollateralLine(ClientLoanApplication $app, int $index, string $type, string $description): string
+    {
+        $parts = [];
+
+        if ($type !== '') {
+            $parts[] = 'Type: ' . $type;
+        }
+
+        if ($description !== '') {
+            $parts[] = 'Description: ' . $description;
+        }
+
+        $owner = trim((string) ($app->{"collateral_{$index}_owner_name"} ?? ''));
+        if ($owner !== '') {
+            $parts[] = 'Owner: ' . $owner;
+        }
+
+        $clientValue = (float) ($app->{"collateral_{$index}_client_value"} ?? 0);
+        if ($clientValue > 0) {
+            $parts[] = 'Client value: UGX ' . number_format($clientValue, 2);
+        }
+
+        $fsv = (float) ($app->{"fsv_collateral_{$index}"} ?? 0);
+        if ($fsv > 0) {
+            $parts[] = 'FSV: UGX ' . number_format($fsv, 2);
+        }
+
+        if ((bool) ($app->{"collateral_{$index}_pledged"} ?? false)) {
+            $parts[] = 'Pledged: Yes';
+        }
+
+        return implode('; ', $parts);
+    }
+
+    private function recordApplicationCollateralDocuments(ClientLoanApplication $app, PersonalLoan $loan): void
+    {
+        foreach ([1, 2] as $index) {
+            $path = trim((string) ($app->{"collateral_{$index}_doc_photo"} ?? ''));
+
+            if ($path === '') {
+                continue;
+            }
+
+            $type = trim((string) ($app->{"collateral_{$index}_type"} ?? ''));
+            $description = trim((string) ($app->{"collateral_{$index}_description"} ?? ''));
+            $field = $this->mapApplicationCollateralField($type, $description);
+
+            LoanCollateralDocument::create([
+                'loan_type' => 'personal',
+                'loan_id' => $loan->id,
+                'member_id' => $loan->member_id,
+                'collateral_field' => $field,
+                'document_name' => 'Collateral ' . $index . ' document',
+                'document_type' => 'application_collateral',
+                'estimated_value' => (float) ($app->{"collateral_{$index}_client_value"} ?? 0) ?: null,
+                'forced_sale_value' => (float) ($app->{"fsv_collateral_{$index}"} ?? 0) ?: null,
+                'file_path' => $path,
+                'file_type' => pathinfo($path, PATHINFO_EXTENSION),
+                'file_size' => null,
+                'description' => $description ?: $type,
+                'uploaded_by' => auth()->id(),
+            ]);
+        }
     }
 
     /**
