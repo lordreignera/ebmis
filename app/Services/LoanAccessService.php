@@ -10,7 +10,10 @@ class LoanAccessService
     {
         $user ??= auth()->user();
 
-        return (bool) ($user?->isSuperAdmin() || $user?->hasRole('Branch Manager'));
+        return (bool) (
+            $user?->isSuperAdmin() ||
+            $user?->hasRole('Branch Manager')
+        );
     }
 
     public function scopeBranchQuery($query, string $branchColumn = 'branch_id', ?User $user = null)
@@ -41,10 +44,36 @@ class LoanAccessService
     ) {
         $user ??= auth()->user();
 
-        // Retain the assignment column parameters for callers using the legacy
-        // signature; loan visibility itself is now intentionally branch-based.
-        // Officers may collect repayments or record collateral for another
-        // officer's loan, while branch separation still remains enforced.
+        if (!$user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $this->scopeBranchQuery($query, $branchColumn, $user);
+    }
+
+    public function canWorkAcrossBranchesOnActiveLoans(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+
+        return (bool) (
+            $user?->isSuperAdmin() ||
+            $user?->hasRole('Branch Manager') ||
+            $user?->hasAnyRole(['Loan Officer', 'Field Officer'])
+        );
+    }
+
+    public function scopeActiveLoanQuery($query, string $branchColumn = 'branch_id', ?User $user = null)
+    {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($this->canWorkAcrossBranchesOnActiveLoans($user)) {
+            return $query;
+        }
+
         return $this->scopeBranchQuery($query, $branchColumn, $user);
     }
 
@@ -68,12 +97,29 @@ class LoanAccessService
     public function ensureLoanAccess($loan, ?User $user = null): void
     {
         $user ??= auth()->user();
+
+        if (!$user) {
+            abort(403, 'Access denied.');
+        }
+
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        if (
+            $this->canWorkAcrossBranchesOnActiveLoans($user) &&
+            in_array((string) $loan->status, ['2', '3'], true)
+        ) {
+            return;
+        }
+
         $this->ensureBranchAccess($loan, 'branch_id', $user);
     }
 
     public function ensureLoanDecisionAccess($loan, ?User $user = null): void
     {
         $user ??= auth()->user();
+
         $this->ensureLoanAccess($loan, $user);
 
         if (!$this->canMakeLoanDecision($user)) {
@@ -83,6 +129,27 @@ class LoanAccessService
 
     public function branchesForUser($query, ?User $user = null)
     {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $this->scopeBranchQuery($query, 'id', $user);
+    }
+
+    public function branchesForActiveLoanOperations($query, ?User $user = null)
+    {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($this->canWorkAcrossBranchesOnActiveLoans($user)) {
+            return $query;
+        }
+
         return $this->scopeBranchQuery($query, 'id', $user);
     }
 

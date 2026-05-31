@@ -1322,7 +1322,7 @@ class RepaymentController extends Controller
         // Get active loans from both personal and group loans tables
         // Include status 2 (Disbursed) AND status 3 (marked as closed but may have unpaid schedules)
         // We'll filter out truly closed loans later using getActualStatus()
-        $personalLoansQuery = $this->loanAccessService->scopeLoanQuery(PersonalLoan::whereIn('status', [2, 3]))
+        $personalLoansQuery = $this->loanAccessService->scopeActiveLoanQuery(PersonalLoan::whereIn('status', [2, 3]))
             ->whereHas('schedules', function ($query) {
                 $query->where('status', '!=', 1);
             })
@@ -1336,7 +1336,7 @@ class RepaymentController extends Controller
                 }
             ]);
 
-        $groupLoansQuery = $this->loanAccessService->scopeLoanQuery(GroupLoan::whereIn('status', [2, 3]))
+        $groupLoansQuery = $this->loanAccessService->scopeActiveLoanQuery(GroupLoan::whereIn('status', [2, 3]))
             ->whereHas('schedules', function ($query) {
                 $query->where('status', '!=', 1);
             })
@@ -1603,7 +1603,7 @@ class RepaymentController extends Controller
         );
 
         // Get filter options
-        $branches = $this->loanAccessService->branchesForUser(Branch::active())->orderBy('name')->get();
+        $branches = $this->loanAccessService->branchesForActiveLoanOperations(Branch::active())->orderBy('name')->get();
         $products = Product::loanProducts()->active()->orderBy('name')->get();
 
         // Calculate stats from the SAME filtered loans we're displaying
@@ -1642,7 +1642,7 @@ class RepaymentController extends Controller
         $perPage = (int) $request->get('per_page', 20);
         $perPage = in_array($perPage, [10, 20, 25, 50, 100], true) ? $perPage : 20;
 
-        $baseQuery = $this->loanAccessService->scopeLoanQuery(PersonalLoan::query())
+        $baseQuery = $this->loanAccessService->scopeActiveLoanQuery(PersonalLoan::query())
             ->whereIn('status', [2, 3])
             ->whereHas('schedules', function ($query) {
                 $query->where('status', '!=', 1);
@@ -1718,7 +1718,7 @@ class RepaymentController extends Controller
 
         $loans->setCollection($pageLoans);
 
-        $branches = $this->loanAccessService->branchesForUser(Branch::active())->orderBy('name')->get();
+        $branches = $this->loanAccessService->branchesForActiveLoanOperations(Branch::active())->orderBy('name')->get();
         $products = Product::loanProducts()->active()->orderBy('name')->get();
         $stats = $this->getFastActivePersonalLoanStats($request);
 
@@ -1829,11 +1829,9 @@ class RepaymentController extends Controller
         $cacheKey = 'active-personal-stats:' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
 
         return Cache::remember($cacheKey, now()->addMinutes(3), function () use ($request) {
-            $query = $this->loanAccessService->scopeLoanQuery(
+            $query = $this->loanAccessService->scopeActiveLoanQuery(
                 DB::table('personal_loans as l'),
-                'l.branch_id',
-                'l.assigned_to',
-                'l.added_by'
+                'l.branch_id'
             )
                 ->whereIn('l.status', [2, 3])
                 ->whereExists(function ($subquery) {
@@ -2020,11 +2018,9 @@ class RepaymentController extends Controller
             ->whereDate('r.date_created', today())
             ->where('r.status', 1);
 
-        return (float) ($this->loanAccessService->scopeLoanQuery(
+        return (float) ($this->loanAccessService->scopeActiveLoanQuery(
             $query,
-            'l.branch_id',
-            'l.assigned_to',
-            'l.added_by'
+            'l.branch_id'
         )->sum('r.amount') ?? 0);
     }
 
