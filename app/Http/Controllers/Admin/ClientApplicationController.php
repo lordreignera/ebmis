@@ -12,13 +12,17 @@ use App\Models\PersonalLoan;
 use App\Models\Product;
 use App\Services\ClientLoanScoringService;
 use App\Services\FileStorageService;
+use App\Services\LoanAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ClientApplicationController extends Controller
 {
-    public function __construct(private ClientLoanScoringService $scorer) {}
+    public function __construct(
+        private ClientLoanScoringService $scorer,
+        private LoanAccessService $loanAccessService
+    ) {}
 
     /**
      * List all self-applied loan applications.
@@ -30,7 +34,9 @@ class ClientApplicationController extends Controller
         $search = $request->input('search');
         $branch = $request->input('branch_id');
 
-        $query = ClientLoanApplication::with(['product', 'branch'])
+        $query = $this->loanAccessService->scopeBranchQuery(
+            ClientLoanApplication::with(['product', 'branch'])
+        )
             ->when($search, fn($q) => $q->where(function ($q) use ($search) {
                 $q->where('application_code', 'like', "%$search%")
                   ->orWhere('full_name', 'like', "%$search%")
@@ -51,15 +57,15 @@ class ClientApplicationController extends Controller
         $applications = $query->orderByDesc('created_at')->paginate(20)->withQueryString();
 
         $counts = [
-            'scoring'         => ClientLoanApplication::where('status', 'pending_scoring')->count(),
-            'fo_verification' => ClientLoanApplication::where('status', 'pending_fo_verification')->count(),
-            'fo_review'       => ClientLoanApplication::where('status', 'pending_fo_review')->count(),
-            'rejected'        => ClientLoanApplication::where('status', 'rejected')->count(),
-            'converted'       => ClientLoanApplication::whereIn('status', ['approved', 'converted'])->count(),
-            'all'             => ClientLoanApplication::count(),
+            'scoring'         => $this->loanAccessService->scopeBranchQuery(ClientLoanApplication::where('status', 'pending_scoring'))->count(),
+            'fo_verification' => $this->loanAccessService->scopeBranchQuery(ClientLoanApplication::where('status', 'pending_fo_verification'))->count(),
+            'fo_review'       => $this->loanAccessService->scopeBranchQuery(ClientLoanApplication::where('status', 'pending_fo_review'))->count(),
+            'rejected'        => $this->loanAccessService->scopeBranchQuery(ClientLoanApplication::where('status', 'rejected'))->count(),
+            'converted'       => $this->loanAccessService->scopeBranchQuery(ClientLoanApplication::whereIn('status', ['approved', 'converted']))->count(),
+            'all'             => $this->loanAccessService->scopeBranchQuery(ClientLoanApplication::query())->count(),
         ];
 
-        $branches = Branch::orderBy('name')->get();
+        $branches = $this->loanAccessService->branchesForUser(Branch::query())->orderBy('name')->get();
 
         return view('admin.client-applications.index', compact(
             'applications', 'counts', 'tab', 'search', 'branch', 'branches'
@@ -74,6 +80,8 @@ class ClientApplicationController extends Controller
         $app = ClientLoanApplication::with(['product', 'branch', 'reviewer', 'member', 'loan', 'fieldVerification.verifier'])
             ->findOrFail($id);
 
+        $this->loanAccessService->ensureBranchAccess($app);
+
         return view('admin.client-applications.show', compact('app'));
     }
 
@@ -83,6 +91,8 @@ class ClientApplicationController extends Controller
     public function verifyForm(int $id)
     {
         $app = ClientLoanApplication::with(['product', 'branch'])->findOrFail($id);
+
+        $this->loanAccessService->ensureBranchAccess($app);
 
         if ($app->status !== 'pending_fo_verification') {
             return redirect()->route('admin.client-applications.show', $id)
@@ -98,6 +108,8 @@ class ClientApplicationController extends Controller
     public function submitVerification(Request $request, int $id)
     {
         $app = ClientLoanApplication::findOrFail($id);
+
+        $this->loanAccessService->ensureBranchAccess($app);
 
         if ($app->status !== 'pending_fo_verification') {
             return redirect()->route('admin.client-applications.show', $id)
@@ -302,6 +314,11 @@ class ClientApplicationController extends Controller
         ]);
 
         $app = ClientLoanApplication::findOrFail($id);
+
+        $this->loanAccessService->ensureBranchAccess($app);
+        if (!$this->loanAccessService->canMakeLoanDecision()) {
+            abort(403, 'Access denied. Only a Branch Manager or Super Administrator can manually approve applications.');
+        }
 
         if (!in_array($app->status, ['pending_fo_review', 'pending_fo_verification'])) {
             return redirect()->back()->with('error', 'This application cannot be approved in its current status.');
@@ -570,6 +587,11 @@ class ClientApplicationController extends Controller
         ]);
 
         $app = ClientLoanApplication::findOrFail($id);
+
+        $this->loanAccessService->ensureBranchAccess($app);
+        if (!$this->loanAccessService->canMakeLoanDecision()) {
+            abort(403, 'Access denied. Only a Branch Manager or Super Administrator can manually reject applications.');
+        }
 
         if ($app->status === 'converted') {
             return redirect()->back()->with('error', 'This application has already been converted to a loan.');

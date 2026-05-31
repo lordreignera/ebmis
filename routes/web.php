@@ -52,6 +52,7 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
+    'super_admin',
 ])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
@@ -107,7 +108,7 @@ Route::middleware([
     // Log Viewer Route
     Route::get('/logs', function() {
         return view('admin.logs.viewer');
-    })->name('logs.viewer');
+    })->middleware('super_admin')->name('logs.viewer');
     
     Route::get('/logs/download', function() {
         $logFile = storage_path('logs/laravel.log');
@@ -115,7 +116,7 @@ Route::middleware([
             return response()->download($logFile, 'laravel-' . date('Y-m-d') . '.log');
         }
         return redirect()->back()->with('error', 'Log file not found');
-    })->name('logs.download');
+    })->middleware('super_admin')->name('logs.download');
     
     // Self-Applied Client Loan Applications
     Route::prefix('client-applications')->name('client-applications.')->group(function () {
@@ -461,7 +462,7 @@ Route::middleware([
     Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
 
     // UMRA Regulatory Reporting Routes (Tier 4 ND-MFI Compliance)
-    Route::prefix('umra')->name('umra.')->group(function () {
+    Route::prefix('umra')->name('umra.')->middleware('super_admin')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\Admin\UmraReportController::class, 'dashboard'])->name('dashboard');
         Route::get('/loan-preview', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanPreview'])->name('loan-preview');
         Route::get('/loan-records', [\App\Http\Controllers\Admin\UmraReportController::class, 'loanRecords'])->name('loan-records');

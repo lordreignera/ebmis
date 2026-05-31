@@ -31,9 +31,10 @@ class RolesSeeder extends Seeder
         $superAdmin = Role::firstOrCreate(['name' => 'Super Administrator']);
         
         // Super Admin gets ALL permissions
-        if ($superAdmin->permissions->count() === 0) {
-            $superAdmin->givePermissionTo(Permission::all());
-        }
+        $superAdmin->syncPermissions(Permission::all());
+        Role::where('name', 'superadmin')->get()->each(function (Role $role) {
+            $role->syncPermissions(Permission::all());
+        });
 
         // ===============================================================
         // 2. SCHOOL ADMINISTRATOR ROLE
@@ -68,6 +69,10 @@ class RolesSeeder extends Seeder
                 ->get();
             $branchManager->givePermissionTo($branchPermissions);
         }
+        $branchManager->givePermissionTo(Permission::whereIn('name', [
+            'record-loan-follow-up',
+            'record-loan-collateral',
+        ])->get());
 
         // ===============================================================
         // 4. Other Roles (Basic setup)
@@ -75,7 +80,16 @@ class RolesSeeder extends Seeder
         Role::firstOrCreate(['name' => 'School Teacher']);
         Role::firstOrCreate(['name' => 'School Accountant']);
         Role::firstOrCreate(['name' => 'Regional HR']);
-        Role::firstOrCreate(['name' => 'Loan Officer']);
+        $fieldOfficerPermissions = Permission::whereIn('name', [
+            'view-assigned-loans',
+            'view-loan-schedule',
+            'perform-field-verification',
+            'record-loan-follow-up',
+            'record-loan-collateral',
+        ])->get();
+
+        Role::firstOrCreate(['name' => 'Loan Officer'])->syncPermissions($fieldOfficerPermissions);
+        Role::firstOrCreate(['name' => 'Field Officer'])->syncPermissions($fieldOfficerPermissions);
         Role::firstOrCreate(['name' => 'Cashier']);
 
         // ===============================================================

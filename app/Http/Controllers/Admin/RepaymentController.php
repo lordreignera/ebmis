@@ -21,6 +21,7 @@ use App\Models\RawPayment;
 use App\Models\Fee;
 use App\Services\AccountingService;
 use App\Services\FileStorageService;
+use App\Services\LoanAccessService;
 use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 use Illuminate\Http\Request;
@@ -87,15 +88,18 @@ class RepaymentController extends Controller
     protected $mobileMoneyService;
     protected $repaymentService;
     protected $accountingService;
+    protected $loanAccessService;
 
     public function __construct(
         MobileMoneyService $mobileMoneyService,
         RepaymentService $repaymentService,
-        AccountingService $accountingService
+        AccountingService $accountingService,
+        LoanAccessService $loanAccessService
     ) {
         $this->mobileMoneyService  = $mobileMoneyService;
         $this->repaymentService    = $repaymentService;
         $this->accountingService   = $accountingService;
+        $this->loanAccessService   = $loanAccessService;
     }
 
     /**
@@ -498,12 +502,12 @@ class RepaymentController extends Controller
     /**
      * Remaining installment balance using principal + interest + net late fees - valid payments.
      */
-    protected function getScheduleInstallmentOutstanding($schedule, $loan, array $paidBySchedule, array $waivedBySchedule = []): array
+    protected function getScheduleInstallmentOutstanding($schedule, $loan, array $paidBySchedule, ?array $waivedBySchedule = null): array
     {
         $principal = (float) ($schedule->principal ?? 0);
         $interest = (float) ($schedule->interest ?? 0);
-        $lateFeeData = array_key_exists($schedule->id, $waivedBySchedule)
-            ? $this->calculateLateFeeWithWaiverAmount($schedule, $loan, (float) $waivedBySchedule[$schedule->id])
+        $lateFeeData = $waivedBySchedule !== null
+            ? $this->calculateLateFeeWithWaiverAmount($schedule, $loan, (float) ($waivedBySchedule[$schedule->id] ?? 0))
             : $this->repaymentService->calculateLateFee($schedule, $loan);
         $lateFees = (float) ($lateFeeData['net'] ?? 0);
         $paidFromRepayments = (float) ($paidBySchedule[$schedule->id] ?? 0);
@@ -527,7 +531,7 @@ class RepaymentController extends Controller
     /**
      * Sum unpaid schedule balances for a loan.
      */
-    protected function getLoanInstallmentOutstanding($loan, array $paidBySchedule, array $waivedBySchedule = []): array
+    protected function getLoanInstallmentOutstanding($loan, array $paidBySchedule, ?array $waivedBySchedule = null): array
     {
         $totals = [
             'principal' => 0.0,
@@ -575,7 +579,7 @@ class RepaymentController extends Controller
     /**
      * First unpaid schedule that still has principal/interest remaining.
      */
-    protected function getNextOutstandingSchedule($loan, array $paidBySchedule, array $waivedBySchedule = []): ?array
+    protected function getNextOutstandingSchedule($loan, array $paidBySchedule, ?array $waivedBySchedule = null): ?array
     {
         $schedules = ($loan->schedules ?? collect())
             ->sortBy(function ($schedule) {
@@ -1062,6 +1066,8 @@ class RepaymentController extends Controller
             return back()->with('error', 'Loan not found for collateral capture.');
         }
 
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         $field = $validated['collateral_field'];
         $description = trim($validated['description']);
         $estimatedValue = (float) $validated['estimated_value'];
@@ -1160,6 +1166,8 @@ class RepaymentController extends Controller
                 'message' => 'Loan not found.',
             ], 404);
         }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
 
         $cashSecurities = Schema::hasTable('cash_securities')
             ? CashSecurity::query()
@@ -1314,7 +1322,7 @@ class RepaymentController extends Controller
         // Get active loans from both personal and group loans tables
         // Include status 2 (Disbursed) AND status 3 (marked as closed but may have unpaid schedules)
         // We'll filter out truly closed loans later using getActualStatus()
-        $personalLoansQuery = PersonalLoan::whereIn('status', [2, 3])
+        $personalLoansQuery = $this->loanAccessService->scopeLoanQuery(PersonalLoan::whereIn('status', [2, 3]))
             ->whereHas('schedules', function ($query) {
                 $query->where('status', '!=', 1);
             })
@@ -1328,7 +1336,7 @@ class RepaymentController extends Controller
                 }
             ]);
 
-        $groupLoansQuery = GroupLoan::whereIn('status', [2, 3])
+        $groupLoansQuery = $this->loanAccessService->scopeLoanQuery(GroupLoan::whereIn('status', [2, 3]))
             ->whereHas('schedules', function ($query) {
                 $query->where('status', '!=', 1);
             })
@@ -1595,7 +1603,7 @@ class RepaymentController extends Controller
         );
 
         // Get filter options
-        $branches = Branch::active()->orderBy('name')->get();
+        $branches = $this->loanAccessService->branchesForUser(Branch::active())->orderBy('name')->get();
         $products = Product::loanProducts()->active()->orderBy('name')->get();
 
         // Calculate stats from the SAME filtered loans we're displaying
@@ -1619,9 +1627,7 @@ class RepaymentController extends Controller
             'missing_collateral_count' => $allActiveLoansForStats->filter(function ($loan) {
                 return !(bool) ($loan->has_collateral ?? false);
             })->count(),
-            'collections_today' => (float) (Repayment::whereDate('date_created', today())
-                                          ->where('status', 1)
-                                          ->sum('amount') ?? 0),
+            'collections_today' => $this->getAccessiblePersonalCollectionsToday(),
         ];
 
         return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
@@ -1636,7 +1642,7 @@ class RepaymentController extends Controller
         $perPage = (int) $request->get('per_page', 20);
         $perPage = in_array($perPage, [10, 20, 25, 50, 100], true) ? $perPage : 20;
 
-        $baseQuery = PersonalLoan::query()
+        $baseQuery = $this->loanAccessService->scopeLoanQuery(PersonalLoan::query())
             ->whereIn('status', [2, 3])
             ->whereHas('schedules', function ($query) {
                 $query->where('status', '!=', 1);
@@ -1712,7 +1718,7 @@ class RepaymentController extends Controller
 
         $loans->setCollection($pageLoans);
 
-        $branches = Branch::active()->orderBy('name')->get();
+        $branches = $this->loanAccessService->branchesForUser(Branch::active())->orderBy('name')->get();
         $products = Product::loanProducts()->active()->orderBy('name')->get();
         $stats = $this->getFastActivePersonalLoanStats($request);
 
@@ -1820,10 +1826,15 @@ class RepaymentController extends Controller
 
     protected function getFastActivePersonalLoanStats(Request $request): array
     {
-        $cacheKey = 'active-personal-stats:' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
+        $cacheKey = 'active-personal-stats:' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
 
         return Cache::remember($cacheKey, now()->addMinutes(3), function () use ($request) {
-            $query = DB::table('personal_loans as l')
+            $query = $this->loanAccessService->scopeLoanQuery(
+                DB::table('personal_loans as l'),
+                'l.branch_id',
+                'l.assigned_to',
+                'l.added_by'
+            )
                 ->whereIn('l.status', [2, 3])
                 ->whereExists(function ($subquery) {
                     $subquery->select(DB::raw(1))
@@ -1997,11 +2008,24 @@ class RepaymentController extends Controller
                 'missing_followup_count' => max(0, $riskFollowupCount - $followedUpCount),
                 'followup_due_count' => $followupDueCount,
                 'missing_collateral_count' => $missingCollateralCount,
-                'collections_today' => (float) (Repayment::whereDate('date_created', today())
-                    ->where('status', 1)
-                    ->sum('amount') ?? 0),
+                'collections_today' => $this->getAccessiblePersonalCollectionsToday(),
             ];
         });
+    }
+
+    protected function getAccessiblePersonalCollectionsToday(): float
+    {
+        $query = DB::table('repayments as r')
+            ->join('personal_loans as l', 'l.id', '=', 'r.loan_id')
+            ->whereDate('r.date_created', today())
+            ->where('r.status', 1);
+
+        return (float) ($this->loanAccessService->scopeLoanQuery(
+            $query,
+            'l.branch_id',
+            'l.assigned_to',
+            'l.added_by'
+        )->sum('r.amount') ?? 0);
     }
 
     /**
@@ -2037,6 +2061,8 @@ class RepaymentController extends Controller
 
             return back()->with('error', 'Loan not found for follow-up.');
         }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
 
         $smsRequested = $request->boolean('sms_sent');
         $smsMessage = $validated['sms_message'] ?? null;
@@ -2131,6 +2157,8 @@ class RepaymentController extends Controller
         if (!$loan) {
             abort(404, 'Loan not found');
         }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
 
         // Calculate loan details based on loan type
         if ($loanType === 'personal') {
@@ -2596,7 +2624,9 @@ class RepaymentController extends Controller
                     'message' => 'Loan not found'
                 ], 404);
             }
-            
+
+            $this->loanAccessService->ensureLoanAccess($loan);
+
             $nextSchedule = LoanSchedule::where('loan_id', $loanId)
                                        ->where('status', 0) // Unpaid
                                        ->orderBy('payment_date')
@@ -2692,6 +2722,8 @@ class RepaymentController extends Controller
                 'message' => 'Loan not found'
             ], 404);
         }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
 
         DB::beginTransaction();
 
@@ -2948,7 +2980,9 @@ class RepaymentController extends Controller
                 ->with('error', 'Loan not found')
                 ->withInput();
         }
-        
+
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         // SECURITY: Prevent payments on stopped loans
         if ($loan->status == 6) {
             \Log::warning('Attempted payment on stopped loan', [
@@ -3352,6 +3386,8 @@ class RepaymentController extends Controller
                 'message' => 'Loan not found'
             ], 404);
         }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
 
         // Parse schedules JSON
         $schedules = json_decode($request->schedules, true);

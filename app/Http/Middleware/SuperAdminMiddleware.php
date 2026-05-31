@@ -19,17 +19,8 @@ class SuperAdminMiddleware
             return redirect()->route('login');
         }
 
-        $user = auth()->user();
-        
-        // Check if user has Super Administrator, Branch Manager, or Administrator role
-        $hasAccess = $user->hasRole('Super Administrator') 
-                        || $user->hasRole('superadmin')
-                        || $user->hasRole('Branch Manager')
-                        || $user->hasRole('Administrator')
-                        || $user->user_type === 'super_admin';
-
-        if (!$hasAccess) {
-            abort(403, 'Access denied. Administrator role required.');
+        if (!auth()->user()->isSuperAdmin()) {
+            abort(403, 'Access denied. Super Administrator role required.');
         }
 
         return $next($request);

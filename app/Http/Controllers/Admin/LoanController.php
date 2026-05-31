@@ -16,6 +16,7 @@ use App\Models\Repayment;
 use App\Models\Fee;
 use App\Models\FeeType;
 use App\Services\FileStorageService;
+use App\Services\LoanAccessService;
 use App\Services\LoanClosureService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,8 @@ use Illuminate\Support\Facades\Log;
 
 class LoanController extends Controller
 {
+    public function __construct(private LoanAccessService $loanAccessService) {}
+
     /**
      * Display a listing of loans from all loan tables
      */
@@ -49,6 +52,9 @@ class LoanController extends Controller
                 datecreated as created_at, NULL as updated_at,
                 'group' as loan_type_display
             ");
+
+        $personalLoans = $this->loanAccessService->scopeLoanQuery($personalLoans);
+        $groupLoans = $this->loanAccessService->scopeLoanQuery($groupLoans);
 
         // Apply search filters to each query
         if ($request->has('search') && $request->search) {
@@ -136,7 +142,7 @@ class LoanController extends Controller
             ['path' => $request->url(), 'query' => $request->query()]
         );
 
-        $branches = Branch::active()->get();
+        $branches = $this->loanAccessService->branchesForUser(Branch::active())->get();
         $products = Product::loanProducts()->active()->get();
 
         // Get loan type and period for page title
@@ -144,13 +150,15 @@ class LoanController extends Controller
         $repayPeriod = $request->period ?? 'all';
 
         // Get statistics from all tables
+        $personalStats = $this->loanAccessService->scopeLoanQuery(PersonalLoan::query());
+        $groupStats = $this->loanAccessService->scopeLoanQuery(GroupLoan::query());
         $stats = [
-            'total' => PersonalLoan::count() + GroupLoan::count(),
-            'pending' => PersonalLoan::where('status', 0)->count() + GroupLoan::where('status', 0)->count(),
-            'approved' => PersonalLoan::where('status', 1)->count() + GroupLoan::where('status', 1)->count(),
-            'disbursed' => PersonalLoan::where('status', 2)->count() + GroupLoan::where('status', 2)->count(),
-            'completed' => PersonalLoan::where('status', 3)->count() + GroupLoan::where('status', 3)->count(),
-            'total_value' => PersonalLoan::sum('principal') + GroupLoan::sum('principal'),
+            'total' => (clone $personalStats)->count() + (clone $groupStats)->count(),
+            'pending' => (clone $personalStats)->where('status', 0)->count() + (clone $groupStats)->where('status', 0)->count(),
+            'approved' => (clone $personalStats)->where('status', 1)->count() + (clone $groupStats)->where('status', 1)->count(),
+            'disbursed' => (clone $personalStats)->where('status', 2)->count() + (clone $groupStats)->where('status', 2)->count(),
+            'completed' => (clone $personalStats)->where('status', 3)->count() + (clone $groupStats)->where('status', 3)->count(),
+            'total_value' => (clone $personalStats)->sum('principal') + (clone $groupStats)->sum('principal'),
         ];
 
         return view('admin.loans.index', compact('loans', 'branches', 'products', 'stats', 'loanType', 'repayPeriod'));
@@ -176,7 +184,7 @@ class LoanController extends Controller
         //   - Approved loans (status = 1) - Approved but NOT disbursed yet, can still apply
         //   - Completed loans (status = 3) - Paid off their loan, can reapply
         //   - Rejected loans (status = 4) - Can reapply
-        $members = Member::with(['branch', 'loans'])
+        $members = $this->loanAccessService->scopeBranchQuery(Member::with(['branch', 'loans']))
                          ->verified()
                          ->notDeleted()
                          ->whereDoesntHave('loans', function($query) {
@@ -187,7 +195,7 @@ class LoanController extends Controller
                          ->get();
         
         // Get groups for group loans (using verified column instead of status)
-        $groups = \App\Models\Group::where('verified', 1)->get();
+        $groups = $this->loanAccessService->scopeBranchQuery(\App\Models\Group::where('verified', 1))->get();
         
         // Filter products based on loan type and period
         $productsQuery = Product::loanProducts()->active();
@@ -213,7 +221,7 @@ class LoanController extends Controller
         }
         
         $products = $productsQuery->get();
-        $branches = Branch::active()->get();
+        $branches = $this->loanAccessService->branchesForUser(Branch::active())->get();
 
         // Pre-select member if passed
         $selectedMember = null;
@@ -287,6 +295,8 @@ class LoanController extends Controller
 
         try {
             DB::beginTransaction();
+
+            $validated['branch_id'] = $this->loanAccessService->enforceRequestedBranch($validated['branch_id']);
 
             // CRITICAL: Override interest rate with product's interest rate
             // This ensures that the product's rate is always used, regardless of user input
@@ -507,6 +517,8 @@ class LoanController extends Controller
             $loan->loan_type = 'personal';
         }
 
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         return view('admin.loans.show', compact('loan', 'loanType'));
     }
 
@@ -532,11 +544,13 @@ class LoanController extends Controller
                             ->with('error', 'Cannot edit approved/disbursed loans.');
         }
 
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         // Get eligible members for loan application (only approved members can apply for loans)
-        $members = Member::approved()->verified()->notDeleted()->get();
-        $groups = \App\Models\Group::where('verified', 1)->get();
+        $members = $this->loanAccessService->scopeBranchQuery(Member::approved()->verified()->notDeleted())->get();
+        $groups = $this->loanAccessService->scopeBranchQuery(\App\Models\Group::where('verified', 1))->get();
         $products = Product::loanProducts()->active()->get();
-        $branches = Branch::active()->get();
+        $branches = $this->loanAccessService->branchesForUser(Branch::active())->get();
         $guarantors = $loan->guarantors()->with('member')->get();
 
         return view('admin.loans.edit', compact('loan', 'members', 'groups', 'products', 'branches', 'guarantors', 'loanType'));
@@ -562,6 +576,8 @@ class LoanController extends Controller
                             ->with('error', 'Cannot edit approved/disbursed loans.');
         }
 
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         $validated = $request->validate([
             'member_id' => 'required|exists:members,id',
             'product_type' => 'required|exists:products,id',
@@ -578,6 +594,8 @@ class LoanController extends Controller
             'repay_address' => 'nullable|string|max:1000',
             'comments' => 'nullable|string',
         ]);
+
+        $validated['branch_id'] = $this->loanAccessService->enforceRequestedBranch($validated['branch_id']);
 
         // CRITICAL: Override interest rate with product's interest rate
         // This ensures that the product's rate is always used, regardless of user input
@@ -649,6 +667,8 @@ class LoanController extends Controller
             } else {
                 $loan = GroupLoan::findOrFail($id);
             }
+
+            $this->loanAccessService->ensureLoanDecisionAccess($loan);
 
             // Check if loan is in correct status for approval
             if ($loan->status != 0) { // Assuming 0 = pending
@@ -748,6 +768,8 @@ class LoanController extends Controller
             } else {
                 $loan = GroupLoan::findOrFail($id);
             }
+
+            $this->loanAccessService->ensureLoanDecisionAccess($loan);
 
             // Check if loan is in correct status for rejection
             // Allow rejection of pending (0) or approved (1) loans only

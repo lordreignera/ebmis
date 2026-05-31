@@ -46,7 +46,7 @@ class PermissionsSeeder extends Seeder
             'view-all-branches', 'create-branch', 'edit-branch', 'delete-branch', 
             'assign-branch-manager', 'view-branch-reports', 'manage-branch-users',
 
-            // BRANCH PORTAL PERMISSIONS (25)
+            // BRANCH PORTAL PERMISSIONS (29)
             'view-own-clients', 'add-client', 'edit-client', 'delete-client', 
             'view-client-details', 'create-loan-application', 'edit-loan-application', 
             'approve-loan', 'reject-loan', 'disburse-loan', 'view-loan-schedule', 
@@ -54,7 +54,8 @@ class PermissionsSeeder extends Seeder
             'manage-savings-accounts', 'record-savings-deposit', 'record-savings-withdrawal', 
             'view-savings-reports', 'create-group', 'manage-group-members', 
             'create-group-loan', 'view-group-reports', 'generate-member-statements', 
-            'send-sms-notifications', 'view-branch-dashboard',
+            'send-sms-notifications', 'view-branch-dashboard', 'view-assigned-loans',
+            'perform-field-verification', 'record-loan-follow-up', 'record-loan-collateral',
 
             // REGIONAL PERMISSIONS (6)
             'view-region-dashboard', 'view-region-branches', 'view-region-reports', 

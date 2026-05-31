@@ -200,7 +200,8 @@ class GroupLoan extends Model
             2 => 'Disbursed',
             3 => 'Closed',
             4 => 'Rejected',
-            5 => 'Written Off'
+            5 => 'Restructured',
+            6 => 'Stopped',
         ];
 
         return $statuses[$this->status] ?? 'Unknown';
