@@ -334,6 +334,12 @@
                 </div>
             @endif
 
+            @if(request()->boolean('expired'))
+                <div class="error-message">
+                    Your login session expired. Please sign in again.
+                </div>
+            @endif
+
             @session('status')
                 <div class="alert alert-success alert-dismissible fade show" role="alert" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 8px rgba(21, 87, 36, 0.1);">
                     <i class="fas fa-check-circle me-2"></i>
@@ -674,6 +680,34 @@
                 loginButton.style.opacity = '0.8';
             });
         }
+
+        // Keep an open login form valid without weakening CSRF protection.
+        setInterval(function() {
+            fetch('{{ url('/api/csrf-token') }}', {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+                .then(response => response.ok ? response.json() : null)
+                .then(data => {
+                    if (!data || !data.token) {
+                        return;
+                    }
+
+                    const tokenInput = document.querySelector('input[name="_token"]');
+                    const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+
+                    if (tokenInput) {
+                        tokenInput.value = data.token;
+                    }
+
+                    if (tokenMeta) {
+                        tokenMeta.setAttribute('content', data.token);
+                    }
+                })
+                .catch(() => {});
+        }, 10 * 60 * 1000);
 
         // Auto-dismiss success messages after 5 seconds
         setTimeout(function() {

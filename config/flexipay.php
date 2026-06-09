@@ -15,6 +15,8 @@ return [
     'merchant_code' => env('FLEXIPAY_MERCHANT_CODE', ''),
     'secret_key' => env('FLEXIPAY_SECRET_KEY', ''),
     'callback_url' => env('FLEXIPAY_CALLBACK_URL', ''),
+    'callback_secret' => env('FLEXIPAY_CALLBACK_SECRET', ''),
+    'require_callback_secret' => env('FLEXIPAY_REQUIRE_CALLBACK_SECRET', false),
     
     // API Settings
     'timeout' => env('FLEXIPAY_TIMEOUT', 30),

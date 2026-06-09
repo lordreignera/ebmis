@@ -6,13 +6,13 @@ use App\Models\User;
 
 class LoanAccessService
 {
-    public function canMakeLoanDecision(?User $user = null): bool
+    public function canMakeLoanDecision(?User $user = null, string $permission = 'approve-loan'): bool
     {
         $user ??= auth()->user();
 
         return (bool) (
             $user?->isSuperAdmin() ||
-            $user?->hasRole('Branch Manager')
+            $user?->can($permission)
         );
     }
 
@@ -57,8 +57,7 @@ class LoanAccessService
 
         return (bool) (
             $user?->isSuperAdmin() ||
-            $user?->hasRole('Branch Manager') ||
-            $user?->hasAnyRole(['Loan Officer', 'Field Officer'])
+            $user?->can('view-active-loans')
         );
     }
 
@@ -116,14 +115,14 @@ class LoanAccessService
         $this->ensureBranchAccess($loan, 'branch_id', $user);
     }
 
-    public function ensureLoanDecisionAccess($loan, ?User $user = null): void
+    public function ensureLoanDecisionAccess($loan, ?User $user = null, string $permission = 'approve-loan'): void
     {
         $user ??= auth()->user();
 
         $this->ensureLoanAccess($loan, $user);
 
-        if (!$this->canMakeLoanDecision($user)) {
-            abort(403, 'Access denied. Only a Branch Manager or Super Administrator can approve or reject loans.');
+        if (!$this->canMakeLoanDecision($user, $permission)) {
+            abort(403, "Access denied. Your role does not include the {$permission} permission.");
         }
     }
 

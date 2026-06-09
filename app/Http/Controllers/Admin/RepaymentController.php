@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Repayment;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
+use App\Models\GroupLoanSchedule;
 use App\Models\Loan;
 use App\Models\LoanFollowUp;
 use App\Models\BulkSms;
@@ -5498,7 +5499,8 @@ class RepaymentController extends Controller
             
             // Validate request
             $validator = Validator::make($request->all(), [
-                'loan_id' => 'required|integer|exists:personal_loans,id',
+                'loan_id' => 'required|integer',
+                'loan_type' => 'nullable|in:personal,group',
                 'late_fees' => 'required|json',
                 'waiver_reason' => 'required|string|max:255'
             ]);
@@ -5511,6 +5513,7 @@ class RepaymentController extends Controller
             }
             
             $loanId = $request->loan_id;
+            $loanType = $request->input('loan_type');
             $lateFees = json_decode($request->late_fees, true);
             $waiverReason = $request->waiver_reason;
             
@@ -5521,11 +5524,13 @@ class RepaymentController extends Controller
                 ], 422);
             }
             
-            // Get loan and member details
-            $loan = PersonalLoan::find($loanId);
-            if (!$loan) {
-                $loan = GroupLoan::find($loanId);
-            }
+            // Get loan and member details. loan_type is optional for legacy callers.
+            $loan = match ($loanType) {
+                'personal' => PersonalLoan::find($loanId),
+                'group' => GroupLoan::find($loanId),
+                default => PersonalLoan::find($loanId) ?: GroupLoan::find($loanId),
+            };
+
             if (!$loan) {
                 return response()->json([
                     'success' => false,
@@ -5584,7 +5589,10 @@ class RepaymentController extends Controller
                     $amount = $lateFee['amount'];
                     
                     // Get schedule details
-                    $schedule = LoanSchedule::find($scheduleId);
+                    $schedule = $loan instanceof GroupLoan
+                        ? GroupLoanSchedule::find($scheduleId)
+                        : LoanSchedule::find($scheduleId);
+
                     if (!$schedule || $schedule->loan_id != $loanId) {
                         $failedIds[] = $scheduleId;
                         continue;

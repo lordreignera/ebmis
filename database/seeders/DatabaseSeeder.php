@@ -21,8 +21,8 @@ class DatabaseSeeder extends Seeder
             CompleteUgandaLocationsSeeder::class,  // All Uganda districts
             TesoRegionLocationsSeeder::class,       // Detailed Teso region data
             FeeTypesSeeder::class,                  // Fee types from old EBIMS system
-            RolesSeeder::class,                     // Roles & Permissions (MUST BE BEFORE SuperAdminSeeder)
-            PermissionsSeeder::class,              // Additional permissions (after roles)
+            PermissionsSeeder::class,              // Create the complete permission catalogue before roles
+            RolesSeeder::class,                     // Roles & default permission assignments
             SuperAdminSeeder::class,                // Super admin user (needs roles & permissions)
             BranchesSeeder::class,                  // Initial branches (needs countries)
             SavingsProductsSeeder::class,           // Savings products

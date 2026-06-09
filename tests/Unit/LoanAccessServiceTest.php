@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Http\Middleware\SuperAdminMiddleware;
 use App\Http\Middleware\EbimsModuleAccess;
+use App\Http\Middleware\EbimsPermissionAccess;
 use App\Models\Branch;
 use App\Models\PersonalLoan;
 use App\Models\User;
@@ -11,6 +12,8 @@ use App\Services\LoanAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -216,6 +219,86 @@ class LoanAccessServiceTest extends TestCase
         }
     }
 
+    public function test_role_without_workspace_permission_cannot_enter_ebims_modules(): void
+    {
+        $user = $this->userWithRole('Custom Read Only', $this->branch()->id);
+        $this->actingAs($user);
+
+        $this->expectException(HttpException::class);
+
+        (new EbimsModuleAccess())->handle(
+            $this->namedRequest('admin.home'),
+            fn () => response('not allowed')
+        );
+    }
+
+    public function test_workspace_permission_can_enable_a_custom_role_from_the_ui(): void
+    {
+        $user = $this->userWithRole('Custom Operations', $this->branch()->id);
+        $user->givePermissionTo(Permission::findOrCreate('access-ebmis-modules', 'web'));
+        $this->actingAs($user);
+
+        $response = (new EbimsModuleAccess())->handle(
+            $this->namedRequest('admin.home'),
+            fn () => response('ok')
+        );
+
+        $this->assertSame('ok', $response->getContent());
+    }
+
+    public function test_route_permission_can_be_granted_to_a_custom_role_from_the_ui(): void
+    {
+        $user = $this->userWithRole('Collateral Clerk', $this->branch()->id);
+        $user->givePermissionTo(Permission::findOrCreate('access-ebmis-modules', 'web'));
+        $this->actingAs($user);
+        $middleware = new EbimsPermissionAccess();
+
+        try {
+            $middleware->handle(
+                $this->namedRequest('admin.loans.collateral.store'),
+                fn () => response('not allowed')
+            );
+
+            $this->fail('Collateral access should require the mapped permission.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+
+        $user->givePermissionTo(Permission::findOrCreate('record-loan-collateral', 'web'));
+
+        $response = $middleware->handle(
+            $this->namedRequest('admin.loans.collateral.store'),
+            fn () => response('ok')
+        );
+
+        $this->assertSame('ok', $response->getContent());
+    }
+
+    public function test_unmapped_operational_route_is_denied_by_default(): void
+    {
+        $user = $this->userWithRole('Custom Operations', $this->branch()->id);
+        $user->givePermissionTo(Permission::findOrCreate('access-ebmis-modules', 'web'));
+        $this->actingAs($user);
+
+        $this->expectException(HttpException::class);
+
+        (new EbimsPermissionAccess())->handle(
+            $this->namedRequest('admin.unmapped-operational-route'),
+            fn () => response('not allowed')
+        );
+    }
+
+    public function test_user_password_is_mass_assignable_and_hashed(): void
+    {
+        $user = User::create([
+            'name' => 'Password Test',
+            'email' => 'password-test@example.com',
+            'password' => 'SecurePassword123',
+        ]);
+
+        $this->assertTrue(Hash::check('SecurePassword123', $user->password));
+    }
+
     public function test_loan_officer_dashboard_redirects_to_admin_home(): void
     {
         $officer = $this->userWithRole('Loan Officer', $this->branch()->id);
@@ -275,7 +358,14 @@ class LoanAccessServiceTest extends TestCase
 
             $this->assertNotNull($route, 'Route not found: ' . $routeName);
             $this->assertNotContains('super_admin', $route->middleware(), 'Route must remain operationally accessible: ' . $routeName);
+            $this->assertContains('ebmis_permission', $route->middleware(), 'Route must enforce UI-controlled permissions: ' . $routeName);
         }
+    }
+
+    public function test_unused_general_public_registration_is_disabled(): void
+    {
+        $this->assertNull(app('router')->getRoutes()->getByName('register'));
+        $this->assertNull(app('router')->getRoutes()->getByName('register.store'));
     }
 
     public function test_settings_and_user_management_routes_remain_super_admin_only(): void

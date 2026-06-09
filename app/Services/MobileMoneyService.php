@@ -911,7 +911,9 @@ class MobileMoneyService
     public function processCallback(array $callbackData): array
     {
         try {
-            Log::info("Processing FlexiPay Callback", $callbackData);
+            Log::info('Processing FlexiPay callback', [
+                'fields' => array_keys($callbackData),
+            ]);
             
             // FlexiPay integrations may send different reference/status field names.
             // Stanbic sends 'requestId'; Emuria sends 'transactionReferenceNumber' or 'flexipayReferenceNumber'.
@@ -933,7 +935,7 @@ class MobileMoneyService
                     'valid' => false,
                     'success' => false,
                     'message' => 'Missing transaction reference number',
-                    'callback_data' => $callbackData
+                    'callback_fields' => array_keys($callbackData)
                 ];
             }
             
@@ -948,7 +950,7 @@ class MobileMoneyService
                 'transaction_reference' => $transactionRef,
                 'status_code' => $statusCodeString,
                 'status_description' => $statusDesc,
-                'callback_data' => $callbackData,
+                'callback_fields' => array_keys($callbackData),
                 'processed_at' => now()
             ];
             
@@ -959,14 +961,14 @@ class MobileMoneyService
         } catch (\Exception $e) {
             Log::error("FlexiPay Callback Processing Error", [
                 'error' => $e->getMessage(),
-                'callback_data' => $callbackData
+                'callback_fields' => array_keys($callbackData)
             ]);
             
             return [
                 'valid' => false,
                 'success' => false,
                 'message' => 'Callback processing failed: ' . $e->getMessage(),
-                'callback_data' => $callbackData
+                'callback_fields' => array_keys($callbackData)
             ];
         }
     }

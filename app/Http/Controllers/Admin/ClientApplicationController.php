@@ -589,7 +589,7 @@ class ClientApplicationController extends Controller
         $app = ClientLoanApplication::findOrFail($id);
 
         $this->loanAccessService->ensureBranchAccess($app);
-        if (!$this->loanAccessService->canMakeLoanDecision()) {
+        if (!$this->loanAccessService->canMakeLoanDecision(permission: 'reject-loan')) {
             abort(403, 'Access denied. Only a Branch Manager or Super Administrator can manually reject applications.');
         }
 

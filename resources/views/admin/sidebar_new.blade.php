@@ -1,4 +1,10 @@
 <nav class="sidebar sidebar-offcanvas" id="sidebar">
+  @php
+    $sidebarUser = auth()->user();
+    $sidebarCan = fn (string $permission): bool => $sidebarUser->isSuperAdmin() || $sidebarUser->can($permission);
+    $sidebarCanAny = fn (array $permissions): bool => collect($permissions)->contains(fn (string $permission): bool => $sidebarCan($permission));
+  @endphp
+
   <div class="sidebar-brand-wrapper d-flex align-items-center justify-content-center">
     <a class="sidebar-brand brand-logo" href="{{ url('admin/home') }}">
       <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS" style="max-height: 50px; width: auto;" />
@@ -358,12 +364,13 @@
     @endif
     <!-- END SCHOOL PORTAL SECTION -->
 
-    @if(auth()->user()->user_type !== 'school')
+    @if(auth()->user()->user_type !== 'school' && $sidebarCan('access-ebmis-modules'))
     <!-- EBIMS MODULES (For operational EBIMS staff) -->
     <li class="nav-item nav-category">
       <span class="nav-link">EBIMS MODULES</span>
     </li>
 
+    @if($sidebarCanAny(['view-client-details', 'add-client', 'send-sms-notifications']))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#members" aria-expanded="false" aria-controls="members">
         <span class="menu-icon">
@@ -374,17 +381,25 @@
       </a>
       <div class="collapse" id="members">
         <ul class="nav flex-column sub-menu">
+          @if($sidebarCan('add-client'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.create') }}">Add Client</a></li>
+          @endif
+          @if($sidebarCan('view-client-details'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=1">Individual Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=2">Group Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=3">Corporate Clients</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.pending') }}">Clients Pending Approvals</a></li>
+          @endif
+          @if($sidebarCan('send-sms-notifications'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.create') }}">Send Bulk SMS</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.index') }}">View Bulk SMS Records</a></li>
+          @endif
         </ul>
       </div>
     </li>
+    @endif
 
+    @if($sidebarCan('manage-group-members'))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#groups" aria-expanded="false" aria-controls="groups">
         <span class="menu-icon">
@@ -400,7 +415,9 @@
         </ul>
       </div>
     </li>
+    @endif
 
+    @if($sidebarCan('manage-cash-securities'))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#cashsecurity" aria-expanded="false" aria-controls="cashsecurity">
         <span class="menu-icon">
@@ -416,7 +433,9 @@
         </ul>
       </div>
     </li>
+    @endif
 
+    @if($sidebarCan('manage-investments'))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#investments" aria-expanded="false" aria-controls="investments">
         <span class="menu-icon">
@@ -440,7 +459,9 @@
         </ul>
       </div>
     </li>
+    @endif
 
+    @if($sidebarCanAny(['create-loan-application', 'manage-client-applications', 'manage-loans', 'view-disbursements', 'view-active-loans', 'view-repayment-history', 'manage-late-fees', 'generate-loan-reports']))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#loans" aria-expanded="false" aria-controls="loans">
         <span class="menu-icon">
@@ -451,24 +472,33 @@
       </a>
       <div class="collapse" id="loans">
         <ul class="nav flex-column sub-menu">
+          @if($sidebarCan('create-loan-application'))
           <!-- Personal Loans Section -->
           <li class="nav-item"><strong class="text-muted ps-3">Personal Loans</strong></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=daily">Personal Loan (Daily)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=weekly">Personal Loan (Weekly)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=monthly">Personal Loan (Monthly)</a></li>
+          @endif
+          @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.esign') }}">eSign Personal Loan</a></li>
+          @endif
           
+          @if($sidebarCan('create-loan-application'))
           <!-- Group Loans Section -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Group Loans</strong></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=daily">Group Loan (Daily)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=weekly">Group Loan (Weekly)</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=monthly">Group Loan (Monthly)</a></li>
+          @endif
           
           <!-- Personal Loan Management -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Personal Loan Management</strong></li>
+          @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.personal.preview-dashboard') }}">Preview Dashboard</a></li>
+          @endif
+          @if($sidebarCan('manage-client-applications'))
           <li class="nav-item">
             <a class="nav-link d-flex align-items-center justify-content-between" href="{{ route('admin.client-applications.index') }}">
               <span>Self-Applied Applications</span>
@@ -476,22 +506,46 @@
               @if($pendingApps > 0)<span class="badge bg-warning text-dark">{{ $pendingApps }}</span>@endif
             </a>
           </li>
+          @endif
+          @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Pending Approvals</a></li>
+          @endif
+          @if($sidebarCan('view-disbursements'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
+          @endif
+          @if($sidebarCan('view-active-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>
+          @endif
+          @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=personal">Rejected Personal Loans</a></li>
+          @endif
+          @if($sidebarCan('view-repayment-history'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayments</a></li>
+          @endif
+          @if($sidebarCan('manage-late-fees'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.late-fees.index') }}">Late Fees</a></li>
+          @endif
           
           <!-- Group Loan Management -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Group Loan Management</strong></li>
+          @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=group">Pending Approvals</a></li>
+          @endif
+          @if($sidebarCan('view-disbursements'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Pending Disbursements</a></li>
+          @endif
+          @if($sidebarCan('view-active-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=group">Active Group Loans</a></li>
+          @endif
+          @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=group">Rejected Group Loans</a></li>
+          @endif
+          @if($sidebarCan('view-repayment-history'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayments</a></li>
+          @endif
           
+          @if($sidebarCan('generate-loan-reports'))
           <!-- Loan Portfolio Reports -->
           <li class="nav-item"><hr class="dropdown-divider"></li>
           <li class="nav-item"><strong class="text-muted ps-3">Portfolio Analysis</strong></li>
@@ -499,18 +553,21 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.product') }}">By Product</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.individual') }}">Personal Portfolio</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.group') }}">Group Portfolio</a></li>
+          @endif
         </ul>
       </div>
     </li>
     @endif
+    @endif
     <!-- END ADMIN ONLY: EBIMS MODULES -->
 
-    @if(auth()->user()->user_type !== 'school')
+    @if(auth()->user()->user_type !== 'school' && $sidebarCanAny(['generate-loan-reports', 'view-umra-reports']))
     <!-- ADMIN ONLY: REPORTS & SETTINGS -->
     <li class="nav-item nav-category">
       <span class="nav-link">REPORTS</span>
     </li>
 
+    @if($sidebarCan('generate-loan-reports'))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#reports" aria-expanded="false" aria-controls="reports">
         <span class="menu-icon">
@@ -534,8 +591,10 @@
         </ul>
       </div>
     </li>
+    @endif
 
     <!-- UMRA Regulatory Compliance Dashboard -->
+    @if($sidebarCan('view-umra-reports'))
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#umra" aria-expanded="false" aria-controls="umra">
         <span class="menu-icon">
@@ -551,6 +610,7 @@
         </ul>
       </div>
     </li>
+    @endif
 
     <!-- <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#settings" aria-expanded="false" aria-controls="settings">
@@ -594,6 +654,7 @@
       </div>
     </li>-->
 
+    @if($sidebarUser->isSuperAdmin())
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#agency" aria-expanded="false" aria-controls="agency">
         <span class="menu-icon">
@@ -610,11 +671,12 @@
         </ul>
       </div>
     </li>
+    @endif
 
 @endif
 <!-- END ADMIN ONLY: REPORTS & SETTINGS -->
 
-@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin') || auth()->user()->hasRole('Branch Manager') || auth()->user()->hasRole('Administrator'))
+@if($sidebarCan('view-accounting-reports'))
     <!-- ACCOUNTING & GL SECTION -->
     <li class="nav-item nav-category">
       <span class="nav-link">ACCOUNTING & GENERAL LEDGER</span>

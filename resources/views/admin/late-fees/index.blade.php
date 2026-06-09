@@ -41,9 +41,9 @@
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Late Fees</div>
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Outstanding Late Fees</div>
                             <div class="h5 mb-0 font-weight-bold">UGX {{ number_format($stats['total'], 0) }}</div>
-                            <small class="text-muted">{{ number_format($stats['count']) }} records</small>
+                            <small class="text-muted">Gross: UGX {{ number_format($stats['gross'] ?? 0, 0) }}</small>
                         </div>
                     </div>
                 </div>
@@ -55,9 +55,9 @@
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Pending</div>
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Outstanding</div>
                             <div class="h5 mb-0 font-weight-bold">UGX {{ number_format($stats['pending'], 0) }}</div>
-                            <small class="text-muted">{{ number_format($stats['pending_count']) }} records</small>
+                            <small class="text-muted">{{ number_format($stats['pending_count']) }} schedules still owe</small>
                         </div>
                     </div>
                 </div>
@@ -69,7 +69,7 @@
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Paid</div>
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Paid Late Fees</div>
                             <div class="h5 mb-0 font-weight-bold">UGX {{ number_format($stats['paid'], 0) }}</div>
                         </div>
                     </div>
@@ -82,7 +82,7 @@
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Waived</div>
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Waived Late Fees</div>
                             <div class="h5 mb-0 font-weight-bold">UGX {{ number_format($stats['waived'], 0) }}</div>
                         </div>
                     </div>
@@ -110,11 +110,11 @@
                     </div>
                     <div class="col-md-3">
                         <label>From Date</label>
-                        <input type="date" name="from_date" class="form-control" value="{{ request('from_date') }}">
+                        <input type="date" name="from_date" class="form-control" value="{{ request('from_date', $filters['from_date'] ?? '') }}">
                     </div>
                     <div class="col-md-3">
                         <label>To Date</label>
-                        <input type="date" name="to_date" class="form-control" value="{{ request('to_date') }}">
+                        <input type="date" name="to_date" class="form-control" value="{{ request('to_date', $filters['to_date'] ?? '') }}">
                     </div>
                     <div class="col-md-3">
                         <label>Search</label>

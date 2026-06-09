@@ -92,6 +92,7 @@
                                         <th style="width: 50px;">#</th>
                                         <th>Permission Name</th>
                                         <th>Display Name</th>
+                                        <th>Enforcement</th>
                                         <th>Roles Using</th>
                                         <th style="width: 150px;">Created</th>
                                         <th style="width: 100px;" class="text-end">Actions</th>
@@ -105,11 +106,21 @@
                                             <code class="text-primary">{{ $permission->name }}</code>
                                         </td>
                                         <td>
-                                            <span class="fw-medium">{{ ucwords(str_replace(['-', '_'], ' ', $permission->name)) }}</span>
+                                            <span class="fw-medium permission-display">{{ $permission->display_name }}</span>
+                                            @if($permission->description)
+                                                <div class="text-muted small">{{ $permission->description }}</div>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @if($permission->is_route_controlled)
+                                                <span class="badge bg-success">Route controlled</span>
+                                            @else
+                                                <span class="badge bg-secondary">Assignable</span>
+                                            @endif
                                         </td>
                                         <td>
                                             @php
-                                                $rolesCount = $permission->roles()->count();
+                                                $rolesCount = $permission->roles->count();
                                             @endphp
                                             @if($rolesCount > 0)
                                                 <span class="badge bg-info">{{ $rolesCount }} {{ Str::plural('role', $rolesCount) }}</span>
@@ -130,18 +141,24 @@
                                             <form action="{{ route('admin.permissions.delete', $permission->id) }}" method="POST" class="d-inline">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button 
-                                                    type="submit" 
-                                                    class="btn btn-sm btn-outline-danger"
-                                                    onclick="return confirm('Are you sure you want to delete this permission? This will remove it from all roles.')">
-                                                    <i class="mdi mdi-delete"></i>
-                                                </button>
+                                                @if($permission->is_route_controlled)
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Route-controlled permissions cannot be deleted">
+                                                        <i class="mdi mdi-lock"></i>
+                                                    </button>
+                                                @else
+                                                    <button
+                                                        type="submit"
+                                                        class="btn btn-sm btn-outline-danger"
+                                                        onclick="return confirm('Are you sure you want to delete this permission? This will remove it from all roles.')">
+                                                        <i class="mdi mdi-delete"></i>
+                                                    </button>
+                                                @endif
                                             </form>
                                         </td>
                                     </tr>
                                     @if($rolesCount > 0)
                                     <tr class="collapse" id="roles-{{ $permission->id }}">
-                                        <td colspan="6" class="bg-light">
+                                        <td colspan="7" class="bg-light">
                                             <div class="p-2">
                                                 <small class="text-muted fw-bold">Roles with this permission:</small>
                                                 <div class="mt-2">
@@ -332,7 +349,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             rows.forEach(row => {
                 const permissionName = row.querySelector('code')?.textContent.toLowerCase() || '';
-                const displayName = row.querySelector('.fw-medium')?.textContent.toLowerCase() || '';
+                const displayName = row.querySelector('.permission-display')?.textContent.toLowerCase() || '';
 
                 if (permissionName.includes(searchTerm) || displayName.includes(searchTerm)) {
                     row.style.display = '';

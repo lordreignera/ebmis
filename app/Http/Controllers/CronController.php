@@ -9,10 +9,10 @@ class CronController extends Controller
 {
     public function runScheduler(Request $request)
     {
-        // Security: Check secret token
-        $secret = $request->query('token');
-        
-        if ($secret !== config('app.cron_secret')) {
+        $expectedSecret = (string) config('app.cron_secret', '');
+        $providedSecret = (string) $request->query('token', '');
+
+        if ($expectedSecret === '' || $providedSecret === '' || !hash_equals($expectedSecret, $providedSecret)) {
             abort(403, 'Unauthorized');
         }
         

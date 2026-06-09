@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\EbmisPermissionRegistry;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
@@ -37,10 +38,7 @@ class AccessControlController extends Controller
 
     public function createRole()
     {
-        $permissions = Permission::all()->groupBy(function($permission) {
-            $parts = explode('-', $permission->name);
-            return ucwords(str_replace(['-', '_'], ' ', $parts[0]));
-        });
+        $permissions = $this->groupedPermissions();
         
         return view('admin.access-control.roles.create', compact('permissions'));
     }
@@ -49,7 +47,8 @@ class AccessControlController extends Controller
     {
         $request->validate([
             'name' => 'required|unique:roles,name',
-            'permissions' => 'array'
+            'permissions' => 'array',
+            'permissions.*' => 'exists:permissions,name',
         ]);
 
         $role = Role::create(['name' => $request->name]);
@@ -63,10 +62,7 @@ class AccessControlController extends Controller
 
     public function editRole(Role $role)
     {
-        $permissions = Permission::all()->groupBy(function($permission) {
-            $parts = explode('-', $permission->name);
-            return ucwords(str_replace(['-', '_'], ' ', $parts[0]));
-        });
+        $permissions = $this->groupedPermissions();
         
         return view('admin.access-control.roles.edit', compact('role', 'permissions'));
     }
@@ -75,8 +71,15 @@ class AccessControlController extends Controller
     {
         $request->validate([
             'name' => 'required|unique:roles,name,' . $role->id,
-            'permissions' => 'array'
+            'permissions' => 'array',
+            'permissions.*' => 'exists:permissions,name',
         ]);
+
+        if ($role->name === 'Super Administrator') {
+            $role->syncPermissions(Permission::all());
+
+            return redirect()->route('admin.roles.index')->with('success', 'Super Administrator retains all permissions.');
+        }
 
         $role->update(['name' => $request->name]);
         $role->syncPermissions($request->permissions ?? []);
@@ -100,10 +103,7 @@ class AccessControlController extends Controller
     
     public function permissions()
     {
-        $permissions = Permission::all()->groupBy(function($permission) {
-            $parts = explode('-', $permission->name);
-            return ucwords(str_replace(['-', '_'], ' ', $parts[0]));
-        });
+        $permissions = $this->groupedPermissions(withRoles: true);
         
         return view('admin.access-control.permissions.index', compact('permissions'));
     }
@@ -126,6 +126,10 @@ class AccessControlController extends Controller
 
     public function deletePermission(Permission $permission)
     {
+        if (EbmisPermissionRegistry::isRouteControlled($permission->name)) {
+            return back()->with('error', 'This permission protects an EBIMS route and cannot be deleted. Remove it from roles instead.');
+        }
+
         $permission->delete();
         return redirect()->route('admin.permissions.index')->with('success', 'Permission deleted successfully!');
     }
@@ -176,7 +180,7 @@ class AccessControlController extends Controller
 
     public function createUser()
     {
-        $roles = Role::all();
+        $roles = Role::with('permissions')->withCount('permissions')->orderBy('name')->get();
         $branches = \App\Models\Branch::active()->orderBy('name')->get();
         return view('admin.access-control.users.create', compact('roles', 'branches'));
     }
@@ -193,6 +197,7 @@ class AccessControlController extends Controller
             'designation' => 'nullable|string|max:100',
             'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
             'roles' => 'array',
+            'roles.*' => 'exists:roles,name',
         ]);
 
         $user = User::create([
@@ -218,7 +223,7 @@ class AccessControlController extends Controller
 
     public function editUser(User $user)
     {
-        $roles = Role::all();
+        $roles = Role::with('permissions')->withCount('permissions')->orderBy('name')->get();
         $branches = \App\Models\Branch::active()->orderBy('name')->get();
         return view('admin.access-control.users.edit', compact('user', 'roles', 'branches'));
     }
@@ -235,6 +240,7 @@ class AccessControlController extends Controller
             'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
             'status' => 'required|in:pending,active,suspended,rejected',
             'roles' => 'array',
+            'roles.*' => 'exists:roles,name',
         ]);
 
         $user->update([
@@ -265,5 +271,16 @@ class AccessControlController extends Controller
 
         $user->delete();
         return redirect()->route('admin.users.index')->with('success', 'User deleted successfully!');
+    }
+
+    private function groupedPermissions(bool $withRoles = false)
+    {
+        $query = Permission::query();
+
+        if ($withRoles) {
+            $query->with('roles');
+        }
+
+        return EbmisPermissionRegistry::groupedPermissions($query->get());
     }
 }

@@ -769,7 +769,7 @@ class LoanController extends Controller
                 $loan = GroupLoan::findOrFail($id);
             }
 
-            $this->loanAccessService->ensureLoanDecisionAccess($loan);
+            $this->loanAccessService->ensureLoanDecisionAccess($loan, permission: 'reject-loan');
 
             // Check if loan is in correct status for rejection
             // Allow rejection of pending (0) or approved (1) loans only
@@ -3429,11 +3429,10 @@ class LoanController extends Controller
     public function revertLoan(Request $request, $id)
     {
         try {
-            // Check if user has permission to revert loans
-            if (!in_array(auth()->user()->user_type, ['super_admin', 'administrator', 'admin'])) {
+            if (!$request->user()?->isSuperAdmin()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized. Only super admin and administrator can revert rejected loans.'
+                    'message' => 'Unauthorized. Only the Super Administrator can revert rejected loans.'
                 ], 403);
             }
 
@@ -3705,6 +3704,10 @@ class LoanController extends Controller
      */
     public function closeLoanManually(Request $request, int $loanId, LoanClosureService $loanClosureService)
     {
+        if (!$request->user()?->isSuperAdmin()) {
+            abort(403, 'Unauthorized. Only the Super Administrator can close a loan manually.');
+        }
+
         $request->validate([
             'notes' => 'nullable|string|max:500',
         ]);

@@ -71,6 +71,13 @@ class PermissionsSeeder extends Seeder
             'view-payroll-reports', 'approve-salary-payments',
         ];
 
+        $allPermissions = array_values(array_unique(array_merge(
+            $allPermissions,
+            array_keys(config('ebmis_permissions.catalog', [])),
+            array_values(config('ebmis_permissions.route_permissions', [])),
+            \Illuminate\Support\Arr::flatten(config('ebmis_permissions.default_roles', []))
+        )));
+
         // Create permissions only if they don't exist
         foreach ($allPermissions as $permission) {
             Permission::firstOrCreate(['name' => $permission]);

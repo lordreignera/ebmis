@@ -98,8 +98,14 @@
                                                                 {{ in_array($permission->name, old('permissions', [])) ? 'checked' : '' }}
                                                             >
                                                             <label class="form-check-label" for="permission_{{ $permission->id }}">
-                                                                {{ ucwords(str_replace(['-', '_'], ' ', $permission->name)) }}
+                                                                {{ $permission->display_name }}
+                                                                @if($permission->is_route_controlled)
+                                                                    <span class="badge bg-success ms-1">Controlled</span>
+                                                                @endif
                                                             </label>
+                                                            @if($permission->description)
+                                                                <div class="text-muted small ms-4">{{ $permission->description }}</div>
+                                                            @endif
                                                         </div>
                                                     </div>
                                                 @endforeach

@@ -372,7 +372,25 @@ class LoanManagementController extends Controller
     public function mobileMoneyCallback(Request $request)
     {
         try {
-            Log::info('Mobile money callback received', $request->all());
+            $expectedSecret = (string) config('flexipay.callback_secret', '');
+            $providedSecret = (string) ($request->header('X-Flexipay-Callback-Secret') ?: $request->query('token', ''));
+
+            if (config('flexipay.require_callback_secret')
+                && ($expectedSecret === '' || $providedSecret === '' || !hash_equals($expectedSecret, $providedSecret))) {
+                Log::warning('Rejected unauthorized mobile money callback', [
+                    'ip' => $request->ip(),
+                ]);
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized callback',
+                ], 403);
+            }
+
+            Log::info('Mobile money callback received', [
+                'ip' => $request->ip(),
+                'fields' => array_keys($request->all()),
+            ]);
             
             $result = $this->repaymentService->processPaymentCallback($request->all());
             

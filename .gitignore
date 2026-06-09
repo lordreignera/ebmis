@@ -30,6 +30,9 @@ Thumbs.db
 /scripts/
 /deployment/
 /docs/
+!/docs/
+/docs/*
+!/docs/route-security.md
 
 # Fix and test files
 check_*.php
@@ -68,3 +71,4 @@ schema_*.php
 # Documentation files (except deployment guide)
 *.md
 !README.md
+!/docs/route-security.md

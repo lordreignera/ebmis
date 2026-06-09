@@ -338,7 +338,9 @@ class RepaymentService
     public function processPaymentCallback(array $callbackData): array
     {
         try {
-            Log::info('Processing payment callback', $callbackData);
+            Log::info('Processing payment callback', [
+                'fields' => array_keys($callbackData),
+            ]);
             
             // Process callback through mobile money service
             $callbackResult = $this->mobileMoneyService->processCallback($callbackData);

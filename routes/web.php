@@ -15,29 +15,31 @@ Route::get('/', function () {
 });
 
 // Cron endpoint for external scheduling (secured with token)
-Route::get('/cron/run', [CronController::class, 'runScheduler'])->name('cron.run');
+Route::get('/cron/run', [CronController::class, 'runScheduler'])
+    ->middleware('throttle:6,1')
+    ->name('cron.run');
 
 // Custom Logout Route (with success message)
-Route::post('/logout', [LogoutController::class, 'logout'])->name('logout');
+Route::post('/logout', [LogoutController::class, 'logout'])->middleware('auth')->name('logout');
 
 // CSRF Token Refresh API (for keeping sessions alive)
 Route::get('/api/csrf-token', function () {
     return response()->json(['token' => csrf_token()]);
-})->middleware('web');
+})->middleware(['web', 'throttle:30,1'])->name('csrf-token.refresh');
 
 // School Registration Routes (Public)
 Route::get('/school/register', [SchoolRegistrationController::class, 'show'])->name('school.register');
-Route::post('/school/register', [SchoolRegistrationController::class, 'store'])->name('school.register.store');
+Route::post('/school/register', [SchoolRegistrationController::class, 'store'])->middleware('throttle:10,1')->name('school.register.store');
 Route::get('/school/assessment', [SchoolRegistrationController::class, 'showAssessment'])->name('school.assessment');
-Route::post('/school/assessment', [SchoolRegistrationController::class, 'storeAssessment'])->name('school.assessment.store');
+Route::post('/school/assessment', [SchoolRegistrationController::class, 'storeAssessment'])->middleware('throttle:10,1')->name('school.assessment.store');
 
 // Complete Assessment Routes (Public - for schools with incomplete assessments)
 Route::get('/school/complete-assessment', [SchoolRegistrationController::class, 'showCompleteAssessment'])->name('school.complete-assessment');
-Route::post('/school/complete-assessment', [SchoolRegistrationController::class, 'continueAssessment'])->name('school.continue-assessment');
+Route::post('/school/complete-assessment', [SchoolRegistrationController::class, 'continueAssessment'])->middleware('throttle:10,1')->name('school.continue-assessment');
 
 // Client Self-Service Loan Application (Public — no login required)
 Route::get('/apply', [ClientLoanApplicationController::class, 'create'])->name('client.apply');
-Route::post('/apply', [ClientLoanApplicationController::class, 'store'])->name('client.apply.store');
+Route::post('/apply', [ClientLoanApplicationController::class, 'store'])->middleware('throttle:10,1')->name('client.apply.store');
 Route::get('/apply/success', [ClientLoanApplicationController::class, 'success'])->name('client.apply.success');
 Route::get('/apply/check-status', [ClientLoanApplicationController::class, 'checkStatus'])->name('client.apply.check-status');
 Route::post('/loan-status', [ClientLoanApplicationController::class, 'loanStatusLookup'])->name('client.loan-status')->middleware('throttle:10,1');
@@ -57,9 +59,7 @@ Route::middleware([
         $user = auth()->user();
         
         // EBIMS staff begin from the operational dashboard.
-        if ($user->isSuperAdmin()
-            || $user->hasRole('Branch Manager')
-            || $user->hasAnyRole(['Loan Officer', 'Field Officer'])) {
+        if ($user->isSuperAdmin() || $user->can('access-ebmis-modules')) {
             return redirect()->route('admin.home');
         }
         
@@ -73,7 +73,7 @@ Route::middleware([
     })->name('dashboard');
 
     Route::get('/admin/home', [\App\Http\Controllers\AdminController::class, 'home'])
-        ->middleware('ebims_module')
+        ->middleware(['ebims_module', 'ebmis_permission'])
         ->name('admin.home');
     
     // Table Demo Route (for testing enhanced tables)
@@ -91,7 +91,8 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
-    'ebims_module'
+    'ebims_module',
+    'ebmis_permission'
 ])->prefix('admin')->name('admin.')->group(function () {
     
     // Log Viewer Route
@@ -164,15 +165,10 @@ Route::middleware([
         Route::delete('/{cashSecurity}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'destroy'])->name('destroy');
     });
     
-    // Tables Demo Route
-    Route::get('/tables-demo', function () {
-        return view('admin.tables-demo');
-    })->name('tables.demo');
-    
     // Modern Table Demo Route
     Route::get('/modern-table', function () {
         return view('admin.modern-table');
-    })->name('modern.table');
+    })->middleware('super_admin')->name('modern.table');
     
     // School Loan Routes (Must be BEFORE regular loan routes to avoid conflicts)
     Route::prefix('school-loans')->name('school.loans.')->group(function () {
@@ -205,7 +201,10 @@ Route::middleware([
     Route::get('/loans/{id}/edit', [\App\Http\Controllers\Admin\LoanController::class, 'edit'])->name('loans.edit');
     
     // Loan Management Routes
-    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class)->except(['show', 'edit', 'create']);
+    Route::resource('loans', \App\Http\Controllers\Admin\LoanController::class)->except(['show', 'edit', 'create', 'destroy']);
+    Route::delete('/loans/{loan}', [\App\Http\Controllers\Admin\LoanController::class, 'destroy'])
+        ->middleware('super_admin')
+        ->name('loans.destroy');
     Route::get('/loans/{loan}/details', [\App\Http\Controllers\Admin\LoanController::class, 'getLoanDetails'])->name('loans.details');
     Route::post('/loans/{loan}/approve', [\App\Http\Controllers\Admin\LoanController::class, 'approve'])->name('loans.approve');
     Route::post('/loans/{loan}/reject', [\App\Http\Controllers\Admin\LoanController::class, 'reject'])->name('loans.reject');
@@ -214,13 +213,13 @@ Route::middleware([
     Route::post('/loans/store-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'storeLoanMobileMoneyPayment'])->name('loans.store-mobile-money');
     Route::post('/loans/{id}/upload-document', [\App\Http\Controllers\Admin\LoanController::class, 'uploadDocument'])->name('loans.upload-document');
     Route::post('/loans/{id}/delete-document', [\App\Http\Controllers\Admin\LoanController::class, 'deleteDocument'])->name('loans.delete-document');
-    Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->name('loans.revert');
+    Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->middleware('super_admin')->name('loans.revert');
     Route::post('/loans/{id}/add-guarantor', [\App\Http\Controllers\Admin\LoanController::class, 'addGuarantor'])->name('loans.add-guarantor');
     Route::delete('/loans/guarantors/{guarantorId}', [\App\Http\Controllers\Admin\LoanController::class, 'removeGuarantor'])->name('loans.remove-guarantor');
     Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');
     Route::post('/loans/retry-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'retryLoanMobileMoneyPayment'])->name('loans.retry-mobile-money');
     Route::put('/loans/{loan}/update-charge-type', [\App\Http\Controllers\Admin\LoanController::class, 'updateChargeType'])->name('loans.update-charge-type');
-    Route::match(['get', 'post'], '/loans/{loan}/close-manual', [\App\Http\Controllers\Admin\LoanController::class, 'closeLoanManually'])->name('loans.close-manual');
+    Route::match(['get', 'post'], '/loans/{loan}/close-manual', [\App\Http\Controllers\Admin\LoanController::class, 'closeLoanManually'])->middleware('super_admin')->name('loans.close-manual');
     
     // Enhanced Loan Services Integration
     Route::post('/loans/calculate', [\App\Http\Controllers\Admin\LoanController::class, 'calculateLoan'])->name('loans.calculate');
@@ -263,8 +262,7 @@ Route::middleware([
         Route::get('/fees/{id}/{type?}', [\App\Http\Controllers\Admin\LoanManagementController::class, 'showLoanFees'])->name('fees.show');
         
         // Mobile Money Routes
-        Route::post('/mobile-money/callback', [\App\Http\Controllers\Admin\LoanManagementController::class, 'mobileMoneyCallback'])->name('mobile-money.callback');
-        Route::get('/mobile-money/test-connection', [\App\Http\Controllers\Admin\LoanManagementController::class, 'testMobileMoneyConnection'])->name('mobile-money.test');
+        Route::get('/mobile-money/test-connection', [\App\Http\Controllers\Admin\LoanManagementController::class, 'testMobileMoneyConnection'])->middleware('super_admin')->name('mobile-money.test');
     });
     
     // Disbursement Management Routes
@@ -289,7 +287,10 @@ Route::middleware([
     });
     
     // NEW: Enhanced Repayment Routes for UI
-    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class);
+    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class)->only(['index', 'show']);
+    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class)
+        ->only(['create', 'store', 'edit', 'update', 'destroy'])
+        ->middleware('super_admin');
     Route::get('/repayments/pending', [\App\Http\Controllers\Admin\RepaymentController::class, 'pending'])->name('repayments.pending');
     Route::get('/repayments/history', [\App\Http\Controllers\Admin\RepaymentController::class, 'history'])->name('repayments.history');
     Route::get('/repayments/loan-details/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getLoanDetails'])->name('repayments.loan-details');
@@ -297,10 +298,10 @@ Route::middleware([
     
     // Late Fees Management
     Route::get('/late-fees', [\App\Http\Controllers\Admin\LateFeeController::class, 'index'])->name('late-fees.index');
-    Route::post('/late-fees/{lateFee}/waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'waive'])->name('late-fees.waive');
-    Route::post('/late-fees/bulk-waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'bulkWaive'])->name('late-fees.bulk-waive');
-    Route::get('/late-fees/waive-upgrade', [\App\Http\Controllers\Admin\LateFeeController::class, 'showWaiveUpgrade'])->name('late-fees.show-waive-upgrade');
-    Route::post('/late-fees/waive-upgrade-period', [\App\Http\Controllers\Admin\LateFeeController::class, 'waiveUpgradePeriod'])->name('late-fees.waive-upgrade-period');
+    Route::post('/late-fees/{lateFee}/waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'waive'])->middleware('super_admin')->name('late-fees.waive');
+    Route::post('/late-fees/bulk-waive', [\App\Http\Controllers\Admin\LateFeeController::class, 'bulkWaive'])->middleware('super_admin')->name('late-fees.bulk-waive');
+    Route::get('/late-fees/waive-upgrade', [\App\Http\Controllers\Admin\LateFeeController::class, 'showWaiveUpgrade'])->middleware('super_admin')->name('late-fees.show-waive-upgrade');
+    Route::post('/late-fees/waive-upgrade-period', [\App\Http\Controllers\Admin\LateFeeController::class, 'waiveUpgradePeriod'])->middleware('super_admin')->name('late-fees.waive-upgrade-period');
     
     // NEW: Enhanced Repayment Routes for UI
     Route::prefix('loans/repayments')->name('loans.repayments.')->group(function () {
@@ -324,10 +325,10 @@ Route::middleware([
     Route::get('/loans/schedules/{id}/payments', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePayments'])->name('loans.schedules.payments');
     
     // Late Fees Management Routes (Superadmin & Administrator only)
-    Route::post('/loans/late-fees/waive', [\App\Http\Controllers\Admin\RepaymentController::class, 'waiveLateFees'])->name('loans.late-fees.waive');
+    Route::post('/loans/late-fees/waive', [\App\Http\Controllers\Admin\RepaymentController::class, 'waiveLateFees'])->middleware('super_admin')->name('loans.late-fees.waive');
     
     // Carry Over Excess Payment Route
-    Route::post('/loans/carry-over', [\App\Http\Controllers\Admin\RepaymentController::class, 'carryOverExcess'])->name('loans.carry-over');
+    Route::post('/loans/carry-over', [\App\Http\Controllers\Admin\RepaymentController::class, 'carryOverExcess'])->middleware('super_admin')->name('loans.carry-over');
     
     // Loan Reschedule Route
     Route::post('/loans/{loan}/reschedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'rescheduleLoan'])->name('loans.reschedule');
@@ -379,7 +380,7 @@ Route::middleware([
     
     // Fee Management Routes
     Route::resource('fees', \App\Http\Controllers\Admin\FeeController::class);
-    Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->name('fees.mark-paid');
+    Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->middleware('super_admin')->name('fees.mark-paid');
     Route::get('/fees/{fee}/receipt', [\App\Http\Controllers\Admin\FeeController::class, 'receipt'])->name('fees.receipt');
     Route::get('/fees/{fee}/receipt-modal', [\App\Http\Controllers\Admin\FeeController::class, 'getReceiptModal'])->name('fees.receipt-modal');
     Route::post('/fees/store-mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'storeMobileMoneyPayment'])->name('fees.store-mobile-money');
@@ -389,6 +390,26 @@ Route::middleware([
     Route::get('/members/{member}/loans', [\App\Http\Controllers\Admin\MemberController::class, 'getLoans'])->name('members.loans');
     Route::get('/members/{member}/recent-fees', [\App\Http\Controllers\Admin\MemberController::class, 'getRecentFees'])->name('members.recent-fees');
     Route::get('/fee-types/{feeType}/info', [\App\Http\Controllers\Admin\FeeController::class, 'getFeeTypeInfo'])->name('fee-types.info');
+    Route::get('/fees/member/{member}/status', [\App\Http\Controllers\Admin\FeeController::class, 'getMemberFeeStatus'])->name('fees.member.status');
+    Route::get('/fees/loan/{loan}/charges', [\App\Http\Controllers\Admin\FeeController::class, 'getLoanChargeStatus'])->name('fees.loan.charges');
+    Route::post('/fees/mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'storeMobileMoneyPayment'])->name('fees.mobile-money');
+    Route::get('/fees/mobile-money/status/{transactionRef}', [\App\Http\Controllers\Admin\FeeController::class, 'checkMobileMoneyStatus'])->name('fees.mobile-money.status');
+    Route::post('/fees/mobile-money/retry', [\App\Http\Controllers\Admin\FeeController::class, 'retryMobileMoneyPayment'])->name('fees.mobile-money.retry');
+    Route::get('/fees/types/ajax', [\App\Http\Controllers\Admin\FeeController::class, 'getFeeTypes'])->name('fees.types.ajax');
+    Route::get('/fees/members/search', [\App\Http\Controllers\Admin\FeeController::class, 'getMembers'])->name('fees.members.search');
+
+    // Read-only accounting reports are permission-controlled operational views.
+    Route::get('/accounting/journal-entries', [\App\Http\Controllers\Admin\AccountingController::class, 'journalEntries'])->name('accounting.journal-entries');
+    Route::get('/accounting/journal-entries/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadJournalEntries'])->name('accounting.journal-entries.download');
+    Route::get('/accounting/journal-entries/{entry}', [\App\Http\Controllers\Admin\AccountingController::class, 'showJournalEntry'])->name('accounting.journal-entry');
+    Route::get('/accounting/trial-balance', [\App\Http\Controllers\Admin\AccountingController::class, 'trialBalance'])->name('accounting.trial-balance');
+    Route::get('/accounting/trial-balance/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadTrialBalance'])->name('accounting.trial-balance.download');
+    Route::get('/accounting/balance-sheet', [\App\Http\Controllers\Admin\AccountingController::class, 'balanceSheet'])->name('accounting.balance-sheet');
+    Route::get('/accounting/balance-sheet/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadBalanceSheet'])->name('accounting.balance-sheet.download');
+    Route::get('/accounting/income-statement', [\App\Http\Controllers\Admin\AccountingController::class, 'incomeStatement'])->name('accounting.income-statement');
+    Route::get('/accounting/income-statement/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadIncomeStatement'])->name('accounting.income-statement.download');
+    Route::get('/accounting/chart-of-accounts', [\App\Http\Controllers\Admin\AccountingController::class, 'chartOfAccounts'])->name('accounting.chart-of-accounts');
+    Route::get('/accounting/chart-of-accounts/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadChartOfAccounts'])->name('accounting.chart-of-accounts.download');
     
     // Savings Management Routes
     Route::resource('savings', \App\Http\Controllers\Admin\SavingController::class);
@@ -598,31 +619,6 @@ Route::middleware([
             return view('admin.check-current-user');
         })->name('check-user');
         
-        Route::resource('fees', \App\Http\Controllers\Admin\FeeController::class);
-        Route::get('/fees/member/{member}/status', [\App\Http\Controllers\Admin\FeeController::class, 'getMemberFeeStatus'])->name('fees.member.status');
-        Route::get('/fees/loan/{loan}/charges', [\App\Http\Controllers\Admin\FeeController::class, 'getLoanChargeStatus'])->name('fees.loan.charges');
-        Route::post('/fees/{fee}/mark-paid', [\App\Http\Controllers\Admin\FeeController::class, 'markAsPaid'])->name('fees.mark-paid');
-        Route::get('/fees/{fee}/receipt', [\App\Http\Controllers\Admin\FeeController::class, 'receipt'])->name('fees.receipt');
-        Route::get('/fees/{fee}/receipt-modal', [\App\Http\Controllers\Admin\FeeController::class, 'getReceiptModal'])->name('fees.receipt-modal');
-        
-        Route::post('/fees/mobile-money', [\App\Http\Controllers\Admin\FeeController::class, 'storeMobileMoneyPayment'])->name('fees.mobile-money');
-        Route::get('/fees/mobile-money/status/{transactionRef}', [\App\Http\Controllers\Admin\FeeController::class, 'checkMobileMoneyStatus'])->name('fees.mobile-money.status');
-        Route::post('/fees/mobile-money/retry', [\App\Http\Controllers\Admin\FeeController::class, 'retryMobileMoneyPayment'])->name('fees.mobile-money.retry');
-        Route::get('/fees/types/ajax', [\App\Http\Controllers\Admin\FeeController::class, 'getFeeTypes'])->name('fees.types.ajax');
-        Route::get('/fees/members/search', [\App\Http\Controllers\Admin\FeeController::class, 'getMembers'])->name('fees.members.search');
-        
-        // Accounting & GL Routes
-        Route::get('/accounting/journal-entries', [\App\Http\Controllers\Admin\AccountingController::class, 'journalEntries'])->name('accounting.journal-entries');
-        Route::get('/accounting/journal-entries/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadJournalEntries'])->name('accounting.journal-entries.download');
-        Route::get('/accounting/journal-entries/{entry}', [\App\Http\Controllers\Admin\AccountingController::class, 'showJournalEntry'])->name('accounting.journal-entry');
-        Route::get('/accounting/trial-balance', [\App\Http\Controllers\Admin\AccountingController::class, 'trialBalance'])->name('accounting.trial-balance');
-        Route::get('/accounting/trial-balance/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadTrialBalance'])->name('accounting.trial-balance.download');
-        Route::get('/accounting/balance-sheet', [\App\Http\Controllers\Admin\AccountingController::class, 'balanceSheet'])->name('accounting.balance-sheet');
-        Route::get('/accounting/balance-sheet/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadBalanceSheet'])->name('accounting.balance-sheet.download');
-        Route::get('/accounting/income-statement', [\App\Http\Controllers\Admin\AccountingController::class, 'incomeStatement'])->name('accounting.income-statement');
-        Route::get('/accounting/income-statement/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadIncomeStatement'])->name('accounting.income-statement.download');
-        Route::get('/accounting/chart-of-accounts', [\App\Http\Controllers\Admin\AccountingController::class, 'chartOfAccounts'])->name('accounting.chart-of-accounts');
-        Route::get('/accounting/chart-of-accounts/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadChartOfAccounts'])->name('accounting.chart-of-accounts.download');
     });
     
     Route::prefix('settings')->name('settings.')->group(function () {

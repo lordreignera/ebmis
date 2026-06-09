@@ -1655,6 +1655,7 @@ $(document).ready(function() {
     function processWaiver(selectedLateFees, waiverReason) {
         var formData = new FormData();
         formData.append('loan_id', {{ $loan->id }});
+        formData.append('loan_type', '{{ $loan->loan_type ?? 'personal' }}');
         formData.append('late_fees', JSON.stringify(selectedLateFees));
         formData.append('waiver_reason', waiverReason);
         formData.append('_token', '{{ csrf_token() }}');

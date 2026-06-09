@@ -30,11 +30,12 @@ return [
     | to expire immediately when the browser is closed then you may
     | indicate that via the expire_on_close configuration option.
     |
-    | Note: Set to 20 minutes for assessment forms with auto-refresh
+    | Two hours gives staff enough time for normal operational work. Long
+    | forms may still refresh their CSRF token while they remain open.
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 20),
+    'lifetime' => (int) env('SESSION_LIFETIME', 120),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

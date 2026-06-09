@@ -59,20 +59,9 @@ class RolesSeeder extends Seeder
         // ===============================================================
         $branchManager = Role::firstOrCreate(['name' => 'Branch Manager']);
         
-        if ($branchManager->permissions->count() === 0) {
-            $branchPermissions = Permission::where('name', 'like', '%branch%')
-                ->orWhere('name', 'like', '%client%')
-                ->orWhere('name', 'like', '%loan%')
-                ->orWhere('name', 'like', '%savings%')
-                ->orWhere('name', 'like', '%group%')
-                ->orWhere('name', 'like', '%repayment%')
-                ->get();
-            $branchManager->givePermissionTo($branchPermissions);
+        if ($branchManager->wasRecentlyCreated || $branchManager->permissions->count() === 0) {
+            $branchManager->syncPermissions(config('ebmis_permissions.default_roles.Branch Manager', []));
         }
-        $branchManager->givePermissionTo(Permission::whereIn('name', [
-            'record-loan-follow-up',
-            'record-loan-collateral',
-        ])->get());
 
         // ===============================================================
         // 4. Other Roles (Basic setup)
@@ -80,16 +69,13 @@ class RolesSeeder extends Seeder
         Role::firstOrCreate(['name' => 'School Teacher']);
         Role::firstOrCreate(['name' => 'School Accountant']);
         Role::firstOrCreate(['name' => 'Regional HR']);
-        $fieldOfficerPermissions = Permission::whereIn('name', [
-            'view-assigned-loans',
-            'view-loan-schedule',
-            'perform-field-verification',
-            'record-loan-follow-up',
-            'record-loan-collateral',
-        ])->get();
+        foreach (['Loan Officer', 'Field Officer'] as $roleName) {
+            $role = Role::firstOrCreate(['name' => $roleName]);
 
-        Role::firstOrCreate(['name' => 'Loan Officer'])->syncPermissions($fieldOfficerPermissions);
-        Role::firstOrCreate(['name' => 'Field Officer'])->syncPermissions($fieldOfficerPermissions);
+            if ($role->wasRecentlyCreated || $role->permissions->count() === 0) {
+                $role->syncPermissions(config("ebmis_permissions.default_roles.{$roleName}", []));
+            }
+        }
         Role::firstOrCreate(['name' => 'Cashier']);
 
         // ===============================================================
