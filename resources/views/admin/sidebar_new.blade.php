@@ -558,8 +558,31 @@
       </div>
     </li>
     @endif
+
+    @if($sidebarCan('manage-expenditures'))
+    <li class="nav-item menu-items">
+      <a class="nav-link" data-bs-toggle="collapse" href="#expenditures" aria-expanded="false" aria-controls="expenditures">
+        <span class="menu-icon">
+          <i class="mdi mdi-cash-multiple"></i>
+        </span>
+        <span class="menu-title">Expenditures</span>
+        <i class="menu-arrow"></i>
+      </a>
+      <div class="collapse" id="expenditures">
+        <ul class="nav flex-column sub-menu">
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.index') }}">Expenditures</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.create') }}">New Expenditure</a></li>
+          @if($sidebarUser->isSuperAdmin())
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.rollout') }}">Rollout</a></li>
+          @endif
+        </ul>
+      </div>
+    </li>
     @endif
+
     <!-- END ADMIN ONLY: EBIMS MODULES -->
+
+    @endif
 
     @if(auth()->user()->user_type !== 'school' && $sidebarCanAny(['generate-loan-reports', 'view-umra-reports']))
     <!-- ADMIN ONLY: REPORTS & SETTINGS -->
@@ -592,6 +615,7 @@
       </div>
     </li>
     @endif
+
 
     <!-- UMRA Regulatory Compliance Dashboard -->
     @if($sidebarCan('view-umra-reports'))

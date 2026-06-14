@@ -3,7 +3,7 @@
 @section('title', 'Field Verification — ' . $app->application_code)
 
 @section('content')
-<div class="content-wrapper">
+<div class="content-wrapper fvl-page">
   <div class="page-header">
     <h3 class="page-title">
       <span class="page-title-icon bg-gradient-warning text-white me-2">
@@ -92,7 +92,7 @@
                   <tr>
                     <th>Check</th>
                     <th>Declared</th>
-                    <th class="text-center" style="width:120px">Verified? <span class="text-danger">*</span></th>
+                    <th class="text-center fvl-verification-col">Verified? <span class="text-danger">*</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -170,6 +170,22 @@
                 <label class="form-label small fw-semibold">Years at Residence (verified)</label>
                 <input type="number" name="years_residence_v" class="form-control form-control-sm"
                        value="{{ old('years_residence_v', $app->years_at_residence) }}" min="0" max="99">
+              </div>
+              <div class="col-12">
+                <div class="d-flex flex-wrap gap-3">
+                  @foreach([
+                    ['residence_visited', 'Residence Visited'],
+                    ['residence_matches_declaration', 'Residence Matches Declaration'],
+                    ['lc1_contacted_or_letter_reviewed', 'LC1 Contacted / Letter Reviewed'],
+                    ['lc1_confirms_client', 'LC1 Confirms Client'],
+                  ] as [$field, $label])
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
+                           id="{{ $field }}" {{ old($field) ? 'checked' : '' }}>
+                    <label class="form-check-label small" for="{{ $field }}">{{ $label }}</label>
+                  </div>
+                  @endforeach
+                </div>
               </div>
             </div>
             {{-- Photos --}}
@@ -305,10 +321,52 @@
 
             <div class="row g-3">
               <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Business Exists?</label>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="business_exists" value="1" id="businessExists" {{ old('business_exists') ? 'checked' : '' }}>
+                  <label class="form-check-label small" for="businessExists">Business was found at visit</label>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Business Type Confirmed?</label>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="business_type_confirmed" value="1" id="businessTypeConfirmed" {{ old('business_type_confirmed') ? 'checked' : '' }}>
+                  <label class="form-check-label small" for="businessTypeConfirmed">Declared: {{ $app->business_type ?? 'N/A' }}</label>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Business Location Confirmed?</label>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="business_location_confirmed" value="1" id="businessLocationConfirmed" {{ old('business_location_confirmed') ? 'checked' : '' }}>
+                  <label class="form-check-label small" for="businessLocationConfirmed">Declared location matches</label>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Business Photos Reviewed?</label>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="business_photos_reviewed" value="1" id="businessPhotosReviewed" {{ old('business_photos_reviewed') ? 'checked' : '' }}>
+                  <label class="form-check-label small" for="businessPhotosReviewed">Uploaded/visit photos reviewed</label>
+                </div>
+              </div>
+              <div class="col-sm-4">
                 <label class="form-label small fw-semibold">Sales Record Seen?</label>
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" name="sales_record_seen" value="1" id="srs" {{ old('sales_record_seen') ? 'checked' : '' }}>
                   <label class="form-check-label small" for="srs">Sales book / records sighted</label>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Purchases Book Seen?</label>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="purchases_book_seen" value="1" id="pbs" {{ old('purchases_book_seen') ? 'checked' : '' }}>
+                  <label class="form-check-label small" for="pbs">Purchases book reviewed</label>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Expense Records Seen?</label>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="expense_records_seen" value="1" id="ers" {{ old('expense_records_seen') ? 'checked' : '' }}>
+                  <label class="form-check-label small" for="ers">Expense records reviewed</label>
                 </div>
               </div>
               <div class="col-sm-4">
@@ -352,6 +410,24 @@
                 <input type="number" name="avg_customers_v" class="form-control form-control-sm"
                        value="{{ old('avg_customers_v', $app->avg_daily_customers) }}" min="0">
               </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Business Stability Rating</label>
+                <select name="business_stability_rating" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['Strong','Moderate','Weak'] as $rating)
+                    <option value="{{ $rating }}" {{ old('business_stability_rating') === $rating ? 'selected' : '' }}>{{ $rating }}</option>
+                  @endforeach
+                </select>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Records Credibility</label>
+                <select name="records_credibility" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['Strong','Moderate','Weak'] as $rating)
+                    <option value="{{ $rating }}" {{ old('records_credibility') === $rating ? 'selected' : '' }}>{{ $rating }}</option>
+                  @endforeach
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -372,6 +448,11 @@
                 <label class="form-label small fw-semibold">CRB Arrears (UGX)</label>
                 <input type="number" name="crb_arrears" class="form-control form-control-sm"
                        value="{{ old('crb_arrears', 0) }}" min="0">
+              </div>
+              <div class="col-sm-3">
+                <label class="form-label small fw-semibold">Max Arrears Days</label>
+                <input type="number" name="crb_max_arrears_days" class="form-control form-control-sm"
+                       value="{{ old('crb_max_arrears_days', $app->max_external_arrears_days ?? 0) }}" min="0">
               </div>
               <div class="col-sm-3">
                 <label class="form-label small fw-semibold">Active NXT Loans</label>
@@ -406,7 +487,7 @@
             <h6 class="fw-semibold small text-muted mb-2">Collateral 1 — {{ $app->collateral_1_type }} / {{ $app->collateral_1_description }}</h6>
             <div class="row g-3 mb-4">
               <div class="col-sm-4">
-                <label class="form-label small fw-semibold">Verified Market Value (VMV)</label>
+                <label class="form-label small fw-semibold">Forced Sale Value (FSV)</label>
                 <div class="input-group input-group-sm">
                   <span class="input-group-text">UGX</span>
                   <input type="number" name="coll_1_vmv" class="form-control"
@@ -426,11 +507,21 @@
                 <label class="form-label small fw-semibold">Collateral 1 Photo</label>
                 <input type="file" name="coll_1_photo" class="form-control form-control-sm" accept="image/*">
               </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Legal Enforceability</label>
+                <select name="coll_1_legal_enforceability" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['Strong','Moderate','Weak'] as $rating)
+                    <option value="{{ $rating }}" {{ old('coll_1_legal_enforceability') === $rating ? 'selected' : '' }}>{{ $rating }}</option>
+                  @endforeach
+                </select>
+              </div>
               <div class="col-12">
                 <div class="d-flex flex-wrap gap-3">
                   @foreach([
                     ['coll_1_physically_inspected', 'Physically Inspected'],
                     ['coll_1_ownership_accepted',   'Ownership Accepted'],
+                    ['coll_1_document_seen',         'Document Seen Physically'],
                     ['coll_1_pledge_signed',        'Pledge Form Signed'],
                     ['coll_1_customary_verified',   'Customary Pledged (CCP Sighted)'],
                   ] as [$field, $label])
@@ -449,7 +540,7 @@
             <h6 class="fw-semibold small text-muted mb-2">Collateral 2 — {{ $app->collateral_2_type }} / {{ $app->collateral_2_description }}</h6>
             <div class="row g-3">
               <div class="col-sm-4">
-                <label class="form-label small fw-semibold">VMV</label>
+                <label class="form-label small fw-semibold">Forced Sale Value (FSV)</label>
                 <div class="input-group input-group-sm">
                   <span class="input-group-text">UGX</span>
                   <input type="number" name="coll_2_vmv" class="form-control"
@@ -469,11 +560,21 @@
                 <label class="form-label small fw-semibold">Collateral 2 Photo</label>
                 <input type="file" name="coll_2_photo" class="form-control form-control-sm" accept="image/*">
               </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Legal Enforceability</label>
+                <select name="coll_2_legal_enforceability" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['Strong','Moderate','Weak'] as $rating)
+                    <option value="{{ $rating }}" {{ old('coll_2_legal_enforceability') === $rating ? 'selected' : '' }}>{{ $rating }}</option>
+                  @endforeach
+                </select>
+              </div>
               <div class="col-12">
                 <div class="d-flex flex-wrap gap-3">
                   @foreach([
                     ['coll_2_physically_inspected', 'Physically Inspected'],
                     ['coll_2_ownership_accepted',   'Ownership Accepted'],
+                    ['coll_2_document_seen',         'Document Seen Physically'],
                     ['coll_2_pledge_signed',        'Pledge Form Signed'],
                     ['coll_2_customary_verified',   'Customary Pledged (CCP Sighted)'],
                   ] as [$field, $label])
@@ -489,6 +590,26 @@
             @else
             <div class="alert alert-light small border mb-0">No second collateral declared.</div>
             @endif
+
+            <hr>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label small fw-semibold">Client Pledge Confirmation</label>
+                <div class="d-flex flex-wrap gap-3">
+                  @foreach([
+                    ['pledge_explained_to_client', 'Pledge Explained to Client'],
+                    ['client_understood_pledge',   'Client Understood Pledge'],
+                    ['pledge_witness_present',     'Witness / LC1 Present'],
+                  ] as [$field, $label])
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
+                           id="{{ $field }}" {{ old($field) ? 'checked' : '' }}>
+                    <label class="form-check-label small" for="{{ $field }}">{{ $label }}</label>
+                  </div>
+                  @endforeach
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -558,7 +679,16 @@
                 <input type="number" name="ref_consistent_count" class="form-control form-control-sm"
                        value="{{ old('ref_consistent_count', 0) }}" min="0" max="5">
               </div>
-              <div class="col-sm-8">
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Residence Stability Rating</label>
+                <select name="residence_stability_rating" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['Strong','Moderate','Weak'] as $rating)
+                    <option value="{{ $rating }}" {{ old('residence_stability_rating') === $rating ? 'selected' : '' }}>{{ $rating }}</option>
+                  @endforeach
+                </select>
+              </div>
+              <div class="col-sm-4">
                 <label class="form-label small fw-semibold">Residence Stability Evidence</label>
                 <input type="text" name="residence_stability_evi" class="form-control form-control-sm"
                        value="{{ old('residence_stability_evi') }}" placeholder="e.g. Rent receipts, utility bill, neighbours confirmed">
@@ -593,11 +723,21 @@
                 </div>
                 <small class="text-muted">Declared: UGX {{ number_format($app->guarantor_1_pledged_asset_value ?? 0) }}</small>
               </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Commitment Level Verified</label>
+                <select name="g1_commitment_verified" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['High','Moderate','Low'] as $level)
+                    <option value="{{ $level }}" {{ old('g1_commitment_verified', $app->guarantor_1_commitment_level) === $level ? 'selected' : '' }}>{{ $level }}</option>
+                  @endforeach
+                </select>
+              </div>
               <div class="col-12">
                 <div class="d-flex flex-wrap gap-3">
                   @foreach([
                     ['g1_contact_verified',       'Contact Verified'],
                     ['g1_relationship_confirmed',  'Relationship Confirmed'],
+                    ['g1_pledge_confirmed',        'Pledge Confirmed'],
                     ['g1_willing',                 'Willing to Guarantee'],
                     ['g1_signed',                  'Consent Form Signed'],
                   ] as [$field, $label])
@@ -632,11 +772,21 @@
                          value="{{ old('g2_asset_verified', $app->guarantor_2_pledged_asset_value) }}" min="0">
                 </div>
               </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold">Commitment Level Verified</label>
+                <select name="g2_commitment_verified" class="form-select form-select-sm">
+                  <option value="">-- Select --</option>
+                  @foreach(['High','Moderate','Low'] as $level)
+                    <option value="{{ $level }}" {{ old('g2_commitment_verified', $app->guarantor_2_commitment_level) === $level ? 'selected' : '' }}>{{ $level }}</option>
+                  @endforeach
+                </select>
+              </div>
               <div class="col-12">
                 <div class="d-flex flex-wrap gap-3">
                   @foreach([
                     ['g2_contact_verified',       'Contact Verified'],
                     ['g2_relationship_confirmed',  'Relationship Confirmed'],
+                    ['g2_pledge_confirmed',        'Pledge Confirmed'],
                     ['g2_willing',                 'Willing to Guarantee'],
                     ['g2_signed',                  'Consent Form Signed'],
                   ] as [$field, $label])
@@ -798,6 +948,43 @@
               </div>
             </div>
 
+            <hr>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Officer Recommendation Details</label>
+              <div class="row g-2">
+                <div class="col-12">
+                  <select name="recommended_product_id" class="form-select form-select-sm">
+                    <option value="">Recommended product</option>
+                    @foreach($products as $product)
+                      <option value="{{ $product->id }}" {{ (string) old('recommended_product_id', $app->product_id) === (string) $product->id ? 'selected' : '' }}>
+                        {{ $product->name }}
+                      </option>
+                    @endforeach
+                  </select>
+                </div>
+                <div class="col-sm-6">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">UGX</span>
+                    <input type="number" name="recommended_amount" class="form-control"
+                           value="{{ old('recommended_amount', $app->requested_amount) }}" min="0" placeholder="Amount">
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <input type="number" name="recommended_tenure_periods" class="form-control form-control-sm"
+                         value="{{ old('recommended_tenure_periods', $app->tenure_periods) }}" min="1" max="104" placeholder="Tenure">
+                </div>
+                <div class="col-12">
+                  <select name="officer_confidence" class="form-select form-select-sm">
+                    <option value="">Officer confidence</option>
+                    @foreach(['Strong','Moderate','Weak'] as $rating)
+                      <option value="{{ $rating }}" {{ old('officer_confidence') === $rating ? 'selected' : '' }}>{{ $rating }}</option>
+                    @endforeach
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div class="mb-3">
               <label class="form-label small fw-semibold">Remote Risk Note</label>
               <textarea name="remote_risk_note" class="form-control form-control-sm" rows="2"
@@ -842,6 +1029,112 @@
   </form>
 </div>
 
+@push('styles')
+<style>
+.fvl-page .alert-warning {
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
+.fvl-page .card > .card-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e5e7eb;
+    color: #111827 !important;
+    font-weight: 700;
+}
+
+.fvl-page .card > .card-header *,
+.fvl-page .card > .card-header a {
+    color: #111827 !important;
+}
+
+.fvl-page .table-responsive {
+    overflow-x: auto;
+}
+
+.fvl-page table {
+    min-width: 680px;
+}
+
+.fvl-page .table {
+    --bs-table-bg: #ffffff;
+    --bs-table-striped-bg: #f8fafc;
+    --bs-table-hover-bg: #eef4f8;
+    border-color: #dbe5ec;
+}
+
+.fvl-page .table thead,
+.fvl-page .table thead th,
+.fvl-page .table .table-light,
+.fvl-page .table-light th {
+    background: #eef4f8 !important;
+    color: #243447 !important;
+}
+
+.fvl-page .table tbody td,
+.fvl-page .table tbody th {
+    background: #ffffff !important;
+}
+
+.fvl-page .table-hover tbody tr:hover td,
+.fvl-page .table-hover tbody tr:hover th {
+    background: #f3f8fb !important;
+}
+
+.fvl-page .fvl-verification-col {
+    min-width: 220px;
+    width: 28%;
+}
+
+.fvl-page .form-label,
+.fvl-page .form-check-label,
+.fvl-page td,
+.fvl-page th {
+    white-space: normal;
+}
+
+.fvl-page .input-group-text {
+    flex-shrink: 0;
+}
+
+.fvl-page input[type="file"] {
+    min-height: 34px;
+}
+
+.fvl-page .sticky-top {
+    z-index: 2;
+}
+
+@media (max-width: 991.98px) {
+    .fvl-page .sticky-top {
+        position: static;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .fvl-page {
+        padding-left: .5rem;
+        padding-right: .5rem;
+    }
+
+    .fvl-page .card-body {
+        padding: .85rem;
+    }
+
+    .fvl-page table {
+        min-width: 620px;
+    }
+
+    .fvl-page .btn,
+    .fvl-page .form-control,
+    .fvl-page .form-select,
+    .fvl-page .input-group-text {
+        font-size: .875rem;
+    }
+}
+</style>
+@endpush
+
 @push('scripts')
 <script>
 function captureGPS() {
@@ -882,6 +1175,7 @@ document.getElementById('recSelect').addEventListener('change', function() {
         'v_other_income','v_loan_installment',
         'crb_arrears','crb_ext_inst',
         'coll_1_vmv','coll_1_enc','coll_2_vmv','coll_2_enc',
+        'recommended_amount',
         'g1_income_verified','g1_asset_verified',
         'g2_income_verified','g2_asset_verified'
     ];

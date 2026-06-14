@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\LoanScheduleHelper;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
@@ -18,6 +19,8 @@ use App\Models\FeeType;
 use App\Services\FileStorageService;
 use App\Services\LoanAccessService;
 use App\Services\LoanClosureService;
+use App\Services\RepaymentService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -26,7 +29,10 @@ use Illuminate\Support\Facades\Log;
 
 class LoanController extends Controller
 {
-    public function __construct(private LoanAccessService $loanAccessService) {}
+    public function __construct(
+        private LoanAccessService $loanAccessService,
+        private RepaymentService $repaymentService
+    ) {}
 
     /**
      * Display a listing of loans from all loan tables
@@ -3108,6 +3114,8 @@ class LoanController extends Controller
         $loan = PersonalLoan::with(['member', 'product', 'branch', 'schedules'])
             ->findOrFail($id);
 
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         // Check if loan is eligible for restructuring
         if ($loan->status != 2) {
             return redirect()->back()->with('error', 'Only active/disbursed loans can be restructured.');
@@ -3118,12 +3126,16 @@ class LoanController extends Controller
         $paidCount = $schedules->where('status', 1)->count();
         $pendingCount = $schedules->where('status', 0)->count();
         $overdueCount = $schedules->where('periods_in_arrears', '>', 0)->count();
+        $remainingPeriods = max(1, $pendingCount);
+        $remainingDays = $this->periodsToDays($remainingPeriods, $loan->product->period_type ?? 1);
 
-        // Get active late fees from late_fees table
-        $totalLateFees = DB::table('late_fees')
-            ->where('loan_id', $id)
-            ->where('status', '!=', 2) // Exclude waived fees
-            ->sum('amount');
+        $balance = $this->calculateRestructureBalance($loan);
+        $availableProducts = Product::active()
+            ->where('loan_type', $loan->product->loan_type ?? 1)
+            ->whereIn('period_type', [1, 2, 3])
+            ->orderBy('period_type')
+            ->orderBy('name')
+            ->get();
 
         // Prepare loan summary data
         $loanData = (object)[
@@ -3131,20 +3143,26 @@ class LoanController extends Controller
             'code' => $loan->code,
             'borrower_name' => $loan->member->fname . ' ' . $loan->member->lname,
             'product_name' => $loan->product->name ?? 'N/A',
+            'product_id' => $loan->product_type,
+            'period_type' => $loan->product->period_type ?? 1,
             'principal_amount' => $loan->principal,
             'interest_rate' => $loan->interest,
             'loan_term' => $loan->period,
+            'remaining_periods' => $remainingPeriods,
+            'remaining_days' => $remainingDays,
             'period_type_name' => $this->getPeriodTypeName($loan->product->period_type ?? 3),
             'disbursement_date' => $loan->date_approved,
             'total_payable' => $schedules->sum('payment'),
-            'amount_paid' => $schedules->sum('paid'),
-            'outstanding_balance' => $schedules->sum('payment') - $schedules->sum('paid'),
-            'total_late_fees' => $totalLateFees, // Use late_fees table data
+            'amount_paid' => $balance['paid'],
+            'outstanding_balance' => $balance['principal'] + $balance['interest'],
+            'total_late_fees' => $balance['late_fees'],
             'days_overdue' => $this->calculateDaysOverdue($loan),
+            'default_first_payment_date' => $this->defaultFirstPaymentDate($loan->product->period_type ?? 1)->format('Y-m-d'),
         ];
 
         return view('admin.loans.restructure', [
             'loan' => $loanData,
+            'availableProducts' => $availableProducts,
             'paidCount' => $paidCount,
             'pendingCount' => $pendingCount,
             'overdueCount' => $overdueCount,
@@ -3159,8 +3177,10 @@ class LoanController extends Controller
         $validated = $request->validate([
             'reason' => 'required|string',
             'comments' => 'required|string|min:20',
+            'new_product_type' => 'required|integer|exists:products,id',
             'new_interest' => 'required|numeric|min:0|max:100',
             'new_period' => 'required|integer|min:1|max:260',
+            'first_payment_date' => 'required|date',
             'grace_period' => 'nullable|integer|min:0|max:12',
             'include_late_fees' => 'nullable|boolean',
             'confirm' => 'required|accepted',
@@ -3170,6 +3190,7 @@ class LoanController extends Controller
             DB::beginTransaction();
 
             $originalLoan = PersonalLoan::with(['member', 'product', 'schedules'])->findOrFail($id);
+            $this->loanAccessService->ensureLoanAccess($originalLoan);
 
             // Verify loan can be restructured
             if ($originalLoan->status != 2) {
@@ -3180,17 +3201,21 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', 'This loan has already been restructured.');
             }
 
-            // Calculate outstanding balance automatically
-            $schedules = $originalLoan->schedules;
-            $totalPayable = $schedules->sum('payment');
-            $totalPaid = $schedules->sum('paid');
-            $outstandingBalance = $totalPayable - $totalPaid;
-            
-            // Get total late fees (from late_fees table for accuracy)
-            $totalLateFees = DB::table('late_fees')
-                ->where('loan_id', $originalLoan->id)
-                ->where('status', '!=', 2) // Exclude waived fees
-                ->sum('amount'); // Column is 'amount' not 'late_fee'
+            $newProduct = Product::active()
+                ->where('id', $validated['new_product_type'])
+                ->where('loan_type', $originalLoan->product->loan_type ?? 1)
+                ->whereIn('period_type', [1, 2, 3])
+                ->first();
+
+            if (!$newProduct) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Please select an active daily, weekly, or monthly loan product.');
+            }
+
+            $balance = $this->calculateRestructureBalance($originalLoan);
+            $outstandingBalance = $balance['principal'] + $balance['interest'];
+            $totalLateFees = $balance['late_fees'];
             
             // Calculate new principal (include late fees if requested)
             $newPrincipal = $outstandingBalance;
@@ -3206,7 +3231,7 @@ class LoanController extends Controller
             // Create restructured loan
             $restructuredLoan = new PersonalLoan();
             $restructuredLoan->member_id = $originalLoan->member_id;
-            $restructuredLoan->product_type = $originalLoan->product_type;
+            $restructuredLoan->product_type = $newProduct->id;
             $restructuredLoan->code = 'R' . $originalLoan->code; // Prefix with R
             $restructuredLoan->interest = $validated['new_interest'];
             $restructuredLoan->interest_method = $originalLoan->interest_method;
@@ -3229,7 +3254,7 @@ class LoanController extends Controller
             $restructuredLoan->restructured = 1;
             $restructuredLoan->OLoanID = $originalLoan->code;
             $restructuredLoan->sign_code = $originalLoan->sign_code ?? 'RESTRUCTURED';
-            $restructuredLoan->Rcomments = "Restructured Loan. Reason: {$validated['reason']}. Comments: {$validated['comments']}. Outstanding: " . number_format($outstandingBalance) . " UGX" . ((isset($validated['include_late_fees']) && $validated['include_late_fees']) ? ", Late Fees: " . number_format($totalLateFees) . " UGX" : ", Late Fees Waived");
+            $restructuredLoan->Rcomments = "Restructured Loan. Reason: {$validated['reason']}. Comments: {$validated['comments']}. Original Product: " . ($originalLoan->product->name ?? 'N/A') . ". New Product: {$newProduct->name}. First Payment Date: {$validated['first_payment_date']}. Confirmed Old Payments Credited: " . number_format($balance['paid']) . " UGX. Outstanding: " . number_format($outstandingBalance) . " UGX" . ((isset($validated['include_late_fees']) && $validated['include_late_fees']) ? ", Late Fees: " . number_format($totalLateFees) . " UGX" : ", Late Fees Waived");
             $restructuredLoan->datecreated = now();
             
             // Calculate a simple installment for now (will be recalculated by schedules)
@@ -3238,9 +3263,14 @@ class LoanController extends Controller
             $restructuredLoan->installment = $totalPayable / $validated['new_period'];
             
             $restructuredLoan->save();
+            $restructuredLoan->load('product');
             
             // Now generate proper schedules using LoanScheduleService
-            $schedules = $scheduleService->generateSchedule($restructuredLoan);
+            $schedules = $this->alignGeneratedScheduleDates(
+                $scheduleService->generateSchedule($restructuredLoan),
+                (string) $newProduct->period_type,
+                Carbon::parse($validated['first_payment_date'])
+            );
             
             // Insert schedules
             foreach ($schedules as $schedule) {
@@ -3259,7 +3289,7 @@ class LoanController extends Controller
             // Update original loan
             $originalLoan->status = 5; // Restructured (status 5: 0=Pending, 1=Approved, 2=Disbursed, 3=Closed, 4=Rejected, 5=Restructured)
             $originalLoan->restructured = 1;
-            $originalLoan->Rcomments = "Loan restructured to {$restructuredLoan->code} on " . now()->format('Y-m-d H:i:s') . ". New Principal: " . number_format($newPrincipal) . " UGX";
+            $originalLoan->Rcomments = "Loan restructured to {$restructuredLoan->code} on " . now()->format('Y-m-d H:i:s') . ". New Product: {$newProduct->name}. First Payment Date: {$validated['first_payment_date']}. New Principal: " . number_format($newPrincipal) . " UGX";
             $originalLoan->date_closed = now();
             $originalLoan->save();
 
@@ -3276,7 +3306,7 @@ class LoanController extends Controller
                 ->with('success', 'Loan restructured successfully! New loan code: ' . $restructuredLoan->code . 
                        '. Outstanding balance: ' . number_format($outstandingBalance) . ' UGX' .
                        ((isset($validated['include_late_fees']) && $validated['include_late_fees']) ? ' + Late Fees: ' . number_format($totalLateFees) . ' UGX' : ' (Late fees waived)') .
-                       ' = New Principal: ' . number_format($newPrincipal) . ' UGX. New loan is now active and schedules have been generated.');
+                       ' = New Principal: ' . number_format($newPrincipal) . ' UGX. New product: ' . $newProduct->name . '. New loan is now active and schedules have been generated.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -3305,13 +3335,110 @@ class LoanController extends Controller
     }
 
     /**
+     * Calculate the amount to carry into a restructure using confirmed repayments.
+     *
+     * Base principal is unpaid principal + unpaid interest. Late fees are kept
+     * separate so they can be either capitalized or waived without double-counting.
+     */
+    private function calculateRestructureBalance(PersonalLoan $loan): array
+    {
+        $loan->loadMissing(['product', 'schedules']);
+
+        $totals = [
+            'principal' => 0.0,
+            'interest' => 0.0,
+            'late_fees' => 0.0,
+            'paid' => 0.0,
+            'total' => 0.0,
+        ];
+
+        $confirmedPaid = (float) Repayment::where('loan_id', $loan->id)
+            ->where('amount', '>', 0)
+            ->whereNotIn('status', [-1, 2])
+            ->where(function ($query) {
+                $query->where('status', 1)
+                    ->orWhere('payment_status', 'Completed');
+            })
+            ->sum('amount');
+        $legacyPaid = (float) $loan->schedules->sum('paid');
+        $paidAvailable = max($confirmedPaid, $legacyPaid);
+        $totals['paid'] = $paidAvailable;
+
+        $orderedSchedules = $loan->schedules->sortBy(function ($schedule) {
+            $timestamp = strtotime((string) $schedule->payment_date);
+            return $timestamp ?: (int) $schedule->id;
+        });
+
+        foreach ($orderedSchedules as $schedule) {
+            $principal = (float) ($schedule->principal ?? 0);
+            $interest = (float) ($schedule->interest ?? 0);
+            $lateFeeData = $this->repaymentService->calculateLateFee($schedule, $loan);
+            $lateFees = (float) ($lateFeeData['net'] ?? 0);
+
+            $paid = $paidAvailable;
+            $interestPaid = min($interest, $paid);
+            $principalPaid = min($principal, max(0, $paid - $interestPaid));
+            $lateFeesPaid = min($lateFees, max(0, $paid - $interest - $principal));
+            $paidAvailable = max(0, $paidAvailable - $interestPaid - $principalPaid - $lateFeesPaid);
+
+            $totals['interest'] += max(0, $interest - $interestPaid);
+            $totals['principal'] += max(0, $principal - $principalPaid);
+            $totals['late_fees'] += max(0, $lateFees - $lateFeesPaid);
+        }
+
+        $totals['total'] = $totals['principal'] + $totals['interest'] + $totals['late_fees'];
+
+        return $totals;
+    }
+
+    private function defaultFirstPaymentDate($periodType): Carbon
+    {
+        return match ((string) $periodType) {
+            '2' => now()->addDays(30),
+            '3' => now()->addDays(7),
+            default => now()->addDays(7),
+        };
+    }
+
+    private function periodsToDays(int $periods, $periodType): int
+    {
+        $daysPerPeriod = match ((string) $periodType) {
+            '2' => 30,
+            '3' => 1,
+            default => 7,
+        };
+
+        return max(1, $periods) * $daysPerPeriod;
+    }
+
+    private function alignGeneratedScheduleDates($schedules, string $periodType, Carbon $firstPaymentDate)
+    {
+        $scheduleStartDate = match ($periodType) {
+            '2' => $firstPaymentDate->copy()->subDays(30),
+            '3' => $firstPaymentDate->copy()->subDays(7),
+            default => $firstPaymentDate->copy()->subDays(7),
+        };
+
+        return $schedules->values()->map(function (array $schedule, int $index) use ($scheduleStartDate, $periodType) {
+            $paymentDate = LoanScheduleHelper::calculatePaymentDate(
+                $scheduleStartDate,
+                $index + 1,
+                (int) $periodType
+            );
+
+            $schedule['payment_date'] = $paymentDate->format('Y-m-d');
+            return $schedule;
+        });
+    }
+
+    /**
      * Calculate days overdue for a loan
      */
     private function calculateDaysOverdue($loan)
     {
         $overdueSchedule = $loan->schedules()
             ->where('status', 0)
-            ->whereRaw("STR_TO_DATE(payment_date, '%d-%m-%Y') < CURDATE()")
+            ->whereRaw("COALESCE(STR_TO_DATE(payment_date, '%d-%m-%Y'), DATE(payment_date)) < CURDATE()")
             ->orderBy('payment_date', 'asc')
             ->first();
 

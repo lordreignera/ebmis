@@ -29,6 +29,8 @@ class RawPayment extends Model
         'direction',
         'raw_message',
         'loan_id',
+        'disbursement_id',
+        'expenditure_id',
         'schedule_id',
         'member_id',
         'network',

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\LoanScheduleHelper;
 use App\Models\Loan;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
@@ -42,7 +43,6 @@ class LoanScheduleService
         
         // Determine start date
         $startDate = $this->getStartDate($loanData);
-        $currentDate = $startDate;
         $balance = $principal;
         
         // WEEKLY and DAILY loans use REDUCING BALANCE interest calculation
@@ -62,7 +62,7 @@ class LoanScheduleService
             
             for ($count = 1; $count <= $period; $count++) {
                 // Calculate next payment date based on period type
-                $paymentDate = $this->calculatePaymentDate($currentDate, $periodType, $count);
+                $paymentDate = $this->calculatePaymentDate($startDate, $periodType, $count);
                 
                 // Interest only in FIRST HALF of loan term
                 if ($count <= $halfTerm) {
@@ -95,7 +95,6 @@ class LoanScheduleService
                     'date_cleared' => null
                 ]);
                 
-                $currentDate = $paymentDate;
             }
             
         } else {
@@ -107,7 +106,7 @@ class LoanScheduleService
             
             for ($count = 1; $count <= $period; $count++) {
                 // Calculate next payment date based on period type
-                $paymentDate = $this->calculatePaymentDate($currentDate, $periodType, $count);
+                $paymentDate = $this->calculatePaymentDate($startDate, $periodType, $count);
                 
                 // Interest only in FIRST HALF of loan term
                 if ($count <= $halfTerm) {
@@ -131,7 +130,6 @@ class LoanScheduleService
                     'pending_count' => 0
                 ]);
                 
-                $currentDate = $paymentDate;
             }
         }
         
@@ -173,51 +171,13 @@ class LoanScheduleService
     /**
      * Calculate payment date based on period type
      */
-    private function calculatePaymentDate(Carbon $currentDate, string $periodType, int $paymentNumber): Carbon
+    private function calculatePaymentDate(Carbon $startDate, string $periodType, int $paymentNumber): Carbon
     {
-        switch ($periodType) {
-            case '1': // Weekly loans - 7 days after disbursement
-                if ($paymentNumber == 1) {
-                    // First payment: 7 days after disbursement
-                    return $currentDate->copy()->addDays(7);
-                }
-                // Subsequent payments: Add 7 days to previous payment date
-                return $currentDate->copy()->addDays(7);
-                
-            case '2': // Monthly loans - 30 days after disbursement
-                if ($paymentNumber == 1) {
-                    // First payment: 30 days after disbursement
-                    return $currentDate->copy()->addDays(30);
-                }
-                // Subsequent payments: Add 30 days to previous payment date
-                return $currentDate->copy()->addDays(30);
-                
-            case '3': // Daily loans - 7-day grace period, then daily (skip Sundays)
-                if ($paymentNumber == 1) {
-                    // First payment: 7 days after disbursement (grace period)
-                    return $currentDate->copy()->addDays(7);
-                }
-                // Subsequent payments: Add 1 day (skipping Sundays) to previous payment date
-                return $this->getNextWorkingDay($currentDate);
-                
-            default:
-                return $currentDate->copy()->addDays(30); // Default fallback
+        if (in_array((int) $periodType, [1, 2, 3], true)) {
+            return LoanScheduleHelper::calculatePaymentDate($startDate, $paymentNumber, (int) $periodType);
         }
-    }
-    
-    /**
-     * Get next working day (skip Sundays)
-     */
-    private function getNextWorkingDay(Carbon $date): Carbon
-    {
-        $nextDay = $date->copy()->addDay();
-        
-        // Skip Sundays
-        while ($nextDay->isSunday()) {
-            $nextDay->addDay();
-        }
-        
-        return $nextDay;
+
+        return $startDate->copy()->addDays(30 * $paymentNumber);
     }
     
     /**
@@ -367,17 +327,13 @@ class LoanScheduleService
                                   ->orderBy('id')
                                   ->get();
             
-            $currentDate = $disbursementDate;
-            
             foreach ($schedules as $index => $schedule) {
                 $paymentNumber = $index + 1;
-                $paymentDate = $this->calculatePaymentDate($currentDate, $periodType, $paymentNumber);
+                $paymentDate = $this->calculatePaymentDate($disbursementDate, $periodType, $paymentNumber);
                 
                 $schedule->update([
                     'payment_date' => $paymentDate
                 ]);
-                
-                $currentDate = $paymentDate;
             }
             
             return true;

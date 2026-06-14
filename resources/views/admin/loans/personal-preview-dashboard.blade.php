@@ -5,11 +5,12 @@
 @section('content')
 <style>
     .kpi-card {
-        border: 0;
-        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
         overflow: hidden;
-        color: #fff;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+        color: #111827;
+        box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06);
     }
 
     .kpi-body {
@@ -21,40 +22,50 @@
     .kpi-title {
         font-size: 0.95rem;
         font-weight: 600;
-        letter-spacing: 0.02em;
-        opacity: 0.95;
+        letter-spacing: 0;
+        color: #4b5563;
     }
 
     .kpi-value {
         font-size: 2.05rem;
         line-height: 1.05;
         font-weight: 800;
-        letter-spacing: -0.02em;
+        letter-spacing: 0;
+        color: #111827;
     }
 
     .kpi-meta {
         font-size: 0.9rem;
-        opacity: 0.95;
+        color: #4b5563;
     }
 
     .kpi-collections {
-        background: linear-gradient(135deg, #1f4ea1 0%, #0d2d66 100%);
+        background: #ffffff;
     }
 
     .kpi-disbursements {
-        background: linear-gradient(135deg, #0b6c8b 0%, #0c4f68 100%);
+        background: #ffffff;
     }
 
     .kpi-net {
-        background: linear-gradient(135deg, #2f9e44 0%, #1f7a33 100%);
+        background: #ffffff;
     }
 
     .kpi-pending {
-        background: linear-gradient(135deg, #f08c00 0%, #d97706 100%);
+        background: #ffffff;
     }
 
     .kpi-exceptions {
-        background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        background: #ffffff;
+    }
+
+    .kpi-card .text-white,
+    .kpi-card .text-warning,
+    .kpi-card .text-danger,
+    .kpi-card .text-success,
+    .kpi-card .text-info,
+    .kpi-card .text-primary {
+        color: #111827 !important;
     }
 </style>
 <div class="container-fluid">
@@ -402,17 +413,17 @@
                     {
                         label: 'Assigned Active Loans',
                         data: assignedLoanCounts,
-                        backgroundColor: '#0d6efd'
+                        backgroundColor: '#111827'
                     },
                     {
                         label: 'Overdue Loans',
                         data: overdueCounts,
-                        backgroundColor: '#fd7e14'
+                        backgroundColor: '#6b7280'
                     },
                     {
                         label: '30+ Days Overdue Loans',
                         data: severeOverdueCounts,
-                        backgroundColor: '#dc3545'
+                        backgroundColor: '#d1d5db'
                     }
                 ]
             },

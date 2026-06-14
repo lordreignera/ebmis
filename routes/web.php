@@ -187,6 +187,7 @@ Route::middleware([
     Route::get('/loans/export', [\App\Http\Controllers\Admin\LoanController::class, 'export'])->name('loans.export');
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
+    Route::post('/loans/active/{loan}/assign', [\App\Http\Controllers\Admin\RepaymentController::class, 'reassignActivePersonalLoan'])->name('loans.active.assign');
     Route::get('/loans/collateral/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'showCollateral'])->name('loans.collateral.show');
     Route::post('/loans/collateral', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeCollateral'])->name('loans.collateral.store');
     Route::post('/loans/follow-ups', [\App\Http\Controllers\Admin\RepaymentController::class, 'storeFollowUp'])->name('loans.follow-ups.store');
@@ -475,6 +476,26 @@ Route::middleware([
     Route::get('/reports/loan-interest', [\App\Http\Controllers\Admin\ReportsController::class, 'loanInterest'])->name('reports.loan-interest');
     Route::get('/reports/cash-securities', [\App\Http\Controllers\Admin\ReportsController::class, 'cashSecurities'])->name('reports.cash-securities');
     Route::get('/reports/loan-charges', [\App\Http\Controllers\Admin\ReportsController::class, 'loanCharges'])->name('reports.loan-charges');
+
+    // Expenditure and performance payout management
+    Route::prefix('expenditures')->name('expenditures.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\ExpenditureController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\ExpenditureController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Admin\ExpenditureController::class, 'store'])->name('store');
+        Route::middleware('super_admin')->group(function () {
+            Route::get('/rollout', [\App\Http\Controllers\Admin\ExpenditureController::class, 'rollout'])->name('rollout');
+            Route::post('/rollout/generate', [\App\Http\Controllers\Admin\ExpenditureController::class, 'generateRollout'])->name('rollout.generate');
+            Route::post('/rollout/individual', [\App\Http\Controllers\Admin\ExpenditureController::class, 'generateIndividualPayout'])->name('rollout.individual');
+            Route::get('/rollout/{rollout}', [\App\Http\Controllers\Admin\ExpenditureController::class, 'showRollout'])->name('rollout.show');
+            Route::post('/rollout/{rollout}/approve', [\App\Http\Controllers\Admin\ExpenditureController::class, 'approveRollout'])->name('rollout.approve');
+            Route::post('/rollout/{rollout}/pay', [\App\Http\Controllers\Admin\ExpenditureController::class, 'payRollout'])->name('rollout.pay');
+        });
+        Route::get('/{expenditure}', [\App\Http\Controllers\Admin\ExpenditureController::class, 'show'])->name('show');
+        Route::post('/{expenditure}/approve', [\App\Http\Controllers\Admin\ExpenditureController::class, 'approve'])->name('approve');
+        Route::post('/{expenditure}/reject', [\App\Http\Controllers\Admin\ExpenditureController::class, 'reject'])->name('reject');
+        Route::post('/{expenditure}/pay', [\App\Http\Controllers\Admin\ExpenditureController::class, 'pay'])->name('pay');
+        Route::post('/{expenditure}/mobile-money/status', [\App\Http\Controllers\Admin\ExpenditureController::class, 'checkMobileMoneyStatus'])->name('mobile-money.status');
+    });
 
     // UMRA Regulatory Reporting Routes (Tier 4 ND-MFI Compliance)
     Route::prefix('umra')->name('umra.')->group(function () {

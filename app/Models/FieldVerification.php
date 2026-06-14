@@ -17,6 +17,8 @@ class FieldVerification extends Model
         'avs', 'avs_status',
         'years_residence_v', 'res_landmark_seen', 'home_door_color_seen',
         'next_of_kin_v', 'next_of_kin_status',
+        'residence_visited', 'residence_matches_declaration',
+        'lc1_contacted_or_letter_reviewed', 'lc1_confirms_client',
         // In-person integrity
         'gps_capture', 'device_id',
         'client_home_photo', 'client_business_photo', 'customer_unposed_photo',
@@ -24,30 +26,40 @@ class FieldVerification extends Model
         'on_site_question', 'on_site_answer',
         // Business & cash flow
         'v_monthly_sales', 'v_other_income', 'v_cogs', 'v_opex', 'v_household_expenses', 'v_loan_installment',
-        'sales_record_seen', 'mobile_money_seen', 'supplier_confirmed', 'supplier_confirmed_name',
+        'business_exists', 'business_type_confirmed', 'business_location_confirmed',
+        'business_photos_reviewed', 'sales_record_seen', 'purchases_book_seen',
+        'expense_records_seen', 'mobile_money_seen', 'supplier_confirmed', 'supplier_confirmed_name',
         'business_open_v', 'business_open_days_v', 'peak_hours_v', 'avg_customers_v',
+        'business_stability_rating', 'records_credibility',
         // CRB
-        'crb_defaults', 'crb_arrears', 'crb_nxt_count', 'crb_ext_inst', 'crb_skip_flag',
+        'crb_defaults', 'crb_arrears', 'crb_max_arrears_days', 'crb_nxt_count', 'crb_ext_inst', 'crb_skip_flag',
         // Collateral 1
         'coll_1_vmv', 'coll_1_enc', 'coll_1_physically_inspected', 'coll_1_ownership_accepted',
-        'coll_1_pledge_signed', 'coll_1_photo', 'coll_1_customary_verified',
+        'coll_1_document_seen', 'coll_1_legal_enforceability', 'coll_1_pledge_signed',
+        'coll_1_photo', 'coll_1_customary_verified',
         // Collateral 2
         'coll_2_vmv', 'coll_2_enc', 'coll_2_physically_inspected', 'coll_2_ownership_accepted',
-        'coll_2_pledge_signed', 'coll_2_photo', 'coll_2_customary_verified',
+        'coll_2_document_seen', 'coll_2_legal_enforceability', 'coll_2_pledge_signed',
+        'coll_2_photo', 'coll_2_customary_verified',
+        'pledge_explained_to_client', 'client_understood_pledge', 'pledge_witness_present',
         // Social/Community
         'lc1_name_confirmed', 'lc1_contact_confirmed', 'lc1_letter_sighted',
         'clan_name_confirmed', 'clan_contact_confirmed', 'clan_letter_sighted',
         'ref1_contacted', 'ref2_contacted', 'ref_consistent_count', 'disputes_reported',
-        'residence_stability_evi',
+        'residence_stability_evi', 'residence_stability_rating',
         // Guarantor 1
         'g1_contact_verified', 'g1_income_verified', 'g1_asset_verified',
-        'g1_relationship_confirmed', 'g1_willing', 'g1_signed',
+        'g1_relationship_confirmed', 'g1_commitment_verified', 'g1_pledge_confirmed',
+        'g1_willing', 'g1_signed',
         // Guarantor 2
         'g2_contact_verified', 'g2_income_verified', 'g2_asset_verified',
-        'g2_relationship_confirmed', 'g2_willing', 'g2_signed',
+        'g2_relationship_confirmed', 'g2_commitment_verified', 'g2_pledge_confirmed',
+        'g2_willing', 'g2_signed',
         // Policy controls
         'contradiction_count', 'time_constraint', 'temp_trigger',
-        'field_recommendation', 'physical_visit_confirmed', 'remote_risk_note', 'officer_notes',
+        'field_recommendation', 'recommended_product_id', 'recommended_amount',
+        'recommended_tenure_periods', 'officer_confidence',
+        'physical_visit_confirmed', 'remote_risk_note', 'officer_notes',
     ];
 
     protected $casts = [
@@ -57,19 +69,34 @@ class FieldVerification extends Model
         'pvs'                           => 'boolean',
         'avs'                           => 'boolean',
         'next_of_kin_v'                 => 'boolean',
+        'residence_visited'             => 'boolean',
+        'residence_matches_declaration' => 'boolean',
+        'lc1_contacted_or_letter_reviewed' => 'boolean',
+        'lc1_confirms_client'           => 'boolean',
         'sales_record_seen'             => 'boolean',
+        'business_exists'               => 'boolean',
+        'business_type_confirmed'       => 'boolean',
+        'business_location_confirmed'   => 'boolean',
+        'business_photos_reviewed'      => 'boolean',
+        'purchases_book_seen'           => 'boolean',
+        'expense_records_seen'          => 'boolean',
         'mobile_money_seen'             => 'boolean',
         'supplier_confirmed'            => 'boolean',
         'business_open_v'               => 'boolean',
         'crb_skip_flag'                 => 'boolean',
         'coll_1_physically_inspected'   => 'boolean',
         'coll_1_ownership_accepted'     => 'boolean',
+        'coll_1_document_seen'          => 'boolean',
         'coll_1_pledge_signed'          => 'boolean',
         'coll_1_customary_verified'     => 'boolean',
         'coll_2_physically_inspected'   => 'boolean',
         'coll_2_ownership_accepted'     => 'boolean',
+        'coll_2_document_seen'          => 'boolean',
         'coll_2_pledge_signed'          => 'boolean',
         'coll_2_customary_verified'     => 'boolean',
+        'pledge_explained_to_client'    => 'boolean',
+        'client_understood_pledge'      => 'boolean',
+        'pledge_witness_present'        => 'boolean',
         'lc1_name_confirmed'            => 'boolean',
         'lc1_contact_confirmed'         => 'boolean',
         'lc1_letter_sighted'            => 'boolean',
@@ -81,10 +108,12 @@ class FieldVerification extends Model
         'disputes_reported'             => 'boolean',
         'g1_contact_verified'           => 'boolean',
         'g1_relationship_confirmed'     => 'boolean',
+        'g1_pledge_confirmed'           => 'boolean',
         'g1_willing'                    => 'boolean',
         'g1_signed'                     => 'boolean',
         'g2_contact_verified'           => 'boolean',
         'g2_relationship_confirmed'     => 'boolean',
+        'g2_pledge_confirmed'           => 'boolean',
         'g2_willing'                    => 'boolean',
         'g2_signed'                     => 'boolean',
         'time_constraint'               => 'boolean',
@@ -98,6 +127,7 @@ class FieldVerification extends Model
         'v_loan_installment'            => 'decimal:2',
         'coll_1_vmv'                    => 'decimal:2',
         'coll_2_vmv'                    => 'decimal:2',
+        'recommended_amount'            => 'decimal:2',
         'g1_income_verified'            => 'decimal:2',
         'g1_asset_verified'             => 'decimal:2',
         'g2_income_verified'            => 'decimal:2',
@@ -113,5 +143,10 @@ class FieldVerification extends Model
     public function verifier(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function recommendedProduct(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'recommended_product_id');
     }
 }

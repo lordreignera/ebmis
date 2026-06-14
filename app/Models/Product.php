@@ -135,9 +135,9 @@ class Product extends Model
     public function getPeriodTypeNameAttribute()
     {
         $periodTypes = [
-            1 => 'Daily',
-            2 => 'Weekly',
-            3 => 'Monthly',
+            1 => 'Weekly',
+            2 => 'Monthly',
+            3 => 'Daily',
             4 => 'Yearly'
         ];
 

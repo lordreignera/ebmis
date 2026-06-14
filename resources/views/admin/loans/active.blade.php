@@ -45,7 +45,7 @@
     .loan-list-head,
     .loan-list-row {
         display: grid;
-        grid-template-columns: 1.45fr .9fr .9fr .9fr .9fr 1fr 1.15fr 1.35fr;
+        grid-template-columns: 1.25fr .9fr .82fr .82fr 1fr .78fr .95fr 1.05fr .95fr .8fr;
         gap: .75rem;
         align-items: center;
     }
@@ -65,6 +65,7 @@
         border: 1px solid #e5e7eb;
         border-radius: 8px;
         background: #fff;
+        overflow: visible;
     }
 
     .loan-list-row.is-warning {
@@ -98,13 +99,67 @@
 
     .loan-actions {
         display: flex;
-        flex-wrap: wrap;
-        gap: .35rem;
+        justify-content: flex-start;
     }
 
-    .loan-actions .btn {
-        white-space: normal;
+    .loan-actions .dropdown-toggle {
+        min-width: 104px;
+        white-space: nowrap;
         line-height: 1.15;
+    }
+
+    .loan-actions .dropdown-menu {
+        min-width: 220px;
+        background: #ffffff !important;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+        padding: .35rem 0;
+        z-index: 1060;
+    }
+
+    .loan-actions .dropdown-menu.show {
+        display: block !important;
+    }
+
+    .loan-actions .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+        background: #ffffff !important;
+        color: #111827 !important;
+        font-size: .88rem;
+        padding: .55rem .85rem;
+        white-space: normal;
+    }
+
+    .loan-actions .dropdown-item:hover,
+    .loan-actions .dropdown-item:focus {
+        background: #eef6ff !important;
+        color: #0f172a !important;
+    }
+
+    .loan-actions .dropdown-item i {
+        font-size: 1rem;
+        width: 18px;
+        text-align: center;
+        color: inherit !important;
+    }
+
+    .loan-actions .dropdown-item.text-danger {
+        color: #b91c1c !important;
+    }
+
+    .loan-actions .dropdown-divider {
+        border-top-color: #e5e7eb !important;
+        margin: .25rem 0;
+    }
+
+    .active-loans-card,
+    .active-loans-card .card-body,
+    .active-loans-card .table-container,
+    .active-loans-card .loan-list {
+        overflow: visible !important;
     }
 
     .table-container {
@@ -413,7 +468,7 @@
     <!-- Filters -->
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="card active-loans-card">
                 <div class="card-header">
                     <h5 class="card-title mb-0">Filter Active Loans</h5>
                 </div>
@@ -569,6 +624,8 @@
                                     <div>Principal</div>
                                     <div>Outstanding</div>
                                     <div>Risk</div>
+                                    <div>Responsibility</div>
+                                    <div>Security</div>
                                     <div>Follow-up</div>
                                     <div>Actions</div>
                                 </div>
@@ -586,7 +643,7 @@
                                             }
                                             $latestFollowUp = $loan->latest_follow_up ?? null;
                                         @endphp
-                                        <div class="loan-list-row {{ ($loan->is_potential_duplicate ?? false) ? 'is-warning' : '' }}" data-loan-search="{{ strtolower($loan->borrower_name . ' ' . $loan->loan_code . ' ' . ($loan->branch_name ?? '') . ' ' . ($loan->risk_classification ?? '')) }}">
+                                        <div class="loan-list-row {{ ($loan->is_potential_duplicate ?? false) ? 'is-warning' : '' }}" data-loan-search="{{ strtolower($loan->borrower_name . ' ' . $loan->loan_code . ' ' . ($loan->branch_name ?? '') . ' ' . ($loan->assignedTo->name ?? '') . ' ' . ($loan->collateral_summary ?? '') . ' ' . ($loan->risk_classification ?? '')) }}">
                                             <div class="loan-cell">
                                                 <span class="loan-cell-label">Borrower</span>
                                                 <div class="fw-semibold">{{ $loans->firstItem() + $index }}. {{ $loan->borrower_name }}</div>
@@ -606,12 +663,6 @@
                                                 <span class="status-badge status-{{ $periodType == 1 ? 'verified' : ($periodType == 2 ? 'pending' : 'individual') }}">
                                                     {{ $loanTypeLabel }}
                                                 </span>
-                                                @if($loan->has_collateral ?? false)
-                                                    <span class="badge bg-success mt-1">Secured</span>
-                                                @else
-                                                    <span class="badge bg-danger mt-1">No security</span>
-                                                @endif
-                                                <div class="loan-subtext">{{ $loan->collateral_summary ?? 'No collateral recorded' }}</div>
                                             </div>
                                             <div class="loan-cell">
                                                 <span class="loan-cell-label">Principal</span>
@@ -629,6 +680,20 @@
                                                 <span class="loan-cell-label">Risk</span>
                                                 <span class="badge bg-{{ $loan->risk_badge ?? 'secondary' }}">{{ $loan->risk_classification ?? 'Unknown' }}</span>
                                                 <div class="loan-subtext">{{ $loan->risk_dpd ?? 0 }} DPD, {{ $loan->risk_overdue_installments ?? 0 }} missed</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Responsibility</span>
+                                                <div class="fw-semibold">{{ $loan->assignedTo->name ?? 'Unassigned' }}</div>
+                                                <div class="loan-subtext">{{ $loan->assignedTo->designation ?? 'Loan follow-up' }}</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Security</span>
+                                                @if($loan->has_collateral ?? false)
+                                                    <span class="badge bg-success">Secured</span>
+                                                @else
+                                                    <span class="badge bg-danger">No security</span>
+                                                @endif
+                                                <div class="loan-subtext">{{ $loan->collateral_summary ?? 'No collateral recorded' }}</div>
                                             </div>
                                             <div class="loan-cell">
                                                 <span class="loan-cell-label">Follow-up</span>
@@ -649,60 +714,81 @@
                                             <div class="loan-cell">
                                                 <span class="loan-cell-label">Actions</span>
                                                 <div class="loan-actions">
-                                                    <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}" 
-                                                       class="btn btn-sm btn-primary" title="View repayment schedules">
-                                                        <i class="mdi mdi-calendar-clock"></i> Schedules
-                                                    </a>
-                                                    <button type="button"
-                                                            class="btn btn-sm {{ ($loan->requires_follow_up ?? false) && !($loan->has_follow_up ?? false) ? 'btn-warning' : 'btn-outline-secondary' }} btn-follow-up"
-                                                            data-loan-id="{{ $loan->id }}"
-                                                            data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
-                                                            data-loan-code="{{ $loan->loan_code }}"
-                                                            data-borrower-name="{{ $loan->borrower_name }}"
-                                                            data-risk-classification="{{ $loan->risk_classification ?? 'Unknown' }}"
-                                                            data-dpd="{{ $loan->risk_dpd ?? 0 }}"
-                                                            data-next-due-amount="{{ $loan->next_due_amount ?? 0 }}"
-                                                            data-next-due-date="{{ $loan->next_due_date ?? '' }}"
-                                                            title="Record collection follow-up">
-                                                        <i class="mdi mdi-phone-forward"></i> Follow-up
-                                                    </button>
-                                                    @if($loan->has_collateral ?? false)
-                                                        <button type="button"
-                                                                class="btn btn-sm btn-outline-success btn-view-collateral"
-                                                                data-loan-id="{{ $loan->id }}"
-                                                                data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
-                                                                data-loan-code="{{ $loan->loan_code }}"
-                                                                data-borrower-name="{{ $loan->borrower_name }}"
-                                                                title="View collateral details">
-                                                            <i class="mdi mdi-shield-check-outline"></i> View Collateral
+                                                    <div class="dropdown">
+                                                        <button class="btn btn-sm btn-primary dropdown-toggle loan-options-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                            <i class="mdi mdi-dots-vertical"></i> Options
                                                         </button>
-                                                    @else
-                                                        <button type="button"
-                                                                class="btn btn-sm btn-danger btn-add-collateral"
-                                                                data-loan-id="{{ $loan->id }}"
-                                                                data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
-                                                                data-loan-code="{{ $loan->loan_code }}"
-                                                                data-borrower-name="{{ $loan->borrower_name }}"
-                                                                data-member-id="{{ $loan->member_id_value ?? '' }}"
-                                                                data-phone="{{ $loan->phone_number ?? '' }}"
-                                                                data-collateral-summary="{{ $loan->collateral_summary ?? 'No collateral recorded' }}"
-                                                                title="Record collateral or cash security for this loan">
-                                                            <i class="mdi mdi-shield-plus-outline"></i> Add Collateral
-                                                        </button>
-                                                    @endif
-                                                    
-                                                    @if(($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
-                                                        <button type="button" 
-                                                                class="btn btn-sm btn-danger btn-stop-loan"
-                                                                data-loan-id="{{ $loan->id }}"
-                                                                data-borrower-name="{{ $loan->borrower_name }}"
-                                                                data-loan-code="{{ $loan->loan_code }}"
-                                                                data-disbursement-date="{{ date('Y-m-d', strtotime($loan->disbursement_date)) }}"
-                                                                data-duplicate-count="{{ $loan->duplicate_loans_count ?? 0 }}"
-                                                                title="Stop this loan (Client has {{ $loan->duplicate_loans_count ?? 0 }} loans from 2025)">
-                                                            <i class="mdi mdi-stop-circle"></i> Stop
-                                                        </button>
-                                                    @endif
+                                                        <div class="dropdown-menu dropdown-menu-end loan-options-menu">
+                                                            <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}"
+                                                               class="dropdown-item" title="View repayment schedules">
+                                                                <i class="mdi mdi-calendar-clock"></i> Schedules
+                                                            </a>
+                                                            <button type="button"
+                                                                    class="dropdown-item btn-follow-up"
+                                                                    data-loan-id="{{ $loan->id }}"
+                                                                    data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                    data-loan-code="{{ $loan->loan_code }}"
+                                                                    data-borrower-name="{{ $loan->borrower_name }}"
+                                                                    data-risk-classification="{{ $loan->risk_classification ?? 'Unknown' }}"
+                                                                    data-dpd="{{ $loan->risk_dpd ?? 0 }}"
+                                                                    data-next-due-amount="{{ $loan->next_due_amount ?? 0 }}"
+                                                                    data-next-due-date="{{ $loan->next_due_date ?? '' }}"
+                                                                    title="Record collection follow-up">
+                                                                <i class="mdi mdi-phone-forward"></i> Follow-up
+                                                            </button>
+                                                            @if($loan->has_collateral ?? false)
+                                                                <button type="button"
+                                                                        class="dropdown-item btn-view-collateral"
+                                                                        data-loan-id="{{ $loan->id }}"
+                                                                        data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                        data-loan-code="{{ $loan->loan_code }}"
+                                                                        data-borrower-name="{{ $loan->borrower_name }}"
+                                                                        title="View collateral details">
+                                                                    <i class="mdi mdi-shield-check-outline"></i> View Collateral
+                                                                </button>
+                                                            @else
+                                                                <button type="button"
+                                                                        class="dropdown-item btn-add-collateral"
+                                                                        data-loan-id="{{ $loan->id }}"
+                                                                        data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                        data-loan-code="{{ $loan->loan_code }}"
+                                                                        data-borrower-name="{{ $loan->borrower_name }}"
+                                                                        data-member-id="{{ $loan->member_id_value ?? '' }}"
+                                                                        data-phone="{{ $loan->phone_number ?? '' }}"
+                                                                        data-collateral-summary="{{ $loan->collateral_summary ?? 'No collateral recorded' }}"
+                                                                        title="Record collateral or cash security for this loan">
+                                                                    <i class="mdi mdi-shield-plus-outline"></i> Add Collateral
+                                                                </button>
+                                                            @endif
+
+                                                            @if(($canReassignLoans ?? false) && ($loan->loan_type ?? 'personal') === 'personal')
+                                                                <button type="button"
+                                                                        class="dropdown-item btn-reassign-loan"
+                                                                        data-loan-id="{{ $loan->id }}"
+                                                                        data-loan-code="{{ $loan->loan_code }}"
+                                                                        data-borrower-name="{{ $loan->borrower_name }}"
+                                                                        data-current-assigned-to="{{ $loan->assigned_to ?? '' }}"
+                                                                        data-current-assigned-name="{{ $loan->assignedTo->name ?? 'Unassigned' }}"
+                                                                        title="Reassign responsibility for this loan">
+                                                                    <i class="mdi mdi-account-switch-outline"></i> Reassign
+                                                                </button>
+                                                            @endif
+
+                                                            @if(($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
+                                                                <div class="dropdown-divider"></div>
+                                                                <button type="button"
+                                                                        class="dropdown-item text-danger btn-stop-loan"
+                                                                        data-loan-id="{{ $loan->id }}"
+                                                                        data-borrower-name="{{ $loan->borrower_name }}"
+                                                                        data-loan-code="{{ $loan->loan_code }}"
+                                                                        data-disbursement-date="{{ date('Y-m-d', strtotime($loan->disbursement_date)) }}"
+                                                                        data-duplicate-count="{{ $loan->duplicate_loans_count ?? 0 }}"
+                                                                        title="Stop this loan (Client has {{ $loan->duplicate_loans_count ?? 0 }} loans from 2025)">
+                                                                    <i class="mdi mdi-stop-circle"></i> Stop
+                                                                </button>
+                                                            @endif
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -895,6 +981,60 @@
         </div>
     </div>
 </div>
+
+@if($canReassignLoans ?? false)
+<div class="modal fade" id="reassignLoanModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: white !important;">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="mdi mdi-account-switch-outline me-2"></i>Reassign Loan Responsibility</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="reassignLoanForm">
+                @csrf
+                <div class="modal-body" style="background: white !important;">
+                    <div class="mb-3">
+                        <label class="form-label">Loan</label>
+                        <input type="text" class="form-control" id="reassign_loan_label" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Current Responsible User</label>
+                        <input type="text" class="form-control" id="reassign_current_user" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="reassign_assigned_to" class="form-label">Assign To <span class="text-danger">*</span></label>
+                        <select class="form-select" id="reassign_assigned_to" name="assigned_to" required>
+                            <option value="">Select officer or manager</option>
+                            @forelse($assignableUsers ?? collect() as $staff)
+                                <option value="{{ $staff->id }}">
+                                    {{ $staff->name }}
+                                    @if($staff->designation)
+                                        - {{ $staff->designation }}
+                                    @endif
+                                    @if($staff->branch)
+                                        ({{ $staff->branch->name }})
+                                    @endif
+                                </option>
+                            @empty
+                                <option value="" disabled>No active assignment users found</option>
+                            @endforelse
+                        </select>
+                        <div class="form-text">This user becomes responsible for loan follow-up, collection tracking, and performance reporting.</div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background: white !important; border-top: 1px solid #dee2e6;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-info" {{ ($assignableUsers ?? collect())->isEmpty() ? 'disabled' : '' }}>
+                        <i class="mdi mdi-content-save me-1"></i> Save Assignment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endif
 
 <!-- Collateral Modal -->
 <div class="modal fade" id="loanCollateralModal" tabindex="-1">
@@ -1233,6 +1373,34 @@ $(document).ready(function() {
         $('#quickSearch').val(searchValue);
     }
 
+    // Local fallback for row action dropdowns. This keeps Options working even
+    // when Bootstrap's dropdown binding is blocked by older admin scripts.
+    $(document).on('click', '.loan-options-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const $button = $(this);
+        const $menu = $button.closest('.dropdown').find('.loan-options-menu').first();
+        const isOpen = $menu.hasClass('show');
+
+        $('.loan-options-menu.show').removeClass('show').hide();
+        $('.loan-options-toggle[aria-expanded="true"]').attr('aria-expanded', 'false');
+
+        if (!isOpen) {
+            $menu.addClass('show').show();
+            $button.attr('aria-expanded', 'true');
+        }
+    });
+
+    $(document).on('click', '.loan-options-menu', function(e) {
+        e.stopPropagation();
+    });
+
+    $(document).on('click', function() {
+        $('.loan-options-menu.show').removeClass('show').hide();
+        $('.loan-options-toggle[aria-expanded="true"]').attr('aria-expanded', 'false');
+    });
+
     // Auto-refresh data every 5 minutes
     setInterval(function() {
         if (!$('.modal').hasClass('show')) {
@@ -1318,6 +1486,21 @@ $(document).ready(function() {
                 submitButton.prop('disabled', false).html(originalHtml);
             }
         });
+    });
+
+    $(document).on('click', '.btn-reassign-loan', function() {
+        const loanId = $(this).data('loan-id');
+        const loanCode = $(this).data('loan-code') || '';
+        const borrowerName = $(this).data('borrower-name') || '';
+        const currentAssignedTo = $(this).data('current-assigned-to') || '';
+        const currentAssignedName = $(this).data('current-assigned-name') || 'Unassigned';
+        const assignUrl = '{{ route("admin.loans.active.assign", ":loan") }}'.replace(':loan', loanId);
+
+        $('#reassignLoanForm').attr('action', assignUrl);
+        $('#reassign_loan_label').val(`${loanCode} - ${borrowerName}`);
+        $('#reassign_current_user').val(currentAssignedName);
+        $('#reassign_assigned_to').val(currentAssignedTo);
+        $('#reassignLoanModal').modal('show');
     });
 
     $(document).on('click', '.btn-add-collateral', function() {

@@ -109,6 +109,11 @@ return [
             'label' => 'View Accounting Reports',
             'description' => 'View accounting journals, statements, and the chart of accounts.',
         ],
+        'manage-expenditures' => [
+            'group' => 'Accounting',
+            'label' => 'Manage Expenditures',
+            'description' => 'Record, approve, pay, and roll out expenditure payments.',
+        ],
         'view-umra-reports' => [
             'group' => 'Reporting',
             'label' => 'View UMRA Reports',
@@ -246,6 +251,7 @@ return [
         $routes('view-active-loans', [
             'admin.loans.active',
             'admin.loans.active.export',
+            'admin.loans.active.assign',
             'admin.loans.collateral.show',
         ]),
         $routes('record-loan-collateral', ['admin.loans.collateral.store']),
@@ -343,6 +349,22 @@ return [
             'admin.reports.loan-interest',
             'admin.reports.cash-securities',
             'admin.reports.loan-charges',
+        ]),
+        $routes('manage-expenditures', [
+            'admin.expenditures.index',
+            'admin.expenditures.create',
+            'admin.expenditures.store',
+            'admin.expenditures.show',
+            'admin.expenditures.approve',
+            'admin.expenditures.reject',
+            'admin.expenditures.pay',
+            'admin.expenditures.mobile-money.status',
+            'admin.expenditures.rollout',
+            'admin.expenditures.rollout.generate',
+            'admin.expenditures.rollout.individual',
+            'admin.expenditures.rollout.show',
+            'admin.expenditures.rollout.approve',
+            'admin.expenditures.rollout.pay',
         ]),
         $routes('send-sms-notifications', [
             'admin.bulk-sms.index',
@@ -499,6 +521,12 @@ return [
         'admin.loans.carry-over',
         'admin.fees.mark-paid',
         'admin.loan-management.mobile-money.test',
+        'admin.expenditures.rollout',
+        'admin.expenditures.rollout.generate',
+        'admin.expenditures.rollout.individual',
+        'admin.expenditures.rollout.show',
+        'admin.expenditures.rollout.approve',
+        'admin.expenditures.rollout.pay',
     ],
 
     'public_application_routes' => [
@@ -602,6 +630,7 @@ return [
             'send-sms-notifications',
             'generate-loan-reports',
             'view-accounting-reports',
+            'manage-expenditures',
             'view-umra-reports',
             'manage-school-loans',
         ],

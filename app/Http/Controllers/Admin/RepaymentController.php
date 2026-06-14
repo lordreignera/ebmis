@@ -17,7 +17,6 @@ use App\Models\Member;
 use App\Models\Branch;
 use App\Models\LoanSchedule;
 use App\Models\Product;
-use App\Models\User;
 use App\Models\RawPayment;
 use App\Models\Fee;
 use App\Services\AccountingService;
@@ -1331,6 +1330,7 @@ class RepaymentController extends Controller
                 'member:id,fname,lname,contact', 
                 'branch:id,name', 
                 'product:id,name,period_type',
+                'assignedTo:id,name,branch_id,designation',
                 'schedules',
                 'disbursements' => function($query) {
                     $query->where('status', 2)->orderBy('created_at', 'desc');
@@ -1345,6 +1345,7 @@ class RepaymentController extends Controller
                 'group:id,name', 
                 'branch:id,name', 
                 'product:id,name,period_type',
+                'assignedTo:id,name,branch_id,designation',
                 'schedules',
                 'disbursements' => function($query) {
                     $query->where('status', 2)->orderBy('created_at', 'desc');
@@ -1603,10 +1604,6 @@ class RepaymentController extends Controller
             ['path' => request()->url(), 'query' => request()->query()]
         );
 
-        // Get filter options
-        $branches = $this->loanAccessService->branchesForActiveLoanOperations(Branch::active())->orderBy('name')->get();
-        $products = Product::loanProducts()->active()->orderBy('name')->get();
-
         // Calculate stats from the SAME filtered loans we're displaying
         $stats = [
             'total_active' => $totalLoans, // Use the actual count of filtered loans
@@ -1631,7 +1628,10 @@ class RepaymentController extends Controller
             'collections_today' => $this->getAccessiblePersonalCollectionsToday(),
         ];
 
-        return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
+        return view('admin.loans.active', array_merge(
+            compact('loans', 'stats'),
+            $this->activeLoanViewOptions($request)
+        ));
     }
 
     /**
@@ -1674,6 +1674,7 @@ class RepaymentController extends Controller
                 'member:id,fname,lname,contact',
                 'branch:id,name',
                 'product:id,name,period_type',
+                'assignedTo:id,name,branch_id,designation',
                 'schedules' => function ($query) {
                     $query->where('status', '!=', 1)
                         ->select('id', 'loan_id', 'payment_date', 'principal', 'interest', 'payment', 'paid', 'status', 'date_cleared')
@@ -1719,11 +1720,56 @@ class RepaymentController extends Controller
 
         $loans->setCollection($pageLoans);
 
-        $branches = $this->loanAccessService->branchesForActiveLoanOperations(Branch::active())->orderBy('name')->get();
-        $products = Product::loanProducts()->active()->orderBy('name')->get();
         $stats = $this->getFastActivePersonalLoanStats($request);
 
-        return view('admin.loans.active', compact('loans', 'branches', 'products', 'stats'));
+        return view('admin.loans.active', array_merge(
+            compact('loans', 'stats'),
+            $this->activeLoanViewOptions($request)
+        ));
+    }
+
+    private function activeLoanViewOptions(Request $request): array
+    {
+        return [
+            'branches' => $this->loanAccessService->branchesForActiveLoanOperations(Branch::active())->orderBy('name')->get(),
+            'products' => Product::loanProducts()->active()->orderBy('name')->get(),
+            'assignableUsers' => $this->loanAccessService->assignableLoanUsers(),
+            'canReassignLoans' => $this->loanAccessService->canReassignActiveLoans($request->user()),
+        ];
+    }
+
+    public function reassignActivePersonalLoan(Request $request, PersonalLoan $loan)
+    {
+        if (!$this->loanAccessService->canReassignActiveLoans($request->user())) {
+            abort(403, 'Access denied. Only a Super Administrator or Administrator can reassign active loans.');
+        }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
+
+        $validated = $request->validate([
+            'assigned_to' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        $assignableUser = $this->loanAccessService->assignableLoanUsers()
+            ->firstWhere('id', (int) $validated['assigned_to']);
+
+        if (!$assignableUser) {
+            return back()->with('error', 'Selected user is not an active loan-assignment user.');
+        }
+
+        $previousUserId = $loan->assigned_to;
+        $loan->assigned_to = $assignableUser->id;
+        $loan->save();
+
+        Log::info('Active personal loan reassigned', [
+            'loan_id' => $loan->id,
+            'loan_code' => $loan->code,
+            'previous_assigned_to' => $previousUserId,
+            'new_assigned_to' => $assignableUser->id,
+            'changed_by' => $request->user()?->id,
+        ]);
+
+        return back()->with('success', "Loan {$loan->code} reassigned to {$assignableUser->name}.");
     }
 
     protected function decorateActiveLoan($loan, array $personalPaidBySchedule, array $groupPaidBySchedule = [], array $memberLoanCounts = [], array $waivedBySchedule = [])

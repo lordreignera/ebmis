@@ -61,6 +61,39 @@ class LoanAccessService
         );
     }
 
+    public function canReassignActiveLoans(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return false;
+        }
+
+        return $user->isSuperAdmin()
+            || in_array($user->user_type, ['administrator', 'admin'], true)
+            || $user->hasRole(['Administrator', 'admin']);
+    }
+
+    public function assignableLoanUsers()
+    {
+        return User::query()
+            ->where('status', 'active')
+            ->where('user_type', '!=', 'school')
+            ->where(function ($query) {
+                $query->whereHas('roles', function ($roleQuery) {
+                    $roleQuery->whereIn('name', ['Loan Officer', 'Field Officer', 'Branch Manager']);
+                })
+                    ->orWhere('user_type', 'branch')
+                    ->orWhere(function ($designationQuery) {
+                        $designationQuery->where('designation', 'like', '%officer%')
+                            ->orWhere('designation', 'like', '%manager%');
+                    });
+            })
+            ->with('branch:id,name')
+            ->orderBy('name')
+            ->get();
+    }
+
     public function scopeActiveLoanQuery($query, string $branchColumn = 'branch_id', ?User $user = null)
     {
         $user ??= auth()->user();

@@ -17,7 +17,7 @@
         padding: 1.25rem 1.5rem;
         background: #ffffff;
         border: 1px solid #e5e7eb;
-        border-left: 5px solid #0f766e;
+        border-left: 1px solid #e5e7eb;
         border-radius: 8px;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
     }
@@ -76,7 +76,9 @@
         justify-content: center;
         flex: 0 0 36px;
         border-radius: 8px;
-        color: #ffffff;
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        color: #111827;
         font-size: 1.1rem;
     }
 
@@ -95,12 +97,15 @@
         font-size: 0.82rem;
     }
 
-    .umra-kpi-card.primary .kpi-icon { background: #2563eb; }
-    .umra-kpi-card.teal .kpi-icon { background: #0f766e; }
-    .umra-kpi-card.amber .kpi-icon { background: #b45309; }
-    .umra-kpi-card.red .kpi-icon { background: #dc2626; }
-    .umra-kpi-card.green .kpi-icon { background: #15803d; }
-    .umra-kpi-card.slate .kpi-icon { background: #475569; }
+    .umra-kpi-card.primary .kpi-icon,
+    .umra-kpi-card.teal .kpi-icon,
+    .umra-kpi-card.amber .kpi-icon,
+    .umra-kpi-card.red .kpi-icon,
+    .umra-kpi-card.green .kpi-icon,
+    .umra-kpi-card.slate .kpi-icon {
+        background: #f3f4f6;
+        color: #111827;
+    }
 
     .umra-panel {
         height: 100%;
@@ -170,9 +175,9 @@
     }
 
     .umra-branch-table th {
-        background: #111827;
-        color: #ffffff;
-        border-color: #374151;
+        background: #eef4f8;
+        color: #111827;
+        border-color: #dbe5ec;
         font-weight: 700;
         white-space: nowrap;
     }
@@ -513,7 +518,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const chartData = @json($chartData);
-    const riskColors = ['#15803d', '#b45309', '#2563eb', '#dc2626', '#334155'];
+    const riskColors = [
+        '#16a34a', // Performing
+        '#2563eb', // Watch
+        '#f59e0b', // Substandard
+        '#f97316', // Doubtful
+        '#dc2626'  // Loss
+    ];
     const gridColor = 'rgba(148, 163, 184, 0.25)';
 
     const riskCanvas = document.getElementById('umraRiskMixChart');
@@ -563,12 +574,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     {
                         label: 'Outstanding',
                         data: chartData.risk_outstanding,
-                        backgroundColor: '#0f766e'
+                        backgroundColor: '#2563eb',
+                        borderColor: '#1d4ed8',
+                        borderWidth: 1
                     },
                     {
                         label: 'Required Provision',
                         data: chartData.risk_provisions,
-                        backgroundColor: '#dc2626'
+                        backgroundColor: '#dc2626',
+                        borderColor: '#b91c1c',
+                        borderWidth: 1
                     }
                 ]
             },

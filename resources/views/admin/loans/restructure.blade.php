@@ -127,15 +127,19 @@
                                 <div class="alert alert-info">
                                     <h6 class="mb-2"><i class="mdi mdi-calculator me-2"></i>Automatic Principal Calculation</h6>
                                     <div class="row">
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
                                             <strong>Outstanding Balance:</strong><br>
                                             <span class="h5 text-primary">UGX {{ number_format($loan->outstanding_balance, 0) }}</span>
                                         </div>
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
+                                            <strong>Old Payments Credited:</strong><br>
+                                            <span class="h5 text-dark">UGX {{ number_format($loan->amount_paid, 0) }}</span>
+                                        </div>
+                                        <div class="col-md-3">
                                             <strong>Total Late Fees:</strong><br>
                                             <span class="h5 text-danger">UGX {{ number_format($loan->total_late_fees ?? 0, 0) }}</span>
                                         </div>
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
                                             <strong>New Principal:</strong><br>
                                             <span class="h5 text-success" id="calculated_principal">
                                                 UGX {{ number_format($loan->outstanding_balance, 0) }}
@@ -147,13 +151,51 @@
                         </div>
 
                         <div class="row">
-                            <!-- New Interest Rate -->
+                            <div class="col-md-6 mb-3">
+                                <label for="new_product_type" class="form-label">New Loan Product / Frequency <span class="text-danger">*</span></label>
+                                <select class="form-select @error('new_product_type') is-invalid @enderror"
+                                        id="new_product_type" name="new_product_type" required>
+                                    @php
+                                        $periodLabels = [1 => 'Weekly', 2 => 'Monthly', 3 => 'Daily'];
+                                        $selectedProductId = old('new_product_type', $loan->product_id);
+                                        $selectedProduct = $availableProducts->firstWhere('id', (int) $selectedProductId) ?? $availableProducts->first();
+                                    @endphp
+                                    @forelse($availableProducts as $product)
+                                        <option value="{{ $product->id }}"
+                                                data-interest="{{ $product->interest }}"
+                                                data-period-type="{{ $product->period_type }}"
+                                                {{ $selectedProduct && (int) $selectedProduct->id === (int) $product->id ? 'selected' : '' }}>
+                                            {{ $product->name }} - {{ $periodLabels[(int) $product->period_type] ?? 'Flexible' }}
+                                        </option>
+                                    @empty
+                                        <option value="">No active daily, weekly, or monthly products found</option>
+                                    @endforelse
+                                </select>
+                                <small class="form-text text-muted">Current product: {{ $loan->product_name }} ({{ $periodLabels[(int) $loan->period_type] ?? 'Flexible' }})</small>
+                                @error('new_product_type')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="first_payment_date" class="form-label">First Payment Date <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control @error('first_payment_date') is-invalid @enderror"
+                                       id="first_payment_date" name="first_payment_date"
+                                       value="{{ old('first_payment_date', $loan->default_first_payment_date) }}" required>
+                                <small class="form-text text-muted">The new schedule starts on this date, then follows the selected frequency.</small>
+                                @error('first_payment_date')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="new_interest" class="form-label">New Interest Rate (%) <span class="text-danger">*</span></label>
                                 <input type="number" class="form-control @error('new_interest') is-invalid @enderror" 
                                        id="new_interest" name="new_interest" 
                                        value="{{ old('new_interest', $loan->interest_rate) }}" 
-                                       min="0" max="100" step="0.1" required>
+                                       min="0" max="100" step="0.01" inputmode="decimal" required>
                                 <small class="form-text text-muted">Current rate: {{ $loan->interest_rate }}%</small>
                                 @error('new_interest')
                                     <div class="invalid-feedback">{{ $message }}</div>
@@ -165,9 +207,9 @@
                                 <label for="new_period" class="form-label">New Loan Period <span class="text-danger">*</span></label>
                                 <input type="number" class="form-control @error('new_period') is-invalid @enderror" 
                                        id="new_period" name="new_period" 
-                                       value="{{ old('new_period', $loan->loan_term) }}" 
+                                       value="{{ old('new_period', $loan->remaining_periods ?? $loan->loan_term) }}"
                                        min="1" max="260" required>
-                                <small class="form-text text-muted">Current period: {{ $loan->loan_term }} {{ $loan->period_type_name ?? 'installments' }}</small>
+                                <small class="form-text text-muted">Current remaining term: {{ $loan->remaining_periods ?? $loan->loan_term }} {{ $loan->period_type_name ?? 'installments' }}. New period follows <span id="selected_frequency_label">{{ $selectedProduct ? ($periodLabels[(int) $selectedProduct->period_type] ?? 'selected frequency') : 'selected frequency' }}</span>.</small>
                                 @error('new_period')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -193,7 +235,7 @@
                                 <li>A new loan will be created with the modified terms</li>
                                 <li>All payments made on the original loan will be recorded</li>
                                 <li>The borrower must sign a new loan agreement</li>
-                                <li>This action requires management approval</li>
+                                <li>This action immediately creates the restructured active loan</li>
                             </ul>
                         </div>
 
@@ -211,7 +253,7 @@
                                 <i class="mdi mdi-arrow-left me-1"></i> Cancel
                             </a>
                             <button type="submit" class="btn btn-warning" id="submitBtn">
-                                <i class="mdi mdi-check me-1"></i> Submit for Approval
+                                <i class="mdi mdi-check me-1"></i> Restructure
                             </button>
                         </div>
                     </form>
@@ -301,14 +343,42 @@
 @endsection
 
 @push('scripts')
+@php
+    $productOptions = $availableProducts->mapWithKeys(function ($product) use ($periodLabels) {
+        return [
+            $product->id => [
+                'interest' => (float) $product->interest,
+                'period_type' => (int) $product->period_type,
+                'period_label' => $periodLabels[(int) $product->period_type] ?? 'Flexible',
+            ],
+        ];
+    })->toArray();
+@endphp
 <script>
 $(document).ready(function() {
     const outstandingBalance = {{ $loan->outstanding_balance }};
     const lateFees = {{ $loan->total_late_fees ?? 0 }};
+    const products = @json($productOptions);
+    const hasOldNewPeriod = @json(old('new_period') !== null);
+    const remainingDays = {{ (int) ($loan->remaining_days ?? 1) }};
+    const daysPerPeriod = {1: 7, 2: 30, 3: 1};
+    const periodOffsets = {1: 7, 2: 30, 3: 7};
     
     // Update calculated principal when late fees checkbox changes
     $('#include_late_fees').on('change', function() {
         updateCalculatedPrincipal();
+    });
+
+    $('#new_product_type').on('change', function() {
+        const product = products[$(this).val()];
+        if (!product) {
+            return;
+        }
+
+        $('#new_interest').val(product.interest);
+        $('#selected_frequency_label').text(product.period_label);
+        $('#first_payment_date').val(defaultDateForPeriod(product.period_type));
+        $('#new_period').val(suggestPeriod(product.period_type));
     });
 
     function updateCalculatedPrincipal() {
@@ -319,6 +389,28 @@ $(document).ready(function() {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0
         }));
+    }
+
+    function defaultDateForPeriod(periodType) {
+        const date = new Date();
+        date.setDate(date.getDate() + (periodOffsets[periodType] || 7));
+
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function suggestPeriod(periodType) {
+        return Math.max(1, Math.min(260, Math.ceil(remainingDays / (daysPerPeriod[periodType] || 7))));
+    }
+
+    if (!hasOldNewPeriod) {
+        const selectedProduct = products[$('#new_product_type').val()];
+        if (selectedProduct) {
+            $('#new_period').val(suggestPeriod(selectedProduct.period_type));
+        }
     }
 
     // Form validation
@@ -333,8 +425,6 @@ $(document).ready(function() {
         }
 
         $('#submitBtn').prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Processing...');
-    });
-});
     });
 });
 </script>

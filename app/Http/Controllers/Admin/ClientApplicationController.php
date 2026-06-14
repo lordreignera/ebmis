@@ -77,7 +77,7 @@ class ClientApplicationController extends Controller
      */
     public function show(int $id)
     {
-        $app = ClientLoanApplication::with(['product', 'branch', 'reviewer', 'member', 'loan', 'fieldVerification.verifier'])
+        $app = ClientLoanApplication::with(['product', 'branch', 'reviewer', 'member', 'loan', 'fieldVerification.verifier', 'fieldVerification.recommendedProduct'])
             ->findOrFail($id);
 
         $this->loanAccessService->ensureBranchAccess($app);
@@ -99,7 +99,12 @@ class ClientApplicationController extends Controller
                 ->with('error', 'This application is not awaiting field verification.');
         }
 
-        return view('admin.client-applications.verify', compact('app'));
+        $products = Product::where('isactive', 1)
+            ->where('loan_type', 1)
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.client-applications.verify', compact('app', 'products'));
     }
 
     /**
@@ -125,12 +130,24 @@ class ClientApplicationController extends Controller
             'next_of_kin_status'        => 'required|in:Verified,Partially Verified,N/A',
             'physical_visit_confirmed'  => 'required|boolean',
             'field_recommendation'      => 'required|in:proceed,flag,reject',
+            'recommended_product_id'    => 'nullable|exists:products,id',
+            'recommended_amount'        => 'nullable|numeric|min:0',
+            'recommended_tenure_periods'=> 'nullable|integer|min:1|max:104',
+            'officer_confidence'        => 'nullable|in:Strong,Moderate,Weak',
             'v_monthly_sales'           => 'required|numeric|min:0',
             'v_cogs'                    => 'required|numeric|min:0',
             'v_opex'                    => 'required|numeric|min:0',
             'v_household_expenses'      => 'required|numeric|min:0',
             'v_other_income'            => 'nullable|numeric|min:0',
             'v_loan_installment'        => 'nullable|numeric|min:0',
+            'residence_stability_rating'=> 'nullable|in:Strong,Moderate,Weak',
+            'business_stability_rating' => 'nullable|in:Strong,Moderate,Weak',
+            'records_credibility'       => 'nullable|in:Strong,Moderate,Weak',
+            'g1_commitment_verified'    => 'nullable|in:High,Moderate,Low',
+            'g2_commitment_verified'    => 'nullable|in:High,Moderate,Low',
+            'crb_max_arrears_days'      => 'nullable|integer|min:0|max:3650',
+            'coll_1_legal_enforceability'=> 'nullable|in:Strong,Moderate,Weak',
+            'coll_2_legal_enforceability'=> 'nullable|in:Strong,Moderate,Weak',
             'officer_notes'             => 'nullable|string|max:2000',
         ]);
 
@@ -155,6 +172,10 @@ class ClientApplicationController extends Controller
                 'years_residence_v'         => $request->years_residence_v,
                 'res_landmark_seen'         => $request->res_landmark_seen,
                 'home_door_color_seen'      => $request->home_door_color_seen,
+                'residence_visited'         => (bool) ($request->residence_visited ?? false),
+                'residence_matches_declaration' => (bool) ($request->residence_matches_declaration ?? false),
+                'lc1_contacted_or_letter_reviewed' => (bool) ($request->lc1_contacted_or_letter_reviewed ?? false),
+                'lc1_confirms_client'       => (bool) ($request->lc1_confirms_client ?? false),
                 // GPS / device
                 'gps_capture'               => $request->gps_capture,
                 'device_id'                 => $request->device_id,
@@ -167,7 +188,13 @@ class ClientApplicationController extends Controller
                 'v_household_expenses'      => $request->v_household_expenses,
                 'v_other_income'            => $request->v_other_income ?? 0,
                 'v_loan_installment'        => $request->v_loan_installment ?? 0,
+                'business_exists'           => (bool) ($request->business_exists ?? false),
+                'business_type_confirmed'   => (bool) ($request->business_type_confirmed ?? false),
+                'business_location_confirmed' => (bool) ($request->business_location_confirmed ?? false),
+                'business_photos_reviewed'  => (bool) ($request->business_photos_reviewed ?? false),
                 'sales_record_seen'         => (bool) ($request->sales_record_seen ?? false),
+                'purchases_book_seen'       => (bool) ($request->purchases_book_seen ?? false),
+                'expense_records_seen'      => (bool) ($request->expense_records_seen ?? false),
                 'mobile_money_seen'         => (bool) ($request->mobile_money_seen ?? false),
                 'supplier_confirmed'        => (bool) ($request->supplier_confirmed ?? false),
                 'supplier_confirmed_name'   => $request->supplier_confirmed_name,
@@ -175,9 +202,12 @@ class ClientApplicationController extends Controller
                 'business_open_days_v'      => $request->business_open_days_v,
                 'peak_hours_v'              => $request->peak_hours_v,
                 'avg_customers_v'           => $request->avg_customers_v,
+                'business_stability_rating' => $request->business_stability_rating,
+                'records_credibility'       => $request->records_credibility,
                 // CRB
                 'crb_defaults'              => $request->crb_defaults,
                 'crb_arrears'               => $request->crb_arrears,
+                'crb_max_arrears_days'      => $request->crb_max_arrears_days,
                 'crb_nxt_count'             => $request->crb_nxt_count,
                 'crb_ext_inst'              => $request->crb_ext_inst,
                 'crb_skip_flag'             => (bool) ($request->crb_skip_flag ?? false),
@@ -186,6 +216,8 @@ class ClientApplicationController extends Controller
                 'coll_1_enc'                => $request->coll_1_enc,
                 'coll_1_physically_inspected'  => (bool) ($request->coll_1_physically_inspected ?? false),
                 'coll_1_ownership_accepted'    => (bool) ($request->coll_1_ownership_accepted ?? false),
+                'coll_1_document_seen'          => (bool) ($request->coll_1_document_seen ?? false),
+                'coll_1_legal_enforceability'   => $request->coll_1_legal_enforceability,
                 'coll_1_pledge_signed'         => (bool) ($request->coll_1_pledge_signed ?? false),
                 'coll_1_customary_verified'    => (bool) ($request->coll_1_customary_verified ?? false),
                 // Collateral 2
@@ -193,8 +225,13 @@ class ClientApplicationController extends Controller
                 'coll_2_enc'                => $request->coll_2_enc,
                 'coll_2_physically_inspected'  => (bool) ($request->coll_2_physically_inspected ?? false),
                 'coll_2_ownership_accepted'    => (bool) ($request->coll_2_ownership_accepted ?? false),
+                'coll_2_document_seen'          => (bool) ($request->coll_2_document_seen ?? false),
+                'coll_2_legal_enforceability'   => $request->coll_2_legal_enforceability,
                 'coll_2_pledge_signed'         => (bool) ($request->coll_2_pledge_signed ?? false),
                 'coll_2_customary_verified'    => (bool) ($request->coll_2_customary_verified ?? false),
+                'pledge_explained_to_client'    => (bool) ($request->pledge_explained_to_client ?? false),
+                'client_understood_pledge'      => (bool) ($request->client_understood_pledge ?? false),
+                'pledge_witness_present'        => (bool) ($request->pledge_witness_present ?? false),
                 // Community
                 'lc1_name_confirmed'        => (bool) ($request->lc1_name_confirmed ?? false),
                 'lc1_contact_confirmed'     => (bool) ($request->lc1_contact_confirmed ?? false),
@@ -207,11 +244,14 @@ class ClientApplicationController extends Controller
                 'ref_consistent_count'      => $request->ref_consistent_count,
                 'disputes_reported'         => (bool) ($request->disputes_reported ?? false),
                 'residence_stability_evi'   => $request->residence_stability_evi,
+                'residence_stability_rating'=> $request->residence_stability_rating,
                 // Guarantor 1
                 'g1_contact_verified'       => (bool) ($request->g1_contact_verified ?? false),
                 'g1_income_verified'        => $request->g1_income_verified,
                 'g1_asset_verified'         => $request->g1_asset_verified,
                 'g1_relationship_confirmed' => (bool) ($request->g1_relationship_confirmed ?? false),
+                'g1_commitment_verified'    => $request->g1_commitment_verified,
+                'g1_pledge_confirmed'       => (bool) ($request->g1_pledge_confirmed ?? false),
                 'g1_willing'                => (bool) ($request->g1_willing ?? false),
                 'g1_signed'                 => (bool) ($request->g1_signed ?? false),
                 // Guarantor 2
@@ -219,6 +259,8 @@ class ClientApplicationController extends Controller
                 'g2_income_verified'        => $request->g2_income_verified,
                 'g2_asset_verified'         => $request->g2_asset_verified,
                 'g2_relationship_confirmed' => (bool) ($request->g2_relationship_confirmed ?? false),
+                'g2_commitment_verified'    => $request->g2_commitment_verified,
+                'g2_pledge_confirmed'       => (bool) ($request->g2_pledge_confirmed ?? false),
                 'g2_willing'                => (bool) ($request->g2_willing ?? false),
                 'g2_signed'                 => (bool) ($request->g2_signed ?? false),
                 // Policy
@@ -226,6 +268,10 @@ class ClientApplicationController extends Controller
                 'time_constraint'           => (bool) ($request->time_constraint ?? false),
                 'temp_trigger'              => (bool) ($request->temp_trigger ?? false),
                 'field_recommendation'      => $request->field_recommendation,
+                'recommended_product_id'    => $request->recommended_product_id,
+                'recommended_amount'        => $request->recommended_amount,
+                'recommended_tenure_periods'=> $request->recommended_tenure_periods,
+                'officer_confidence'        => $request->officer_confidence,
                 'physical_visit_confirmed'  => (bool) $request->physical_visit_confirmed,
                 'remote_risk_note'          => $request->remote_risk_note,
                 'officer_notes'             => $request->officer_notes,
@@ -320,8 +366,20 @@ class ClientApplicationController extends Controller
             abort(403, 'Access denied. Only a Branch Manager or Super Administrator can manually approve applications.');
         }
 
-        if (!in_array($app->status, ['pending_fo_review', 'pending_fo_verification'])) {
+        if ($app->status !== 'pending_fo_review') {
             return redirect()->back()->with('error', 'This application cannot be approved in its current status.');
+        }
+
+        $app->loadMissing('fieldVerification');
+
+        if (!$app->fieldVerification) {
+            return redirect()->back()
+                ->with('error', 'Field verification must be submitted before this application can be manually approved.');
+        }
+
+        if (empty($app->final_decision) || $app->final_decision === 'DECLINE') {
+            return redirect()->back()
+                ->with('error', 'System verification must produce a non-decline decision before manual approval.');
         }
 
         try {

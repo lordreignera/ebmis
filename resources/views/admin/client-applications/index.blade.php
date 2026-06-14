@@ -3,7 +3,7 @@
 @section('title', 'Self-Applied Loan Applications')
 
 @section('content')
-<div class="content-wrapper">
+<div class="content-wrapper client-applications-index-page">
   <div class="page-header">
     <h3 class="page-title">
       <span class="page-title-icon bg-gradient-primary text-white me-2">
@@ -191,4 +191,49 @@
     </div>
   </div>
 </div>
+@push('styles')
+<style>
+.client-applications-index-page .card > .card-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e5e7eb;
+    color: #111827 !important;
+    font-weight: 700;
+}
+
+.client-applications-index-page .card > .card-header *,
+.client-applications-index-page .card > .card-header a {
+    color: #111827 !important;
+}
+
+.client-applications-index-page .table {
+    --bs-table-bg: #ffffff;
+    --bs-table-striped-bg: #f8fafc;
+    --bs-table-hover-bg: #eef4f8;
+    border-color: #dbe5ec;
+}
+
+.client-applications-index-page .table thead,
+.client-applications-index-page .table thead th,
+.client-applications-index-page .table .table-light,
+.client-applications-index-page .table-light th {
+    background: #eef4f8 !important;
+    color: #243447 !important;
+}
+
+.client-applications-index-page .table tbody td,
+.client-applications-index-page .table tbody th {
+    background: #ffffff !important;
+}
+
+.client-applications-index-page .table-hover tbody tr:hover td,
+.client-applications-index-page .table-hover tbody tr:hover th {
+    background: #f3f8fb !important;
+}
+
+.client-applications-index-page .fs-3,
+.client-applications-index-page .fw-bold[class*="text-"] {
+    color: #111827 !important;
+}
+</style>
+@endpush
 @endsection

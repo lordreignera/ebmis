@@ -247,6 +247,70 @@
   .row:last-of-type .grid-margin:last-child {
     margin-bottom: 0 !important;
   }
+
+  /* Dashboard monochrome palette */
+  .card-bordered,
+  .audit-card {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06) !important;
+  }
+
+  .card-bordered:hover,
+  .audit-card:hover {
+    box-shadow: 0 1px 8px rgba(17, 24, 39, 0.08) !important;
+    transform: none !important;
+  }
+
+  .audit-card h3,
+  .audit-card h6,
+  .audit-card p,
+  .audit-card strong,
+  .audit-card .text-primary,
+  .audit-card .text-success,
+  .audit-card .text-info,
+  .audit-card .text-warning,
+  .audit-card .text-danger,
+  .analytic-au-data .amount,
+  .analytic-au-data .amount.text-primary,
+  .analytic-au-data .amount.text-success,
+  .analytic-au-data .amount.text-info,
+  .analytic-au-data .amount.text-warning,
+  .analytic-au-data .amount.text-danger,
+  .analytic-au-data i.text-primary,
+  .analytic-au-data i.text-success,
+  .analytic-au-data i.text-info,
+  .analytic-au-data i.text-warning,
+  .analytic-au-data i.text-danger {
+    color: #111827 !important;
+  }
+
+  .audit-card .icon,
+  .icon-box-primary,
+  .icon-box-success,
+  .icon-box-info,
+  .icon-box-warning,
+  .icon-box-danger {
+    background: #f3f4f6 !important;
+    border: 1px solid #e5e7eb !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+  }
+
+  .audit-card .icon-item,
+  .icon-box-primary .icon-item,
+  .icon-box-success .icon-item,
+  .icon-box-info .icon-item,
+  .icon-box-warning .icon-item,
+  .icon-box-danger .icon-item {
+    color: #111827 !important;
+  }
+
+  .nk-tb-head {
+    background: #eef4f8 !important;
+    color: #111827 !important;
+  }
 </style>
 
     
@@ -658,16 +722,16 @@
               {
                 label: 'Loans Disbursed',
                 data: {!! json_encode($chartData['loans'] ?? []) !!},
-                borderColor: 'rgb(75, 192, 192)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderColor: '#111827',
+                backgroundColor: 'rgba(17, 24, 39, 0.10)',
                 tension: 0.4,
                 fill: true
               },
               {
                 label: 'Cash Securities',
                 data: {!! json_encode($chartData['savings'] ?? []) !!},
-                borderColor: 'rgb(255, 159, 64)',
-                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                borderColor: '#6b7280',
+                backgroundColor: 'rgba(107, 114, 128, 0.12)',
                 tension: 0.4,
                 fill: true
               }

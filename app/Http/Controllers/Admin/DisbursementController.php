@@ -18,9 +18,9 @@ use App\Models\ProductCharge;
 use App\Models\LoanCharge;
 use App\Models\CashSecurity;
 use App\Models\LoanCollateralDocument;
-use App\Models\User;
 use App\Models\Product;
 use App\Models\Member;
+use App\Services\LoanAccessService;
 use App\Services\MobileMoneyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,10 +34,15 @@ use App\Helpers\LoanScheduleHelper;
 class DisbursementController extends Controller
 {
     protected $mobileMoneyService;
+    protected $loanAccessService;
 
-    public function __construct(MobileMoneyService $mobileMoneyService)
+    public function __construct(
+        MobileMoneyService $mobileMoneyService,
+        LoanAccessService $loanAccessService
+    )
     {
         $this->mobileMoneyService = $mobileMoneyService;
+        $this->loanAccessService = $loanAccessService;
     }
     /**
      * Display a listing of disbursements
@@ -332,10 +337,7 @@ class DisbursementController extends Controller
         $loan->loan_type = $loanType;
         $loan->created_at = $loan->datecreated ?? now();
         
-        // Get system users (staff members) for assignment - status is 'active' not 1
-        $staff_members = User::where('status', 'active')
-                           ->orderBy('name')
-                           ->get();
+        $staff_members = $this->loanAccessService->assignableLoanUsers();
         
         // Get investment accounts
         $investment_accounts = DB::table('investment')
@@ -879,7 +881,7 @@ class DisbursementController extends Controller
                     ->get();
 
         $investments = Investment::where('status', 1)->get();
-        $users = \App\Models\User::where('status', 'active')->get(); // Staff for assignment - status is 'active' not 1
+        $users = $this->loanAccessService->assignableLoanUsers();
 
         // Pre-select loan if passed
         $selectedLoan = null;

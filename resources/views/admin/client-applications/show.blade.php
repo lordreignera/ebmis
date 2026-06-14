@@ -3,7 +3,11 @@
 @section('title', 'Application: ' . $app->application_code)
 
 @section('content')
-<div class="content-wrapper">
+@php
+  $collateralCoverageMinimum = \App\Models\LoanPolicyControl::getValue('COL_MULT', 3);
+  $collateralCoveragePercent = (int) round($collateralCoverageMinimum * 100);
+@endphp
+<div class="content-wrapper client-application-page">
   <div class="page-header">
     <h3 class="page-title">
       <span class="page-title-icon bg-gradient-primary text-white me-2">
@@ -52,7 +56,7 @@
       <div class="card border-0 shadow-sm text-center p-3">
         <div class="text-muted small">SDL Score</div>
         @php $sdlHero = $app->sdl_score ?? $app->composite_score; @endphp
-        <div class="fs-3 fw-bold mt-1 text-{{ $sdlHero >= 75 ? 'success' : ($sdlHero >= 60 ? 'warning' : 'danger') }}">
+        <div class="fs-3 fw-bold mt-1 text-{{ $sdlHero >= 80 ? 'success' : ($sdlHero >= 65 ? 'warning' : 'danger') }}">
           {{ $sdlHero ?? '—' }}<span class="fs-6 text-muted">/100</span>
         </div>
       </div>
@@ -346,7 +350,7 @@
         $sdl = $app->sdl_score ?? $app->composite_score ?? null;
         $fd  = $app->final_decision;
         $fdColor = match($fd) { 'APP' => 'success', 'ARA' => 'warning', 'CON' => 'info', 'DECLINE' => 'danger', default => 'secondary' };
-        $fdLabel = match($fd) { 'APP' => 'APP – Full Approval', 'ARA' => 'ARA – Reduced Amount', 'CON' => 'CON – Conditional', 'DECLINE' => 'DECLINE', default => 'Pending' };
+        $fdLabel = match($fd) { 'APP' => 'APP - Full Approval', 'ARA' => 'ARA - Approve with Modification', 'CON' => 'CON - Conditional', 'DECLINE' => 'DECLINE', default => 'Pending' };
         $scoreColor = fn($v) => $v >= 80 ? 'success' : ($v >= 60 ? 'warning' : 'danger');
         $scoreLabel = fn($v) => $v >= 80 ? 'Pass' : ($v >= 60 ? 'Moderate' : 'Weak');
       @endphp
@@ -354,7 +358,7 @@
         <div class="card-header py-2 d-flex align-items-center justify-content-between" style="background:#1a237e; color:white">
           <span><i class="fas fa-brain me-2"></i>System Decision Layer (SDL)</span>
           @if($sdl !== null)
-          <span class="badge bg-{{ $sdl >= 75 ? 'success' : ($sdl >= 60 ? 'warning' : 'danger') }} fs-6">{{ $sdl }}/100</span>
+          <span class="badge bg-{{ $sdl >= 80 ? 'success' : ($sdl >= 65 ? 'warning' : 'danger') }} fs-6">{{ $sdl }}/100</span>
           @endif
         </div>
         <div class="card-body p-0">
@@ -366,18 +370,13 @@
             </thead>
             <tbody>
               @php
+                $evidenceScore = $app->es_score ?? $app->obs_score ?? $app->doc_score ?? null;
                 $components = [
-                  ['KYC', 'Know Your Customer',              $app->kyc_score,  '8.0%',  ($app->kyc_score  ?? 0) * 0.08],
-                  ['CF',  'Cash Flow',                       $app->cf_score,   '18.0%', ($app->cf_score   ?? 0) * 0.18],
-                  ['IVI', 'In-Person Verification Integrity',$app->ivi_score,  '10.0%', ($app->ivi_score  ?? 0) * 0.10],
-                  ['VSS', 'Verification Strength Score',     $app->vss_score,  '8.0%',  ($app->vss_score  ?? 0) * 0.08],
-                  ['CRB', 'Credit Reference Bureau',         $app->crb_score,  '10.0%', ($app->crb_score  ?? 0) * 0.10],
-                  ['COL', 'Collateral Score',                $app->col_score,  '10.0%', ($app->col_score  ?? 0) * 0.10],
-                  ['SS',  'Social Standing',                 $app->ss_score,   '8.0%',  ($app->ss_score   ?? 0) * 0.08],
-                  ['GUA', 'Guarantors Score',                $app->guarantor_strength_score, '8.0%', ($app->guarantor_strength_score ?? 0) * 0.08],
-                  ['EXP', 'Exposure Risk Score',             $app->exp_score,  '8.0%',  ($app->exp_score  ?? 0) * 0.08],
-                  ['RPC', 'Regulatory & Policy Compliance',  $app->rpc_score,  '6.0%',  ($app->rpc_score  ?? 0) * 0.06],
-                  ['CRD', 'Credibility Score',               $app->crd_score,  '6.0%',  ($app->crd_score  ?? 0) * 0.06],
+                  ['DSCR', 'Debt Service Coverage',          $app->dscrs_score ?? $app->cf_score, '30.0%', (($app->dscrs_score ?? $app->cf_score) ?? 0) * 0.30],
+                  ['VSS',  'Verification Strength Score',    $app->vss_score, '20.0%', ($app->vss_score ?? 0) * 0.20],
+                  ['CCR',  'Collateral Coverage Component',  $app->col_score, '25.0%', ($app->col_score ?? 0) * 0.25],
+                  ['SALE', 'Collateral Saleability',         $app->collateral_saleability_score, '15.0%', ($app->collateral_saleability_score ?? 0) * 0.15],
+                  ['GUA',  'Guarantor Strength',             $app->guarantor_strength_score, '10.0%', ($app->guarantor_strength_score ?? 0) * 0.10],
                 ];
               @endphp
               @foreach($components as [$code, $name, $val, $wt, $wtd])
@@ -393,12 +392,23 @@
                 </td>
               </tr>
               @endforeach
+              @if($evidenceScore !== null)
+              <tr class="table-light">
+                <td class="ps-3 small"><strong>(ES)</strong> Business Evidence Gate</td>
+                <td class="text-end small">{{ $evidenceScore }}</td>
+                <td class="text-end small pe-2">Gate</td>
+                <td class="text-end small pe-3">-</td>
+                <td class="text-center">
+                  <span class="badge bg-{{ $evidenceScore >= 70 ? 'success' : 'warning' }}">{{ $evidenceScore >= 70 ? 'Pass' : 'Review' }}</span>
+                </td>
+              </tr>
+              @endif
               <tr class="table-dark">
                 <td class="ps-3"><strong>(SDL) System Decision Layer Total</strong></td>
                 <td class="text-end fw-bold fs-6" colspan="3">{{ $sdl ?? '—' }}</td>
                 <td class="text-center">
                   @if($sdl !== null)
-                  <span class="badge bg-{{ $sdl >= 75 ? 'success' : ($sdl >= 65 ? 'warning' : 'danger') }}">{{ $sdl >= 75 ? 'Strong' : ($sdl >= 65 ? 'Moderate' : 'Weak') }}</span>
+                  <span class="badge bg-{{ $sdl >= 80 ? 'success' : ($sdl >= 65 ? 'warning' : 'danger') }}">{{ $sdl >= 80 ? 'Strong' : ($sdl >= 65 ? 'Moderate' : 'Weak') }}</span>
                   @endif
                 </td>
               </tr>
@@ -408,20 +418,31 @@
           {{-- Cash Flow & DSCR --}}
           <div class="border-top">
             <div class="px-3 py-2 small fw-semibold text-muted text-uppercase bg-light">Cash Flow, Capacity, and Amount Logic</div>
+            @php
+              $verifiedNet = $app->daily_disposable_income;
+              $incomeForDscr = $verifiedNet !== null
+                ? match(strtolower((string) $app->repayment_frequency)) {
+                    'daily' => $verifiedNet / 30,
+                    'weekly' => ($verifiedNet / 30) * 7,
+                    default => $verifiedNet,
+                  }
+                : null;
+            @endphp
             <table class="table table-sm table-borderless mb-0 small">
-              <tr><td class="ps-3">(VTI) Verified Total Income / Period</td><td class="text-end pe-3">{{ $app->daily_disposable_income ? 'UGX '.number_format($app->daily_disposable_income + ($app->total_debt_per_period ?? 0)) : '—' }}</td><td></td></tr>
-              <tr><td class="ps-3">(VTE) Verified Total Expenses / Period</td><td class="text-end pe-3">{{ $app->total_debt_per_period ? 'UGX '.number_format($app->total_debt_per_period) : '—' }}</td><td></td></tr>
-              <tr><td class="ps-3">(VNCF) Verified Net Cash Flow</td><td class="text-end pe-3 fw-semibold">{{ $app->daily_disposable_income ? 'UGX '.number_format($app->daily_disposable_income) : '—' }}</td><td></td></tr>
-              <tr><td class="ps-3">(RLI) Required Loan Installment</td><td class="text-end pe-3">{{ $app->proposed_installment ? 'UGX '.number_format($app->proposed_installment) : '—' }}</td><td></td></tr>
+              <tr><td class="ps-3">(VTI) Verified Total Income</td><td class="text-end pe-3">{{ $app->vti !== null ? 'UGX '.number_format($app->vti) : '—' }}</td><td></td></tr>
+              <tr><td class="ps-3">(VTE) Verified Total Expenses</td><td class="text-end pe-3">{{ $app->vte !== null ? 'UGX '.number_format($app->vte) : '—' }}</td><td></td></tr>
+              <tr><td class="ps-3">(VNCF) Verified Net Cash Flow</td><td class="text-end pe-3 fw-semibold">{{ $verifiedNet !== null ? 'UGX '.number_format($verifiedNet) : '—' }}</td><td></td></tr>
+              <tr><td class="ps-3">Income Applied to DSCR</td><td class="text-end pe-3">{{ $incomeForDscr !== null ? 'UGX '.number_format($incomeForDscr) : '—' }}</td><td></td></tr>
+              <tr><td class="ps-3">(RLI) Required Loan Installment</td><td class="text-end pe-3">{{ $app->proposed_installment !== null ? 'UGX '.number_format($app->proposed_installment) : '—' }}</td><td></td></tr>
               <tr>
                 <td class="ps-3"><strong>(DSCR) Debt Service Coverage Ratio</strong></td>
                 <td class="text-end pe-3 fw-bold">{{ $app->dscr ? $app->dscr.'x' : '—' }}</td>
                 <td class="text-center pe-2"><span class="badge bg-{{ ($app->dscr ?? 0) >= 1.2 ? 'success' : (($app->dscr ?? 0) >= 0.8 ? 'warning' : 'danger') }}">{{ ($app->dscr ?? 0) >= 1.2 ? 'Pass' : (($app->dscr ?? 0) >= 0.8 ? 'Below Min' : 'Fail') }}</span></td>
               </tr>
               <tr>
-                <td class="ps-3">Stressed DSCR (–20% income)</td>
+                <td class="ps-3">Reference Stressed DSCR (20% income shock)</td>
                 <td class="text-end pe-3">{{ $app->stressed_dscr ? $app->stressed_dscr.'x' : '—' }}</td>
-                <td class="text-center pe-2"><span class="badge bg-{{ ($app->stressed_dscr ?? 0) >= 0.8 ? 'success' : 'danger' }}">{{ ($app->stressed_dscr ?? 0) >= 0.8 ? 'Pass' : 'ABS Fail' }}</span></td>
+                <td class="text-center pe-2"><span class="badge bg-secondary">Reference</span></td>
               </tr>
               <tr><td class="ps-3">(MAI) Maximum Affordable Installment</td><td class="text-end pe-3">{{ $app->mai ? 'UGX '.number_format($app->mai) : '—' }}</td><td></td></tr>
               <tr><td class="ps-3">(MAA) Maximum Affordable Amount</td><td class="text-end pe-3">{{ $app->maa ? 'UGX '.number_format($app->maa) : '—' }}</td><td></td></tr>
@@ -439,7 +460,7 @@
               <tr>
                 <td class="ps-3"><strong>(CCR) Collateral Coverage Ratio</strong></td>
                 <td class="text-end pe-3 fw-bold">{{ $app->collateral_coverage ? $app->collateral_coverage.'x' : '—' }}</td>
-                <td class="text-center pe-2"><span class="badge bg-{{ ($app->collateral_coverage ?? 0) >= 2 ? 'success' : 'danger' }}">{{ ($app->collateral_coverage ?? 0) >= 2 ? 'Meets Min (200%)' : 'Below 200%' }}</span></td>
+                <td class="text-center pe-2"><span class="badge bg-{{ ($app->collateral_coverage ?? 0) >= $collateralCoverageMinimum ? 'success' : 'danger' }}">{{ ($app->collateral_coverage ?? 0) >= $collateralCoverageMinimum ? 'Meets Min ('.$collateralCoveragePercent.'%)' : 'Below '.$collateralCoveragePercent.'%' }}</span></td>
               </tr>
               <tr><td class="ps-3">Collateral Saleability Score</td><td class="text-end pe-3">{{ $app->collateral_saleability_score ?? '—' }}/100</td><td></td></tr>
               <tr><td class="ps-3">Guarantor Security Total</td><td class="text-end pe-3">{{ $app->guarantor_security_total ? 'UGX '.number_format($app->guarantor_security_total) : '—' }}</td><td></td></tr>
@@ -466,7 +487,7 @@
                 </td>
               </tr>
               <tr>
-                <td class="ps-3"><strong>(FAA) Final Allowable Amount</strong></td>
+                <td class="ps-3"><strong>(MCL) Maximum Collateral Limit</strong></td>
                 <td class="text-end pe-3 fw-bold text-success" colspan="2">{{ $app->faa ? 'UGX '.number_format($app->faa) : '—' }}</td>
               </tr>
               <tr>
@@ -486,11 +507,11 @@
         </div>
       </div>
 
-      {{-- Hard Policy Gates --}}
+      {{-- Workbook Policy Gates --}}
       @if($app->gate_status)
       <div class="card shadow-sm border-0 mb-3">
         <div class="card-header py-2 bg-dark text-white">
-          <i class="fas fa-traffic-light me-2"></i>Hard Policy Gates
+          <i class="fas fa-traffic-light me-2"></i>Underwriting Workbook Gates
         </div>
         <div class="card-body p-0">
           <table class="table table-sm table-borderless mb-0">
@@ -594,6 +615,14 @@
                 <span class="badge bg-secondary ms-1">Remote Only</span>
                 @endif
               </div>
+              @if($fvl->recommended_amount || $fvl->recommended_tenure_periods || $fvl->officer_confidence)
+              <div class="small mt-2 border-top pt-2">
+                <div><span class="text-muted">FO Product:</span> {{ $fvl->recommendedProduct?->name ?? $app->product?->name ?? 'N/A' }}</div>
+                <div><span class="text-muted">FO Amount:</span> {{ $fvl->recommended_amount ? 'UGX '.number_format($fvl->recommended_amount) : 'N/A' }}</div>
+                <div><span class="text-muted">FO Tenure:</span> {{ $fvl->recommended_tenure_periods ?? 'N/A' }} periods</div>
+                <div><span class="text-muted">Confidence:</span> {{ $fvl->officer_confidence ?? 'N/A' }}</div>
+              </div>
+              @endif
               @if($fvl->officer_notes)
               <div class="text-muted small mt-2 fst-italic">"{{ Str::limit($fvl->officer_notes, 80) }}"</div>
               @endif
@@ -728,4 +757,44 @@
     </div>{{-- /right column --}}
   </div>{{-- /row --}}
 </div>
+@push('styles')
+<style>
+.client-application-page .card > .card-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e5e7eb;
+    color: #111827 !important;
+    font-weight: 700;
+}
+
+.client-application-page .card > .card-header *,
+.client-application-page .card > .card-header a {
+    color: #111827 !important;
+}
+
+.client-application-page .table {
+    --bs-table-bg: #ffffff;
+    --bs-table-striped-bg: #f8fafc;
+    --bs-table-hover-bg: #eef4f8;
+    border-color: #dbe5ec;
+}
+
+.client-application-page .table thead,
+.client-application-page .table thead th,
+.client-application-page .table .table-light,
+.client-application-page .table-light th {
+    background: #eef4f8 !important;
+    color: #243447 !important;
+}
+
+.client-application-page .table tbody td,
+.client-application-page .table tbody th {
+    background: #ffffff !important;
+}
+
+.client-application-page .table-hover tbody tr:hover td,
+.client-application-page .table-hover tbody tr:hover th {
+    background: #f3f8fb !important;
+}
+</style>
+@endpush
 @endsection

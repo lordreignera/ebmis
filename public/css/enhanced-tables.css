@@ -27,7 +27,7 @@
 }
 
 .card-header {
-    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+    background: #ffffff !important;
     border-bottom: 1px solid #e2e8f0 !important;
     padding: 20px 24px !important;
 }
@@ -72,8 +72,8 @@ table.table {
 .table thead th,
 table.table thead th,
 .table-responsive .table thead th {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    color: #ffffff !important;
+    background: #eef4f8 !important;
+    color: #111827 !important;
     border: none !important;
     padding: 16px 12px !important;
     font-weight: 600 !important;
@@ -325,7 +325,7 @@ table.table tr:hover .rounded-circle {
     left: -100% !important;
     width: 100% !important;
     height: 100% !important;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent) !important;
+    background: rgba(243, 244, 246, 0.85) !important;
     animation: shimmer 1.5s infinite !important;
 }
 
@@ -427,7 +427,7 @@ table.table thead th.sortable {
 
 .table thead th.sortable:hover,
 table.table thead th.sortable:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%) !important;
+    background: #e5eef5 !important;
 }
 
 .table thead th.sortable::after,
@@ -609,7 +609,7 @@ table.table.table-hover tbody tr:hover th {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+    background: rgba(243, 244, 246, 0.85);
     animation: shimmer 1.5s infinite;
 }
 
@@ -635,12 +635,13 @@ table.table.table-hover tbody tr:hover th {
     }
     
     .table tbody tr:hover {
-        background-color: #4a5568 !important;
-        color: #f7fafc !important;
+        background-color: #f3f8fb !important;
+        color: #111827 !important;
     }
     
     .table thead th {
-        background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%) !important;
+        background: #eef4f8 !important;
+        color: #111827 !important;
     }
 }
 
@@ -749,7 +750,7 @@ table.table.table-hover tbody tr:hover th {
 }
 
 .table thead th.sortable:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%) !important;
+    background: #e5eef5 !important;
 }
 
 .table thead th.sortable::after {
@@ -769,4 +770,91 @@ table.table.table-hover tbody tr:hover th {
 .table thead th.sortable.desc::after {
     content: '\f0dd';
     opacity: 1;
+}
+
+/* EBIMS light table palette override */
+.content-wrapper .table,
+.table,
+table.table {
+    --bs-table-bg: #ffffff;
+    --bs-table-striped-bg: #f8fafc;
+    --bs-table-hover-bg: #f3f8fb;
+    --bs-table-hover-color: #1f2937;
+    --bs-table-border-color: #dbe5ec;
+    background: #ffffff !important;
+    border-color: #dbe5ec !important;
+    box-shadow: none !important;
+}
+
+.content-wrapper .table thead th,
+.table thead th,
+table.table thead th,
+.table-responsive .table thead th {
+    background: #eef4f8 !important;
+    color: #243447 !important;
+    border-color: #dbe5ec !important;
+}
+
+.content-wrapper .table tbody td,
+.content-wrapper .table tbody th,
+.table tbody td,
+table.table tbody td,
+.table-responsive .table tbody td {
+    background: #ffffff !important;
+    color: #344054 !important;
+    border-color: #e5edf3 !important;
+}
+
+.content-wrapper .table tfoot,
+.content-wrapper .table tfoot th,
+.content-wrapper .table tfoot td,
+.content-wrapper .table .table-dark,
+.content-wrapper .table-dark th,
+.content-wrapper .table-dark td,
+.content-wrapper .table .table-secondary,
+.content-wrapper .table-secondary th,
+.content-wrapper .table-secondary td,
+.content-wrapper .table .table-primary,
+.content-wrapper .table-primary th,
+.content-wrapper .table-primary td,
+.content-wrapper .table .table-info,
+.content-wrapper .table-info th,
+.content-wrapper .table-info td,
+.content-wrapper .table .table-success,
+.content-wrapper .table-success th,
+.content-wrapper .table-success td,
+.content-wrapper .table .table-warning,
+.content-wrapper .table-warning th,
+.content-wrapper .table-warning td,
+.content-wrapper .table .table-danger,
+.content-wrapper .table-danger th,
+.content-wrapper .table-danger td,
+.content-wrapper .table .table-active,
+.content-wrapper .table-active th,
+.content-wrapper .table-active td {
+    background: #f6f9fc !important;
+    color: #243447 !important;
+    border-color: #dbe5ec !important;
+}
+
+.content-wrapper .table-hover > tbody > tr:hover > *,
+.content-wrapper .table tbody tr:hover,
+.content-wrapper .table tbody tr:hover td,
+.content-wrapper .table tbody tr:hover th,
+.table tbody tr:hover,
+table.table tbody tr:hover,
+.table-responsive .table tbody tr:hover,
+.table tbody tr:hover td,
+table.table tbody tr:hover td,
+.table-responsive .table tbody tr:hover td {
+    background: #f3f8fb !important;
+    color: #1f2937 !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.table thead th.sortable:hover,
+table.table thead th.sortable:hover {
+    background: #e4edf4 !important;
+    color: #243447 !important;
 }

@@ -1,7 +1,7 @@
 <!-- partial:partials/_navbar.html -->
-<nav class="navbar p-0 fixed-top d-flex flex-row" style="background: linear-gradient(90deg, #1a237e 0%, #0d47a1 100%) !important; height: 64px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;">
+<nav class="navbar p-0 fixed-top d-flex flex-row" style="background: #ffffff !important; height: 64px !important; box-shadow: 0 1px 6px rgba(17,24,39,0.08) !important; border-bottom: 1px solid #e5e7eb !important;">
     <!-- Mobile Brand -->
-    <div class="navbar-brand-wrapper d-flex d-lg-none align-items-center justify-content-center" style="background: rgba(0,0,0,0.1) !important; width: 260px !important;">
+    <div class="navbar-brand-wrapper d-flex d-lg-none align-items-center justify-content-center" style="background: #ffffff !important; width: 260px !important; border-right: 1px solid #e5e7eb !important;">
         <a class="custom-brand" href="{{ url('admin/home') }}">
             <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="Emuria" style="max-height: 40px; width: auto;">
         </a>
@@ -17,12 +17,12 @@
         <!-- Search Bar -->
         <div class="d-none d-lg-flex align-items-center flex-grow-1" style="max-width: 600px; margin-left: 2rem;">
             <form class="w-100" style="margin: 0;">
-                <div class="input-group" style="background: rgba(255,255,255,0.15); border-radius: 25px; padding: 2px;">
-                    <span class="input-group-text" style="background: transparent; border: none; color: rgba(255,255,255,0.7);">
+                <div class="input-group" style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2px;">
+                    <span class="input-group-text" style="background: transparent; border: none; color: #111827;">
                         <i class="mdi mdi-magnify"></i>
                     </span>
                     <input type="text" class="form-control" placeholder="Search members, loans, transactions..." 
-                           style="background: transparent; border: none; color: white !important; padding: 0.5rem 1rem;">
+                           style="background: transparent; border: none; color: #111827 !important; padding: 0.5rem 1rem;">
                 </div>
             </form>
         </div>
@@ -36,14 +36,14 @@
                    data-bs-toggle="dropdown" 
                    aria-expanded="false" 
                    href="#"
-                   style="background: #4fd1c7 !important; 
-                          color: white !important; 
-                          padding: 0.5rem 1.25rem !important; 
-                          border-radius: 25px !important;
+                   style="background: #2563eb !important;
+                          color: white !important;
+                          padding: 0.5rem 1.25rem !important;
+                          border-radius: 6px !important;
                           font-weight: 500 !important;
                           font-size: 0.875rem !important;
                           border: none !important;
-                          box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+                          box-shadow: none !important;
                           transition: all 0.3s ease !important;">
                     <i class="mdi mdi-plus-circle me-1"></i> QUICK ACTIONS
                 </a>
@@ -310,13 +310,13 @@
 <style>
 /* Navbar Hover Effects */
 .navbar .nav-link:hover {
-    background: rgba(255,255,255,0.2) !important;
+    background: #eef6ff !important;
 }
 
 .navbar .create-new-button:hover {
-    background: #38b2ac !important;
+    background: #1d4ed8 !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18) !important;
 }
 
 /* Dropdown Item Hover */
@@ -326,7 +326,7 @@
 
 /* Search Input Placeholder */
 .navbar input::placeholder {
-    color: rgba(255,255,255,0.6) !important;
+    color: #6b7280 !important;
 }
 
 /* Ensure navbar stays on top */
