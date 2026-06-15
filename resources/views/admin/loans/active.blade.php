@@ -509,6 +509,7 @@
                             <select class="form-select" id="status" name="status">
                                 <option value="">All Status</option>
                                 <option value="current" {{ request('status') == 'current' ? 'selected' : '' }}>Current</option>
+                                <option value="due_today" {{ request('status') == 'due_today' ? 'selected' : '' }}>Due Today</option>
                                 <option value="overdue" {{ request('status') == 'overdue' ? 'selected' : '' }}>Overdue</option>
                                 <option value="restructured" {{ request('status') == 'restructured' ? 'selected' : '' }}>Restructured</option>
                                 <option value="risk_followup" {{ request('status') == 'risk_followup' ? 'selected' : '' }}>Risk Follow-up</option>

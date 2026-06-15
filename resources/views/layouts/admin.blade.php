@@ -198,6 +198,13 @@
             background-color: #f7fafc !important;
             color: #2d3748 !important;
         }
+
+        .navbar .dropdown-item:focus,
+        .navbar .dropdown-item:active,
+        .navbar .dropdown-item.active {
+            background-color: #e5e7eb !important;
+            color: #111827 !important;
+        }
         
         .navbar .dropdown-header {
             color: #718096 !important;
@@ -385,19 +392,19 @@
             width: 42px !important;
             height: 42px !important;
             border-radius: 50% !important;
-            border: 2px solid rgba(255,255,255,0.3) !important;
+            border: 2px solid #bfdbfe !important;
             display: block !important;
         }
         
         .sidebar .profile .profile-name h5 {
-            color: #ffffff !important;
+            color: #111827 !important;
             font-size: 15px !important;
             margin: 0 0 3px 0 !important;
             font-weight: 500 !important;
         }
         
         .sidebar .profile .profile-name p {
-            color: rgba(255,255,255,0.7) !important;
+            color: #4b5563 !important;
             font-size: 12px !important;
             margin: 0 !important;
         }
@@ -630,13 +637,83 @@
             color: #111827 !important;
         }
 
+        .sidebar .nav .nav-link {
+            display: flex !important;
+            align-items: center !important;
+            gap: 12px !important;
+            min-height: 44px !important;
+            padding: 10px 18px !important;
+            border-left: 4px solid transparent !important;
+            border-radius: 0 !important;
+        }
+
+        .sidebar .nav .menu-icon {
+            width: 24px !important;
+            min-width: 24px !important;
+            height: 24px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin-right: 0 !important;
+            background: transparent !important;
+        }
+
+        .sidebar .nav .menu-icon i {
+            margin-right: 0 !important;
+            color: #1f2937 !important;
+            font-size: 19px !important;
+            line-height: 1 !important;
+        }
+
+        .sidebar .nav .menu-title {
+            color: #111827 !important;
+            line-height: 1.25 !important;
+            white-space: normal !important;
+        }
+
+        .sidebar .nav .menu-arrow {
+            margin-left: auto !important;
+            color: #4b5563 !important;
+        }
+
         .sidebar .nav .nav-link:hover,
+        .sidebar .nav .nav-link.active,
         .sidebar .nav .nav-item.active > .nav-link,
         .sidebar .nav .collapse.show .nav-link:hover {
             background: #dbeafe !important;
             color: #0f172a !important;
-            padding-left: 25px !important;
             border-left: 4px solid #2563eb !important;
+        }
+
+        .sidebar .nav .nav-link:hover .menu-icon i,
+        .sidebar .nav .nav-link:hover .menu-title,
+        .sidebar .nav .nav-link.active .menu-icon i,
+        .sidebar .nav .nav-link.active .menu-title,
+        .sidebar .nav .nav-link.active .menu-arrow,
+        .sidebar .nav .nav-item.active > .nav-link .menu-icon i,
+        .sidebar .nav .nav-item.active > .nav-link .menu-title,
+        .sidebar .nav .nav-item.active > .nav-link .menu-arrow {
+            color: #0f172a !important;
+        }
+
+        .sidebar .nav .collapse.show > .nav,
+        .sidebar .nav .collapse.show .sub-menu {
+            background: #eef6ff !important;
+        }
+
+        .sidebar .nav .sub-menu .nav-link,
+        .sidebar .nav .collapse.show .nav-link {
+            background: transparent !important;
+            color: #111827 !important;
+            padding-left: 52px !important;
+            border-left: 4px solid transparent !important;
+        }
+
+        .sidebar .nav .sub-menu .nav-link:hover,
+        .sidebar .nav .sub-menu .nav-item.active > .nav-link {
+            background: #dbeafe !important;
+            color: #0f172a !important;
+            border-left-color: #2563eb !important;
         }
 
         .navbar,
@@ -1128,6 +1205,76 @@
     <!-- plugins:js -->
     @include('admin.java')
     <!-- End custom js for this page -->
+
+    <style>
+        /*
+         * Final sidebar_new guard.
+         * The bundled admin theme marks active parents with #0f1015; this keeps
+         * opened components light and readable after all theme CSS has loaded.
+         */
+        nav#sidebar.sidebar,
+        nav#sidebar.sidebar.sidebar-offcanvas,
+        nav#sidebar.sidebar .nav,
+        nav#sidebar.sidebar .nav > .nav-item,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items.show,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items.active,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items:focus-within,
+        nav#sidebar.sidebar .collapse,
+        nav#sidebar.sidebar .collapse.show,
+        nav#sidebar.sidebar .collapsing,
+        nav#sidebar.sidebar .sub-menu {
+            background: #eef6ff !important;
+            background-color: #eef6ff !important;
+            color: #111827 !important;
+        }
+
+        nav#sidebar.sidebar .nav > .nav-item > .nav-link,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items > .nav-link,
+        nav#sidebar.sidebar .nav > .nav-item.active > .nav-link,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items.active > .nav-link,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items > .nav-link[aria-expanded="true"],
+        nav#sidebar.sidebar .nav > .nav-item.menu-items > .nav-link:not(.collapsed) {
+            background: #eef6ff !important;
+            background-color: #eef6ff !important;
+            color: #111827 !important;
+            border-left: 4px solid transparent !important;
+        }
+
+        nav#sidebar.sidebar .nav > .nav-item > .nav-link:hover,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items > .nav-link:hover,
+        nav#sidebar.sidebar .nav > .nav-item.active > .nav-link:hover,
+        nav#sidebar.sidebar .nav > .nav-item.menu-items > .nav-link[aria-expanded="true"]:hover {
+            background: #dbeafe !important;
+            background-color: #dbeafe !important;
+            color: #0f172a !important;
+            border-left-color: #2563eb !important;
+        }
+
+        nav#sidebar.sidebar .sub-menu .nav-link,
+        nav#sidebar.sidebar .collapse.show .sub-menu .nav-link {
+            background: #eef6ff !important;
+            background-color: #eef6ff !important;
+            color: #111827 !important;
+            border-left: 4px solid transparent !important;
+        }
+
+        nav#sidebar.sidebar .sub-menu .nav-link:hover,
+        nav#sidebar.sidebar .sub-menu .nav-link.active,
+        nav#sidebar.sidebar .sub-menu .nav-item.active > .nav-link {
+            background: #dbeafe !important;
+            background-color: #dbeafe !important;
+            color: #0f172a !important;
+            border-left-color: #2563eb !important;
+        }
+
+        nav#sidebar.sidebar .menu-icon,
+        nav#sidebar.sidebar .menu-title,
+        nav#sidebar.sidebar .menu-arrow,
+        nav#sidebar.sidebar .nav-link i {
+            color: #111827 !important;
+        }
+    </style>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {

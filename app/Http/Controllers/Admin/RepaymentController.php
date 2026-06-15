@@ -1577,6 +1577,8 @@ class RepaymentController extends Controller
                 return match ($statusFilter) {
                     'current' => (int) ($loan->risk_dpd ?? 0) === 0,
                     'overdue' => (int) ($loan->risk_dpd ?? 0) > 0,
+                    'due_today' => !empty($loan->next_due_date)
+                        && date('Y-m-d', $this->parsePaymentDate($loan->next_due_date)) === today()->toDateString(),
                     'restructured' => (int) ($loan->restructured ?? 0) === 1,
                     'risk_followup' => (bool) ($loan->requires_follow_up ?? false),
                     'missing_followup' => (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false),

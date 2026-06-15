@@ -1,3 +1,39 @@
+@php
+    $navbarTableExists = fn (string $table): bool => \Illuminate\Support\Facades\Schema::hasTable($table);
+
+    $navbarSelfApplicationsCount = $navbarTableExists('client_loan_applications')
+        ? \Illuminate\Support\Facades\DB::table('client_loan_applications')
+            ->whereIn('status', ['pending_fo_verification', 'pending_scoring', 'pending_fo_review'])
+            ->count()
+        : 0;
+
+    $navbarPendingApprovalsCount = 0;
+    if ($navbarTableExists('personal_loans')) {
+        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('personal_loans')->where('status', 0)->count();
+    }
+    if ($navbarTableExists('group_loans')) {
+        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('group_loans')->where('status', 0)->count();
+    }
+    if ($navbarTableExists('school_loans')) {
+        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('school_loans')->where('status', 0)->count();
+    }
+    if ($navbarTableExists('student_loans')) {
+        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('student_loans')->where('status', 0)->count();
+    }
+    if ($navbarTableExists('staff_loans')) {
+        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('staff_loans')->where('status', 0)->count();
+    }
+
+    $navbarDueTodayCount = $navbarTableExists('loan_schedules')
+        ? \Illuminate\Support\Facades\DB::table('loan_schedules')
+            ->whereDate('payment_date', today())
+            ->where('status', '!=', 1)
+            ->count()
+        : 0;
+
+    $navbarNotificationTotal = $navbarSelfApplicationsCount + $navbarPendingApprovalsCount + $navbarDueTodayCount;
+@endphp
+
 <!-- partial:partials/_navbar.html -->
 <nav class="navbar p-0 fixed-top d-flex flex-row" style="background: #ffffff !important; height: 64px !important; box-shadow: 0 1px 6px rgba(17,24,39,0.08) !important; border-bottom: 1px solid #e5e7eb !important;">
     <!-- Mobile Brand -->
@@ -51,51 +87,63 @@
                      aria-labelledby="createbuttonDropdown"
                      style="border-radius: 10px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; min-width: 250px !important;">
                     <h6 class="p-3 mb-0 fw-bold" style="color: #333; border-bottom: 1px solid #e9ecef;">Quick Actions</h6>
-                    <a class="dropdown-item preview-item d-flex align-items-center" href="#" style="padding: 12px 20px !important; transition: background 0.2s !important;">
-                        <div class="preview-thumbnail me-3">
-                            <div class="preview-icon bg-success rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="mdi mdi-account-plus text-white"></i>
-                            </div>
-                        </div>
-                        <div class="preview-item-content">
-                            <p class="preview-subject mb-0 fw-medium">New Member</p>
-                            <small class="text-muted">Add new member</small>
-                        </div>
-                    </a>
-                    <div class="dropdown-divider m-0"></div>
-                    <a class="dropdown-item preview-item d-flex align-items-center" href="#" style="padding: 12px 20px !important; transition: background 0.2s !important;">
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.loans.active', ['type' => 'personal']) }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
                             <div class="preview-icon bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="mdi mdi-cash text-white"></i>
+                                <i class="mdi mdi-bank text-white"></i>
                             </div>
                         </div>
                         <div class="preview-item-content">
-                            <p class="preview-subject mb-0 fw-medium">New Loan</p>
-                            <small class="text-muted">Process loan application</small>
+                            <p class="preview-subject mb-0 fw-medium">Active Loans</p>
+                            <small class="text-muted">Loan responsibility and follow-up</small>
                         </div>
                     </a>
                     <div class="dropdown-divider m-0"></div>
-                    <a class="dropdown-item preview-item d-flex align-items-center" href="#" style="padding: 12px 20px !important; transition: background 0.2s !important;">
-                        <div class="preview-thumbnail me-3">
-                            <div class="preview-icon bg-warning rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="mdi mdi-credit-card text-white"></i>
-                            </div>
-                        </div>
-                        <div class="preview-item-content">
-                            <p class="preview-subject mb-0 fw-medium">Record Payment</p>
-                            <small class="text-muted">Log payment transaction</small>
-                        </div>
-                    </a>
-                    <div class="dropdown-divider m-0"></div>
-                    <a class="dropdown-item preview-item d-flex align-items-center" href="#" style="padding: 12px 20px !important; transition: background 0.2s !important;">
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.client-applications.index') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
                             <div class="preview-icon bg-info rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="mdi mdi-piggy-bank text-white"></i>
+                                <i class="mdi mdi-file-account text-white"></i>
                             </div>
                         </div>
                         <div class="preview-item-content">
-                            <p class="preview-subject mb-0 fw-medium">New Savings</p>
-                            <small class="text-muted">Record savings deposit</small>
+                            <p class="preview-subject mb-0 fw-medium">Self Applications</p>
+                            <small class="text-muted">FO verification and scoring queue</small>
+                        </div>
+                    </a>
+                    <div class="dropdown-divider m-0"></div>
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.umra.dashboard') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
+                        <div class="preview-thumbnail me-3">
+                            <div class="preview-icon bg-warning rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                <i class="mdi mdi-chart-donut text-white"></i>
+                            </div>
+                        </div>
+                        <div class="preview-item-content">
+                            <p class="preview-subject mb-0 fw-medium">UMRA Reports</p>
+                            <small class="text-muted">Risk and compliance dashboard</small>
+                        </div>
+                    </a>
+                    <div class="dropdown-divider m-0"></div>
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.accounting.journal-entries') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
+                        <div class="preview-thumbnail me-3">
+                            <div class="preview-icon bg-secondary rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                <i class="mdi mdi-book-open-page-variant text-white"></i>
+                            </div>
+                        </div>
+                        <div class="preview-item-content">
+                            <p class="preview-subject mb-0 fw-medium">Ledgers</p>
+                            <small class="text-muted">Journal entries and GL records</small>
+                        </div>
+                    </a>
+                    <div class="dropdown-divider m-0"></div>
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.expenditures.index') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
+                        <div class="preview-thumbnail me-3">
+                            <div class="preview-icon bg-success rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                <i class="mdi mdi-cash-multiple text-white"></i>
+                            </div>
+                        </div>
+                        <div class="preview-item-content">
+                            <p class="preview-subject mb-0 fw-medium">Expenditures</p>
+                            <small class="text-muted">Expenses and payout rollout</small>
                         </div>
                     </a>
                 </div>
@@ -107,9 +155,10 @@
                    href="#"
                    style="width: 40px; 
                           height: 40px; 
-                          background: rgba(255,255,255,0.1); 
+                          background: #f3f4f6;
+                          border: 1px solid #e5e7eb;
                           border-radius: 50%; 
-                          color: white !important;
+                          color: #111827 !important;
                           transition: all 0.3s ease !important;">
                     <i class="mdi mdi-view-grid" style="font-size: 1.25rem;"></i>
                 </a>
@@ -124,9 +173,10 @@
                    aria-expanded="false"
                    style="width: 40px; 
                           height: 40px; 
-                          background: rgba(255,255,255,0.1); 
+                          background: #f3f4f6;
+                          border: 1px solid #e5e7eb;
                           border-radius: 50%; 
-                          color: white !important;
+                          color: #111827 !important;
                           position: relative;
                           transition: all 0.3s ease !important;">
                     <i class="mdi mdi-email" style="font-size: 1.25rem;"></i>
@@ -153,55 +203,65 @@
                    data-bs-toggle="dropdown"
                    style="width: 40px; 
                           height: 40px; 
-                          background: rgba(255,255,255,0.1); 
+                          background: #f3f4f6;
+                          border: 1px solid #e5e7eb;
                           border-radius: 50%; 
-                          color: white !important;
+                          color: #111827 !important;
                           position: relative;
                           transition: all 0.3s ease !important;">
-                    <i class="mdi mdi-bell" style="font-size: 1.25rem;"></i>
-                    <span class="count bg-danger" style="position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%;"></span>
+                    <i class="mdi mdi-bell {{ $navbarNotificationTotal > 0 ? 'text-danger' : '' }}" style="font-size: 1.25rem;"></i>
+                    @if($navbarNotificationTotal > 0)
+                        <span class="navbar-alert-count">{{ $navbarNotificationTotal > 99 ? '99+' : $navbarNotificationTotal }}</span>
+                    @endif
                 </a>
                 <div class="dropdown-menu dropdown-menu-end navbar-dropdown preview-list" 
                      aria-labelledby="notificationDropdown"
                      style="border-radius: 10px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; min-width: 350px !important;">
-                    <h6 class="p-3 mb-0 fw-bold" style="color: #333; border-bottom: 1px solid #e9ecef;">Notifications</h6>
-                    <a class="dropdown-item preview-item d-flex align-items-center" style="padding: 12px 20px !important;">
+                    <h6 class="p-3 mb-0 fw-bold d-flex justify-content-between align-items-center" style="color: #333; border-bottom: 1px solid #e9ecef;">
+                        <span>Notifications</span>
+                        @if($navbarNotificationTotal > 0)
+                            <span class="badge bg-danger">{{ number_format($navbarNotificationTotal) }}</span>
+                        @endif
+                    </h6>
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.client-applications.index') }}" style="padding: 12px 20px !important;">
                         <div class="preview-thumbnail me-3">
-                            <div class="preview-icon bg-warning rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="mdi mdi-alert text-white"></i>
+                            <div class="preview-icon {{ $navbarSelfApplicationsCount > 0 ? 'bg-danger' : 'bg-secondary' }} rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                <i class="mdi mdi-file-account text-white"></i>
                             </div>
                         </div>
                         <div class="preview-item-content flex-grow-1">
-                            <p class="preview-subject mb-1 fw-medium">Overdue Repayments</p>
-                            <p class="text-muted small mb-0">{{ $stats['repayments_due_count'] ?? 0 }} payments overdue</p>
+                            <p class="preview-subject mb-1 fw-medium">Self Applications</p>
+                            <p class="text-muted small mb-0">{{ number_format($navbarSelfApplicationsCount) }} needing FO/scoring attention</p>
                         </div>
                     </a>
                     <div class="dropdown-divider m-0"></div>
-                    <a class="dropdown-item preview-item d-flex align-items-center" style="padding: 12px 20px !important;">
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.loans.approvals') }}" style="padding: 12px 20px !important;">
                         <div class="preview-thumbnail me-3">
-                            <div class="preview-icon bg-info rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                            <div class="preview-icon {{ $navbarPendingApprovalsCount > 0 ? 'bg-danger' : 'bg-secondary' }} rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
                                 <i class="mdi mdi-clock text-white"></i>
                             </div>
                         </div>
                         <div class="preview-item-content flex-grow-1">
                             <p class="preview-subject mb-1 fw-medium">Pending Approvals</p>
-                            <p class="text-muted small mb-0">{{ $stats['pending_approval'] ?? 0 }} loans awaiting approval</p>
+                            <p class="text-muted small mb-0">{{ number_format($navbarPendingApprovalsCount) }} loans awaiting approval</p>
                         </div>
                     </a>
                     <div class="dropdown-divider m-0"></div>
-                    <a class="dropdown-item preview-item d-flex align-items-center" style="padding: 12px 20px !important;">
+                    <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.loans.active', ['type' => 'personal', 'status' => 'due_today']) }}" style="padding: 12px 20px !important;">
                         <div class="preview-thumbnail me-3">
-                            <div class="preview-icon bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="mdi mdi-account-clock text-white"></i>
+                            <div class="preview-icon {{ $navbarDueTodayCount > 0 ? 'bg-danger' : 'bg-secondary' }} rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                <i class="mdi mdi-calendar-today text-white"></i>
                             </div>
                         </div>
                         <div class="preview-item-content flex-grow-1">
-                            <p class="preview-subject mb-1 fw-medium">Pending Members</p>
-                            <p class="text-muted small mb-0">{{ $stats['pending_members'] ?? 0 }} members awaiting activation</p>
+                            <p class="preview-subject mb-1 fw-medium">Clients Due Today</p>
+                            <p class="text-muted small mb-0">{{ number_format($navbarDueTodayCount) }} schedules need repayment follow-up today</p>
                         </div>
                     </a>
-                    <div class="dropdown-divider m-0"></div>
-                    <p class="p-3 mb-0 text-center text-primary fw-medium" style="cursor: pointer;">View all notifications</p>
+                    @if($navbarNotificationTotal === 0)
+                        <div class="dropdown-divider m-0"></div>
+                        <p class="p-3 mb-0 text-center text-muted fw-medium">No items need attention right now</p>
+                    @endif
                 </div>
             </li>
             
@@ -214,10 +274,11 @@
                    data-bs-toggle="dropdown"
                    aria-haspopup="true" 
                    aria-expanded="false" 
-                   style="color: white !important; 
+                   style="color: #111827 !important;
                           cursor: pointer; 
                           padding: 0.5rem 1rem !important;
-                          background: rgba(255,255,255,0.1);
+                          background: #f3f4f6;
+                          border: 1px solid #e5e7eb;
                           border-radius: 25px;
                           transition: all 0.3s ease !important;">
                     <div class="d-flex align-items-center">
@@ -226,7 +287,7 @@
                              class="rounded-circle me-2" 
                              width="32" 
                              height="32"
-                             style="border: 2px solid rgba(255,255,255,0.3);">
+                             style="border: 2px solid #d1d5db;">
                         <span class="d-none d-xl-inline fw-medium">{{ Auth::user()->name ?? 'Super Admin' }}</span>
                         <i class="mdi mdi-chevron-down ms-2"></i>
                     </div>
@@ -236,7 +297,7 @@
                      style="min-width: 250px !important; 
                             border-radius: 10px !important;
                             box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-                            border: none !important;
+                            border: 1px solid #e5e7eb !important;
                             margin-top: 10px !important;">
                     <div class="dropdown-header" style="background: #f8f9fa; padding: 15px 20px; border-radius: 10px 10px 0 0;">
                         <div class="d-flex align-items-center">
@@ -286,7 +347,7 @@
                         <button type="submit" 
                                 class="dropdown-item d-flex align-items-center" 
                                 style="padding: 12px 20px !important; 
-                                       background: none; 
+                                       background: #ffffff;
                                        border: none; 
                                        width: 100%; 
                                        cursor: pointer; 
@@ -311,6 +372,7 @@
 /* Navbar Hover Effects */
 .navbar .nav-link:hover {
     background: #eef6ff !important;
+    color: #111827 !important;
 }
 
 .navbar .create-new-button:hover {
@@ -322,6 +384,57 @@
 /* Dropdown Item Hover */
 .dropdown-item:hover {
     background-color: #f8f9fa !important;
+    color: #111827 !important;
+}
+
+.navbar .dropdown-menu {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+.navbar .dropdown-item,
+.navbar .dropdown-item span,
+.navbar .dropdown-item p,
+.navbar .dropdown-item small {
+    color: #111827 !important;
+}
+
+.navbar .dropdown-item:focus,
+.navbar .dropdown-item:active,
+.navbar .dropdown-item.active {
+    background: #e5e7eb !important;
+    color: #111827 !important;
+}
+
+.navbar form .dropdown-item[type="submit"],
+.navbar form .dropdown-item[type="submit"] span {
+    color: #b91c1c !important;
+}
+
+.navbar form .dropdown-item[type="submit"]:hover,
+.navbar form .dropdown-item[type="submit"]:focus {
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+}
+
+.navbar-alert-count {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #dc2626;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Search Input Placeholder */
@@ -449,6 +562,68 @@
         document.addEventListener('DOMContentLoaded', initDropdown);
     } else {
         initDropdown();
+    }
+})();
+</script>
+
+<script>
+(function() {
+    function closeActionDropdowns(exceptMenu) {
+        document.querySelectorAll('#createbuttonDropdown, #messageDropdown, #notificationDropdown').forEach(function(toggle) {
+            const menu = toggle.parentElement ? toggle.parentElement.querySelector('.dropdown-menu') : null;
+            if (!menu || menu === exceptMenu) {
+                return;
+            }
+
+            menu.classList.remove('show');
+            menu.style.display = 'none';
+            toggle.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function initActionDropdown(toggleId) {
+        const toggle = document.getElementById(toggleId);
+        const menu = toggle && toggle.parentElement ? toggle.parentElement.querySelector('.dropdown-menu') : null;
+
+        if (!toggle || !menu || toggle.dataset.ebimsDropdownReady === '1') {
+            return;
+        }
+
+        toggle.dataset.ebimsDropdownReady = '1';
+        toggle.addEventListener('click', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const willOpen = !menu.classList.contains('show');
+            closeActionDropdowns(menu);
+            menu.classList.toggle('show', willOpen);
+            menu.style.display = willOpen ? 'block' : 'none';
+            toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        });
+    }
+
+    function initNavbarActionDropdowns() {
+        initActionDropdown('createbuttonDropdown');
+        initActionDropdown('messageDropdown');
+        initActionDropdown('notificationDropdown');
+    }
+
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('#createbuttonDropdown, #messageDropdown, #notificationDropdown, .navbar .dropdown-menu')) {
+            closeActionDropdowns();
+        }
+    });
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeActionDropdowns();
+        }
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initNavbarActionDropdowns);
+    } else {
+        initNavbarActionDropdowns();
     }
 })();
 </script>
