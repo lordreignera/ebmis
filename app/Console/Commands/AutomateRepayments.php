@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use App\Models\PersonalLoan;
 use App\Models\LoanSchedule;
 use App\Services\MobileMoneyService;
+use App\Services\RepaymentService;
 
 class AutomateRepayments extends Command
 {
@@ -26,14 +27,16 @@ class AutomateRepayments extends Command
      * Mobile Money Service instance
      */
     protected $mobileMoneyService;
+    protected RepaymentService $repaymentService;
 
     /**
      * Create a new command instance.
      */
-    public function __construct(MobileMoneyService $mobileMoneyService)
+    public function __construct(MobileMoneyService $mobileMoneyService, RepaymentService $repaymentService)
     {
         parent::__construct();
         $this->mobileMoneyService = $mobileMoneyService;
+        $this->repaymentService = $repaymentService;
     }
 
     /**
@@ -200,22 +203,16 @@ class AutomateRepayments extends Command
     {
         $phone = $this->formatPhone($schedule->contact);
 
-        // Calculate dynamic late fee using the extra columns now selected in getDueSchedules()
-        $lateFee = $this->computeLateFeeForSchedule($schedule);
+        $scheduleModel = LoanSchedule::find($schedule->schedule_id);
+        $loanModel = PersonalLoan::with('product')->find($schedule->loan_id);
 
-        // How much has already been paid on this schedule (from confirmed repayments)
-        $alreadyPaid = floatval(
-            DB::table('repayments')
-                ->where('schedule_id', $schedule->schedule_id)
-                ->where('amount', '>', 0)
-                ->where(function ($q) {
-                    $q->where('status', 1)->orWhere('payment_status', 'Completed');
-                })
-                ->sum('amount')
-        );
+        if (!$scheduleModel || !$loanModel) {
+            $this->warn("Schedule or loan not found for schedule {$schedule->schedule_id}");
+            return;
+        }
 
-        $totalDue = $schedule->payment + $lateFee;
-        $amount   = max(0, round($totalDue - $alreadyPaid)); // Round to whole UGX
+        $components = $this->repaymentService->getScheduleOutstandingComponents($scheduleModel, $loanModel);
+        $amount = max(0, round($components['outstanding'])); // Round to whole UGX
 
         if ($amount <= 0) {
             $this->info("  → Schedule #{$schedule->schedule_id} balance is zero. Skipping.");
@@ -227,12 +224,29 @@ class AutomateRepayments extends Command
             'loan_code'    => $schedule->loan_code,
             'member'       => $schedule->fname . ' ' . $schedule->lname,
             'phone'        => $phone,
-            'pi_amount'    => $schedule->payment,
-            'late_fee'     => $lateFee,
-            'already_paid' => $alreadyPaid,
+            'principal'    => $components['principal'],
+            'interest'     => $components['interest'],
+            'late_fee'     => $components['late_fee_net'],
+            'already_paid' => $components['valid_paid'],
             'total_amount' => $amount,
             'type'         => $type,
         ]);
+
+        $pendingExists = DB::table('repayments')
+            ->where('schedule_id', $schedule->schedule_id)
+            ->where('type', 2)
+            ->where('status', 0)
+            ->where(function ($query) {
+                $query->where('payment_status', 'Pending')
+                    ->orWhere('pay_status', 'PENDING');
+            })
+            ->exists();
+
+        if ($pendingExists) {
+            $this->warn("Pending mobile-money repayment already exists for schedule {$schedule->schedule_id}");
+            $this->syncSchedulePendingCount($schedule->schedule_id);
+            return;
+        }
 
         // Check if already initiated today
         $existing = DB::table('auto_payment_requests')
@@ -442,14 +456,18 @@ class AutomateRepayments extends Command
                     'amount' => $amount,
                     'type' => 2, // Mobile Money
                     'status' => '0', // Pending - will be approved by callback
+                    'payment_status' => 'Pending',
                     'txn_id' => $transactionRef,
                     'transaction_reference' => $transactionRef,
                     'pay_status' => 'PENDING',
                     'pay_message' => 'Automatic payment initiated - awaiting confirmation',
                     'payment_phone' => $formattedPhone,
+                    'platform' => 'mobile',
                     'added_by' => 1, // System user
                     'date_created' => Carbon::now()
                 ]);
+
+                $this->syncSchedulePendingCount($paymentRequest->schedule_id);
                 
                 // Also create raw_payments record for tracking (bimsadmin style)
                 DB::table('raw_payments')->insert([
@@ -460,7 +478,7 @@ class AutomateRepayments extends Command
                     'message' => 'Automatic payment initiated',
                     'status' => 'Processed',
                     'pay_status' => '00',
-                    'pay_message' => 'Completed successfully',
+                    'pay_message' => 'Pending customer approval',
                     'date_created' => Carbon::now(),
                     'type' => 'repayment',
                     'direction' => 'cash_in',
@@ -576,6 +594,51 @@ class AutomateRepayments extends Command
             if ($statusResult['success'] && $statusResult['status'] === 'completed') {
                 $this->info("  → ✓ Payment confirmed by gateway!");
                 
+                $repayment->update(['payment_raw' => json_encode($statusResult)]);
+
+                $approvalResult = $this->repaymentService->approveRepayment(
+                    (int) $repayment->id,
+                    'SUCCESS',
+                    $statusResult['message'] ?? 'Payment completed (auto-polling)'
+                );
+
+                if ($approvalResult['success']) {
+                    DB::table('auto_payment_requests')
+                        ->where('id', $requestId)
+                        ->update([
+                            'status' => 'completed',
+                            'completed_at' => Carbon::now()
+                        ]);
+
+                    DB::table('raw_payments')
+                        ->where('trans_id', $transactionRef)
+                        ->update([
+                            'pay_status' => '01',
+                            'pay_message' => $statusResult['message'] ?? 'Payment completed',
+                            'pay_date' => Carbon::now()->format('Y-m-d H:i:s'),
+                        ]);
+
+                    $this->syncSchedulePendingCount($scheduleId);
+                    $this->info("  â†’ âœ“ Repayment approved through RepaymentService.");
+
+                    return true;
+                }
+
+                $repayment->update([
+                    'pay_status' => 'SUCCESS',
+                    'pay_message' => 'Gateway completed, but local approval failed: ' . ($approvalResult['message'] ?? 'Unknown approval error'),
+                ]);
+                $this->syncSchedulePendingCount($scheduleId);
+
+                Log::error("Auto repayment approval failed after gateway completion", [
+                    'transaction_ref' => $transactionRef,
+                    'repayment_id' => $repayment->id,
+                    'message' => $approvalResult['message'] ?? 'Unknown approval error',
+                ]);
+
+                $this->error("  â†’ âœ— Gateway completed, but local approval failed: " . ($approvalResult['message'] ?? 'Unknown approval error'));
+                return false;
+
                 DB::beginTransaction();
                 
                 try {
@@ -658,9 +721,11 @@ class AutomateRepayments extends Command
                 
                 $repayment->update([
                     'status' => 2, // Failed
+                    'payment_status' => 'Failed',
                     'pay_status' => 'FAILED',
                     'pay_message' => $statusResult['message'] ?? 'Payment failed'
                 ]);
+                $this->syncSchedulePendingCount($scheduleId);
                 
                 DB::table('auto_payment_requests')
                     ->where('id', $requestId)
@@ -679,6 +744,23 @@ class AutomateRepayments extends Command
         return false;
     }
     
+    private function syncSchedulePendingCount(int $scheduleId): void
+    {
+        $remainingPending = DB::table('repayments')
+            ->where('schedule_id', $scheduleId)
+            ->where('type', 2)
+            ->where('status', 0)
+            ->where(function ($query) {
+                $query->where('payment_status', 'Pending')
+                    ->orWhere('pay_status', 'PENDING');
+            })
+            ->count();
+
+        DB::table('loan_schedules')
+            ->where('id', $scheduleId)
+            ->update(['pending_count' => $remainingPending]);
+    }
+
     /**
      * Check if all loan schedules are paid and close the loan if complete
      * CRITICAL: Must check TOTAL balance (P+I+Late Fees) not just schedule status

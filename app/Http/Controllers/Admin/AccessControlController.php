@@ -3,16 +3,22 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\School;
 use App\Models\User;
 use App\Support\EbmisPermissionRegistry;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Spatie\Permission\PermissionRegistrar;
 
 class AccessControlController extends Controller
 {
     // Note: Security is handled by 'super_admin' middleware in routes
+    private const GUARD = 'web';
     
     // ===============================================================
     // MAIN DASHBOARD
@@ -45,19 +51,41 @@ class AccessControlController extends Controller
 
     public function storeRole(Request $request)
     {
-        $request->validate([
-            'name' => 'required|unique:roles,name',
-            'permissions' => 'array',
-            'permissions.*' => 'exists:permissions,name',
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('roles', 'name')->where('guard_name', self::GUARD),
+            ],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [
+                'string',
+                Rule::exists('permissions', 'name')->where('guard_name', self::GUARD),
+            ],
         ]);
 
-        $role = Role::create(['name' => $request->name]);
-        
-        if ($request->permissions) {
-            $role->syncPermissions($request->permissions);
-        }
+        try {
+            DB::transaction(function () use ($validated) {
+                $role = Role::create([
+                    'name' => $validated['name'],
+                    'guard_name' => self::GUARD,
+                ]);
 
-        return redirect()->route('admin.roles.index')->with('success', 'Role created successfully!');
+                $role->syncPermissions($this->permissionModels($validated['permissions'] ?? []));
+            });
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.roles.index')->with('success', 'Role created successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control role creation failed', [
+                'name' => $validated['name'] ?? $request->input('name'),
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput()->with('error', 'Role could not be created: ' . $e->getMessage());
+        }
     }
 
     public function editRole(Role $role)
@@ -69,22 +97,47 @@ class AccessControlController extends Controller
 
     public function updateRole(Request $request, Role $role)
     {
-        $request->validate([
-            'name' => 'required|unique:roles,name,' . $role->id,
-            'permissions' => 'array',
-            'permissions.*' => 'exists:permissions,name',
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('roles', 'name')->where('guard_name', self::GUARD)->ignore($role->id),
+            ],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [
+                'string',
+                Rule::exists('permissions', 'name')->where('guard_name', self::GUARD),
+            ],
         ]);
 
-        if ($role->name === 'Super Administrator') {
-            $role->syncPermissions(Permission::all());
+        try {
+            if ($role->name === 'Super Administrator') {
+                $role->syncPermissions(Permission::where('guard_name', self::GUARD)->get());
+                app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-            return redirect()->route('admin.roles.index')->with('success', 'Super Administrator retains all permissions.');
+                return redirect()->route('admin.roles.index')->with('success', 'Super Administrator retains all permissions.');
+            }
+
+            DB::transaction(function () use ($role, $validated) {
+                $role->update([
+                    'name' => $validated['name'],
+                    'guard_name' => self::GUARD,
+                ]);
+                $role->syncPermissions($this->permissionModels($validated['permissions'] ?? []));
+            });
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.roles.index')->with('success', 'Role updated successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control role update failed', [
+                'role_id' => $role->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput()->with('error', 'Role could not be updated: ' . $e->getMessage());
         }
-
-        $role->update(['name' => $request->name]);
-        $role->syncPermissions($request->permissions ?? []);
-
-        return redirect()->route('admin.roles.index')->with('success', 'Role updated successfully!');
     }
 
     public function deleteRole(Role $role)
@@ -93,8 +146,19 @@ class AccessControlController extends Controller
             return back()->with('error', 'Cannot delete Super Administrator role!');
         }
 
-        $role->delete();
-        return redirect()->route('admin.roles.index')->with('success', 'Role deleted successfully!');
+        try {
+            $role->delete();
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.roles.index')->with('success', 'Role deleted successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control role deletion failed', [
+                'role_id' => $role->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Role could not be deleted: ' . $e->getMessage());
+        }
     }
 
     // ===============================================================
@@ -115,13 +179,33 @@ class AccessControlController extends Controller
 
     public function storePermission(Request $request)
     {
-        $request->validate([
-            'name' => 'required|unique:permissions,name',
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
+                Rule::unique('permissions', 'name')->where('guard_name', self::GUARD),
+            ],
         ]);
 
-        Permission::create(['name' => $request->name]);
+        try {
+            Permission::create([
+                'name' => $validated['name'],
+                'guard_name' => self::GUARD,
+            ]);
 
-        return redirect()->route('admin.permissions.index')->with('success', 'Permission created successfully!');
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.permissions.index')->with('success', 'Permission created successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control permission creation failed', [
+                'name' => $validated['name'] ?? $request->input('name'),
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput()->with('error', 'Permission could not be created: ' . $e->getMessage());
+        }
     }
 
     public function deletePermission(Permission $permission)
@@ -130,8 +214,19 @@ class AccessControlController extends Controller
             return back()->with('error', 'This permission protects an EBIMS route and cannot be deleted. Remove it from roles instead.');
         }
 
-        $permission->delete();
-        return redirect()->route('admin.permissions.index')->with('success', 'Permission deleted successfully!');
+        try {
+            $permission->delete();
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.permissions.index')->with('success', 'Permission deleted successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control permission deletion failed', [
+                'permission_id' => $permission->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Permission could not be deleted: ' . $e->getMessage());
+        }
     }
 
     // ===============================================================
@@ -182,12 +277,13 @@ class AccessControlController extends Controller
     {
         $roles = Role::with('permissions')->withCount('permissions')->orderBy('name')->get();
         $branches = \App\Models\Branch::active()->orderBy('name')->get();
-        return view('admin.access-control.users.create', compact('roles', 'branches'));
+        $schools = School::where('status', 'approved')->orderBy('school_name')->get();
+        return view('admin.access-control.users.create', compact('roles', 'branches', 'schools'));
     }
 
     public function storeUser(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
@@ -196,71 +292,121 @@ class AccessControlController extends Controller
             'address' => 'nullable|string',
             'designation' => 'nullable|string|max:100',
             'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
-            'roles' => 'array',
-            'roles.*' => 'exists:roles,name',
+            'school_id' => [
+                'required_if:user_type,school',
+                'nullable',
+                Rule::exists('schools', 'id')->where('status', 'approved'),
+            ],
+            'roles' => 'nullable|array',
+            'roles.*' => [
+                'string',
+                Rule::exists('roles', 'name')->where('guard_name', self::GUARD),
+            ],
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'user_type' => $request->user_type,
-            'phone' => $request->phone,
-            'address' => $request->address,
-            'designation' => $request->designation,
-            'branch_id' => $request->user_type === 'branch' ? $request->branch_id : null,
-            'status' => 'active', // Super admin created users are active by default
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+        try {
+            DB::transaction(function () use ($validated, $request) {
+                $user = User::create([
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'email_verified_at' => now(),
+                    'password' => Hash::make($validated['password']),
+                    'user_type' => $validated['user_type'],
+                    'phone' => $validated['phone'] ?? null,
+                    'address' => $validated['address'] ?? null,
+                    'designation' => $validated['designation'] ?? null,
+                    'branch_id' => $validated['user_type'] === 'branch' ? ($validated['branch_id'] ?? null) : null,
+                    'school_id' => $validated['user_type'] === 'school' ? ($validated['school_id'] ?? null) : null,
+                    'status' => 'active',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                ]);
 
-        if ($request->roles) {
-            $user->assignRole($request->roles);
+                $user->syncRoles($this->roleModels($validated['roles'] ?? []));
+            });
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.users.index')->with('success', 'User created successfully and can log in with the assigned access.');
+        } catch (\Throwable $e) {
+            Log::error('Access control user creation failed', [
+                'email' => $request->input('email'),
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput($request->except(['password', 'password_confirmation']))
+                ->with('error', 'User could not be created: ' . $e->getMessage());
         }
-
-        return redirect()->route('admin.users.index')->with('success', 'User created successfully!');
     }
 
     public function editUser(User $user)
     {
         $roles = Role::with('permissions')->withCount('permissions')->orderBy('name')->get();
         $branches = \App\Models\Branch::active()->orderBy('name')->get();
-        return view('admin.access-control.users.edit', compact('user', 'roles', 'branches'));
+        $schools = School::where('status', 'approved')->orderBy('school_name')->get();
+        return view('admin.access-control.users.edit', compact('user', 'roles', 'branches', 'schools'));
     }
 
     public function updateUser(Request $request, User $user)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
+            'password' => 'nullable|string|min:8|confirmed',
             'user_type' => 'required|in:super_admin,school,branch',
             'phone' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'designation' => 'nullable|string|max:100',
             'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
+            'school_id' => [
+                'required_if:user_type,school',
+                'nullable',
+                Rule::exists('schools', 'id')->where('status', 'approved'),
+            ],
             'status' => 'required|in:pending,active,suspended,rejected',
-            'roles' => 'array',
-            'roles.*' => 'exists:roles,name',
+            'roles' => 'nullable|array',
+            'roles.*' => [
+                'string',
+                Rule::exists('roles', 'name')->where('guard_name', self::GUARD),
+            ],
         ]);
 
-        $user->update([
-            'name' => $request->name,
-            'email' => $request->email,
-            'branch_id' => $request->user_type === 'branch' ? $request->branch_id : null,
-            'user_type' => $request->user_type,
-            'phone' => $request->phone,
-            'address' => $request->address,
-            'designation' => $request->designation,
-            'status' => $request->status,
-        ]);
+        try {
+            DB::transaction(function () use ($user, $validated) {
+                $user->update([
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'branch_id' => $validated['user_type'] === 'branch' ? ($validated['branch_id'] ?? null) : null,
+                    'school_id' => $validated['user_type'] === 'school' ? ($validated['school_id'] ?? null) : null,
+                    'user_type' => $validated['user_type'],
+                    'phone' => $validated['phone'] ?? null,
+                    'address' => $validated['address'] ?? null,
+                    'designation' => $validated['designation'] ?? null,
+                    'status' => $validated['status'],
+                ]);
 
-        if ($request->password) {
-            $user->update(['password' => Hash::make($request->password)]);
+                if (!empty($validated['password'])) {
+                    $user->update([
+                        'password' => Hash::make($validated['password']),
+                        'email_verified_at' => $user->email_verified_at ?: now(),
+                    ]);
+                }
+
+                $user->syncRoles($this->roleModels($validated['roles'] ?? []));
+            });
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.users.index')->with('success', 'User updated successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control user update failed', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput($request->except(['password', 'password_confirmation']))
+                ->with('error', 'User could not be updated: ' . $e->getMessage());
         }
-
-        $user->syncRoles($request->roles ?? []);
-
-        return redirect()->route('admin.users.index')->with('success', 'User updated successfully!');
     }
 
     public function deleteUser(User $user)
@@ -269,8 +415,19 @@ class AccessControlController extends Controller
             return back()->with('error', 'Cannot delete your own account!');
         }
 
-        $user->delete();
-        return redirect()->route('admin.users.index')->with('success', 'User deleted successfully!');
+        try {
+            $user->delete();
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.users.index')->with('success', 'User deleted successfully!');
+        } catch (\Throwable $e) {
+            Log::error('Access control user deletion failed', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'User could not be deleted: ' . $e->getMessage());
+        }
     }
 
     private function groupedPermissions(bool $withRoles = false)
@@ -282,5 +439,27 @@ class AccessControlController extends Controller
         }
 
         return EbmisPermissionRegistry::groupedPermissions($query->get());
+    }
+
+    private function permissionModels(array $permissionNames)
+    {
+        if (empty($permissionNames)) {
+            return collect();
+        }
+
+        return Permission::where('guard_name', self::GUARD)
+            ->whereIn('name', array_values(array_unique($permissionNames)))
+            ->get();
+    }
+
+    private function roleModels(array $roleNames)
+    {
+        if (empty($roleNames)) {
+            return collect();
+        }
+
+        return Role::where('guard_name', self::GUARD)
+            ->whereIn('name', array_values(array_unique($roleNames)))
+            ->get();
     }
 }

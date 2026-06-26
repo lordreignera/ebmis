@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use App\Services\RepaymentService;
 
 class CheckTransactions extends Command
 {
@@ -27,6 +28,13 @@ class CheckTransactions extends Command
 
     protected $processedCount = 0;
     protected $autoApprovedCount = 0;
+    protected RepaymentService $repaymentService;
+
+    public function __construct(RepaymentService $repaymentService)
+    {
+        parent::__construct();
+        $this->repaymentService = $repaymentService;
+    }
 
     /**
      * Execute the console command.
@@ -139,15 +147,13 @@ class CheckTransactions extends Command
                             ->where('id', $repayment->id)
                             ->update([
                                 'status' => 2, // Failed
+                                'payment_status' => 'Failed',
                                 'pay_status' => 'FAILED',
                                 'pay_message' => $statusDesc
                             ]);
                         
-                        // Decrement pending_count on schedule
                         if ($repayment->schedule_id) {
-                            DB::table('loan_schedules')
-                                ->where('id', $repayment->schedule_id)
-                                ->decrement('pending_count');
+                            $this->syncSchedulePendingCount((int) $repayment->schedule_id);
                         }
                         
                         $this->info("  Repayment marked as FAILED");
@@ -180,7 +186,40 @@ class CheckTransactions extends Command
         }
 
         $this->info("  Processing repayment ID {$repayment->id}");
-        $this->autoApprovedCount++;
+
+        if ((int) $repayment->status === 1) {
+            $this->info("  Repayment already approved");
+            $this->markRawPaymentCompleted($transId, $statusDesc ?: 'Payment already approved');
+            if ($repayment->schedule_id) {
+                $this->syncSchedulePendingCount((int) $repayment->schedule_id);
+            }
+            return;
+        }
+
+        $result = $this->repaymentService->approveRepayment(
+            (int) $repayment->id,
+            'SUCCESS',
+            $statusDesc ?: 'Payment confirmed by transaction checker'
+        );
+
+        if ($result['success']) {
+            $this->autoApprovedCount++;
+            $this->info("  Repayment approved through RepaymentService");
+            $this->markRawPaymentCompleted($transId, $statusDesc ?: 'Payment confirmed by transaction checker');
+            if ($repayment->schedule_id) {
+                $this->syncSchedulePendingCount((int) $repayment->schedule_id);
+            }
+            return;
+        }
+
+        Log::error('Transaction checker could not approve completed repayment', [
+            'repayment_id' => $repayment->id,
+            'trans_id' => $transId,
+            'message' => $result['message'] ?? 'Unknown approval error',
+        ]);
+
+        $this->error("  Gateway completed, but local approval failed: " . ($result['message'] ?? 'Unknown approval error'));
+        return;
 
         // Update repayment status to confirmed (1)
         DB::table('repayments')
@@ -264,5 +303,33 @@ class CheckTransactions extends Command
             'userid' => 0,
             'change_vals' => "repayment_id={$repayment->id};loan_id={$repayment->loan_id};amount={$repayment->amount}"
         ]);
+    }
+
+    private function syncSchedulePendingCount(int $scheduleId): void
+    {
+        $remainingPending = DB::table('repayments')
+            ->where('schedule_id', $scheduleId)
+            ->where('type', 2)
+            ->where('status', 0)
+            ->where(function ($query) {
+                $query->where('payment_status', 'Pending')
+                    ->orWhere('pay_status', 'PENDING');
+            })
+            ->count();
+
+        DB::table('loan_schedules')
+            ->where('id', $scheduleId)
+            ->update(['pending_count' => $remainingPending]);
+    }
+
+    private function markRawPaymentCompleted(string $transId, string $message): void
+    {
+        DB::table('raw_payments')
+            ->where('trans_id', $transId)
+            ->update([
+                'pay_status' => '01',
+                'pay_message' => $message,
+                'pay_date' => Carbon::now()->format('Y-m-d H:i:s'),
+            ]);
     }
 }

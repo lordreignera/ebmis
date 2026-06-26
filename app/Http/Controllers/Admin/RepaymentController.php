@@ -2465,21 +2465,10 @@ class RepaymentController extends Controller
             
             // 5. Get total paid directly from repayments table (what client actually paid)
             // ($paidFromRepayments already set above for the freeze check — same value, reuse it)
-            $paidFromLateFees = floatval($lateFeesPaidPerSchedule[$schedule->id] ?? 0);
-            
             // IMPORTANT: Use ONLY actual payments from repayments table
             // Ignore old schedule.paid field which has incorrect carry-over data
             $actualPaymentReceived = $paidFromRepayments;
             $totalPaid = $actualPaymentReceived;
-
-            // For historical/imported data, any amount above P+I proves late fees were actually paid
-            // Ensure display distribution and total payment reflect real money received
-            $principalInterestDue = $schedule->principal + $intrestamtpayable;
-            $lateFeesPaidFromActual = max(0, $actualPaymentReceived - $principalInterestDue);
-            if ($lateFeesPaidFromActual > 0) {
-                $latepayment = max($latepayment, $lateFeesPaidFromActual);
-                $totalWaivedAmount = max(0, $latepaymentOriginal - $latepayment);
-            }
             
             // Automatic carry-over remains disabled
             // $totalPaid += $carryOverPayment;
@@ -2573,7 +2562,6 @@ class RepaymentController extends Controller
             $schedule->penalty_paid = $pafterlatepayment;
             $schedule->paid = $actualPaymentReceived; // What client actually paid from repayments table
             $schedule->principal_balance = $principal;
-            $schedule->pending_count = $pendingCount;
             
             // A schedule is "Paid" only when the TOTAL balance (P+I + late fees) is settled.
             // Exception: for closed loans (status=3), trust the DB schedule status=1.
@@ -2585,11 +2573,15 @@ class RepaymentController extends Controller
                 $act_bal = 0; // Treat balance as settled for closed-loan paid schedules
             }
             $isFullyPaid = $act_bal <= 1;
+            if ($isFullyPaid) {
+                $pendingCount = 0;
+            }
             $schedule->total_balance = $act_bal;
             // Track separately whether P+I has been paid (even if late fees are still outstanding)
             $piDue = $schedule->principal + $intrestamtpayable;
             $schedule->pi_paid = $piDue > 0 && $paidFromRepayments >= $piDue - 1;
             $schedule->status = $isFullyPaid ? 1 : 0;
+            $schedule->pending_count = $pendingCount;
             $schedule->payment_status = $isFullyPaid ? 'paid' : 'pending';
             $schedule->is_overdue = $d > 0 && !$isFullyPaid;
             $schedule->due_date = $schedule->payment_date;
@@ -4553,6 +4545,18 @@ class RepaymentController extends Controller
                 $repayment = Repayment::where('txn_id', $transactionId)->first();
                 
                 if ($repayment && $repayment->status == 0) {
+                    $result = $this->repaymentService->approveRepayment(
+                        $repayment->id,
+                        'SUCCESS',
+                        'Payment confirmed via mobile money'
+                    );
+
+                    return response()->json([
+                        'status' => $result['success'] ? 'SUCCESS' : 'FAILED',
+                        'message' => $result['message'] ?? ($result['success'] ? 'Payment completed successfully' : 'Payment approval failed'),
+                        'receipt_url' => $result['success'] ? route('admin.repayments.receipt', $repayment->id) : null,
+                    ]);
+
                     DB::beginTransaction();
                     try {
                         // Update repayment status
@@ -4596,9 +4600,10 @@ class RepaymentController extends Controller
                                 $overpayment = $schedule->paid - $cbTotalScheduleDue;
 
                                 $schedule->update([
-                                    'paid'         => $schedule->payment,
-                                    'status'       => 1,
-                                    'date_cleared' => now(),
+                                    'paid'          => $schedule->payment,
+                                    'pending_count' => 0,
+                                    'status'        => 1,
+                                    'date_cleared'  => now(),
                                 ]);
 
                                 // Apply only the TRUE excess (above P+I + late fees) to next schedule
@@ -4620,7 +4625,7 @@ class RepaymentController extends Controller
                                         $nextTotalDue = $nextSchedule->payment + $nextLateFees;
                                         
                                         if ($nextSchedule->paid >= $nextTotalDue) {
-                                            $cbNextUpdateData = ['status' => 1];
+                                            $cbNextUpdateData = ['status' => 1, 'pending_count' => 0];
                                             if ($nextLateFees <= 0.01) {
                                                 $cbNextUpdateData['date_cleared'] = now();
                                             }
@@ -4631,16 +4636,18 @@ class RepaymentController extends Controller
                             } elseif ($schedule->paid >= $schedule->payment && $cbLateFees > 0.01) {
                                 // P+I paid but late fees still outstanding
                                 $schedule->update([
-                                    'paid'   => $schedule->payment,
-                                    'status' => 1,
+                                    'paid'          => $schedule->payment,
+                                    'pending_count' => 0,
+                                    'status'        => 1,
                                     // No date_cleared: late fees still unpaid
                                 ]);
                             } elseif ($schedule->paid >= $schedule->payment) {
                                 // P+I paid, no late fees — fully settled
                                 $schedule->update([
-                                    'paid'         => $schedule->payment,
-                                    'status'       => 1,
-                                    'date_cleared' => now(),
+                                    'paid'          => $schedule->payment,
+                                    'pending_count' => 0,
+                                    'status'        => 1,
+                                    'date_cleared'  => now(),
                                 ]);
                             }
                             
@@ -4663,6 +4670,30 @@ class RepaymentController extends Controller
                     'message' => 'Payment completed successfully'
                 ]);
             } elseif (in_array($rawPayment->pay_status, ['02', '03', 'FAILED'])) {
+                $repayment = Repayment::where('txn_id', $transactionId)->first();
+                if ($repayment && $repayment->status == 0) {
+                    $repayment->update([
+                        'status' => 2,
+                        'payment_status' => 'Failed',
+                        'pay_status' => 'FAILED',
+                        'pay_message' => $rawPayment->pay_message ?? 'Payment failed',
+                    ]);
+
+                    $schedule = LoanSchedule::find($repayment->schedule_id);
+                    if ($schedule) {
+                        $remainingPending = Repayment::where('schedule_id', $schedule->id)
+                            ->where('type', 2)
+                            ->where('status', 0)
+                            ->where(function ($q) {
+                                $q->where('payment_status', 'Pending')
+                                  ->orWhere('pay_status', 'PENDING');
+                            })
+                            ->count();
+
+                        $schedule->update(['pending_count' => $remainingPending]);
+                    }
+                }
+
                 return response()->json([
                     'status' => 'FAILED',
                     'message' => $rawPayment->pay_message ?? 'Payment failed'
@@ -4895,6 +4926,11 @@ class RepaymentController extends Controller
             // If already completed, return success
             $firstRepayment = $repayments->first();
             if ($firstRepayment->payment_status === 'Completed' || $firstRepayment->status == 1) {
+                $scheduleIds = $repayments->pluck('schedule_id')->filter()->unique();
+                if ($scheduleIds->isNotEmpty()) {
+                    LoanSchedule::whereIn('id', $scheduleIds)->update(['pending_count' => 0]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'status' => 'completed',
@@ -4934,6 +4970,7 @@ class RepaymentController extends Controller
                 // This ensures schedule updates, late-fee calculation, loan-close check and GL
                 // journal posting are all handled consistently in one place.
                 $lastApproved = null;
+                $approvalErrors = [];
                 foreach ($repayments as $repayment) {
                     $result = $this->repaymentService->approveRepayment(
                         $repayment->id,
@@ -4942,15 +4979,34 @@ class RepaymentController extends Controller
                     );
                     if ($result['success']) {
                         $lastApproved = $repayment;
+                    } else {
+                        $approvalErrors[] = $result['message'] ?? 'Approval failed';
                     }
-                    // Decrement pending_count (approveRepayment doesn't touch it)
+                    // Re-sync pending_count from actual pending mobile money rows.
                     $schedule = LoanSchedule::find($repayment->schedule_id);
-                    if ($schedule && $schedule->pending_count > 0) {
-                        $schedule->decrement('pending_count');
+                    if ($schedule) {
+                        $remainingPending = Repayment::where('schedule_id', $schedule->id)
+                            ->where('type', 2)
+                            ->where('status', 0)
+                            ->where(function ($q) {
+                                $q->where('payment_status', 'Pending')
+                                  ->orWhere('pay_status', 'PENDING');
+                            })
+                            ->count();
+
+                        $schedule->update(['pending_count' => $remainingPending]);
                     }
                 }
 
-                $receiptRepayment = $lastApproved ?? $repayments->first();
+                if (!$lastApproved) {
+                    return response()->json([
+                        'success' => false,
+                        'status' => 'failed',
+                        'message' => 'Gateway payment completed, but local approval failed: ' . implode(' ', array_unique($approvalErrors)),
+                    ]);
+                }
+
+                $receiptRepayment = $lastApproved;
 
                 return response()->json([
                     'success' => true,
@@ -4983,14 +5039,25 @@ class RepaymentController extends Controller
                 // Payment is old enough - mark all as failed
                 foreach ($repayments as $repayment) {
                     $repayment->update([
+                        'status' => 2,
                         'payment_status' => 'Failed',
+                        'pay_status' => 'FAILED',
                         'payment_raw' => json_encode($statusResult)
                     ]);
 
                     // Decrement pending_count on the schedule since payment failed
                     $schedule = LoanSchedule::find($repayment->schedule_id);
-                    if ($schedule && $schedule->pending_count > 0) {
-                        $schedule->decrement('pending_count');
+                    if ($schedule) {
+                        $remainingPending = Repayment::where('schedule_id', $schedule->id)
+                            ->where('type', 2)
+                            ->where('status', 0)
+                            ->where(function ($q) {
+                                $q->where('payment_status', 'Pending')
+                                  ->orWhere('pay_status', 'PENDING');
+                            })
+                            ->count();
+
+                        $schedule->update(['pending_count' => $remainingPending]);
                     }
                 }
 
@@ -5161,16 +5228,27 @@ class RepaymentController extends Controller
     public function getSchedulePendingRepayments($scheduleId)
     {
         try {
+            $schedule = LoanSchedule::find($scheduleId);
+            if (!$schedule || (int) $schedule->status === 1) {
+                if ($schedule && (int) $schedule->pending_count !== 0) {
+                    $schedule->update(['pending_count' => 0]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'pending_repayments' => []
+                ]);
+            }
+
             // Find pending mobile money repayments regardless of which path created them.
             // Old path (storeRepayment):          status=0, pay_status='PENDING'
             // New path (storeMobileMoneyRepayment): payment_status='Pending'
             $pendingRepayments = Repayment::where('schedule_id', $scheduleId)
                 ->where('type', 2) // Mobile Money type
+                ->where('status', 0)
                 ->where(function ($q) {
                     $q->where('payment_status', 'Pending')
-                      ->orWhere(function ($q2) {
-                          $q2->where('status', 0)->where('pay_status', 'PENDING');
-                      });
+                      ->orWhere('pay_status', 'PENDING');
                 })
                 ->orderBy('date_created', 'desc')
                 ->get(['id', 'amount', 'payment_phone', 'transaction_reference', 'txn_id', 'date_created'])
@@ -5181,6 +5259,8 @@ class RepaymentController extends Controller
                     }
                     return $r;
                 });
+
+            $schedule->update(['pending_count' => $pendingRepayments->count()]);
 
             return response()->json([
                 'success' => true,
@@ -5332,14 +5412,18 @@ class RepaymentController extends Controller
             }
 
             if (!$loan) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Loan not found'
                 ], 404);
             }
 
+            $this->loanAccessService->ensureLoanAccess($loan);
+
             // Check if loan is active (status 2 = Disbursed)
             if ($loan->status != 2) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Only active/disbursed loans can be rescheduled'
@@ -5350,6 +5434,7 @@ class RepaymentController extends Controller
             $waiveFees = $request->input('waive_fees') == '1';
 
             if ($waiveFees && !auth()->user()?->isSuperAdmin()) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized. Only the Super Administrator can waive late fees during rescheduling.'

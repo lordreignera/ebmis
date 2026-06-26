@@ -8,6 +8,7 @@ use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
 use App\Services\MobileMoneyService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -244,7 +245,13 @@ class RepaymentService
             }
             
             $loanResult = $this->getLoanForAccounting((int) $schedule->loan_id);
-            $beforePayment = $this->getScheduleOutstandingComponents($schedule, $loanResult);
+            $balanceAsOf = null;
+            if ((int) $repayment->type === 2 && $repayment->date_created) {
+                $balanceAsOf = $repayment->date_created instanceof Carbon
+                    ? $repayment->date_created
+                    : Carbon::parse($repayment->date_created);
+            }
+            $beforePayment = $this->getScheduleOutstandingComponents($schedule, $loanResult, $balanceAsOf);
 
             // Check if schedule is already fully paid by the official balance rule.
             if ($beforePayment['outstanding'] <= 1) {
@@ -278,6 +285,7 @@ class RepaymentService
             // Exact schedule balance has been paid. Close this schedule and freeze late fees.
             $schedule->update([
                 'paid' => $schedule->payment,
+                'pending_count' => 0,
                 'status' => 1,
                 'date_cleared' => now(),
             ]);
@@ -644,7 +652,7 @@ class RepaymentService
      * Official schedule balance rule:
      * principal + interest + net late fees - valid payments.
      */
-    public function getScheduleOutstandingComponents(LoanSchedule $schedule, $loan = null): array
+    public function getScheduleOutstandingComponents(LoanSchedule $schedule, $loan = null, ?Carbon $asOfDate = null): array
     {
         $loan = $loan ?: $this->getLoanForAccounting((int) $schedule->loan_id);
         if ($loan && method_exists($loan, 'loadMissing')) {
@@ -654,7 +662,7 @@ class RepaymentService
         $principal = (float) ($schedule->principal ?? 0);
         $interest = (float) ($schedule->interest ?? 0);
         $lateFeeData = $loan
-            ? $this->calculateLateFee($schedule, $loan)
+            ? $this->calculateLateFee($schedule, $loan, $asOfDate)
             : ['gross' => 0.0, 'net' => 0.0, 'waived' => 0.0, 'days_overdue' => 0, 'periods_overdue' => 0];
         $validPaid = $this->getValidPaidForSchedule((int) $schedule->id);
         $totalDue = $principal + $interest + (float) $lateFeeData['net'];
@@ -768,6 +776,7 @@ class RepaymentService
                 } else if ($scheduleBalance < 1 && $schedule->status != 1) {
                     // Mark schedule as paid
                     $schedule->update([
+                        'pending_count' => 0,
                         'status' => 1,
                         'date_cleared' => now()
                     ]);
@@ -843,12 +852,16 @@ class RepaymentService
      * @param object $loan - loan record with product relationship
      * @return array ['gross' => total, 'net' => after_waivers, 'waived' => amount, 'days_overdue' => days, 'periods_overdue' => periods]
      */
-    public function calculateLateFee($schedule, $loan): array
+    public function calculateLateFee($schedule, $loan, ?Carbon $asOfDate = null): array
     {
         // CRITICAL: Check date_cleared to determine if we freeze or continue multiplying
         if ($schedule->date_cleared) {
             // Balance = 0 at this date → FREEZE late fees at this point
             $now = strtotime($schedule->date_cleared);
+        } elseif ($asOfDate) {
+            // Validate pending mobile money against the balance shown when
+            // the collection request was initiated.
+            $now = $asOfDate->copy()->startOfDay()->timestamp;
         } else {
             // Balance > 0 → late fees continue MULTIPLYING using TODAY
             $now = time();

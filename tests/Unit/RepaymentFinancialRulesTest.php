@@ -14,6 +14,7 @@ use App\Models\PersonalLoan;
 use App\Models\Repayment;
 use App\Models\User;
 use App\Services\RepaymentService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -111,6 +112,47 @@ class RepaymentFinancialRulesTest extends TestCase
         $this->assertFalse($method->invoke($this->service, $schedule, 100000)['valid']);
         $this->assertFalse($method->invoke($this->service, $schedule, 120000)['valid']);
         $this->assertTrue($method->invoke($this->service, $schedule, 110000)['valid']);
+    }
+
+    public function test_mobile_money_approval_uses_balance_at_payment_initiation(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-15 10:00:00'));
+
+        try {
+            $loan = PersonalLoan::factory()->create([
+                'status' => 2,
+                'principal' => 100000,
+            ]);
+            $schedule = $this->createSchedule($loan, [
+                'payment_date' => Carbon::parse('2026-06-07')->format('Y-m-d'),
+            ]);
+
+            $amountAtInitiation = 162800; // P+I 110,000 + 8 daily late-fee periods.
+            $repayment = Repayment::create([
+                'type' => 2,
+                'loan_id' => $loan->id,
+                'schedule_id' => $schedule->id,
+                'amount' => $amountAtInitiation,
+                'date_created' => now(),
+                'added_by' => $this->user->id,
+                'status' => 0,
+                'payment_status' => 'Pending',
+                'pay_status' => 'PENDING',
+                'platform' => 'Web',
+            ]);
+
+            Carbon::setTestNow(Carbon::parse('2026-06-25 10:00:00'));
+
+            $result = $this->service->approveRepayment($repayment->id, '00', 'Payment confirmed later');
+
+            $this->assertTrue($result['success'], $result['message'] ?? '');
+            $this->assertEquals(1, $repayment->fresh()->status);
+            $this->assertEquals('Completed', $repayment->fresh()->payment_status);
+            $this->assertEquals(1, $schedule->fresh()->status);
+            $this->assertEquals(0, $schedule->fresh()->pending_count);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_loan_does_not_close_when_late_fees_are_unpaid(): void

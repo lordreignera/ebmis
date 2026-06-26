@@ -3116,9 +3116,11 @@ class LoanController extends Controller
 
         $this->loanAccessService->ensureLoanAccess($loan);
 
-        // Check if loan is eligible for restructuring
-        if ($loan->status != 2) {
-            return redirect()->back()->with('error', 'Only active/disbursed loans can be restructured.');
+        // Check if loan is eligible for restructuring. Some legacy loans were
+        // marked completed while schedules were still unpaid; allow those to be
+        // restructured based on the actual schedule balance.
+        if (!$this->canRestructureLoan($loan)) {
+            return redirect()->back()->with('error', 'Only active loans with an outstanding schedule balance can be restructured.');
         }
 
         // Calculate loan statistics
@@ -3193,11 +3195,13 @@ class LoanController extends Controller
             $this->loanAccessService->ensureLoanAccess($originalLoan);
 
             // Verify loan can be restructured
-            if ($originalLoan->status != 2) {
-                return redirect()->back()->with('error', 'Only active loans can be restructured.');
+            if (!$this->canRestructureLoan($originalLoan)) {
+                DB::rollBack();
+                return redirect()->back()->with('error', 'Only active loans with an outstanding schedule balance can be restructured.');
             }
 
             if ($originalLoan->restructured == 1) {
+                DB::rollBack();
                 return redirect()->back()->with('error', 'This loan has already been restructured.');
             }
 
@@ -3208,6 +3212,7 @@ class LoanController extends Controller
                 ->first();
 
             if (!$newProduct) {
+                DB::rollBack();
                 return redirect()->back()
                     ->withInput()
                     ->with('error', 'Please select an active daily, weekly, or monthly loan product.');
@@ -3225,6 +3230,7 @@ class LoanController extends Controller
             
             // Ensure minimum principal
             if ($newPrincipal < 1000) {
+                DB::rollBack();
                 return redirect()->back()->with('error', 'Calculated principal is too low. Outstanding balance: ' . number_format($outstandingBalance) . ' UGX');
             }
 
@@ -3340,6 +3346,31 @@ class LoanController extends Controller
      * Base principal is unpaid principal + unpaid interest. Late fees are kept
      * separate so they can be either capitalized or waived without double-counting.
      */
+    private function canRestructureLoan(PersonalLoan $loan): bool
+    {
+        if ((int) ($loan->restructured ?? 0) === 1) {
+            return false;
+        }
+
+        $status = (int) $loan->status;
+        if ($status === 2) {
+            return true;
+        }
+
+        if ($status !== 3) {
+            return false;
+        }
+
+        $loan->loadMissing('schedules');
+
+        return $loan->schedules->contains(function ($schedule) {
+            $scheduled = (float) ($schedule->payment ?? 0);
+            $paid = (float) ($schedule->paid ?? 0);
+
+            return (int) ($schedule->status ?? 0) !== 1 || ($scheduled - $paid) > 0.5;
+        });
+    }
+
     private function calculateRestructureBalance(PersonalLoan $loan): array
     {
         $loan->loadMissing(['product', 'schedules']);

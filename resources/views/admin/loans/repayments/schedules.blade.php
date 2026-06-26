@@ -95,6 +95,27 @@
         padding: 0.2em 0.45em;
     }
 
+    #schedulesTable.schedules-table-compact .badge.bg-success,
+    #schedulesTable.schedules-table-compact tr:hover .badge.bg-success {
+        background: #16a34a !important;
+        border-color: #16a34a !important;
+        color: #ffffff !important;
+    }
+
+    #schedulesTable.schedules-table-compact .btn.btn-primary,
+    #schedulesTable.schedules-table-compact tr:hover .btn.btn-primary,
+    #schedulesTable.schedules-table-compact .btn.btn-primary:hover,
+    #schedulesTable.schedules-table-compact .btn.btn-primary:focus {
+        background: #2563eb !important;
+        border-color: #2563eb !important;
+        color: #ffffff !important;
+    }
+
+    #schedulesTable.schedules-table-compact .btn.btn-primary *,
+    #schedulesTable.schedules-table-compact tr:hover .btn.btn-primary * {
+        color: #ffffff !important;
+    }
+
     #schedulesTable.schedules-table-compact small {
         font-size: 0.62rem;
     }
@@ -1322,6 +1343,7 @@ $(document).ready(function() {
     // Schedule filtering
     $('input[name="scheduleFilter"]').change(function() {
         var filter = $(this).val();
+        sessionStorage.setItem('repaymentScheduleFilter', filter);
         
         $('.schedule-row').hide();
         
@@ -1331,6 +1353,12 @@ $(document).ready(function() {
             $('.schedule-row[data-filter="' + filter + '"]').show();
         }
     });
+
+    var savedScheduleFilter = sessionStorage.getItem('repaymentScheduleFilter') || 'all';
+    var $savedFilter = $('input[name="scheduleFilter"][value="' + savedScheduleFilter + '"]');
+    if ($savedFilter.length) {
+        $savedFilter.prop('checked', true).trigger('change');
+    }
     
     // Handle repayment form submission with mobile money polling
     $('#repaymentForm').on('submit', function(e) {
@@ -2621,6 +2649,8 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
         if (result.isConfirmed) {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Rescheduling...';
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
             
             fetch('{{ route("admin.loans.reschedule", $loan->id) }}', {
                 method: 'POST',
@@ -2628,9 +2658,26 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
                     'Accept': 'application/json'
                 },
-                body: formData
+                body: formData,
+                signal: controller.signal
             })
-            .then(response => response.json())
+            .then(async response => {
+                clearTimeout(timeoutId);
+                const text = await response.text();
+                let data = {};
+
+                try {
+                    data = text ? JSON.parse(text) : {};
+                } catch (error) {
+                    throw new Error(response.ok ? 'Invalid server response' : `Server returned HTTP ${response.status}`);
+                }
+
+                if (!response.ok) {
+                    throw new Error(data.message || `Server returned HTTP ${response.status}`);
+                }
+
+                return data;
+            })
             .then(data => {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalBtnText;
@@ -2655,13 +2702,14 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
                 }
             })
             .catch(error => {
+                clearTimeout(timeoutId);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalBtnText;
                 
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: 'An error occurred while rescheduling: ' + error.message
+                    text: 'An error occurred while rescheduling: ' + (error.name === 'AbortError' ? 'Request timed out after 60 seconds' : error.message)
                 });
             });
         }
@@ -2963,7 +3011,7 @@ $(document).ready(function() {
 (function() {
     // Collect all schedule IDs that still have a pending mobile money payment
     var pendingScheduleIds = @json(
-        $schedules->filter(fn($s) => $s->pending_count > 0)->pluck('id')->values()
+        $schedules->filter(fn($s) => $s->status == 0 && $s->pending_count > 0)->pluck('id')->values()
     );
 
     if (!pendingScheduleIds || pendingScheduleIds.length === 0) return;
@@ -3012,6 +3060,7 @@ $(document).ready(function() {
                                 '</div>' +
                                 '<button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>'
                             );
+                            sessionStorage.setItem('repaymentScheduleFilter', 'all');
                             setTimeout(function() { location.reload(); }, 3000);
 
                             // Insert above the schedules table

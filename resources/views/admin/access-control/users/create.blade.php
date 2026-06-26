@@ -33,6 +33,13 @@
                     <h6 class="mb-0"><i class="fas fa-user me-2"></i>User Information</h6>
                 </div>
                 <div class="card-body">
+                    @if(session('success'))
+                        <div class="alert alert-success">{{ session('success') }}</div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger">{{ session('error') }}</div>
+                    @endif
+
                     <form action="{{ route('admin.users.store') }}" method="POST">
                         @csrf
                         
@@ -131,6 +138,22 @@
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
+                            <div class="col-md-6 mb-3" id="school_field" style="display: none;">
+                                <label for="school_id" class="form-label">Approved School *</label>
+                                <select class="form-control @error('school_id') is-invalid @enderror"
+                                        id="school_id" name="school_id">
+                                    <option value="">Select Approved School</option>
+                                    @foreach($schools as $school)
+                                        <option value="{{ $school->id }}" {{ old('school_id') == $school->id ? 'selected' : '' }}>
+                                            {{ $school->school_name ?? $school->name ?? ('School #' . $school->id) }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('school_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                                <small class="text-muted">School users can log in only when linked to an approved school.</small>
+                            </div>
                         </div>
 
                         <!-- Role Assignment -->
@@ -226,6 +249,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const userType = document.getElementById('user_type');
     const branchField = document.getElementById('branch_field');
     const branchSelect = document.getElementById('branch_id');
+    const schoolField = document.getElementById('school_field');
+    const schoolSelect = document.getElementById('school_id');
 
     function validatePassword() {
         if (password.value != confirmPassword.value) {
@@ -240,10 +265,22 @@ document.addEventListener('DOMContentLoaded', function() {
         if (userType.value === 'branch') {
             branchField.style.display = 'block';
             branchSelect.required = true;
+            schoolField.style.display = 'none';
+            schoolSelect.required = false;
+            schoolSelect.value = '';
+        } else if (userType.value === 'school') {
+            branchField.style.display = 'none';
+            branchSelect.required = false;
+            branchSelect.value = '';
+            schoolField.style.display = 'block';
+            schoolSelect.required = true;
         } else {
             branchField.style.display = 'none';
             branchSelect.required = false;
             branchSelect.value = '';
+            schoolField.style.display = 'none';
+            schoolSelect.required = false;
+            schoolSelect.value = '';
         }
     }
 

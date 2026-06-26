@@ -2013,6 +2013,7 @@ $('#rescheduleForm').on('submit', function(e) {
             $.ajax({
                 url: '/admin/loans/' + loanId + '/reschedule',
                 method: 'POST',
+                timeout: 60000,
                 data: {
                     days: days,
                     reason: reason,
@@ -2031,7 +2032,9 @@ $('#rescheduleForm').on('submit', function(e) {
                     });
                 },
                 error: function(xhr) {
-                    var message = xhr.responseJSON?.message || 'Failed to reschedule loan payments';
+                    var message = xhr.statusText === 'timeout'
+                        ? 'The reschedule request timed out after 60 seconds. Please refresh and check whether the schedules were updated before trying again.'
+                        : (xhr.responseJSON?.message || 'Failed to reschedule loan payments');
                     Swal.fire('Error!', message, 'error');
                 }
             });
