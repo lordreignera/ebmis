@@ -62,7 +62,7 @@
     <!-- Users Table -->
     <div class="row">
         <div class="col-12">
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm users-directory">
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
@@ -241,6 +241,46 @@
 .table-hover tbody tr:hover th {
     background-color: #f8f9fa !important;
     color: #000000 !important;
+}
+
+.users-directory .badge,
+.users-directory .badge:hover,
+.users-directory .badge:focus {
+    opacity: 1 !important;
+}
+
+.users-directory .badge.bg-secondary {
+    background-color: #111827 !important;
+    color: #ffffff !important;
+}
+
+.users-directory .badge.bg-success {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #bbf7d0;
+}
+
+.users-directory .badge.bg-warning {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+    border: 1px solid #fde68a;
+}
+
+.users-directory .badge.bg-danger {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fecaca;
+}
+
+.users-directory .badge.bg-info {
+    background-color: #e0f2fe !important;
+    color: #075985 !important;
+    border: 1px solid #bae6fd;
+}
+
+.users-directory .table-hover tbody tr:hover .badge.bg-secondary,
+.users-directory .table-hover tbody tr:hover .badge.bg-secondary * {
+    color: #ffffff !important;
 }
 </style>
 @endpush

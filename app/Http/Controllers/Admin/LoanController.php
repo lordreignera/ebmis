@@ -3308,7 +3308,7 @@ class LoanController extends Controller
 
             DB::commit();
 
-            return redirect()->route('admin.loans.active')
+            return redirect()->to(route('admin.loans.active', [], false))
                 ->with('success', 'Loan restructured successfully! New loan code: ' . $restructuredLoan->code . 
                        '. Outstanding balance: ' . number_format($outstandingBalance) . ' UGX' .
                        ((isset($validated['include_late_fees']) && $validated['include_late_fees']) ? ' + Late Fees: ' . number_format($totalLateFees) . ' UGX' : ' (Late fees waived)') .

@@ -110,7 +110,7 @@
                                                                 name="permissions[]" 
                                                                 value="{{ $permission->name }}" 
                                                                 id="permission_{{ $permission->id }}"
-                                                                {{ $role->hasPermissionTo($permission->name) ? 'checked' : '' }}
+                                                                {{ $role->permissions->contains('name', $permission->name) ? 'checked' : '' }}
                                                             >
                                                             <label class="form-check-label" for="permission_{{ $permission->id }}">
                                                                 {{ $permission->display_name }}
@@ -161,7 +161,7 @@
 
                     <div class="mb-3">
                         <small class="text-muted">Users with this Role</small>
-                        <p class="mb-0 fw-bold">{{ $role->users()->count() }}</p>
+                        <p class="mb-0 fw-bold">{{ $role->users_count }}</p>
                     </div>
 
                     <div class="mb-3">

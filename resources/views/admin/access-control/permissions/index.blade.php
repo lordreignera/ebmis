@@ -55,8 +55,8 @@
         </div>
     </div>
 
-    <!-- Permissions by Category -->
-    @if($permissions->isEmpty())
+    <!-- Permissions Directory -->
+    @if($flatPermissions->isEmpty())
         <div class="row">
             <div class="col-12">
                 <div class="card border-0 shadow-sm">
@@ -72,16 +72,15 @@
             </div>
         </div>
     @else
-        @foreach($permissions as $category => $categoryPermissions)
         <div class="row mb-4">
             <div class="col-12">
-                <div class="card border-0 shadow-sm">
+                <div class="card border-0 shadow-sm permissions-directory">
                     <div class="card-header bg-gradient-primary text-white">
                         <div class="d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">
-                                <i class="mdi mdi-folder-key me-2"></i>{{ $category }}
+                                <i class="mdi mdi-folder-key me-2"></i>All Permissions
                             </h5>
-                            <span class="badge bg-light text-dark">{{ $categoryPermissions->count() }} permissions</span>
+                            <span class="badge bg-light text-dark">{{ $flatPermissions->count() }} permissions</span>
                         </div>
                     </div>
                     <div class="card-body">
@@ -90,6 +89,7 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width: 50px;">#</th>
+                                        <th>Category</th>
                                         <th>Permission Name</th>
                                         <th>Display Name</th>
                                         <th>Enforcement</th>
@@ -99,9 +99,12 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach($categoryPermissions as $index => $permission)
+                                    @foreach($flatPermissions as $index => $permission)
                                     <tr>
                                         <td class="text-muted">{{ $index + 1 }}</td>
+                                        <td>
+                                            <span class="badge category-badge">{{ $permission->access_group }}</span>
+                                        </td>
                                         <td>
                                             <code class="text-primary">{{ $permission->name }}</code>
                                         </td>
@@ -113,9 +116,9 @@
                                         </td>
                                         <td>
                                             @if($permission->is_route_controlled)
-                                                <span class="badge bg-success">Route controlled</span>
+                                                <span class="badge status-badge route-controlled">Route controlled</span>
                                             @else
-                                                <span class="badge bg-secondary">Assignable</span>
+                                                <span class="badge status-badge assignable">Assignable</span>
                                             @endif
                                         </td>
                                         <td>
@@ -123,9 +126,9 @@
                                                 $rolesCount = $permission->roles->count();
                                             @endphp
                                             @if($rolesCount > 0)
-                                                <span class="badge bg-info">{{ $rolesCount }} {{ Str::plural('role', $rolesCount) }}</span>
+                                                <span class="badge roles-count-badge">{{ $rolesCount }} {{ Str::plural('role', $rolesCount) }}</span>
                                                 <button 
-                                                    class="btn btn-sm btn-link p-0 ms-1" 
+                                                    class="btn btn-sm btn-link roles-toggle p-0 ms-1"
                                                     type="button"
                                                     data-bs-toggle="collapse" 
                                                     data-bs-target="#roles-{{ $permission->id }}" 
@@ -158,12 +161,12 @@
                                     </tr>
                                     @if($rolesCount > 0)
                                     <tr class="collapse" id="roles-{{ $permission->id }}">
-                                        <td colspan="7" class="bg-light">
-                                            <div class="p-2">
-                                                <small class="text-muted fw-bold">Roles with this permission:</small>
+                                        <td colspan="8" class="roles-collapse-cell">
+                                            <div class="roles-collapse-panel p-2">
+                                                <small class="fw-bold">Roles with this permission:</small>
                                                 <div class="mt-2">
                                                     @foreach($permission->roles as $role)
-                                                        <a href="{{ route('admin.roles.edit', $role->id) }}" class="badge bg-primary me-1 text-decoration-none">
+                                                        <a href="{{ route('admin.roles.edit', $role->id) }}" class="badge role-link-badge me-1 text-decoration-none">
                                                             {{ $role->name }}
                                                         </a>
                                                     @endforeach
@@ -180,11 +183,10 @@
                 </div>
             </div>
         </div>
-        @endforeach
     @endif
 
     <!-- Statistics -->
-    @if(!$permissions->isEmpty())
+    @if(!$flatPermissions->isEmpty())
     <div class="row">
         <div class="col-lg-3 col-md-6 mb-4">
             <div class="card border-0 shadow-sm">
@@ -197,7 +199,7 @@
                         </div>
                         <div class="flex-grow-1 ms-3">
                             <h6 class="text-muted mb-1">Total Permissions</h6>
-                            <h4 class="mb-0">{{ $permissions->flatten()->count() }}</h4>
+                            <h4 class="mb-0">{{ $flatPermissions->count() }}</h4>
                         </div>
                     </div>
                 </div>
@@ -233,7 +235,7 @@
                         </div>
                         <div class="flex-grow-1 ms-3">
                             <h6 class="text-muted mb-1">In Use</h6>
-                            <h4 class="mb-0">{{ $permissions->flatten()->filter(fn($p) => $p->roles()->count() > 0)->count() }}</h4>
+                            <h4 class="mb-0">{{ $flatPermissions->filter(fn($p) => $p->roles->count() > 0)->count() }}</h4>
                         </div>
                     </div>
                 </div>
@@ -251,7 +253,7 @@
                         </div>
                         <div class="flex-grow-1 ms-3">
                             <h6 class="text-muted mb-1">Unused</h6>
-                            <h4 class="mb-0">{{ $permissions->flatten()->filter(fn($p) => $p->roles()->count() == 0)->count() }}</h4>
+                            <h4 class="mb-0">{{ $flatPermissions->filter(fn($p) => $p->roles->count() == 0)->count() }}</h4>
                         </div>
                     </div>
                 </div>
@@ -328,6 +330,72 @@ code {
 .fw-medium {
     color: #000000 !important;
 }
+
+.permissions-directory .badge,
+.permissions-directory .badge:hover,
+.permissions-directory .badge:focus {
+    color: inherit;
+    opacity: 1 !important;
+}
+
+.permissions-directory .category-badge {
+    background-color: #eef2ff !important;
+    color: #1e3a8a !important;
+    border: 1px solid #c7d2fe;
+}
+
+.permissions-directory .roles-count-badge {
+    background-color: #e0f2fe !important;
+    color: #075985 !important;
+    border: 1px solid #bae6fd;
+}
+
+.permissions-directory .status-badge.route-controlled {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #bbf7d0;
+}
+
+.permissions-directory .status-badge.assignable {
+    background-color: #f1f5f9 !important;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1;
+}
+
+.permissions-directory .role-link-badge {
+    background-color: #111827 !important;
+    color: #ffffff !important;
+    border: 1px solid #111827;
+}
+
+.permissions-directory .role-link-badge:hover,
+.permissions-directory .role-link-badge:focus {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+
+.permissions-directory .roles-toggle,
+.permissions-directory .roles-toggle:hover,
+.permissions-directory .roles-toggle:focus {
+    color: #1d4ed8 !important;
+    text-decoration: none;
+}
+
+.permissions-directory .roles-collapse-cell {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+.permissions-directory .roles-collapse-panel,
+.permissions-directory .roles-collapse-panel small {
+    color: #0f172a !important;
+}
+
+.permissions-directory.table-hover tbody tr:hover > *,
+.permissions-directory .table-hover tbody tr:hover > * {
+    background-color: #f8fafc !important;
+    color: #000000 !important;
+}
 </style>
 @endpush
 
@@ -353,6 +421,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (permissionName.includes(searchTerm) || displayName.includes(searchTerm)) {
                     row.style.display = '';
+                    const collapseRow = row.nextElementSibling;
+                    if (collapseRow && collapseRow.classList.contains('collapse')) {
+                        collapseRow.style.display = '';
+                    }
                     visibleCount++;
                 } else {
                     row.style.display = 'none';

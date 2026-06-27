@@ -21,7 +21,7 @@ class SuperAdminSeeder extends Seeder
         }
 
         // Create Super Administrator role (matching middleware check)
-        $role = Role::firstOrCreate(['name' => 'Super Administrator']);
+        $role = Role::findOrCreate('Super Administrator', 'web');
 
         // Create all permissions if not exist
         $permissions = [
@@ -37,7 +37,7 @@ class SuperAdminSeeder extends Seeder
             // Add more as needed
         ];
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission]);
+            Permission::findOrCreate($permission, 'web');
         }
         
         // Only sync permissions if role doesn't have any yet (avoid duplicates)
@@ -83,7 +83,7 @@ class SuperAdminSeeder extends Seeder
         }
         
         // Also create backward compatible 'superadmin' role
-        $legacyRole = Role::firstOrCreate(['name' => 'superadmin']);
+        $legacyRole = Role::findOrCreate('superadmin', 'web');
         
         // Only sync permissions if role doesn't have any yet (avoid duplicates)
         if ($legacyRole->permissions->count() === 0) {

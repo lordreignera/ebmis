@@ -172,7 +172,7 @@ class MigrateOldData extends Command
         $roleName = $roleMapping[$userType] ?? 'staff';
         
         // Create role if it doesn't exist
-        $role = Role::firstOrCreate(['name' => $roleName]);
+        $role = Role::findOrCreate($roleName, 'web');
         
         // Assign role to user
         if (!$user->hasRole($roleName)) {

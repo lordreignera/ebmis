@@ -28,28 +28,32 @@ class RolesSeeder extends Seeder
         // ===============================================================
         // 1. SUPER ADMINISTRATOR ROLE
         // ===============================================================
-        $superAdmin = Role::firstOrCreate(['name' => 'Super Administrator']);
+        $superAdmin = Role::findOrCreate('Super Administrator', 'web');
         
         // Super Admin gets ALL permissions
-        $superAdmin->syncPermissions(Permission::all());
-        Role::where('name', 'superadmin')->get()->each(function (Role $role) {
-            $role->syncPermissions(Permission::all());
+        $webPermissions = Permission::where('guard_name', 'web')->get();
+        $superAdmin->syncPermissions($webPermissions);
+        Role::where('name', 'superadmin')->where('guard_name', 'web')->get()->each(function (Role $role) use ($webPermissions) {
+            $role->syncPermissions($webPermissions);
         });
 
         // ===============================================================
         // 2. SCHOOL ADMINISTRATOR ROLE
         // ===============================================================
-        $schoolAdmin = Role::firstOrCreate(['name' => 'School Administrator']);
+        $schoolAdmin = Role::findOrCreate('School Administrator', 'web');
         
         if ($schoolAdmin->permissions->count() === 0) {
-            $schoolPermissions = Permission::where('name', 'like', '%school%')
-                ->orWhere('name', 'like', '%student%')
-                ->orWhere('name', 'like', '%teacher%')
-                ->orWhere('name', 'like', '%fee%')
-                ->orWhere('name', 'like', '%class%')
-                ->orWhere('name', 'like', '%subject%')
-                ->orWhere('name', 'like', '%attendance%')
-                ->orWhere('name', 'like', '%marks%')
+            $schoolPermissions = Permission::where('guard_name', 'web')
+                ->where(function ($query) {
+                    $query->where('name', 'like', '%school%')
+                        ->orWhere('name', 'like', '%student%')
+                        ->orWhere('name', 'like', '%teacher%')
+                        ->orWhere('name', 'like', '%fee%')
+                        ->orWhere('name', 'like', '%class%')
+                        ->orWhere('name', 'like', '%subject%')
+                        ->orWhere('name', 'like', '%attendance%')
+                        ->orWhere('name', 'like', '%marks%');
+                })
                 ->get();
             $schoolAdmin->givePermissionTo($schoolPermissions);
         }
@@ -57,7 +61,7 @@ class RolesSeeder extends Seeder
         // ===============================================================
         // 3. BRANCH MANAGER ROLE
         // ===============================================================
-        $branchManager = Role::firstOrCreate(['name' => 'Branch Manager']);
+        $branchManager = Role::findOrCreate('Branch Manager', 'web');
         
         if ($branchManager->wasRecentlyCreated || $branchManager->permissions->count() === 0) {
             $branchManager->syncPermissions(config('ebmis_permissions.default_roles.Branch Manager', []));
@@ -66,17 +70,17 @@ class RolesSeeder extends Seeder
         // ===============================================================
         // 4. Other Roles (Basic setup)
         // ===============================================================
-        Role::firstOrCreate(['name' => 'School Teacher']);
-        Role::firstOrCreate(['name' => 'School Accountant']);
-        Role::firstOrCreate(['name' => 'Regional HR']);
+        Role::findOrCreate('School Teacher', 'web');
+        Role::findOrCreate('School Accountant', 'web');
+        Role::findOrCreate('Regional HR', 'web');
         foreach (['Loan Officer', 'Field Officer'] as $roleName) {
-            $role = Role::firstOrCreate(['name' => $roleName]);
+            $role = Role::findOrCreate($roleName, 'web');
 
             if ($role->wasRecentlyCreated || $role->permissions->count() === 0) {
                 $role->syncPermissions(config("ebmis_permissions.default_roles.{$roleName}", []));
             }
         }
-        Role::firstOrCreate(['name' => 'Cashier']);
+        Role::findOrCreate('Cashier', 'web');
 
         // ===============================================================
         // 5. UPDATE EXISTING SUPER ADMIN USER (IF EXISTS)

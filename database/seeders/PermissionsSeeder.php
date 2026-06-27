@@ -80,7 +80,7 @@ class PermissionsSeeder extends Seeder
 
         // Create permissions only if they don't exist
         foreach ($allPermissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission]);
+            Permission::findOrCreate($permission, 'web');
         }
 
         $this->command->info('✅ All permissions created successfully!');

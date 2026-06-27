@@ -35,10 +35,17 @@ class AccessControlController extends Controller
     
     public function roles()
     {
-        $roles = Role::with('permissions')->get()->map(function($role) {
-            $role->users_count = $role->users()->count();
-            return $role;
-        });
+        $assignmentCounts = $this->roleAssignmentCounts();
+
+        $roles = Role::with('permissions')
+            ->where('guard_name', self::GUARD)
+            ->orderBy('name')
+            ->get()
+            ->map(function($role) use ($assignmentCounts) {
+                $role->users_count = (int) ($assignmentCounts[$role->getKey()] ?? 0);
+                return $role;
+            });
+
         return view('admin.access-control.roles.index', compact('roles'));
     }
 
@@ -91,6 +98,8 @@ class AccessControlController extends Controller
     public function editRole(Role $role)
     {
         $permissions = $this->groupedPermissions();
+        $role->load('permissions');
+        $role->users_count = $this->roleAssignmentCount($role);
         
         return view('admin.access-control.roles.edit', compact('role', 'permissions'));
     }
@@ -168,8 +177,9 @@ class AccessControlController extends Controller
     public function permissions()
     {
         $permissions = $this->groupedPermissions(withRoles: true);
+        $flatPermissions = $permissions->flatten(1)->values();
         
-        return view('admin.access-control.permissions.index', compact('permissions'));
+        return view('admin.access-control.permissions.index', compact('permissions', 'flatPermissions'));
     }
 
     public function createPermission()
@@ -275,7 +285,11 @@ class AccessControlController extends Controller
 
     public function createUser()
     {
-        $roles = Role::with('permissions')->withCount('permissions')->orderBy('name')->get();
+        $roles = Role::with('permissions')
+            ->withCount('permissions')
+            ->where('guard_name', self::GUARD)
+            ->orderBy('name')
+            ->get();
         $branches = \App\Models\Branch::active()->orderBy('name')->get();
         $schools = School::where('status', 'approved')->orderBy('school_name')->get();
         return view('admin.access-control.users.create', compact('roles', 'branches', 'schools'));
@@ -341,7 +355,11 @@ class AccessControlController extends Controller
 
     public function editUser(User $user)
     {
-        $roles = Role::with('permissions')->withCount('permissions')->orderBy('name')->get();
+        $roles = Role::with('permissions')
+            ->withCount('permissions')
+            ->where('guard_name', self::GUARD)
+            ->orderBy('name')
+            ->get();
         $branches = \App\Models\Branch::active()->orderBy('name')->get();
         $schools = School::where('status', 'approved')->orderBy('school_name')->get();
         return view('admin.access-control.users.edit', compact('user', 'roles', 'branches', 'schools'));
@@ -432,10 +450,10 @@ class AccessControlController extends Controller
 
     private function groupedPermissions(bool $withRoles = false)
     {
-        $query = Permission::query();
+        $query = Permission::where('guard_name', self::GUARD);
 
         if ($withRoles) {
-            $query->with('roles');
+            $query->with(['roles' => fn ($roles) => $roles->where('guard_name', self::GUARD)->orderBy('name')]);
         }
 
         return EbmisPermissionRegistry::groupedPermissions($query->get());
@@ -461,5 +479,26 @@ class AccessControlController extends Controller
         return Role::where('guard_name', self::GUARD)
             ->whereIn('name', array_values(array_unique($roleNames)))
             ->get();
+    }
+
+    private function roleAssignmentCounts()
+    {
+        $table = config('permission.table_names.model_has_roles', 'model_has_roles');
+        $pivotRole = config('permission.column_names.role_pivot_key') ?: 'role_id';
+
+        return DB::table($table)
+            ->select($pivotRole, DB::raw('COUNT(*) as aggregate'))
+            ->groupBy($pivotRole)
+            ->pluck('aggregate', $pivotRole);
+    }
+
+    private function roleAssignmentCount(Role $role): int
+    {
+        $table = config('permission.table_names.model_has_roles', 'model_has_roles');
+        $pivotRole = config('permission.column_names.role_pivot_key') ?: 'role_id';
+
+        return (int) DB::table($table)
+            ->where($pivotRole, $role->getKey())
+            ->count();
     }
 }
