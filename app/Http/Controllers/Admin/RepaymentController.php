@@ -1315,10 +1315,20 @@ class RepaymentController extends Controller
      */
     public function activeLoans(Request $request)
     {
-        if ($request->get('type') === 'personal') {
-            return $this->activePersonalLoansOptimized($request);
+        // Always use DB-paginated optimised paths to prevent 503 timeouts on large datasets.
+        // The legacy combined (personal + group) path loaded every loan into PHP memory,
+        // causing execution-time / memory exhaustion when the portfolio grows.
+        if ($request->get('type') === 'group') {
+            return $this->activeGroupLoansOptimized($request);
         }
 
+        // Default (no ?type) and ?type=personal both use the optimised personal path.
+        return $this->activePersonalLoansOptimized($request);
+    }
+
+    /** @deprecated  kept only as a reference – no longer called */
+    private function _legacyActiveLoans_unused(Request $request)
+    {
         // Get active loans from both personal and group loans tables
         // Include status 2 (Disbursed) AND status 3 (marked as closed but may have unpaid schedules)
         // We'll filter out truly closed loans later using getActualStatus()
@@ -1637,6 +1647,98 @@ class RepaymentController extends Controller
     }
 
     /**
+     * Optimised paginated path for group active loans.
+     * Mirrors activePersonalLoansOptimized but uses GroupLoan / group_loan_schedules / group_repayments.
+     */
+    protected function activeGroupLoansOptimized(Request $request)
+    {
+        $perPage = (int) $request->get('per_page', 20);
+        $perPage = in_array($perPage, [10, 20, 25, 50, 100], true) ? $perPage : 20;
+
+        $baseQuery = $this->loanAccessService->scopeActiveLoanQuery(GroupLoan::query())
+            ->whereIn('status', [2, 3])
+            ->whereHas('schedules', function ($query) {
+                $query->where('status', '!=', 1);
+            });
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $baseQuery->where(function ($query) use ($search) {
+                $query->where('code', 'like', "%{$search}%")
+                    ->orWhereHas('group', function ($groupQuery) use ($search) {
+                        $groupQuery->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('branch')) {
+            $baseQuery->where('branch_id', $request->get('branch'));
+        }
+
+        if ($request->filled('product')) {
+            $baseQuery->where('product_type', $request->get('product'));
+        }
+
+        $loans = (clone $baseQuery)
+            ->with([
+                'group:id,name',
+                'branch:id,name',
+                'product:id,name,period_type',
+                'assignedTo:id,name,branch_id,designation',
+                'schedules' => function ($query) {
+                    $query->where('status', '!=', 1)
+                        ->select('id', 'loan_id', 'payment_date', 'principal', 'interest', 'payment', 'status')
+                        ->orderBy('payment_date');
+                },
+                'disbursements' => function ($query) {
+                    $query->where('status', 2)->orderBy('created_at', 'desc');
+                },
+            ])
+            ->orderBy('datecreated', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $pageLoans = $loans->getCollection();
+        $scheduleIds = $pageLoans->flatMap(fn ($loan) => $loan->schedules->pluck('id'))->all();
+        $paidBySchedule  = $this->getConfirmedSchedulePayments($scheduleIds, 'group_repayments');
+        $waivedBySchedule = $this->getWaivedLateFeesBySchedule($scheduleIds);
+
+        $pageLoans = $pageLoans->map(function ($loan) use ($paidBySchedule, $waivedBySchedule) {
+            // Pass paid amounts as groupPaidBySchedule so decorateActiveLoan selects them correctly.
+            return $this->decorateActiveLoan($loan, [], $paidBySchedule, [], $waivedBySchedule);
+        })->filter(function ($loan) {
+            return ((float) ($loan->outstanding_balance ?? 0) != 0.0) || (int) ($loan->status ?? 0) === 2;
+        })->values();
+
+        $this->attachLoanFollowUps($pageLoans);
+        $this->attachLoanCollateralStatus($pageLoans);
+
+        if ($request->filled('status')) {
+            $statusFilter = $request->get('status');
+            $pageLoans = $pageLoans->filter(function ($loan) use ($statusFilter) {
+                return match ($statusFilter) {
+                    'current'           => (int) ($loan->risk_dpd ?? 0) === 0,
+                    'overdue'           => (int) ($loan->risk_dpd ?? 0) > 0,
+                    'restructured'      => (int) ($loan->restructured ?? 0) === 1,
+                    'risk_followup'     => (bool) ($loan->requires_follow_up ?? false),
+                    'missing_followup'  => (bool) ($loan->requires_follow_up ?? false) && !(bool) ($loan->has_follow_up ?? false),
+                    'missing_collateral'=> !(bool) ($loan->has_collateral ?? false),
+                    default             => true,
+                };
+            })->values();
+        }
+
+        $loans->setCollection($pageLoans);
+
+        $stats = $this->getFastActiveGroupLoanStats($request);
+
+        return view('admin.loans.active', array_merge(
+            compact('loans', 'stats'),
+            $this->activeLoanViewOptions($request)
+        ));
+    }
+
+    /**
      * Fast path for the personal active-loans page: paginate before per-loan
      * schedule/risk calculations so production does not process the whole book.
      */
@@ -1873,11 +1975,77 @@ class RepaymentController extends Controller
             ->toArray();
     }
 
+    /**
+     * Empty KPI payload used when the heavy aggregation is slow or fails, so the
+     * active-loans page still renders instead of returning a gateway 503.
+     */
+    protected function defaultActiveLoanStats(): array
+    {
+        return [
+            'total_active' => 0,
+            'outstanding_amount' => 0,
+            'outstanding_principal' => 0,
+            'outstanding_interest' => 0,
+            'outstanding_late_fees' => 0,
+            'overdue_count' => 0,
+            'risk_followup_count' => 0,
+            'followed_up_count' => 0,
+            'missing_followup_count' => 0,
+            'followup_due_count' => 0,
+            'missing_collateral_count' => 0,
+            'collections_today' => 0,
+        ];
+    }
+
+    /**
+     * Bound the active-loans KPI aggregation at the database level so a slow
+     * portfolio-wide query is aborted by MySQL/MariaDB (and handled gracefully
+     * by the caller) instead of hanging long enough to trigger a gateway 503.
+     */
+    protected function applyStatsQueryTimeout(int $milliseconds = 8000): void
+    {
+        foreach ([
+            'SET SESSION MAX_EXECUTION_TIME = ' . (int) $milliseconds,                       // MySQL 5.7.8+
+            'SET SESSION max_statement_time = ' . max(1, (int) ceil($milliseconds / 1000)),  // MariaDB (seconds)
+        ] as $statement) {
+            try {
+                DB::statement($statement);
+                return;
+            } catch (\Throwable $e) {
+                // Try the next dialect; if neither is supported the query simply runs unbounded.
+            }
+        }
+    }
+
+    /**
+     * Remove the per-statement time limit set by applyStatsQueryTimeout().
+     */
+    protected function clearStatsQueryTimeout(): void
+    {
+        foreach ([
+            'SET SESSION MAX_EXECUTION_TIME = 0',
+            'SET SESSION max_statement_time = 0',
+        ] as $statement) {
+            try {
+                DB::statement($statement);
+            } catch (\Throwable $e) {
+                // Ignore unsupported dialects.
+            }
+        }
+    }
+
     protected function getFastActivePersonalLoanStats(Request $request): array
     {
         $cacheKey = 'active-personal-stats:' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
 
-        return Cache::remember($cacheKey, now()->addMinutes(3), function () use ($request) {
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return $cached;
+            }
+
+            $this->applyStatsQueryTimeout();
+
             $query = $this->loanAccessService->scopeActiveLoanQuery(
                 DB::table('personal_loans as l'),
                 'l.branch_id'
@@ -2043,7 +2211,7 @@ class RepaymentController extends Controller
                 }
             }
 
-            return [
+            $stats = [
                 'total_active' => $totalActive,
                 'outstanding_amount' => $principal + $interest + $lateFees,
                 'outstanding_principal' => $principal,
@@ -2057,7 +2225,181 @@ class RepaymentController extends Controller
                 'missing_collateral_count' => $missingCollateralCount,
                 'collections_today' => $this->getAccessiblePersonalCollectionsToday(),
             ];
-        });
+
+            Cache::put($cacheKey, $stats, now()->addMinutes(3));
+            Cache::put($cacheKey . ':last-good', $stats, now()->addHours(6));
+
+            return $stats;
+        } catch (\Throwable $e) {
+            Log::warning('Active personal loan stats unavailable; serving fallback.', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            try {
+                $lastGood = Cache::get($cacheKey . ':last-good');
+                if (is_array($lastGood)) {
+                    return $lastGood;
+                }
+            } catch (\Throwable $ignored) {
+                // Ignore cache failures while serving the fallback.
+            }
+
+            return $this->defaultActiveLoanStats();
+        } finally {
+            $this->clearStatsQueryTimeout();
+        }
+    }
+
+    /**
+     * DB-aggregate stats for the group active-loans page.
+     * Mirrors getFastActivePersonalLoanStats but targets group_loans / group_loan_schedules / group_repayments.
+     */
+    protected function getFastActiveGroupLoanStats(Request $request): array
+    {
+        $cacheKey = 'active-group-stats:' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
+
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return $cached;
+            }
+
+            $this->applyStatsQueryTimeout();
+
+            $query = $this->loanAccessService->scopeActiveLoanQuery(
+                DB::table('group_loans as l'),
+                'l.branch_id'
+            )
+                ->whereIn('l.status', [2, 3])
+                ->whereExists(function ($subquery) {
+                    $subquery->select(DB::raw(1))
+                        ->from('group_loan_schedules as sx')
+                        ->whereColumn('sx.loan_id', 'l.id')
+                        ->where('sx.status', '!=', 1);
+                });
+
+            if ($request->filled('search')) {
+                $search = $request->get('search');
+                $query->leftJoin('groups as g', 'g.id', '=', 'l.group_id')
+                    ->where(function ($searchQuery) use ($search) {
+                        $searchQuery->where('l.code', 'like', "%{$search}%")
+                            ->orWhere('g.name', 'like', "%{$search}%");
+                    });
+            }
+
+            if ($request->filled('branch')) {
+                $query->where('l.branch_id', $request->get('branch'));
+            }
+
+            if ($request->filled('product')) {
+                $query->where('l.product_type', $request->get('product'));
+            }
+
+            $loanIds = (clone $query)->pluck('l.id')->all();
+            $totalActive = count($loanIds);
+
+            $principal  = 0.0;
+            $interest   = 0.0;
+            $lateFees   = 0.0;
+            $overdueCount = 0;
+
+            if (!empty($loanIds)) {
+                $paidSubquery = DB::table('group_repayments')
+                    ->where('amount', '>', 0)
+                    ->whereNotIn('status', [-1, 2])
+                    ->where(function ($q) {
+                        $q->where('status', 1)->orWhere('payment_status', 'Completed');
+                    })
+                    ->groupBy('schedule_id')
+                    ->select('schedule_id', DB::raw('SUM(amount) as paid'));
+
+                $waivedSubquery = DB::table('late_fees')
+                    ->where('status', 2)
+                    ->groupBy('schedule_id')
+                    ->select('schedule_id', DB::raw('SUM(amount) as waived'));
+
+                $dueDateExpression      = "COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date))";
+                $daysOverdueExpression  = "GREATEST(0, DATEDIFF(CURDATE(), {$dueDateExpression}))";
+                $periodsExpression      = "
+                    CASE
+                        WHEN {$daysOverdueExpression} <= 0 THEN 0
+                        WHEN pr.period_type = 1 THEN CEIL({$daysOverdueExpression} / 7)
+                        WHEN pr.period_type = 2 THEN CEIL({$daysOverdueExpression} / 30)
+                        ELSE {$daysOverdueExpression}
+                    END
+                ";
+                $grossLateFeeExpression = "((s.principal + s.interest) * 0.06 * ({$periodsExpression}))";
+                $lateFeePaidExpression  = "GREATEST(0, COALESCE(p.paid, 0) - s.interest - s.principal)";
+
+                $aggregate = DB::table('group_loan_schedules as s')
+                    ->join('group_loans as l', 'l.id', '=', 's.loan_id')
+                    ->leftJoin('products as pr', 'pr.id', '=', 'l.product_type')
+                    ->leftJoinSub($paidSubquery, 'p', 'p.schedule_id', '=', 's.id')
+                    ->leftJoinSub($waivedSubquery, 'w', 'w.schedule_id', '=', 's.id')
+                    ->whereIn('s.loan_id', $loanIds)
+                    ->where('s.status', '!=', 1)
+                    ->selectRaw("
+                        SUM(GREATEST(0, s.interest - COALESCE(p.paid, 0))) as outstanding_interest,
+                        SUM(GREATEST(0, s.principal - GREATEST(0, COALESCE(p.paid, 0) - s.interest))) as outstanding_principal,
+                        SUM(GREATEST(0, {$grossLateFeeExpression} - COALESCE(w.waived, 0) - {$lateFeePaidExpression})) as outstanding_late_fees
+                    ")
+                    ->first();
+
+                $principal = (float) ($aggregate->outstanding_principal ?? 0);
+                $interest  = (float) ($aggregate->outstanding_interest  ?? 0);
+                $lateFees  = (float) ($aggregate->outstanding_late_fees ?? 0);
+
+                $overdueCount = DB::table('group_loans as l')
+                    ->whereIn('l.id', $loanIds)
+                    ->whereExists(function ($subquery) {
+                        $subquery->select(DB::raw(1))
+                            ->from('group_loan_schedules as s')
+                            ->whereColumn('s.loan_id', 'l.id')
+                            ->where('s.status', '!=', 1)
+                            ->whereRaw("COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date)) < CURDATE()");
+                    })
+                    ->count();
+            }
+
+            $stats = [
+                'total_active'           => $totalActive,
+                'outstanding_amount'     => $principal + $interest + $lateFees,
+                'outstanding_principal'  => $principal,
+                'outstanding_interest'   => $interest,
+                'outstanding_late_fees'  => $lateFees,
+                'overdue_count'          => $overdueCount,
+                'risk_followup_count'    => $overdueCount,
+                'followed_up_count'      => 0,
+                'missing_followup_count' => 0,
+                'followup_due_count'     => 0,
+                'missing_collateral_count' => 0,
+                'collections_today'      => $this->getAccessiblePersonalCollectionsToday(),
+            ];
+
+            Cache::put($cacheKey, $stats, now()->addMinutes(3));
+            Cache::put($cacheKey . ':last-good', $stats, now()->addHours(6));
+
+            return $stats;
+        } catch (\Throwable $e) {
+            Log::warning('Active group loan stats unavailable; serving fallback.', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            try {
+                $lastGood = Cache::get($cacheKey . ':last-good');
+                if (is_array($lastGood)) {
+                    return $lastGood;
+                }
+            } catch (\Throwable $ignored) {
+                // Ignore cache failures while serving the fallback.
+            }
+
+            return $this->defaultActiveLoanStats();
+        } finally {
+            $this->clearStatsQueryTimeout();
+        }
     }
 
     protected function getAccessiblePersonalCollectionsToday(): float
