@@ -40,6 +40,13 @@
                         <dd class="col-md-8">{{ $expenditure->expenseAccount->full_name ?? 'N/A' }}</dd>
                         <dt class="col-md-4">Payment Account</dt>
                         <dd class="col-md-8">{{ $expenditure->paymentAccount->full_name ?? 'Not selected' }}</dd>
+                        <dt class="col-md-4">Investment Account</dt>
+                        <dd class="col-md-8">
+                            {{ $expenditure->investment->name ?? 'Not selected' }}
+                            @if($expenditure->investment)
+                                <small class="d-block text-muted">Balance: UGX {{ number_format((float) $expenditure->investment->amount, 0) }}</small>
+                            @endif
+                        </dd>
                         <dt class="col-md-4">Payment Channel</dt>
                         <dd class="col-md-8">{{ $expenditure->payment_channel ? str_replace('_', ' ', ucfirst($expenditure->payment_channel)) : 'Not selected' }}</dd>
                         @if($expenditure->payment_channel === 'mobile_money' || $expenditure->mobile_money_reference)
@@ -113,20 +120,27 @@
                     @if($expenditure->status !== 'paid' && !in_array($expenditure->status, ['rejected', 'cancelled'], true))
                         <form method="POST" action="{{ route('admin.expenditures.pay', $expenditure) }}" class="mb-3">
                             @csrf
+                            <input type="hidden" name="payment_channel" id="payment_channel" value="mobile_money">
                             <label class="form-label">Payment Channel</label>
-                            <select name="payment_channel" id="payment_channel" class="form-select mb-2" required>
-                                <option value="cash_bank" @selected(old('payment_channel', $expenditure->payment_channel ?: 'cash_bank') === 'cash_bank')>Cash / Bank</option>
-                                <option value="mobile_money" @selected(old('payment_channel', $expenditure->payment_channel) === 'mobile_money')>Mobile Money</option>
+                            <input type="text" class="form-control bg-light mb-2" value="Mobile Money" readonly>
+                            <label class="form-label">Investment Account</label>
+                            <select name="investment_id" class="form-select mb-2" required>
+                                <option value="">Select investment funding account</option>
+                                @foreach($investments as $investment)
+                                    <option value="{{ $investment->id }}" @selected((string) old('investment_id', $expenditure->investment_id) === (string) $investment->id)>
+                                        {{ $investment->name }} - UGX {{ number_format((float) $investment->amount, 0) }}
+                                    </option>
+                                @endforeach
                             </select>
-                            <label class="form-label">Payment Account</label>
+                            <label class="form-label">GL Payment Account</label>
                             <select name="payment_account_id" class="form-select mb-2" required>
-                                <option value="">Select cash/bank account</option>
+                                <option value="">Select settlement account</option>
                                 @foreach($paymentAccounts as $account)
                                     <option value="{{ $account->Id }}" @selected((string) old('payment_account_id', $expenditure->payment_account_id) === (string) $account->Id)>{{ $account->full_name }}</option>
                                 @endforeach
                             </select>
                             <label class="form-label">Payment Method</label>
-                            <input type="text" name="payment_method" class="form-control mb-3" value="{{ old('payment_method', $expenditure->payment_method) }}">
+                            <input type="text" name="payment_method" class="form-control mb-3" value="{{ old('payment_method', $expenditure->payment_method ?: 'Mobile Money') }}">
                             <div id="mobile_money_fields" class="mobile-money-fields">
                                 <label class="form-label">Mobile Money Phone</label>
                                 <input type="text" name="mobile_money_phone" class="form-control mb-2" value="{{ old('mobile_money_phone', $expenditure->mobile_money_phone) }}" placeholder="2567XXXXXXXX">
@@ -137,7 +151,7 @@
                                     <option value="AIRTEL" @selected(old('mobile_money_network', $expenditure->mobile_money_network) === 'AIRTEL')>Airtel</option>
                                 </select>
                             </div>
-                            <button class="btn btn-dark w-100"><i class="mdi mdi-cash-check me-1"></i> Pay / Initiate</button>
+                            <button class="btn btn-dark w-100"><i class="mdi mdi-cellphone-arrow-down me-1"></i> Send Mobile Money</button>
                         </form>
                     @endif
 

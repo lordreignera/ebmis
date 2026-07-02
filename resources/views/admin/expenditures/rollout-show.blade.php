@@ -35,6 +35,8 @@
                         <div class="col-md-4"><small class="text-muted">Period</small><div>{{ $rollout->period_start->format('Y-m-d') }} to {{ $rollout->period_end->format('Y-m-d') }}</div></div>
                         <div class="col-md-4"><small class="text-muted">Branch</small><div>{{ $rollout->branch->name ?? 'All branches' }}</div></div>
                         <div class="col-md-4"><small class="text-muted">Total</small><div class="fw-bold">UGX {{ number_format((float) $rollout->total_amount, 0) }}</div></div>
+                        <div class="col-md-4 mt-3"><small class="text-muted">Investment Account</small><div>{{ $rollout->investment->name ?? 'Not selected' }}</div></div>
+                        <div class="col-md-4 mt-3"><small class="text-muted">Payment Account</small><div>{{ $rollout->paymentAccount->full_name ?? 'Not selected' }}</div></div>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-hover mb-0 expenditure-table">
@@ -47,6 +49,8 @@
                                     <th class="text-end">Follow-ups</th>
                                     <th class="text-end">Collections</th>
                                     <th class="text-end">Payout</th>
+                                    <th>Status</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -64,6 +68,12 @@
                                         <td class="text-end">{{ number_format($item->followups_count) }}</td>
                                         <td class="text-end">UGX {{ number_format((float) $item->collections_amount, 0) }}</td>
                                         <td class="text-end fw-bold">UGX {{ number_format((float) $item->payout_amount, 0) }}</td>
+                                        <td>{{ $item->expenditure ? ucfirst(str_replace('_', ' ', $item->expenditure->status)) : 'Not created' }}</td>
+                                        <td class="text-end">
+                                            @if($item->expenditure)
+                                                <a href="{{ route('admin.expenditures.show', $item->expenditure) }}" class="btn btn-sm btn-outline-dark">Open</a>
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -86,16 +96,31 @@
                     @if($rollout->status !== 'paid')
                         <form method="POST" action="{{ route('admin.expenditures.rollout.pay', $rollout) }}">
                             @csrf
-                            <label class="form-label">Payment Account</label>
+                            <input type="hidden" name="payment_channel" value="mobile_money">
+                            <label class="form-label">Payment Channel</label>
+                            <input type="text" class="form-control bg-light mb-2" value="Mobile Money" readonly>
+                            <label class="form-label">Investment Account</label>
+                            <select name="investment_id" class="form-select mb-2" required>
+                                <option value="">Select investment funding account</option>
+                                @foreach($investments as $investment)
+                                    <option value="{{ $investment->id }}" @selected((string) old('investment_id', $rollout->investment_id) === (string) $investment->id)>
+                                        {{ $investment->name }} - UGX {{ number_format((float) $investment->amount, 0) }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <label class="form-label">GL Payment Account</label>
                             <select name="payment_account_id" class="form-select mb-2" required>
-                                <option value="">Select cash/bank account</option>
+                                <option value="">Select settlement account</option>
                                 @foreach($paymentAccounts as $account)
                                     <option value="{{ $account->Id }}" @selected((string) old('payment_account_id', $rollout->payment_account_id) === (string) $account->Id)>{{ $account->full_name }}</option>
                                 @endforeach
                             </select>
                             <label class="form-label">Payment Method</label>
-                            <input type="text" name="payment_method" class="form-control mb-3" value="{{ old('payment_method', 'Rollout') }}">
-                            <button class="btn btn-dark w-100"><i class="mdi mdi-cash-check me-1"></i> Pay Rollout & Post</button>
+                            <input type="text" name="payment_method" class="form-control mb-3" value="{{ old('payment_method', 'Mobile Money Rollout') }}">
+                            <div class="alert alert-warning small">
+                                This sends mobile money to each staff member's saved phone number. Open each generated payout to check pending statuses.
+                            </div>
+                            <button class="btn btn-dark w-100"><i class="mdi mdi-cellphone-arrow-down me-1"></i> Send Rollout Mobile Money</button>
                         </form>
                     @else
                         <div class="alert alert-light border mb-0">Paid {{ optional($rollout->paid_at)->format('Y-m-d H:i') }}</div>

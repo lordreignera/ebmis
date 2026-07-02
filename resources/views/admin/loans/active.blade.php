@@ -775,6 +775,19 @@
                                                                 </button>
                                                             @endif
 
+                                                            @if(auth()->user()->isSuperAdmin() && ($loan->loan_type ?? 'personal') === 'personal' && (int) ($loan->restructured ?? 0) === 1 && !empty($loan->OLoanID))
+                                                                <div class="dropdown-divider"></div>
+                                                                <button type="button"
+                                                                        class="dropdown-item text-warning btn-revert-restructure"
+                                                                        data-loan-id="{{ $loan->id }}"
+                                                                        data-loan-code="{{ $loan->loan_code }}"
+                                                                        data-original-loan-code="{{ $loan->OLoanID }}"
+                                                                        data-borrower-name="{{ $loan->borrower_name }}"
+                                                                        title="Revert this restructure and restore the original loan">
+                                                                    <i class="mdi mdi-backup-restore"></i> Revert Restructure
+                                                                </button>
+                                                            @endif
+
                                                             @if(($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
                                                                 <div class="dropdown-divider"></div>
                                                                 <button type="button"
@@ -1418,6 +1431,15 @@ $(document).ready(function() {
         var duplicateCount = $(this).data('duplicate-count');
         
         confirmStopLoan(loanId, borrowerName, loanCode, disbursementDate, duplicateCount);
+    });
+
+    $(document).on('click', '.btn-revert-restructure', function() {
+        confirmRevertRestructure(
+            $(this).data('loan-id'),
+            $(this).data('loan-code'),
+            $(this).data('original-loan-code'),
+            $(this).data('borrower-name')
+        );
     });
 
     $(document).on('click', '.btn-follow-up', function() {
@@ -2111,6 +2133,59 @@ function confirmStopLoan(loanId, borrowerName, loanCode, disbursementDate, dupli
                 }
             });
         }
+    });
+}
+
+function confirmRevertRestructure(loanId, loanCode, originalLoanCode, borrowerName) {
+    Swal.fire({
+        title: 'Revert Restructure?',
+        html: `
+            <div class="text-start">
+                <p><strong>Borrower:</strong> ${borrowerName}</p>
+                <p><strong>Restructured loan:</strong> ${loanCode}</p>
+                <p><strong>Original loan:</strong> ${originalLoanCode}</p>
+                <hr>
+                <p class="text-muted">This will delete the generated restructure loan and its unpaid schedules, then restore the original loan to active status.</p>
+                <p class="text-danger"><strong>Blocked automatically:</strong> loans with repayments, paid schedules, disbursements, collateral, follow-ups, charges, or posted accounting entries.</p>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f59f00',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, Revert',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (!result.isConfirmed) {
+            return;
+        }
+
+        Swal.fire({
+            title: 'Processing...',
+            text: 'Reverting loan restructure...',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        $.ajax({
+            url: '{{ route("admin.loans.revert-restructure", ":loan") }}'.replace(':loan', loanId),
+            method: 'POST',
+            data: {
+                _token: '{{ csrf_token() }}'
+            },
+            success: function(response) {
+                Swal.fire('Reverted', response.message || 'Loan restructure reverted successfully.', 'success').then(() => {
+                    window.location.href = response.redirect || '{{ route("admin.loans.active") }}';
+                });
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON?.message || 'Failed to revert loan restructure.';
+                Swal.fire('Not reverted', message, 'error');
+            }
+        });
     });
 }
 

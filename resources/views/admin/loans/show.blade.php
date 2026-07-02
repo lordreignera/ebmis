@@ -52,6 +52,17 @@
                 <a href="{{ route('admin.loans.approvals') }}" class="btn btn-secondary">
                     <i class="mdi mdi-arrow-left me-1"></i> Back to Approvals
                 </a>
+
+                @if(auth()->user()->isSuperAdmin() && $loanType === 'personal' && (int) ($loan->restructured ?? 0) === 1 && !empty($loan->OLoanID) && (int) $loan->status !== 5)
+                    <form method="POST"
+                          action="{{ route('admin.loans.revert-restructure', $loan->id) }}"
+                          onsubmit="return confirm('Revert this restructure and restore the original loan?');">
+                        @csrf
+                        <button type="submit" class="btn btn-warning">
+                            <i class="mdi mdi-backup-restore me-1"></i> Revert Restructure
+                        </button>
+                    </form>
+                @endif
                 
                 @if($loan->status == 0)
                     @if($loan->charge_type == 2)

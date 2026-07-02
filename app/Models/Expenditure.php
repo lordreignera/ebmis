@@ -16,6 +16,7 @@ class Expenditure extends Model
         'description',
         'expense_account_id',
         'payment_account_id',
+        'investment_id',
         'branch_id',
         'requested_by',
         'assigned_user_id',
@@ -60,6 +61,11 @@ class Expenditure extends Model
     public function paymentAccount()
     {
         return $this->belongsTo(SystemAccount::class, 'payment_account_id', 'Id');
+    }
+
+    public function investment()
+    {
+        return $this->belongsTo(Investment::class, 'investment_id');
     }
 
     public function branch()

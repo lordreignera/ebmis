@@ -57,6 +57,17 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label">Investment Account</label>
+                    <select name="investment_id" class="form-select">
+                        <option value="">Choose when paying</option>
+                        @foreach($investments as $investment)
+                            <option value="{{ $investment->id }}" @selected((string) old('investment_id') === (string) $investment->id)>
+                                {{ $investment->name }} - UGX {{ number_format((float) $investment->amount, 0) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
                 <div class="col-md-4">
                     <label class="form-label">Amount <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0.01" name="amount" class="form-control" value="{{ old('amount') }}" required>

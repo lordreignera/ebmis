@@ -103,6 +103,17 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label">Investment Account</label>
+                    <select name="investment_id" class="form-select">
+                        <option value="">Choose when paying</option>
+                        @foreach($investments as $investment)
+                            <option value="{{ $investment->id }}" @selected((string) old('investment_id') === (string) $investment->id)>
+                                {{ $investment->name }} - UGX {{ number_format((float) $investment->amount, 0) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0 expenditure-table">

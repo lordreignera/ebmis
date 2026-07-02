@@ -215,6 +215,7 @@ Route::middleware([
     Route::post('/loans/{id}/upload-document', [\App\Http\Controllers\Admin\LoanController::class, 'uploadDocument'])->name('loans.upload-document');
     Route::post('/loans/{id}/delete-document', [\App\Http\Controllers\Admin\LoanController::class, 'deleteDocument'])->name('loans.delete-document');
     Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->middleware('super_admin')->name('loans.revert');
+    Route::post('/loans/{id}/revert-restructure', [\App\Http\Controllers\Admin\LoanController::class, 'revertRestructure'])->middleware('super_admin')->name('loans.revert-restructure');
     Route::post('/loans/{id}/add-guarantor', [\App\Http\Controllers\Admin\LoanController::class, 'addGuarantor'])->name('loans.add-guarantor');
     Route::delete('/loans/guarantors/{guarantorId}', [\App\Http\Controllers\Admin\LoanController::class, 'removeGuarantor'])->name('loans.remove-guarantor');
     Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');

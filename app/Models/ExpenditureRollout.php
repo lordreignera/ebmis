@@ -17,6 +17,7 @@ class ExpenditureRollout extends Model
         'branch_id',
         'expense_account_id',
         'payment_account_id',
+        'investment_id',
         'status',
         'basis',
         'total_amount',
@@ -55,6 +56,11 @@ class ExpenditureRollout extends Model
     public function paymentAccount()
     {
         return $this->belongsTo(SystemAccount::class, 'payment_account_id', 'Id');
+    }
+
+    public function investment()
+    {
+        return $this->belongsTo(Investment::class, 'investment_id');
     }
 
     public function generatedBy()

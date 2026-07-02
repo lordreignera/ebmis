@@ -292,6 +292,7 @@ return [
             'admin.loans.reschedule',
             'admin.loans.restructure',
             'admin.loans.restructure.store',
+            'admin.loans.revert-restructure',
         ]),
         $routes('view-disbursements', [
             'admin.loan-management.disbursements',

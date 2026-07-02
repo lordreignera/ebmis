@@ -3234,11 +3234,19 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', 'Calculated principal is too low. Outstanding balance: ' . number_format($outstandingBalance) . ' UGX');
             }
 
+            $newLoanCode = 'R' . $originalLoan->code;
+            if (PersonalLoan::where('code', $newLoanCode)->exists()) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', "A restructured loan with code {$newLoanCode} already exists. Revert or resolve that loan before restructuring again.");
+            }
+
             // Create restructured loan
             $restructuredLoan = new PersonalLoan();
             $restructuredLoan->member_id = $originalLoan->member_id;
             $restructuredLoan->product_type = $newProduct->id;
-            $restructuredLoan->code = 'R' . $originalLoan->code; // Prefix with R
+            $restructuredLoan->code = $newLoanCode;
             $restructuredLoan->interest = $validated['new_interest'];
             $restructuredLoan->interest_method = $originalLoan->interest_method;
             $restructuredLoan->period = $validated['new_period'];
@@ -3303,7 +3311,12 @@ class LoanController extends Controller
             if (!(isset($validated['include_late_fees']) && $validated['include_late_fees'])) {
                 DB::table('late_fees')
                     ->where('loan_id', $originalLoan->id)
-                    ->update(['status' => 2]); // Mark as waived
+                    ->update([
+                        'status' => 2,
+                        'waiver_reason' => 'Waived during loan restructure to ' . $restructuredLoan->code,
+                        'waived_at' => now(),
+                        'waived_by' => auth()->id(),
+                    ]);
             }
 
             DB::commit();
@@ -3321,6 +3334,207 @@ class LoanController extends Controller
                 ->withInput()
                 ->with('error', 'Error restructuring loan: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Revert a newly-created restructured loan back to the original active loan.
+     */
+    public function revertRestructure(Request $request, $id)
+    {
+        if (!$request->user()?->isSuperAdmin()) {
+            return $this->restructureRevertResponse($request, false, 'Unauthorized. Only the Super Administrator can revert restructured loans.', 403);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $selectedLoan = PersonalLoan::lockForUpdate()->findOrFail($id);
+            $this->loanAccessService->ensureLoanAccess($selectedLoan);
+
+            [$originalLoan, $restructuredLoan] = $this->resolveRestructurePair($selectedLoan);
+
+            if (!$originalLoan || !$restructuredLoan) {
+                DB::rollBack();
+                return $this->restructureRevertResponse($request, false, 'Could not find the original/restructured loan pair for this loan.', 422);
+            }
+
+            $this->loanAccessService->ensureLoanAccess($originalLoan);
+            $this->loanAccessService->ensureLoanAccess($restructuredLoan);
+
+            $blockingReason = $this->getRestructureRevertBlocker($restructuredLoan);
+            if ($blockingReason !== null) {
+                DB::rollBack();
+                return $this->restructureRevertResponse($request, false, $blockingReason, 422);
+            }
+
+            if (Schema::hasTable('late_fees')) {
+                DB::table('late_fees')
+                    ->where('loan_id', $restructuredLoan->id)
+                    ->where('status', 0)
+                    ->delete();
+            }
+
+            LoanSchedule::where('loan_id', $restructuredLoan->id)->delete();
+            $restructuredLoanCode = $restructuredLoan->code;
+            $restructuredLoanId = $restructuredLoan->id;
+            $restructuredLoan->delete();
+
+            $originalLoan->status = 2;
+            $originalLoan->restructured = 0;
+            $originalLoan->date_closed = null;
+            $originalLoan->Rcomments = trim(sprintf(
+                "%s\n[%s] Restructure to %s was reverted by %s.",
+                (string) ($originalLoan->Rcomments ?? ''),
+                now()->format('Y-m-d H:i:s'),
+                $restructuredLoanCode,
+                $request->user()?->name ?? 'Super Administrator'
+            ));
+            $originalLoan->save();
+
+            DB::table('late_fees')
+                ->where('loan_id', $originalLoan->id)
+                ->where('status', 2)
+                ->where('waiver_reason', 'Waived during loan restructure to ' . $restructuredLoanCode)
+                ->update([
+                    'status' => 0,
+                    'waiver_reason' => null,
+                    'waived_at' => null,
+                    'waived_by' => null,
+                ]);
+
+            DB::commit();
+
+            Log::info('Loan restructure reverted', [
+                'original_loan_id' => $originalLoan->id,
+                'original_loan_code' => $originalLoan->code,
+                'restructured_loan_id' => $restructuredLoanId,
+                'restructured_loan_code' => $restructuredLoanCode,
+                'reverted_by' => $request->user()?->id,
+            ]);
+
+            return $this->restructureRevertResponse(
+                $request,
+                true,
+                "Restructure reverted successfully. Original loan {$originalLoan->code} is active again and can be restructured again.",
+                200,
+                route('admin.loans.active')
+            );
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Loan restructure revert error: ' . $e->getMessage(), [
+                'loan_id' => $id,
+                'user_id' => $request->user()?->id,
+            ]);
+
+            return $this->restructureRevertResponse($request, false, 'Error reverting restructure: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function resolveRestructurePair(PersonalLoan $loan): array
+    {
+        if ((int) $loan->status === 5 && (int) ($loan->restructured ?? 0) === 1) {
+            $restructuredLoan = PersonalLoan::where('OLoanID', $loan->code)
+                ->where('id', '!=', $loan->id)
+                ->latest('datecreated')
+                ->lockForUpdate()
+                ->first();
+
+            return [$loan, $restructuredLoan];
+        }
+
+        if ((int) ($loan->restructured ?? 0) === 1 && !empty($loan->OLoanID)) {
+            $originalLoan = PersonalLoan::where('code', $loan->OLoanID)
+                ->where('id', '!=', $loan->id)
+                ->lockForUpdate()
+                ->first();
+
+            return [$originalLoan, $loan];
+        }
+
+        return [null, null];
+    }
+
+    private function getRestructureRevertBlocker(PersonalLoan $restructuredLoan): ?string
+    {
+        if (Repayment::where('loan_id', $restructuredLoan->id)->exists()) {
+            return 'This restructured loan already has repayment records. Reverse those payments before reverting the restructure.';
+        }
+
+        if (LoanSchedule::where('loan_id', $restructuredLoan->id)
+            ->where(function ($query) {
+                $query->where('status', 1)
+                    ->orWhere('paid', '>', 0)
+                    ->orWhereNotNull('txn_id')
+                    ->orWhereNotNull('date_cleared');
+            })
+            ->exists()) {
+            return 'This restructured loan has paid or cleared schedules. It cannot be safely reverted.';
+        }
+
+        if ($this->tableHasLoanRows('disbursements', $restructuredLoan->id, function ($query) {
+            $query->where('loan_type', 1);
+        })) {
+            return 'This restructured loan already has a disbursement record. It cannot be safely reverted.';
+        }
+
+        if (Schema::hasTable('late_fees')
+            && DB::table('late_fees')->where('loan_id', $restructuredLoan->id)->where('status', '!=', 0)->exists()) {
+            return 'This restructured loan has paid or waived late fees. It cannot be safely reverted.';
+        }
+
+        if ($this->tableHasLoanRows('loan_charges', $restructuredLoan->id)
+            || $this->tableHasLoanRows('guarantors', $restructuredLoan->id)
+            || $this->tableHasLoanRows('loan_collateral_documents', $restructuredLoan->id)
+            || $this->tableHasLoanRows('loan_follow_ups', $restructuredLoan->id)
+            || $this->tableHasLoanRows('cash_securities', $restructuredLoan->id)) {
+            return 'This restructured loan has related operational records. Remove or reverse those records before reverting.';
+        }
+
+        if (Schema::hasTable('journal_entries')) {
+            $hasJournal = DB::table('journal_entries')
+                ->whereIn('reference_type', ['Loan Restructure', 'Restructure'])
+                ->where('reference_id', $restructuredLoan->id)
+                ->where('status', 'posted')
+                ->exists();
+
+            if ($hasJournal) {
+                return 'This restructured loan has posted accounting entries. Reverse the accounting entry before reverting.';
+            }
+        }
+
+        return null;
+    }
+
+    private function tableHasLoanRows(string $table, int $loanId, ?callable $scope = null): bool
+    {
+        if (!Schema::hasTable($table) || !Schema::hasColumn($table, 'loan_id')) {
+            return false;
+        }
+
+        $query = DB::table($table)->where('loan_id', $loanId);
+
+        if ($scope !== null) {
+            $scope($query);
+        }
+
+        return $query->exists();
+    }
+
+    private function restructureRevertResponse(Request $request, bool $success, string $message, int $status = 200, ?string $redirect = null)
+    {
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => $success,
+                'message' => $message,
+                'redirect' => $redirect,
+            ], $status);
+        }
+
+        $response = $success && $redirect
+            ? redirect($redirect)
+            : redirect()->back();
+
+        return $response->with($success ? 'success' : 'error', $message);
     }
 
     /**
