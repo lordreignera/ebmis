@@ -31,9 +31,9 @@
                 <div class="card-body">
                     <dl class="row mb-0 detail-list">
                         <dt class="col-md-4">Status</dt>
-                        <dd class="col-md-8"><span class="badge bg-light text-dark border">{{ ucfirst($expenditure->status) }}</span></dd>
+                        <dd class="col-md-8"><span class="badge bg-light text-dark border">{{ ucfirst(str_replace('_', ' ', $expenditure->status)) }}</span></dd>
                         <dt class="col-md-4">Type</dt>
-                        <dd class="col-md-8">{{ str_replace('_', ' ', ucfirst($expenditure->type)) }}</dd>
+                        <dd class="col-md-8">{{ $expenditure->type === 'performance_payout' ? 'Staff payment' : str_replace('_', ' ', ucfirst($expenditure->type)) }}</dd>
                         <dt class="col-md-4">Amount</dt>
                         <dd class="col-md-8 fw-bold">UGX {{ number_format((float) $expenditure->amount, 0) }}</dd>
                         <dt class="col-md-4">Expense Account</dt>
@@ -74,7 +74,35 @@
                     @if($expenditure->description || $expenditure->notes || $expenditure->rejection_reason)
                         <hr>
                         @if($expenditure->description)<p><strong>Description:</strong> {{ $expenditure->description }}</p>@endif
-                        @if($expenditure->notes)<p><strong>Notes:</strong> {{ $expenditure->notes }}</p>@endif
+                        @if($expenditure->notes)
+                            @if(!empty($staffPaymentNotes['basis']))
+                                @if($staffPaymentNotes['note'])
+                                    <p><strong>Notes:</strong> {{ $staffPaymentNotes['note'] }}</p>
+                                @endif
+                                @php($basis = $staffPaymentNotes['basis'])
+                                <div class="staff-payment-breakdown">
+                                    <strong class="d-block mb-2">Staff Payment Calculation</strong>
+                                    <div class="row g-2">
+                                        <div class="col-md-4"><small>Principal Collected</small><span>UGX {{ number_format((float) data_get($basis, 'principal_collected', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Interest Collected</small><span>UGX {{ number_format((float) data_get($basis, 'interest_collected', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Late Fees</small><span>UGX {{ number_format((float) data_get($basis, 'late_fees_collected', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Fees Collected</small><span>UGX {{ number_format((float) data_get($basis, 'fees_collected', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Qualified Revenue</small><span>UGX {{ number_format((float) data_get($basis, 'qualified_revenue', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Base Wage</small><span>UGX {{ number_format((float) data_get($basis, 'minimum_wage', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Stewardship Score</small><span>{{ number_format((float) data_get($basis, 'stewardship_score', 0), 1) }}%</span></div>
+                                        <div class="col-md-4"><small>Stewardship Level</small><span>{{ data_get($basis, 'stewardship_level', 'N/A') }}</span></div>
+                                        <div class="col-md-4"><small>Compensation Rate</small><span>{{ number_format((float) data_get($basis, 'compensation_rate', 0), 0) }}%</span></div>
+                                        <div class="col-md-4"><small>Stewardship Comp.</small><span>UGX {{ number_format((float) data_get($basis, 'stewardship_compensation', 0), 0) }}</span></div>
+                                        <div class="col-md-4"><small>Weekly Periods</small><span>{{ number_format((int) data_get($basis, 'weekly_periods_count', 1)) }}</span></div>
+                                        @if(data_get($basis, 'calculation_notes'))
+                                            <div class="col-md-12"><small>Calculation Notes</small><span>{{ data_get($basis, 'calculation_notes') }}</span></div>
+                                        @endif
+                                    </div>
+                                </div>
+                            @else
+                                <p><strong>Notes:</strong> {{ $expenditure->notes }}</p>
+                            @endif
+                        @endif
                         @if($expenditure->rejection_reason)<p class="text-danger"><strong>Rejection:</strong> {{ $expenditure->rejection_reason }}</p>@endif
                     @endif
                 </div>
@@ -183,6 +211,25 @@
 .detail-list dt { color: #6b7280; font-weight: 600; }
 .detail-list dd { color: #111827; }
 .mobile-money-fields { display: none; }
+.staff-payment-breakdown {
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    background: #f8fbff;
+    padding: 14px;
+    margin-top: 12px;
+}
+.staff-payment-breakdown small {
+    display: block;
+    color: #6b7280;
+    font-size: 11px;
+    text-transform: uppercase;
+}
+.staff-payment-breakdown span {
+    display: block;
+    color: #111827;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
 </style>
 @endpush
 

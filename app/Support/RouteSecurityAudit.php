@@ -87,6 +87,32 @@ class RouteSecurityAudit
             }
         }
 
+        foreach (config('ebmis_permissions.sensitive_loan_operations_admin_routes', []) as $routeName) {
+            $route = $this->router->getRoutes()->getByName($routeName);
+
+            if (!$route) {
+                $issues->push("Sensitive loan operation route {$routeName} does not exist.");
+                continue;
+            }
+
+            if (!in_array('loan_operations_admin', $route->gatherMiddleware(), true)) {
+                $issues->push("Sensitive loan operation route {$routeName} must require loan_operations_admin middleware.");
+            }
+        }
+
+        foreach (config('ebmis_permissions.sensitive_staff_payment_rollout_routes', []) as $routeName) {
+            $route = $this->router->getRoutes()->getByName($routeName);
+
+            if (!$route) {
+                $issues->push("Sensitive staff payment rollout route {$routeName} does not exist.");
+                continue;
+            }
+
+            if (!in_array('staff_payment_rollout', $route->gatherMiddleware(), true)) {
+                $issues->push("Sensitive staff payment rollout route {$routeName} must require staff_payment_rollout middleware.");
+            }
+        }
+
         foreach (config('ebmis_permissions.public_application_routes', []) as $routeName) {
             if (!$this->router->getRoutes()->getByName($routeName)) {
                 $issues->push("Public application route {$routeName} does not exist.");

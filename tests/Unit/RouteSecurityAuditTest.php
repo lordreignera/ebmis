@@ -29,6 +29,16 @@ class RouteSecurityAuditTest extends TestCase
         }
     }
 
+    public function test_staff_payment_rollout_requires_staff_payment_rollout_middleware(): void
+    {
+        foreach (config('ebmis_permissions.sensitive_staff_payment_rollout_routes', []) as $routeName) {
+            $route = app('router')->getRoutes()->getByName($routeName);
+
+            $this->assertNotNull($route, 'Route not found: ' . $routeName);
+            $this->assertContains('staff_payment_rollout', $route->gatherMiddleware(), 'Route must require staff_payment_rollout: ' . $routeName);
+        }
+    }
+
     public function test_cron_endpoint_rejects_requests_when_secret_is_not_configured(): void
     {
         config(['app.cron_secret' => null]);

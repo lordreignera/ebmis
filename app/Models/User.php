@@ -189,6 +189,20 @@ class User extends Authenticatable
             || $this->hasRole(['Super Administrator', 'superadmin']);
     }
 
+    /**
+     * True for users trusted with administrator-level operational controls.
+     */
+    public function isAdministrator(): bool
+    {
+        return in_array($this->user_type, ['administrator', 'admin'], true)
+            || $this->hasRole(['Administrator', 'administrator', 'admin']);
+    }
+
+    public function canManageStaffPaymentRollout(): bool
+    {
+        return $this->isSuperAdmin() || $this->isAdministrator();
+    }
+
     public function scopeSchoolUsers($query)
     {
         return $query->where('user_type', 'school');

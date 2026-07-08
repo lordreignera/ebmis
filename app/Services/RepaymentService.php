@@ -8,6 +8,7 @@ use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
 use App\Services\MobileMoneyService;
+use App\Support\ActiveLoanStatsCache;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -765,6 +766,7 @@ class RepaymentService
             // Calculate total amount due (principal + interest + net late fees - valid payments)
             $totalDue = 0;
             $allSchedulesPaid = true;
+            $scheduleStatusChanged = false;
             
             foreach ($schedules as $schedule) {
                 $components = $this->getScheduleOutstandingComponents($schedule, $loan);
@@ -780,6 +782,7 @@ class RepaymentService
                         'status' => 1,
                         'date_cleared' => now()
                     ]);
+                    $scheduleStatusChanged = true;
                 }
             }
             
@@ -798,10 +801,17 @@ class RepaymentService
                         'total_due' => $totalDue
                     ]);
 
+                    ActiveLoanStatsCache::bust();
+
                     return true;
                 } else {
                     Log::info("Loan already closed", ['loan_id' => $loanId]);
+                    if ($scheduleStatusChanged) {
+                        ActiveLoanStatsCache::bust();
+                    }
                 }
+            } elseif ($scheduleStatusChanged) {
+                ActiveLoanStatsCache::bust();
             } else {
                 Log::info("Loan not ready to close", [
                     'loan_id' => $loanId,

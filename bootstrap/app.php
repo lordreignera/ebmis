@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
+            'loan_operations_admin' => \App\Http\Middleware\SensitiveLoanOperationsMiddleware::class,
+            'staff_payment_rollout' => \App\Http\Middleware\StaffPaymentRolloutAccessMiddleware::class,
             'ebims_module' => \App\Http\Middleware\EbimsModuleAccess::class,
             'ebmis_permission' => \App\Http\Middleware\EbimsPermissionAccess::class,
             'approved_school' => \App\Http\Middleware\EnsureSchoolIsApproved::class,

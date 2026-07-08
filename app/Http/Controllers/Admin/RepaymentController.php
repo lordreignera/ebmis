@@ -24,6 +24,7 @@ use App\Services\FileStorageService;
 use App\Services\LoanAccessService;
 use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
+use App\Support\ActiveLoanStatsCache;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -1326,6 +1327,40 @@ class RepaymentController extends Controller
         return $this->activePersonalLoansOptimized($request);
     }
 
+    public function activeLoanCollections(Request $request)
+    {
+        return $this->activePersonalLoanWorkbench($request, 'collections');
+    }
+
+    public function activeLoanRiskFollowUp(Request $request)
+    {
+        return $this->activePersonalLoanWorkbench($request, 'risk');
+    }
+
+    public function activeLoanSecurityGaps(Request $request)
+    {
+        return $this->activePersonalLoanWorkbench($request, 'security');
+    }
+
+    public function activeLoanOperations(Request $request)
+    {
+        if (!$this->loanAccessService->canManageSensitiveLoanOperations($request->user())) {
+            abort(403, 'Access denied. Only the Super Administrator or Administrator can manage sensitive loan operations.');
+        }
+
+        return $this->activePersonalLoanWorkbench($request, 'operations');
+    }
+
+    protected function activePersonalLoanWorkbench(Request $request, string $page)
+    {
+        $request->merge([
+            'type' => 'personal',
+            'active_page' => $page,
+        ]);
+
+        return $this->activePersonalLoansOptimized($request);
+    }
+
     /** @deprecated  kept only as a reference – no longer called */
     private function _legacyActiveLoans_unused(Request $request)
     {
@@ -1773,6 +1808,8 @@ class RepaymentController extends Controller
             $baseQuery->where('product_type', $request->get('product'));
         }
 
+        $this->applyActivePersonalLoanPageScope($baseQuery, $request);
+
         $loans = (clone $baseQuery)
             ->with([
                 'member:id,fname,lname,contact',
@@ -1832,13 +1869,151 @@ class RepaymentController extends Controller
         ));
     }
 
+    protected function activeLoanDueDateExpression(string $scheduleAlias = 'loan_schedules'): string
+    {
+        return "COALESCE(STR_TO_DATE({$scheduleAlias}.payment_date, '%d-%m-%Y'), DATE({$scheduleAlias}.payment_date))";
+    }
+
+    protected function applyActivePersonalLoanPageScope($query, Request $request): void
+    {
+        $page = $request->get('active_page', 'schedule');
+        $status = $request->get('status');
+
+        if ($page === 'collections') {
+            $this->wherePersonalLoanHasUnpaidScheduleDue($query, '<=');
+        } elseif ($page === 'risk') {
+            $this->wherePersonalLoanHasUnpaidScheduleDue($query, '<');
+        } elseif ($page === 'security') {
+            $this->wherePersonalLoanMissingCollateral($query);
+        }
+
+        match ($status) {
+            'current' => $this->wherePersonalLoanHasNoUnpaidScheduleDue($query, '<'),
+            'due_today' => $this->wherePersonalLoanHasUnpaidScheduleDue($query, '='),
+            'overdue', 'risk_followup' => $this->wherePersonalLoanHasUnpaidScheduleDue($query, '<'),
+            'restructured' => $query->where('restructured', 1),
+            'missing_collateral' => $this->wherePersonalLoanMissingCollateral($query),
+            default => null,
+        };
+    }
+
+    protected function wherePersonalLoanHasUnpaidScheduleDue($query, string $operator): void
+    {
+        $query->whereHas('schedules', function ($scheduleQuery) use ($operator) {
+            $scheduleQuery->where('status', '!=', 1)
+                ->whereRaw($this->activeLoanDueDateExpression('loan_schedules') . " {$operator} CURDATE()");
+        });
+    }
+
+    protected function wherePersonalLoanHasNoUnpaidScheduleDue($query, string $operator): void
+    {
+        $query->whereDoesntHave('schedules', function ($scheduleQuery) use ($operator) {
+            $scheduleQuery->where('status', '!=', 1)
+                ->whereRaw($this->activeLoanDueDateExpression('loan_schedules') . " {$operator} CURDATE()");
+        });
+    }
+
+    protected function wherePersonalLoanMissingCollateral($query): void
+    {
+        if (Schema::hasTable('cash_securities')) {
+            $query->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('cash_securities as cs')
+                    ->whereColumn('cs.loan_id', 'personal_loans.id')
+                    ->where('cs.status', 1)
+                    ->where('cs.returned', 0);
+            });
+        }
+
+        $query->whereRaw("COALESCE(NULLIF(TRIM(immovable_assets), ''), NULLIF(TRIM(moveable_assets), ''), NULLIF(TRIM(intellectual_property), ''), NULLIF(TRIM(stocks_collateral), ''), NULLIF(TRIM(livestock_collateral), '')) IS NULL");
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $query->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('loan_collateral_documents as lcd')
+                    ->whereColumn('lcd.loan_id', 'personal_loans.id')
+                    ->where('lcd.loan_type', 'personal');
+            });
+        }
+
+        if (Schema::hasTable('client_loan_applications')) {
+            $query->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('client_loan_applications as cla')
+                    ->whereColumn('cla.loan_id', 'personal_loans.id')
+                    ->where(function ($applicationQuery) {
+                        $applicationQuery->whereNotNull('cla.collateral_1_doc_photo')
+                            ->where('cla.collateral_1_doc_photo', '<>', '')
+                            ->orWhere(function ($secondDocumentQuery) {
+                                $secondDocumentQuery->whereNotNull('cla.collateral_2_doc_photo')
+                                    ->where('cla.collateral_2_doc_photo', '<>', '');
+                            });
+                    });
+            });
+        }
+    }
+
     private function activeLoanViewOptions(Request $request): array
     {
+        $page = $request->get('active_page', 'schedule');
+        $pages = [
+            'schedule' => [
+                'title' => 'Active Personal Loans',
+                'heading' => 'Active Loans: Schedules & Payments',
+                'description' => 'Use this page to open repayment schedules and record payments.',
+                'route' => 'admin.loans.active',
+            ],
+            'collections' => [
+                'title' => 'Collections Queue',
+                'heading' => 'Collections Queue',
+                'description' => 'Loans due today or already overdue, ready for repayment follow-up.',
+                'route' => 'admin.loans.active.collections',
+            ],
+            'risk' => [
+                'title' => 'Risk Follow-up',
+                'heading' => 'Risk Follow-up',
+                'description' => 'Overdue loans that need contact, promise tracking, and escalation.',
+                'route' => 'admin.loans.active.risk-follow-up',
+            ],
+            'security' => [
+                'title' => 'Security Gaps',
+                'heading' => 'Security & Collateral Gaps',
+                'description' => 'Active personal loans missing confirmed cash security or documented collateral.',
+                'route' => 'admin.loans.active.security-gaps',
+            ],
+            'operations' => [
+                'title' => 'Loan Operations',
+                'heading' => 'Loan Operations',
+                'description' => 'Administrative actions such as reassignment, restructure review, and stopping duplicate loans.',
+                'route' => 'admin.loans.active.operations',
+            ],
+        ];
+
+        if ($request->get('type') === 'group') {
+            $page = 'group';
+            $pages = [];
+            $pages['group'] = [
+                'title' => 'Active Group Loans',
+                'heading' => 'Active Group Loans',
+                'description' => 'Use this page to open group repayment schedules.',
+                'route' => 'admin.loans.active',
+            ];
+        }
+
+        $canManageSensitiveLoanOperations = $this->loanAccessService->canManageSensitiveLoanOperations($request->user());
+        if (!$canManageSensitiveLoanOperations && isset($pages['operations'])) {
+            unset($pages['operations']);
+        }
+
         return [
             'branches' => $this->loanAccessService->branchesForActiveLoanOperations(Branch::active())->orderBy('name')->get(),
             'products' => Product::loanProducts()->active()->orderBy('name')->get(),
             'assignableUsers' => $this->loanAccessService->assignableLoanUsers(),
             'canReassignLoans' => $this->loanAccessService->canReassignActiveLoans($request->user()),
+            'canManageSensitiveLoanOperations' => $canManageSensitiveLoanOperations,
+            'activeLoanPage' => $page,
+            'activeLoanPageConfig' => $pages[$page] ?? $pages['schedule'],
+            'activeLoanPages' => $pages,
         ];
     }
 
@@ -2034,9 +2209,95 @@ class RepaymentController extends Controller
         }
     }
 
+    protected function applyActivePersonalLoanStatsScope($query, Request $request): void
+    {
+        $page = $request->get('active_page', 'schedule');
+        $status = $request->get('status');
+
+        if ($page === 'collections') {
+            $this->whereStatsLoanHasUnpaidScheduleDue($query, '<=');
+        } elseif ($page === 'risk') {
+            $this->whereStatsLoanHasUnpaidScheduleDue($query, '<');
+        } elseif ($page === 'security') {
+            $this->whereStatsLoanMissingCollateral($query);
+        }
+
+        match ($status) {
+            'current' => $this->whereStatsLoanHasNoUnpaidScheduleDue($query, '<'),
+            'due_today' => $this->whereStatsLoanHasUnpaidScheduleDue($query, '='),
+            'overdue', 'risk_followup' => $this->whereStatsLoanHasUnpaidScheduleDue($query, '<'),
+            'restructured' => $query->where('l.restructured', 1),
+            'missing_collateral' => $this->whereStatsLoanMissingCollateral($query),
+            default => null,
+        };
+    }
+
+    protected function whereStatsLoanHasUnpaidScheduleDue($query, string $operator): void
+    {
+        $query->whereExists(function ($subquery) use ($operator) {
+            $subquery->select(DB::raw(1))
+                ->from('loan_schedules as sd')
+                ->whereColumn('sd.loan_id', 'l.id')
+                ->where('sd.status', '!=', 1)
+                ->whereRaw($this->activeLoanDueDateExpression('sd') . " {$operator} CURDATE()");
+        });
+    }
+
+    protected function whereStatsLoanHasNoUnpaidScheduleDue($query, string $operator): void
+    {
+        $query->whereNotExists(function ($subquery) use ($operator) {
+            $subquery->select(DB::raw(1))
+                ->from('loan_schedules as sd')
+                ->whereColumn('sd.loan_id', 'l.id')
+                ->where('sd.status', '!=', 1)
+                ->whereRaw($this->activeLoanDueDateExpression('sd') . " {$operator} CURDATE()");
+        });
+    }
+
+    protected function whereStatsLoanMissingCollateral($query): void
+    {
+        if (Schema::hasTable('cash_securities')) {
+            $query->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('cash_securities as cs')
+                    ->whereColumn('cs.loan_id', 'l.id')
+                    ->where('cs.status', 1)
+                    ->where('cs.returned', 0);
+            });
+        }
+
+        $query->whereRaw("COALESCE(NULLIF(TRIM(l.immovable_assets), ''), NULLIF(TRIM(l.moveable_assets), ''), NULLIF(TRIM(l.intellectual_property), ''), NULLIF(TRIM(l.stocks_collateral), ''), NULLIF(TRIM(l.livestock_collateral), '')) IS NULL");
+
+        if (Schema::hasTable('loan_collateral_documents')) {
+            $query->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('loan_collateral_documents as lcd')
+                    ->whereColumn('lcd.loan_id', 'l.id')
+                    ->where('lcd.loan_type', 'personal');
+            });
+        }
+
+        if (Schema::hasTable('client_loan_applications')) {
+            $query->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('client_loan_applications as cla')
+                    ->whereColumn('cla.loan_id', 'l.id')
+                    ->where(function ($applicationQuery) {
+                        $applicationQuery->where(function ($firstDocumentQuery) {
+                            $firstDocumentQuery->whereNotNull('cla.collateral_1_doc_photo')
+                                ->where('cla.collateral_1_doc_photo', '<>', '');
+                        })->orWhere(function ($secondDocumentQuery) {
+                            $secondDocumentQuery->whereNotNull('cla.collateral_2_doc_photo')
+                                ->where('cla.collateral_2_doc_photo', '<>', '');
+                        });
+                    });
+            });
+        }
+    }
+
     protected function getFastActivePersonalLoanStats(Request $request): array
     {
-        $cacheKey = 'active-personal-stats:' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
+        $cacheKey = 'active-personal-stats:v' . ActiveLoanStatsCache::version() . ':' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status', 'active_page'])));
 
         try {
             $cached = Cache::get($cacheKey);
@@ -2076,6 +2337,8 @@ class RepaymentController extends Controller
             if ($request->filled('product')) {
                 $query->where('l.product_type', $request->get('product'));
             }
+
+            $this->applyActivePersonalLoanStatsScope($query, $request);
 
             $loanIds = (clone $query)->pluck('l.id')->all();
             $totalActive = count($loanIds);
@@ -2257,7 +2520,7 @@ class RepaymentController extends Controller
      */
     protected function getFastActiveGroupLoanStats(Request $request): array
     {
-        $cacheKey = 'active-group-stats:' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
+        $cacheKey = 'active-group-stats:v' . ActiveLoanStatsCache::version() . ':' . auth()->id() . ':' . md5(json_encode($request->only(['search', 'branch', 'product', 'status'])));
 
         try {
             $cached = Cache::get($cacheKey);
@@ -5623,18 +5886,16 @@ class RepaymentController extends Controller
     }
 
     /**
-     * Stop a loan (mark as stopped - status 6)
-     * Only Super Administrator can stop loans
+     * Stop a loan (mark as stopped - status 6).
+     * Only Super Administrator or Administrator can stop loans.
      */
     public function stopLoan(Request $request, $loanId)
     {
         try {
-            // Check authorization - only superadmin
-            $user = auth()->user();
-            if (!$user?->isSuperAdmin()) {
+            if (!$this->loanAccessService->canManageSensitiveLoanOperations($request->user())) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized. Only the Super Administrator can stop loans.'
+                    'message' => 'Unauthorized. Only the Super Administrator or Administrator can stop loans.'
                 ], 403);
             }
 
@@ -5691,6 +5952,7 @@ class RepaymentController extends Controller
             ]);
 
             DB::commit();
+            ActiveLoanStatsCache::bust();
 
             return response()->json([
                 'success' => true,
@@ -5719,6 +5981,13 @@ class RepaymentController extends Controller
     public function rescheduleLoan(Request $request, $loanId)
     {
         try {
+            if (!$this->loanAccessService->canManageSensitiveLoanOperations($request->user())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized. Only the Super Administrator or Administrator can reschedule loans.'
+                ], 403);
+            }
+
             // Check if auto-calculate days
             $action = $request->input('action', 'custom_days');
             $days = $request->input('days');

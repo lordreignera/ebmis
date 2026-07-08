@@ -1,6 +1,26 @@
 @extends('layouts.admin')
 
-@section('title', 'Active Loans')
+@php
+    $activeLoanPage = $activeLoanPage ?? 'schedule';
+    $activeLoanPageConfig = $activeLoanPageConfig ?? [
+        'title' => 'Active Personal Loans',
+        'heading' => 'Active Loans: Schedules & Payments',
+        'description' => 'Use this page to open repayment schedules and record payments.',
+        'route' => 'admin.loans.active',
+    ];
+    $activeLoanPages = $activeLoanPages ?? [];
+    $activeLoanRouteName = $activeLoanPageConfig['route'] ?? 'admin.loans.active';
+    $activeLoanRouteParameters = $activeLoanRouteName === 'admin.loans.active'
+        ? ['type' => request('type', 'personal')]
+        : [];
+    $showScheduleActions = in_array($activeLoanPage, ['schedule', 'collections'], true);
+    $showCollectionActions = in_array($activeLoanPage, ['collections', 'risk'], true);
+    $showSecurityActions = $activeLoanPage === 'security';
+    $canManageSensitiveLoanOperations = $canManageSensitiveLoanOperations ?? false;
+    $showOperationsActions = $activeLoanPage === 'operations' && $canManageSensitiveLoanOperations;
+@endphp
+
+@section('title', $activeLoanPageConfig['title'] ?? 'Active Loans')
 
 @push('styles')
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
@@ -352,13 +372,35 @@
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Dashboard</a></li>
-                        <li class="breadcrumb-item active">Active Loans</li>
+                        <li class="breadcrumb-item active">{{ $activeLoanPageConfig['title'] ?? 'Active Loans' }}</li>
                     </ol>
                 </div>
-                <h4 class="page-title">Active Loans Management</h4>
+                <h4 class="page-title">{{ $activeLoanPageConfig['heading'] ?? 'Active Loans Management' }}</h4>
+                <div class="text-muted">{{ $activeLoanPageConfig['description'] ?? '' }}</div>
             </div>
         </div>
     </div>
+
+    @if(!empty($activeLoanPages))
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="btn-group flex-wrap" role="group" aria-label="Active loan work pages">
+                    @foreach($activeLoanPages as $pageKey => $pageConfig)
+                        @php
+                            $pageRoute = $pageConfig['route'] ?? 'admin.loans.active';
+                            $pageParams = $pageRoute === 'admin.loans.active'
+                                ? ['type' => $pageKey === 'group' ? 'group' : 'personal']
+                                : [];
+                        @endphp
+                        <a href="{{ route($pageRoute, $pageParams) }}"
+                           class="btn {{ $activeLoanPage === $pageKey ? 'btn-primary' : 'btn-outline-primary' }}">
+                            {{ $pageConfig['title'] }}
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
 
     <!-- Success/Error Messages -->
     @if(session('success'))
@@ -473,7 +515,10 @@
                     <h5 class="card-title mb-0">Filter Active Loans</h5>
                 </div>
                 <div class="card-body">
-                    <form method="GET" action="{{ route('admin.loans.active') }}" class="row g-3">
+                    <form method="GET" action="{{ route($activeLoanRouteName, $activeLoanRouteParameters) }}" class="row g-3">
+                        @if($activeLoanRouteName === 'admin.loans.active')
+                            <input type="hidden" name="type" value="{{ request('type', 'personal') }}">
+                        @endif
                         <div class="col-md-3">
                             <label for="search" class="form-label">Search</label>
                             <input type="text" class="form-control" id="search" name="search" 
@@ -524,7 +569,7 @@
                                 <button type="submit" class="btn btn-primary">
                                     <i class="mdi mdi-magnify me-1"></i> Filter
                                 </button>
-                                <a href="{{ route('admin.loans.active') }}" class="btn btn-secondary">
+                                <a href="{{ route($activeLoanRouteName, $activeLoanRouteParameters) }}" class="btn btn-secondary">
                                     <i class="mdi mdi-refresh me-1"></i> Reset
                                 </a>
                             </div>
@@ -542,7 +587,7 @@
                 <div class="card-header">
                     <div class="row align-items-center">
                         <div class="col">
-                            <h5 class="card-title mb-0">Active Loans ({{ $loans->total() }} total)</h5>
+                            <h5 class="card-title mb-0">{{ $activeLoanPageConfig['title'] ?? 'Active Loans' }} ({{ $loans->total() }} total)</h5>
                         </div>
                         <div class="col-auto">
                             <div class="dropdown">
@@ -550,10 +595,10 @@
                                     <i class="mdi mdi-export me-1"></i> Export
                                 </a>
                                 <div class="dropdown-menu dropdown-menu-end">
-                                    <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'excel'] + request()->all()) }}">
+                                    <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'excel', 'active_page' => $activeLoanPage] + request()->all()) }}">
                                         <i class="mdi mdi-file-excel me-1"></i> Excel
                                     </a>
-                                    <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'pdf'] + request()->all()) }}">
+                                    <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'pdf', 'active_page' => $activeLoanPage] + request()->all()) }}">
                                         <i class="mdi mdi-file-pdf me-1"></i> PDF
                                     </a>
                                 </div>
@@ -607,10 +652,10 @@
                                             <i class="mdi mdi-export"></i> Export
                                         </button>
                                         <div class="dropdown-menu dropdown-menu-end">
-                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'excel'] + request()->all()) }}">
+                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'excel', 'active_page' => $activeLoanPage] + request()->all()) }}">
                                                 <i class="mdi mdi-file-excel me-1"></i> Excel
                                             </a>
-                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'pdf'] + request()->all()) }}">
+                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'pdf', 'active_page' => $activeLoanPage] + request()->all()) }}">
                                                 <i class="mdi mdi-file-pdf me-1"></i> PDF
                                             </a>
                                         </div>
@@ -724,45 +769,60 @@
                                                                class="dropdown-item" title="View repayment schedules">
                                                                 <i class="mdi mdi-calendar-clock"></i> Schedules
                                                             </a>
-                                                            <button type="button"
-                                                                    class="dropdown-item btn-follow-up"
-                                                                    data-loan-id="{{ $loan->id }}"
-                                                                    data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
-                                                                    data-loan-code="{{ $loan->loan_code }}"
-                                                                    data-borrower-name="{{ $loan->borrower_name }}"
-                                                                    data-risk-classification="{{ $loan->risk_classification ?? 'Unknown' }}"
-                                                                    data-dpd="{{ $loan->risk_dpd ?? 0 }}"
-                                                                    data-next-due-amount="{{ $loan->next_due_amount ?? 0 }}"
-                                                                    data-next-due-date="{{ $loan->next_due_date ?? '' }}"
-                                                                    title="Record collection follow-up">
-                                                                <i class="mdi mdi-phone-forward"></i> Follow-up
-                                                            </button>
-                                                            @if($loan->has_collateral ?? false)
+
+                                                            @if($showScheduleActions)
                                                                 <button type="button"
-                                                                        class="dropdown-item btn-view-collateral"
-                                                                        data-loan-id="{{ $loan->id }}"
-                                                                        data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
-                                                                        data-loan-code="{{ $loan->loan_code }}"
-                                                                        data-borrower-name="{{ $loan->borrower_name }}"
-                                                                        title="View collateral details">
-                                                                    <i class="mdi mdi-shield-check-outline"></i> View Collateral
-                                                                </button>
-                                                            @else
-                                                                <button type="button"
-                                                                        class="dropdown-item btn-add-collateral"
-                                                                        data-loan-id="{{ $loan->id }}"
-                                                                        data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
-                                                                        data-loan-code="{{ $loan->loan_code }}"
-                                                                        data-borrower-name="{{ $loan->borrower_name }}"
-                                                                        data-member-id="{{ $loan->member_id_value ?? '' }}"
-                                                                        data-phone="{{ $loan->phone_number ?? '' }}"
-                                                                        data-collateral-summary="{{ $loan->collateral_summary ?? 'No collateral recorded' }}"
-                                                                        title="Record collateral or cash security for this loan">
-                                                                    <i class="mdi mdi-shield-plus-outline"></i> Add Collateral
+                                                                        class="dropdown-item"
+                                                                        onclick="quickRepay('{{ $loan->id }}', '{{ $loan->loan_code }}', '{{ $loan->next_due_amount ?? 0 }}', '{{ $loan->phone_number ?? '' }}')"
+                                                                        title="Record payment against the next unpaid schedule">
+                                                                    <i class="mdi mdi-cash-check"></i> Record Payment
                                                                 </button>
                                                             @endif
 
-                                                            @if(($canReassignLoans ?? false) && ($loan->loan_type ?? 'personal') === 'personal')
+                                                            @if($showCollectionActions)
+                                                                <button type="button"
+                                                                        class="dropdown-item btn-follow-up"
+                                                                        data-loan-id="{{ $loan->id }}"
+                                                                        data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                        data-loan-code="{{ $loan->loan_code }}"
+                                                                        data-borrower-name="{{ $loan->borrower_name }}"
+                                                                        data-risk-classification="{{ $loan->risk_classification ?? 'Unknown' }}"
+                                                                        data-dpd="{{ $loan->risk_dpd ?? 0 }}"
+                                                                        data-next-due-amount="{{ $loan->next_due_amount ?? 0 }}"
+                                                                        data-next-due-date="{{ $loan->next_due_date ?? '' }}"
+                                                                        title="Record collection follow-up">
+                                                                    <i class="mdi mdi-phone-forward"></i> Follow-up
+                                                                </button>
+                                                            @endif
+
+                                                            @if($showSecurityActions)
+                                                                @if($loan->has_collateral ?? false)
+                                                                    <button type="button"
+                                                                            class="dropdown-item btn-view-collateral"
+                                                                            data-loan-id="{{ $loan->id }}"
+                                                                            data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                            data-loan-code="{{ $loan->loan_code }}"
+                                                                            data-borrower-name="{{ $loan->borrower_name }}"
+                                                                            title="View collateral details">
+                                                                        <i class="mdi mdi-shield-check-outline"></i> View Collateral
+                                                                    </button>
+                                                                @else
+                                                                    <button type="button"
+                                                                            class="dropdown-item btn-add-collateral"
+                                                                            data-loan-id="{{ $loan->id }}"
+                                                                            data-loan-type="{{ $loan->loan_type ?? 'personal' }}"
+                                                                            data-loan-code="{{ $loan->loan_code }}"
+                                                                            data-borrower-name="{{ $loan->borrower_name }}"
+                                                                            data-member-id="{{ $loan->member_id_value ?? '' }}"
+                                                                            data-phone="{{ $loan->phone_number ?? '' }}"
+                                                                            data-collateral-summary="{{ $loan->collateral_summary ?? 'No collateral recorded' }}"
+                                                                            title="Record collateral or cash security for this loan">
+                                                                        <i class="mdi mdi-shield-plus-outline"></i> Add Collateral
+                                                                    </button>
+                                                                @endif
+                                                            @endif
+
+                                                            @if($showOperationsActions && ($canReassignLoans ?? false) && ($loan->loan_type ?? 'personal') === 'personal')
                                                                 <button type="button"
                                                                         class="dropdown-item btn-reassign-loan"
                                                                         data-loan-id="{{ $loan->id }}"
@@ -775,7 +835,15 @@
                                                                 </button>
                                                             @endif
 
-                                                            @if(auth()->user()->isSuperAdmin() && ($loan->loan_type ?? 'personal') === 'personal' && (int) ($loan->restructured ?? 0) === 1 && !empty($loan->OLoanID))
+                                                            @if($showOperationsActions && ($loan->loan_type ?? 'personal') === 'personal')
+                                                                <a href="{{ route('admin.loans.restructure', $loan->id) }}"
+                                                                   class="dropdown-item"
+                                                                   title="Open the loan restructure workflow">
+                                                                    <i class="mdi mdi-source-branch"></i> Restructure
+                                                                </a>
+                                                            @endif
+
+                                                            @if($showOperationsActions && auth()->user()->isSuperAdmin() && ($loan->loan_type ?? 'personal') === 'personal' && (int) ($loan->restructured ?? 0) === 1 && !empty($loan->OLoanID))
                                                                 <div class="dropdown-divider"></div>
                                                                 <button type="button"
                                                                         class="dropdown-item text-warning btn-revert-restructure"
@@ -788,7 +856,7 @@
                                                                 </button>
                                                             @endif
 
-                                                            @if(($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
+                                                            @if($showOperationsActions && ($loan->is_potential_duplicate ?? false) && auth()->user()->isSuperAdmin())
                                                                 <div class="dropdown-divider"></div>
                                                                 <button type="button"
                                                                         class="dropdown-item text-danger btn-stop-loan"
@@ -886,6 +954,7 @@
     </div>
 </div>
 
+@if($showCollectionActions)
 <!-- Follow-up Modal -->
 <div class="modal fade" id="followUpModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -995,8 +1064,9 @@
         </div>
     </div>
 </div>
+@endif
 
-@if($canReassignLoans ?? false)
+@if($showOperationsActions && ($canReassignLoans ?? false))
 <div class="modal fade" id="reassignLoanModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="background: white !important;">
@@ -1050,6 +1120,7 @@
 </div>
 @endif
 
+@if($showSecurityActions)
 <!-- Collateral Modal -->
 <div class="modal fade" id="loanCollateralModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered" style="max-width: 640px;">
@@ -1204,7 +1275,9 @@
         </div>
     </div>
 </div>
+@endif
 
+@if($showOperationsActions)
 <!-- Reschedule Modal -->
 <div class="modal fade" id="rescheduleModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -1275,7 +1348,9 @@
         </div>
     </div>
 </div>
+@endif
 
+@if($showScheduleActions)
 <!-- Quick Repayment Modal -->
 <div class="modal fade" id="quickRepayModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered" style="max-width: 500px;">
@@ -1353,6 +1428,7 @@
         </div>
     </div>
 </div>
+@endif
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 

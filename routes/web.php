@@ -107,6 +107,8 @@ Route::middleware([
         }
         return redirect()->back()->with('error', 'Log file not found');
     })->middleware('super_admin')->name('logs.download');
+
+    Route::get('/global-search', \App\Http\Controllers\Admin\GlobalSearchController::class)->name('global-search');
     
     // Self-Applied Client Loan Applications
     Route::prefix('client-applications')->name('client-applications.')->group(function () {
@@ -186,6 +188,10 @@ Route::middleware([
     Route::get('/loans/approvals', [\App\Http\Controllers\Admin\LoanController::class, 'approvalsIndex'])->name('loans.approvals');
     Route::get('/loans/export', [\App\Http\Controllers\Admin\LoanController::class, 'export'])->name('loans.export');
     Route::get('/loans/active', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoans'])->name('loans.active');
+    Route::get('/loans/active/collections', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoanCollections'])->name('loans.active.collections');
+    Route::get('/loans/active/risk-follow-up', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoanRiskFollowUp'])->name('loans.active.risk-follow-up');
+    Route::get('/loans/active/security-gaps', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoanSecurityGaps'])->name('loans.active.security-gaps');
+    Route::get('/loans/active/operations', [\App\Http\Controllers\Admin\RepaymentController::class, 'activeLoanOperations'])->middleware('loan_operations_admin')->name('loans.active.operations');
     Route::get('/loans/active/export', [\App\Http\Controllers\Admin\RepaymentController::class, 'exportActiveLoans'])->name('loans.active.export');
     Route::post('/loans/active/{loan}/assign', [\App\Http\Controllers\Admin\RepaymentController::class, 'reassignActivePersonalLoan'])->name('loans.active.assign');
     Route::get('/loans/collateral/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'showCollateral'])->name('loans.collateral.show');
@@ -214,8 +220,8 @@ Route::middleware([
     Route::post('/loans/store-mobile-money', [\App\Http\Controllers\Admin\LoanController::class, 'storeLoanMobileMoneyPayment'])->name('loans.store-mobile-money');
     Route::post('/loans/{id}/upload-document', [\App\Http\Controllers\Admin\LoanController::class, 'uploadDocument'])->name('loans.upload-document');
     Route::post('/loans/{id}/delete-document', [\App\Http\Controllers\Admin\LoanController::class, 'deleteDocument'])->name('loans.delete-document');
-    Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->middleware('super_admin')->name('loans.revert');
-    Route::post('/loans/{id}/revert-restructure', [\App\Http\Controllers\Admin\LoanController::class, 'revertRestructure'])->middleware('super_admin')->name('loans.revert-restructure');
+    Route::post('/loans/{id}/revert', [\App\Http\Controllers\Admin\LoanController::class, 'revertLoan'])->middleware('loan_operations_admin')->name('loans.revert');
+    Route::post('/loans/{id}/revert-restructure', [\App\Http\Controllers\Admin\LoanController::class, 'revertRestructure'])->middleware('loan_operations_admin')->name('loans.revert-restructure');
     Route::post('/loans/{id}/add-guarantor', [\App\Http\Controllers\Admin\LoanController::class, 'addGuarantor'])->name('loans.add-guarantor');
     Route::delete('/loans/guarantors/{guarantorId}', [\App\Http\Controllers\Admin\LoanController::class, 'removeGuarantor'])->name('loans.remove-guarantor');
     Route::get('/loans/check-mm-status/{reference}', [\App\Http\Controllers\Admin\LoanController::class, 'checkLoanMmStatus'])->name('loans.check-mm-status');
@@ -333,10 +339,10 @@ Route::middleware([
     Route::post('/loans/carry-over', [\App\Http\Controllers\Admin\RepaymentController::class, 'carryOverExcess'])->middleware('super_admin')->name('loans.carry-over');
     
     // Loan Reschedule Route
-    Route::post('/loans/{loan}/reschedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'rescheduleLoan'])->name('loans.reschedule');
+    Route::post('/loans/{loan}/reschedule', [\App\Http\Controllers\Admin\RepaymentController::class, 'rescheduleLoan'])->middleware('loan_operations_admin')->name('loans.reschedule');
     
     // Stop Loan Route (for duplicate/mistaken loans)
-    Route::post('/loans/{loan}/stop', [\App\Http\Controllers\Admin\RepaymentController::class, 'stopLoan'])->middleware('super_admin')->name('loans.stop');
+    Route::post('/loans/{loan}/stop', [\App\Http\Controllers\Admin\RepaymentController::class, 'stopLoan'])->middleware('loan_operations_admin')->name('loans.stop');
     
     // Mobile money payment status check (for 60-second polling)
     Route::get('/check-payment-status/{transactionId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'checkPaymentStatus'])->name('check-payment-status');
@@ -348,8 +354,8 @@ Route::middleware([
     // NEW: Loan History and Statements Routes
     Route::prefix('loans')->name('loans.')->group(function () {
         Route::get('/{id}/history', [\App\Http\Controllers\Admin\LoanController::class, 'history'])->name('history');
-        Route::get('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructure'])->name('restructure');
-        Route::post('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructureStore'])->name('restructure.store');
+        Route::get('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructure'])->middleware('loan_operations_admin')->name('restructure');
+        Route::post('/{id}/restructure', [\App\Http\Controllers\Admin\LoanController::class, 'restructureStore'])->middleware('loan_operations_admin')->name('restructure.store');
         Route::get('/{id}/statements/print', [\App\Http\Controllers\Admin\LoanController::class, 'printStatement'])->name('statements.print');
         Route::get('/{id}/schedules/print', [\App\Http\Controllers\Admin\LoanController::class, 'printSchedule'])->name('schedules.print');
         Route::get('/{id}/notices/print', [\App\Http\Controllers\Admin\LoanController::class, 'printNotice'])->name('notices.print');
@@ -483,7 +489,7 @@ Route::middleware([
         Route::get('/', [\App\Http\Controllers\Admin\ExpenditureController::class, 'index'])->name('index');
         Route::get('/create', [\App\Http\Controllers\Admin\ExpenditureController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\Admin\ExpenditureController::class, 'store'])->name('store');
-        Route::middleware('super_admin')->group(function () {
+        Route::middleware('staff_payment_rollout')->group(function () {
             Route::get('/rollout', [\App\Http\Controllers\Admin\ExpenditureController::class, 'rollout'])->name('rollout');
             Route::post('/rollout/generate', [\App\Http\Controllers\Admin\ExpenditureController::class, 'generateRollout'])->name('rollout.generate');
             Route::post('/rollout/individual', [\App\Http\Controllers\Admin\ExpenditureController::class, 'generateIndividualPayout'])->name('rollout.individual');

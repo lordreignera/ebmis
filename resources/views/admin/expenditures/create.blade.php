@@ -30,7 +30,7 @@
                     <label class="form-label">Type <span class="text-danger">*</span></label>
                     <select name="type" class="form-select" required>
                         <option value="operational" @selected(old('type') === 'operational')>Operational</option>
-                        <option value="performance_payout" @selected(old('type') === 'performance_payout')>Performance payout</option>
+                        <option value="performance_payout" @selected(old('type') === 'performance_payout')>Staff payment</option>
                         <option value="allowance" @selected(old('type') === 'allowance')>Allowance</option>
                         <option value="other" @selected(old('type') === 'other')>Other</option>
                     </select>

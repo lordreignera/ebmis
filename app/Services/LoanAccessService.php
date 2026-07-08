@@ -74,6 +74,19 @@ class LoanAccessService
             || $user->hasRole(['Administrator', 'admin']);
     }
 
+    public function canManageSensitiveLoanOperations(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return false;
+        }
+
+        return $user->isSuperAdmin()
+            || in_array($user->user_type, ['administrator', 'admin'], true)
+            || $user->hasRole(['Administrator', 'admin']);
+    }
+
     public function assignableLoanUsers()
     {
         return User::query()

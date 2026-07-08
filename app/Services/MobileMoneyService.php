@@ -1000,6 +1000,28 @@ class MobileMoneyService
     {
         try {
             // SAFE TEST: Only validate configuration - NO API CALLS MADE
+            if ($this->provider === 'stanbic' && config('stanbic_flexipay.enabled')) {
+                $config = config('stanbic_flexipay');
+                $required = [
+                    'client_id',
+                    'client_secret',
+                    'merchant_code',
+                    'client_name',
+                    'base_url',
+                ];
+                $missing = array_values(array_filter($required, fn ($key) => empty($config[$key] ?? null)));
+
+                return [
+                    'connection' => empty($missing),
+                    'message' => empty($missing)
+                        ? 'Stanbic FlexiPay configuration appears valid - NO TRANSACTIONS MADE'
+                        : 'Stanbic FlexiPay configuration is missing: ' . implode(', ', $missing),
+                    'provider' => 'stanbic',
+                    'safe_test' => true,
+                    'transaction_tested' => false,
+                    'warning' => 'This is a configuration test only - NO MONEY IS SENT',
+                ];
+            }
             
             // Check if endpoint URL is configured
             if (empty($this->flexipayEndpoint)) {

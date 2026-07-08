@@ -24,6 +24,17 @@ use Illuminate\Support\Facades\Schema;
 class ExpenditureController extends Controller
 {
     private const MOBILE_MONEY_METHOD = 'Mobile Money';
+    private const STAFF_MINIMUM_WAGE = 75000.0;
+    private const STAFF_WEEKLY_OVERHEAD = 165000.0;
+    private const STEWARDSHIP_EXCELLENCE_SCORE = 93.0;
+    private const STEWARDSHIP_WATCH_SCORE = 90.0;
+    private const STEWARDSHIP_EXCELLENCE_RATE = 20.0;
+    private const STEWARDSHIP_WATCH_RATE = 10.0;
+    private const COLLECTION_WEIGHT = 30.0;
+    private const PAR_WEIGHT = 30.0;
+    private const DOCUMENTATION_WEIGHT = 15.0;
+    private const GROWTH_WEIGHT = 15.0;
+    private const RETENTION_WEIGHT = 10.0;
 
     public function __construct(private readonly MobileMoneyService $mobileMoneyService)
     {
@@ -122,8 +133,10 @@ class ExpenditureController extends Controller
             'rollout',
         ]);
 
+        $staffPaymentNotes = $this->parseStaffPaymentNotes((string) $expenditure->notes);
+
         return view('admin.expenditures.show', array_merge(
-            compact('expenditure'),
+            compact('expenditure', 'staffPaymentNotes'),
             $this->formOptions()
         ));
     }
@@ -257,19 +270,23 @@ class ExpenditureController extends Controller
 
     public function rollout(Request $request)
     {
-        $this->ensureSuperAdmin($request);
+        $this->ensureStaffPaymentRolloutAccess($request);
+
+        $periodStart = $request->get('period_start', now()->startOfWeek()->toDateString());
+        $periodEnd = $request->get('period_end', Carbon::parse($periodStart)->copy()->addDays(6)->toDateString());
 
         $defaults = [
-            'period_start' => $request->get('period_start', now()->startOfMonth()->toDateString()),
-            'period_end' => $request->get('period_end', now()->toDateString()),
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
             'branch_id' => $request->get('branch_id'),
-            'per_assigned_loan' => (float) $request->get('per_assigned_loan', 0),
-            'per_performing_loan' => (float) $request->get('per_performing_loan', 0),
-            'per_follow_up' => (float) $request->get('per_follow_up', 0),
-            'collection_commission_percent' => (float) $request->get('collection_commission_percent', 0),
         ];
 
         $rows = $this->performanceRows($defaults);
+        $policy = $this->staffPaymentPolicy();
+        $periodWeeks = $this->weeklyPaymentPeriods(
+            Carbon::parse($defaults['period_start'])->startOfDay(),
+            Carbon::parse($defaults['period_end'])->endOfDay()
+        )->count();
         $rollouts = ExpenditureRollout::with(['branch', 'generatedBy'])
             ->latest('id')
             ->limit(10)
@@ -277,13 +294,13 @@ class ExpenditureController extends Controller
 
         return view('admin.expenditures.rollout', array_merge(
             $this->formOptions(),
-            compact('defaults', 'rows', 'rollouts')
+            compact('defaults', 'rows', 'policy', 'periodWeeks', 'rollouts')
         ));
     }
 
     public function generateRollout(Request $request)
     {
-        $this->ensureSuperAdmin($request);
+        $this->ensureStaffPaymentRolloutAccess($request);
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
@@ -293,19 +310,21 @@ class ExpenditureController extends Controller
             'expense_account_id' => ['required', 'integer', 'exists:system_accounts,Id'],
             'payment_account_id' => ['nullable', 'integer', 'exists:system_accounts,Id'],
             'investment_id' => ['nullable', 'integer', 'exists:investment,id'],
-            'per_assigned_loan' => ['nullable', 'numeric', 'min:0'],
-            'per_performing_loan' => ['nullable', 'numeric', 'min:0'],
-            'per_follow_up' => ['nullable', 'numeric', 'min:0'],
-            'collection_commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'notes' => ['nullable', 'string'],
         ]);
 
         $rows = $this->performanceRows($validated)->filter(fn ($row) => $row['payout_amount'] > 0)->values();
         if ($rows->isEmpty()) {
-            return back()->withInput()->with('error', 'No payout amounts were generated for the selected period and formula.');
+            return back()->withInput()->with('error', 'No staff payment amounts were generated for the selected period.');
         }
 
         $rollout = DB::transaction(function () use ($request, $validated, $rows) {
+            $basis = $this->staffPaymentPolicy();
+            $basis['weekly_periods_count'] = max(1, (int) $rows->max('weeks_count'));
+            $basis['period_calculation'] = $basis['weekly_periods_count'] > 1
+                ? 'catch_up_sum_of_weekly_calculations'
+                : 'single_weekly_calculation';
+
             $rollout = ExpenditureRollout::create([
                 'rollout_number' => $this->nextRolloutNumber(),
                 'title' => $validated['title'],
@@ -316,12 +335,7 @@ class ExpenditureController extends Controller
                 'payment_account_id' => $validated['payment_account_id'] ?? null,
                 'investment_id' => $validated['investment_id'] ?? null,
                 'status' => 'draft',
-                'basis' => [
-                    'per_assigned_loan' => (float) ($validated['per_assigned_loan'] ?? 0),
-                    'per_performing_loan' => (float) ($validated['per_performing_loan'] ?? 0),
-                    'per_follow_up' => (float) ($validated['per_follow_up'] ?? 0),
-                    'collection_commission_percent' => (float) ($validated['collection_commission_percent'] ?? 0),
-                ],
+                'basis' => $basis,
                 'total_amount' => $rows->sum('payout_amount'),
                 'generated_by' => $request->user()?->id,
                 'notes' => $validated['notes'] ?? null,
@@ -336,7 +350,27 @@ class ExpenditureController extends Controller
                     'overdue_loans_count' => $row['overdue_loans_count'],
                     'followups_count' => $row['followups_count'],
                     'collections_amount' => $row['collections_amount'],
+                    'principal_collected' => $row['principal_collected'],
+                    'interest_collected' => $row['interest_collected'],
+                    'late_fees_collected' => $row['late_fees_collected'],
+                    'fees_collected' => $row['fees_collected'],
+                    'qualified_revenue' => $row['qualified_revenue'],
+                    'minimum_wage' => $row['minimum_wage'],
+                    'overhead_amount' => $row['overhead_amount'],
+                    'net_stewardship_revenue' => $row['net_stewardship_revenue'],
+                    'collection_score' => $row['collection_score'],
+                    'par_score' => $row['par_score'],
+                    'documentation_score' => $row['documentation_score'],
+                    'growth_score' => $row['growth_score'],
+                    'retention_score' => $row['retention_score'],
+                    'stewardship_score' => $row['stewardship_score'],
+                    'stewardship_level' => $row['stewardship_level'],
+                    'compensation_rate' => $row['compensation_rate'],
+                    'stewardship_compensation' => $row['stewardship_compensation'],
+                    'payment_blocked' => $row['payment_blocked'],
+                    'block_reason' => $row['block_reason'],
                     'payout_amount' => $row['payout_amount'],
+                    'notes' => $row['notes'],
                 ]);
             }
 
@@ -344,12 +378,12 @@ class ExpenditureController extends Controller
         });
 
         return redirect()->route('admin.expenditures.rollout.show', $rollout)
-            ->with('success', 'Performance payout rollout generated for approval.');
+            ->with('success', 'Staff payment rollout generated for approval.');
     }
 
     public function generateIndividualPayout(Request $request)
     {
-        $this->ensureSuperAdmin($request);
+        $this->ensureStaffPaymentRolloutAccess($request);
 
         $request->merge([
             'individual_payout_amount' => collect($request->input('individual_payout_amount', []))
@@ -366,10 +400,6 @@ class ExpenditureController extends Controller
             'expense_account_id' => ['required', 'integer', 'exists:system_accounts,Id'],
             'payment_account_id' => ['nullable', 'integer', 'exists:system_accounts,Id'],
             'investment_id' => ['nullable', 'integer', 'exists:investment,id'],
-            'per_assigned_loan' => ['nullable', 'numeric', 'min:0'],
-            'per_performing_loan' => ['nullable', 'numeric', 'min:0'],
-            'per_follow_up' => ['nullable', 'numeric', 'min:0'],
-            'collection_commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'individual_payout_amount' => ['nullable', 'array'],
             'individual_payout_amount.*' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],
@@ -387,7 +417,7 @@ class ExpenditureController extends Controller
         );
 
         if ($payoutAmount <= 0) {
-            return back()->withInput()->with('error', 'This user has no payout amount for the selected period and formula.');
+            return back()->withInput()->with('error', 'This user has no staff payment amount for the selected period.');
         }
 
         $periodStart = Carbon::parse($validated['period_start'])->toDateString();
@@ -403,13 +433,13 @@ class ExpenditureController extends Controller
         if ($existing) {
             return redirect()
                 ->route('admin.expenditures.show', $existing)
-                ->with('error', 'A performance payout already exists for this user and period.');
+                ->with('error', 'A staff payment already exists for this user and period.');
         }
 
         $expense = Expenditure::create([
             'expense_number' => $this->nextExpenseNumber(),
             'type' => 'performance_payout',
-            'title' => 'Performance payout - ' . $row['user_name'],
+            'title' => 'Staff payment - ' . $row['user_name'],
             'description' => $validated['title'] . ' (' . $periodStart . ' to ' . $periodEnd . ')',
             'expense_account_id' => $validated['expense_account_id'],
             'payment_account_id' => $validated['payment_account_id'] ?? null,
@@ -424,40 +454,48 @@ class ExpenditureController extends Controller
             'payment_channel' => 'mobile_money',
             'approved_by' => $request->user()?->id,
             'approved_at' => now(),
-            'notes' => trim(($validated['notes'] ?? '') . "\nFormula: "
+            'notes' => trim(($validated['notes'] ?? '') . "\nStaff payment basis: "
                 . json_encode([
                     'assigned_loans' => $row['assigned_loans_count'],
                     'performing_loans' => $row['performing_loans_count'],
                     'overdue_loans' => $row['overdue_loans_count'],
                     'followups' => $row['followups_count'],
-                    'collections' => $row['collections_amount'],
-                    'per_assigned_loan' => (float) ($validated['per_assigned_loan'] ?? 0),
-                    'per_performing_loan' => (float) ($validated['per_performing_loan'] ?? 0),
-                    'per_follow_up' => (float) ($validated['per_follow_up'] ?? 0),
-                    'collection_commission_percent' => (float) ($validated['collection_commission_percent'] ?? 0),
+                    'principal_collected' => $row['principal_collected'],
+                    'interest_collected' => $row['interest_collected'],
+                    'late_fees_collected' => $row['late_fees_collected'],
+                    'fees_collected' => $row['fees_collected'],
+                    'qualified_revenue' => $row['qualified_revenue'],
+                    'stewardship_score' => $row['stewardship_score'],
+                    'stewardship_level' => $row['stewardship_level'],
+                    'compensation_rate' => $row['compensation_rate'],
+                    'minimum_wage' => $row['minimum_wage'],
+                    'stewardship_compensation' => $row['stewardship_compensation'],
+                    'weekly_periods_count' => $row['weeks_count'] ?? 1,
+                    'calculation_notes' => $row['notes'] ?? null,
                 ])),
         ]);
 
         return redirect()
             ->route('admin.expenditures.show', $expense)
-            ->with('success', 'Individual performance payout created. Complete the payment from this page.');
+            ->with('success', 'Individual staff payment created. Complete the mobile money payment from this page.');
     }
 
     public function showRollout(ExpenditureRollout $rollout)
     {
-        $this->ensureSuperAdmin(request());
+        $this->ensureStaffPaymentRolloutAccess(request());
 
         $rollout->load(['items.user', 'items.expenditure', 'expenseAccount', 'paymentAccount', 'investment', 'branch', 'generatedBy']);
+        $policy = $rollout->basis ?: $this->staffPaymentPolicy();
 
         return view('admin.expenditures.rollout-show', array_merge(
-            compact('rollout'),
+            compact('rollout', 'policy'),
             $this->formOptions()
         ));
     }
 
     public function approveRollout(Request $request, ExpenditureRollout $rollout)
     {
-        $this->ensureSuperAdmin($request);
+        $this->ensureStaffPaymentRolloutAccess($request);
 
         if ($rollout->status !== 'draft') {
             return back()->with('error', 'Only draft rollouts can be approved.');
@@ -469,15 +507,23 @@ class ExpenditureController extends Controller
             'approved_at' => now(),
         ]);
 
-        return back()->with('success', 'Rollout approved.');
+        return back()->with('success', 'Staff payment rollout approved.');
     }
 
     public function payRollout(Request $request, ExpenditureRollout $rollout)
     {
-        $this->ensureSuperAdmin($request);
+        $this->ensureStaffPaymentRolloutAccess($request);
 
         if ($rollout->status === 'paid') {
             return back()->with('error', 'This rollout has already been paid.');
+        }
+
+        if ($rollout->status === 'payment_pending') {
+            return back()->with('error', 'This rollout already has pending mobile-money payments. Open the generated payouts and check their statuses before retrying.');
+        }
+
+        if ($rollout->status === 'payment_failed') {
+            return back()->with('error', 'This rollout has failed mobile-money payouts. Open each failed payout from the rollout and retry it from the expenditure page.');
         }
 
         $request->merge([
@@ -518,6 +564,20 @@ class ExpenditureController extends Controller
             ->whereNull('expenditure_id')
             ->where('payout_amount', '>', 0)
             ->get();
+
+        if ($payoutItems->isEmpty()) {
+            $this->refreshRolloutPaymentStatus($rollout->id, $request->user()?->id);
+            return back()->with('info', 'There are no unsent staff payouts left in this rollout. Check the existing payout statuses.');
+        }
+
+        $blockedItems = $payoutItems
+            ->filter(fn ($item) => (bool) $item->payment_blocked)
+            ->map(fn ($item) => ($item->user->name ?? 'User #' . $item->user_id) . ': ' . ($item->block_reason ?: 'Payment blocked by policy'))
+            ->values();
+
+        if ($blockedItems->isNotEmpty()) {
+            return back()->withInput()->with('error', 'Resolve blocked staff payments before sending mobile money: ' . $blockedItems->implode('; '));
+        }
 
         $missingPhones = $payoutItems
             ->filter(fn ($item) => trim((string) ($item->user->phone ?? '')) === '')
@@ -563,7 +623,7 @@ class ExpenditureController extends Controller
                 $expense = Expenditure::create([
                     'expense_number' => $this->nextExpenseNumber(),
                     'type' => 'performance_payout',
-                    'title' => 'Performance payout - ' . ($item->user->name ?? 'User #' . $item->user_id),
+                    'title' => 'Staff payment - ' . ($item->user->name ?? 'User #' . $item->user_id),
                     'description' => $rollout->title . ' (' . $rollout->period_start->format('Y-m-d') . ' to ' . $rollout->period_end->format('Y-m-d') . ')',
                     'expense_account_id' => $rollout->expense_account_id,
                     'payment_account_id' => $validated['payment_account_id'],
@@ -579,7 +639,19 @@ class ExpenditureController extends Controller
                     'approved_by' => $request->user()?->id,
                     'approved_at' => now(),
                     'rollout_batch_id' => $rollout->id,
-                    'notes' => 'Auto-created from rollout ' . $rollout->rollout_number,
+                    'notes' => 'Auto-created from staff payment rollout ' . $rollout->rollout_number . "\nStaff payment basis: " . json_encode([
+                        'principal_collected' => (float) $item->principal_collected,
+                        'interest_collected' => (float) $item->interest_collected,
+                        'late_fees_collected' => (float) $item->late_fees_collected,
+                        'fees_collected' => (float) $item->fees_collected,
+                        'qualified_revenue' => (float) $item->qualified_revenue,
+                        'stewardship_score' => (float) $item->stewardship_score,
+                        'stewardship_level' => $item->stewardship_level,
+                        'compensation_rate' => (float) $item->compensation_rate,
+                        'minimum_wage' => (float) $item->minimum_wage,
+                        'stewardship_compensation' => (float) $item->stewardship_compensation,
+                        'calculation_notes' => $item->notes,
+                    ]),
                 ]);
 
                 $this->processExpenditureMobileMoneyPayment(
@@ -613,7 +685,7 @@ class ExpenditureController extends Controller
             $rollout->save();
         });
 
-        return back()->with('info', 'Mobile-money rollout initiated. Check each payout status before treating pending items as paid.');
+        return back()->with('info', 'Staff mobile-money rollout initiated. Check each payout status before treating pending items as paid.');
     }
 
     private function formOptions(): array
@@ -762,23 +834,49 @@ class ExpenditureController extends Controller
 
     private function performanceRows(array $input): Collection
     {
-        $periodStart = Carbon::parse($input['period_start'] ?? now()->startOfMonth())->startOfDay();
+        $periodStart = Carbon::parse($input['period_start'] ?? now()->startOfWeek())->startOfDay();
         $periodEnd = Carbon::parse($input['period_end'] ?? now())->endOfDay();
-        $branchId = $input['branch_id'] ?? null;
-        $perAssigned = (float) ($input['per_assigned_loan'] ?? 0);
-        $perPerforming = (float) ($input['per_performing_loan'] ?? 0);
-        $perFollowUp = (float) ($input['per_follow_up'] ?? 0);
-        $collectionPercent = (float) ($input['collection_commission_percent'] ?? 0);
+        if ($periodEnd->lt($periodStart)) {
+            return collect();
+        }
 
-        $users = User::where('status', 'active')
-            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
-            ->orderBy('name')
-            ->get(['id', 'name', 'branch_id', 'designation'])
-            ->keyBy('id');
+        $weeklyPeriods = $this->weeklyPaymentPeriods($periodStart, $periodEnd);
+
+        if ($weeklyPeriods->count() <= 1) {
+            return $this->weeklyPerformanceRows($input);
+        }
+
+        $weeklyRows = collect();
+        foreach ($weeklyPeriods as $period) {
+            $rows = $this->weeklyPerformanceRows(array_merge($input, [
+                'period_start' => $period['start']->toDateString(),
+                'period_end' => $period['end']->toDateString(),
+            ]));
+
+            foreach ($rows as $row) {
+                $weeklyRows->push(array_merge($row, [
+                    'week_start' => $period['start']->toDateString(),
+                    'week_end' => $period['end']->toDateString(),
+                ]));
+            }
+        }
+
+        return $this->aggregateWeeklyStaffPaymentRows($weeklyRows, $weeklyPeriods->count());
+    }
+
+    private function weeklyPerformanceRows(array $input): Collection
+    {
+        $periodStart = Carbon::parse($input['period_start'] ?? now()->startOfWeek())->startOfDay();
+        $periodEnd = Carbon::parse($input['period_end'] ?? now())->endOfDay();
+        if ($periodEnd->lt($periodStart)) {
+            return collect();
+        }
+
+        $branchId = !empty($input['branch_id']) ? (int) $input['branch_id'] : null;
 
         $assigned = PersonalLoan::query()
             ->whereNotNull('assigned_to')
-            ->whereIn('status', [2, 3])
+            ->whereIn('status', [2])
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->groupBy('assigned_to')
             ->selectRaw('assigned_to as user_id, COUNT(*) as total')
@@ -787,7 +885,7 @@ class ExpenditureController extends Controller
         $overdue = DB::table('personal_loans as pl')
             ->join('loan_schedules as ls', 'ls.loan_id', '=', 'pl.id')
             ->whereNotNull('pl.assigned_to')
-            ->whereIn('pl.status', [2, 3])
+            ->whereIn('pl.status', [2])
             ->where('ls.status', '!=', 1)
             ->whereDate('ls.payment_date', '<', $periodEnd->toDateString())
             ->when($branchId, fn ($query) => $query->where('pl.branch_id', $branchId))
@@ -803,53 +901,613 @@ class ExpenditureController extends Controller
             ->selectRaw('assigned_to as user_id, COUNT(*) as total')
             ->pluck('total', 'user_id');
 
-        $collections = DB::table('repayments as r')
-            ->join('personal_loans as pl', 'pl.id', '=', 'r.loan_id')
-            ->whereNotNull('pl.assigned_to')
-            ->where('r.amount', '>', 0)
-            ->whereNotIn('r.status', [-1, 2])
-            ->whereBetween('r.date_created', [$periodStart, $periodEnd])
-            ->where(function ($query) {
-                $query->where('r.status', 1)
-                    ->orWhereIn('r.payment_status', ['Completed', 'Confirmed']);
-            })
-            ->when($branchId, fn ($query) => $query->where('pl.branch_id', $branchId))
-            ->groupBy('pl.assigned_to')
-            ->selectRaw('pl.assigned_to as user_id, SUM(r.amount) as total')
-            ->pluck('total', 'user_id');
+        $repaymentBreakdown = $this->repaymentBreakdownByUser($periodStart, $periodEnd, $branchId);
+        $feesCollected = $this->feeCollectionsByUser($periodStart, $periodEnd, $branchId);
+        $expectedDue = $this->expectedCollectionsByUser($periodStart, $periodEnd, $branchId);
+        $par30 = $this->par30ByUser($periodEnd, $branchId);
+        $documentation = $this->documentationByUser($branchId);
+        $growth = $this->growthByUser($periodStart, $periodEnd, $branchId);
+        $retention = $this->retentionByUser($branchId);
 
-        $userIds = collect()
-            ->merge($users->keys())
+        $activityUserIds = collect()
             ->merge($assigned->keys())
             ->merge($overdue->keys())
             ->merge($followUps->keys())
-            ->merge($collections->keys())
+            ->merge($repaymentBreakdown->keys())
+            ->merge($feesCollected->keys())
+            ->merge($expectedDue->keys())
+            ->merge($par30->keys())
+            ->merge($documentation->keys())
+            ->merge($growth->keys())
             ->unique()
-            ->filter();
+            ->filter()
+            ->values();
 
-        return $userIds->map(function ($userId) use ($users, $assigned, $overdue, $followUps, $collections, $perAssigned, $perPerforming, $perFollowUp, $collectionPercent) {
+        $users = User::where('status', 'active')
+            ->where(function ($query) use ($activityUserIds) {
+                $query->where(function ($staffQuery) {
+                    $staffQuery->where('designation', 'like', '%officer%')
+                        ->orWhere('designation', 'like', '%loan%')
+                        ->orWhere('designation', 'like', '%field%')
+                        ->orWhere('designation', 'like', '%collection%')
+                        ->orWhere('designation', 'like', '%branch manager%');
+
+                    if (Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
+                        $staffQuery->orWhereHas('roles', function ($roleQuery) {
+                            $roleQuery->whereIn('name', [
+                                'Loan Officer',
+                                'Credit Officer',
+                                'Field Officer',
+                                'Collections Officer',
+                                'Branch Manager',
+                            ]);
+                        });
+                    }
+                });
+
+                if ($activityUserIds->isNotEmpty()) {
+                    $query->orWhereIn('id', $activityUserIds->all());
+                }
+            })
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->orderBy('name')
+            ->get(['id', 'name', 'branch_id', 'designation'])
+            ->keyBy('id');
+
+        $paidUserIds = $this->staffPaymentUserIdsForPeriod($periodStart, $periodEnd);
+
+        return $users->keys()->diff($paidUserIds)->map(function ($userId) use ($users, $assigned, $overdue, $followUps, $repaymentBreakdown, $feesCollected, $expectedDue, $par30, $documentation, $growth, $retention) {
+            $userId = (int) $userId;
             $assignedCount = (int) ($assigned[$userId] ?? 0);
             $overdueCount = (int) ($overdue[$userId] ?? 0);
             $performingCount = max($assignedCount - $overdueCount, 0);
             $followUpCount = (int) ($followUps[$userId] ?? 0);
-            $collectionAmount = (float) ($collections[$userId] ?? 0);
-            $payout = ($assignedCount * $perAssigned)
-                + ($performingCount * $perPerforming)
-                + ($followUpCount * $perFollowUp)
-                + ($collectionAmount * ($collectionPercent / 100));
+            $breakdown = $repaymentBreakdown[$userId] ?? [
+                'principal' => 0,
+                'interest' => 0,
+                'late_fees' => 0,
+                'total' => 0,
+            ];
+            $principalCollected = (float) ($breakdown['principal'] ?? 0);
+            $interestCollected = (float) ($breakdown['interest'] ?? 0);
+            $lateFeesCollected = (float) ($breakdown['late_fees'] ?? 0);
+            $collectionAmount = (float) ($breakdown['total'] ?? 0);
+            $feesAmount = (float) ($feesCollected[$userId] ?? 0);
+            $qualifiedRevenue = $interestCollected + $lateFeesCollected + $feesAmount;
+            $netRevenue = max(0, $qualifiedRevenue - self::STAFF_WEEKLY_OVERHEAD);
+
+            $expectedAmount = (float) ($expectedDue[$userId] ?? 0);
+            $collectionScore = $expectedAmount > 0
+                ? min(100, ($collectionAmount / $expectedAmount) * 100)
+                : ($collectionAmount > 0 ? 100 : 0);
+
+            $parCount = (int) ($par30[$userId] ?? 0);
+            $parScore = $assignedCount > 0
+                ? max(0, 100 - (($parCount / $assignedCount) * 100))
+                : 0;
+
+            $documented = (int) data_get($documentation, "{$userId}.documented", 0);
+            $documentationTotal = (int) data_get($documentation, "{$userId}.total", 0);
+            $documentationScore = $documentationTotal > 0
+                ? min(100, ($documented / $documentationTotal) * 100)
+                : 0;
+
+            $growthScore = (float) ($growth[$userId] ?? 0);
+            $retentionScore = (float) ($retention[$userId] ?? 0);
+            $stewardshipScore = $this->weightedStewardshipScore(
+                $collectionScore,
+                $parScore,
+                $documentationScore,
+                $growthScore,
+                $retentionScore
+            );
+            [$stewardshipLevel, $compensationRate] = $this->stewardshipLevelAndRate($stewardshipScore);
+            $stewardshipCompensation = $netRevenue * ($compensationRate / 100);
+            $payout = self::STAFF_MINIMUM_WAGE + $stewardshipCompensation;
 
             return [
-                'user_id' => (int) $userId,
+                'user_id' => $userId,
                 'user_name' => $users[$userId]->name ?? 'User #' . $userId,
                 'designation' => $users[$userId]->designation ?? 'Staff',
                 'assigned_loans_count' => $assignedCount,
                 'performing_loans_count' => $performingCount,
                 'overdue_loans_count' => $overdueCount,
                 'followups_count' => $followUpCount,
-                'collections_amount' => $collectionAmount,
+                'collections_amount' => round($collectionAmount, 2),
+                'principal_collected' => round($principalCollected, 2),
+                'interest_collected' => round($interestCollected, 2),
+                'late_fees_collected' => round($lateFeesCollected, 2),
+                'fees_collected' => round($feesAmount, 2),
+                'qualified_revenue' => round($qualifiedRevenue, 2),
+                'minimum_wage' => self::STAFF_MINIMUM_WAGE,
+                'overhead_amount' => self::STAFF_WEEKLY_OVERHEAD,
+                'net_stewardship_revenue' => round($netRevenue, 2),
+                'collection_score' => round($collectionScore, 2),
+                'par_score' => round($parScore, 2),
+                'documentation_score' => round($documentationScore, 2),
+                'growth_score' => round($growthScore, 2),
+                'retention_score' => round($retentionScore, 2),
+                'stewardship_score' => round($stewardshipScore, 2),
+                'stewardship_level' => $stewardshipLevel,
+                'compensation_rate' => $compensationRate,
+                'stewardship_compensation' => round($stewardshipCompensation, 2),
+                'payment_blocked' => false,
+                'block_reason' => null,
                 'payout_amount' => round($payout, 2),
+                'notes' => null,
             ];
         })->sortByDesc('payout_amount')->values();
+    }
+
+    private function weeklyPaymentPeriods(Carbon $periodStart, Carbon $periodEnd): Collection
+    {
+        $periods = collect();
+        $cursor = $periodStart->copy()->startOfDay();
+        $finalEnd = $periodEnd->copy()->endOfDay();
+
+        while ($cursor->lte($finalEnd)) {
+            $sliceStart = $cursor->copy();
+            $sliceEnd = $cursor->copy()->addDays(6)->endOfDay();
+            if ($sliceEnd->gt($finalEnd)) {
+                $sliceEnd = $finalEnd->copy();
+            }
+
+            $periods->push([
+                'start' => $sliceStart,
+                'end' => $sliceEnd,
+            ]);
+
+            $cursor = $sliceEnd->copy()->addSecond()->startOfDay();
+        }
+
+        return $periods;
+    }
+
+    private function staffPaymentUserIdsForPeriod(Carbon $periodStart, Carbon $periodEnd): Collection
+    {
+        $start = $periodStart->toDateString();
+        $end = $periodEnd->toDateString();
+
+        return Expenditure::where('type', 'performance_payout')
+            ->whereNotNull('assigned_user_id')
+            ->whereNotIn('status', ['rejected', 'cancelled'])
+            ->where(function ($query) use ($start, $end) {
+                $query->where(function ($descriptionQuery) use ($start, $end) {
+                    $descriptionQuery->where('description', 'like', "%{$start}%")
+                        ->where('description', 'like', "%{$end}%");
+                })->orWhere(function ($notesQuery) use ($start, $end) {
+                    $notesQuery->where('notes', 'like', "%{$start}%")
+                        ->where('notes', 'like', "%{$end}%");
+                });
+            })
+            ->pluck('assigned_user_id')
+            ->unique()
+            ->values();
+    }
+
+    private function aggregateWeeklyStaffPaymentRows(Collection $weeklyRows, int $weeksCount): Collection
+    {
+        if ($weeklyRows->isEmpty()) {
+            return collect();
+        }
+
+        return $weeklyRows
+            ->groupBy('user_id')
+            ->map(function (Collection $rows) use ($weeksCount) {
+                $first = $rows->first();
+                $includedWeeks = $rows->count();
+                $scoreAverage = fn (string $key) => round((float) $rows->avg($key), 2);
+                $moneySum = fn (string $key) => round((float) $rows->sum($key), 2);
+                $blockedRows = $rows->filter(fn ($row) => (bool) ($row['payment_blocked'] ?? false));
+                $weekLabels = $rows
+                    ->map(fn ($row) => ($row['week_start'] ?? '') . ' to ' . ($row['week_end'] ?? ''))
+                    ->filter()
+                    ->implode('; ');
+                $stewardshipScore = $scoreAverage('stewardship_score');
+                [$stewardshipLevel, $unusedRate] = $this->stewardshipLevelAndRate($stewardshipScore);
+
+                return [
+                    'user_id' => (int) $first['user_id'],
+                    'user_name' => $first['user_name'],
+                    'designation' => $first['designation'],
+                    'assigned_loans_count' => (int) $rows->max('assigned_loans_count'),
+                    'performing_loans_count' => (int) $rows->max('performing_loans_count'),
+                    'overdue_loans_count' => (int) $rows->max('overdue_loans_count'),
+                    'followups_count' => (int) $rows->sum('followups_count'),
+                    'collections_amount' => $moneySum('collections_amount'),
+                    'principal_collected' => $moneySum('principal_collected'),
+                    'interest_collected' => $moneySum('interest_collected'),
+                    'late_fees_collected' => $moneySum('late_fees_collected'),
+                    'fees_collected' => $moneySum('fees_collected'),
+                    'qualified_revenue' => $moneySum('qualified_revenue'),
+                    'minimum_wage' => $moneySum('minimum_wage'),
+                    'overhead_amount' => $moneySum('overhead_amount'),
+                    'net_stewardship_revenue' => $moneySum('net_stewardship_revenue'),
+                    'collection_score' => $scoreAverage('collection_score'),
+                    'par_score' => $scoreAverage('par_score'),
+                    'documentation_score' => $scoreAverage('documentation_score'),
+                    'growth_score' => $scoreAverage('growth_score'),
+                    'retention_score' => $scoreAverage('retention_score'),
+                    'stewardship_score' => $stewardshipScore,
+                    'stewardship_level' => $stewardshipLevel,
+                    'compensation_rate' => round((float) $rows->avg('compensation_rate'), 2),
+                    'stewardship_compensation' => $moneySum('stewardship_compensation'),
+                    'payment_blocked' => $blockedRows->isNotEmpty(),
+                    'block_reason' => $blockedRows->pluck('block_reason')->filter()->unique()->implode('; ') ?: null,
+                    'payout_amount' => $moneySum('payout_amount'),
+                    'weeks_count' => $includedWeeks,
+                    'notes' => $includedWeeks . ' weekly calculations included from selected ' . $weeksCount . ': ' . $weekLabels,
+                ];
+            })
+            ->sortByDesc('payout_amount')
+            ->values();
+    }
+
+    private function repaymentBreakdownByUser(Carbon $periodStart, Carbon $periodEnd, ?int $branchId): Collection
+    {
+        $periodRepayments = $this->confirmedRepaymentQuery()
+            ->leftJoin('loan_schedules as ls', 'ls.id', '=', 'r.schedule_id')
+            ->whereBetween('r.date_created', [$periodStart, $periodEnd])
+            ->when($branchId, fn ($query) => $query->where('pl.branch_id', $branchId))
+            ->orderBy('r.schedule_id')
+            ->orderBy('r.date_created')
+            ->orderBy('r.id')
+            ->get([
+                'r.id',
+                'r.schedule_id',
+                'r.amount',
+                'pl.assigned_to as user_id',
+                'ls.interest',
+                'ls.principal',
+            ]);
+
+        if ($periodRepayments->isEmpty()) {
+            return collect();
+        }
+
+        $scheduleIds = $periodRepayments->pluck('schedule_id')->filter()->unique()->values();
+        $paidBefore = $scheduleIds->isEmpty()
+            ? collect()
+            : $this->confirmedRepaymentQuery()
+                ->whereIn('r.schedule_id', $scheduleIds)
+                ->where('r.date_created', '<', $periodStart)
+                ->groupBy('r.schedule_id')
+                ->selectRaw('r.schedule_id, SUM(r.amount) as total')
+                ->pluck('total', 'schedule_id');
+
+        $runningPaid = $paidBefore
+            ->map(fn ($amount) => (float) $amount)
+            ->all();
+
+        $totals = collect();
+        foreach ($periodRepayments as $repayment) {
+            $userId = (int) $repayment->user_id;
+            $scheduleId = (int) ($repayment->schedule_id ?? 0);
+            $paidToDate = (float) ($runningPaid[$scheduleId] ?? 0);
+            $interestDue = (float) ($repayment->interest ?? 0);
+            $principalDue = (float) ($repayment->principal ?? 0);
+            $amountRemaining = (float) $repayment->amount;
+
+            $interestPaidBefore = min($paidToDate, $interestDue);
+            $principalPaidBefore = min(max($paidToDate - $interestDue, 0), $principalDue);
+            $interestPart = min($amountRemaining, max($interestDue - $interestPaidBefore, 0));
+            $amountRemaining -= $interestPart;
+            $principalPart = min($amountRemaining, max($principalDue - $principalPaidBefore, 0));
+            $amountRemaining -= $principalPart;
+            $lateFeePart = max($amountRemaining, 0);
+
+            $current = $totals->get($userId, [
+                'principal' => 0,
+                'interest' => 0,
+                'late_fees' => 0,
+                'total' => 0,
+            ]);
+
+            $current['principal'] += $principalPart;
+            $current['interest'] += $interestPart;
+            $current['late_fees'] += $lateFeePart;
+            $current['total'] += (float) $repayment->amount;
+            $totals->put($userId, $current);
+
+            if ($scheduleId > 0) {
+                $runningPaid[$scheduleId] = $paidToDate + (float) $repayment->amount;
+            }
+        }
+
+        return $totals;
+    }
+
+    private function feeCollectionsByUser(Carbon $periodStart, Carbon $periodEnd, ?int $branchId): Collection
+    {
+        if (!Schema::hasTable('fees')) {
+            return collect();
+        }
+
+        return DB::table('fees as f')
+            ->leftJoin('personal_loans as pl', 'pl.id', '=', 'f.loan_id')
+            ->leftJoin('users as u', 'u.id', '=', 'f.added_by')
+            ->where('f.status', 1)
+            ->where('f.amount', '>', 0)
+            ->whereBetween('f.datecreated', [$periodStart, $periodEnd])
+            ->whereRaw('COALESCE(pl.assigned_to, f.added_by) IS NOT NULL')
+            ->where(function ($query) {
+                $description = 'LOWER(COALESCE(f.description, \'\'))';
+                $query->whereRaw("{$description} NOT LIKE ?", ['%insurance%'])
+                    ->whereRaw("{$description} NOT LIKE ?", ['%security%'])
+                    ->whereRaw("{$description} NOT LIKE ?", ['%savings%'])
+                    ->whereRaw("{$description} NOT LIKE ?", ['%deposit%']);
+            })
+            ->when($branchId, function ($query) use ($branchId) {
+                $query->where(function ($branchQuery) use ($branchId) {
+                    $branchQuery->where('pl.branch_id', $branchId)
+                        ->orWhere('u.branch_id', $branchId);
+                });
+            })
+            ->groupBy(DB::raw('COALESCE(pl.assigned_to, f.added_by)'))
+            ->selectRaw('COALESCE(pl.assigned_to, f.added_by) as user_id, SUM(f.amount) as total')
+            ->pluck('total', 'user_id');
+    }
+
+    private function expectedCollectionsByUser(Carbon $periodStart, Carbon $periodEnd, ?int $branchId): Collection
+    {
+        return DB::table('loan_schedules as ls')
+            ->join('personal_loans as pl', 'pl.id', '=', 'ls.loan_id')
+            ->whereNotNull('pl.assigned_to')
+            ->whereIn('pl.status', [2])
+            ->whereBetween('ls.payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->when($branchId, fn ($query) => $query->where('pl.branch_id', $branchId))
+            ->groupBy('pl.assigned_to')
+            ->selectRaw('pl.assigned_to as user_id, SUM(ls.payment) as total')
+            ->pluck('total', 'user_id');
+    }
+
+    private function par30ByUser(Carbon $periodEnd, ?int $branchId): Collection
+    {
+        return DB::table('personal_loans as pl')
+            ->join('loan_schedules as ls', 'ls.loan_id', '=', 'pl.id')
+            ->whereNotNull('pl.assigned_to')
+            ->whereIn('pl.status', [2])
+            ->where('ls.status', '!=', 1)
+            ->whereDate('ls.payment_date', '<', $periodEnd->copy()->subDays(30)->toDateString())
+            ->when($branchId, fn ($query) => $query->where('pl.branch_id', $branchId))
+            ->groupBy('pl.assigned_to')
+            ->selectRaw('pl.assigned_to as user_id, COUNT(DISTINCT pl.id) as total')
+            ->pluck('total', 'user_id');
+    }
+
+    private function documentationByUser(?int $branchId): Collection
+    {
+        $loans = PersonalLoan::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('status', [2])
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->get([
+                'id',
+                'assigned_to',
+                'immovable_assets',
+                'moveable_assets',
+                'intellectual_property',
+                'stocks_collateral',
+                'livestock_collateral',
+            ]);
+
+        if ($loans->isEmpty()) {
+            return collect();
+        }
+
+        $loanIds = $loans->pluck('id')->all();
+        $documentedByFile = Schema::hasTable('loan_collateral_documents')
+            ? DB::table('loan_collateral_documents')
+                ->where('loan_type', 'personal')
+                ->whereIn('loan_id', $loanIds)
+                ->pluck('loan_id')
+                ->unique()
+                ->flip()
+            : collect();
+
+        $documentedByCash = Schema::hasTable('cash_securities')
+            ? DB::table('cash_securities')
+                ->whereIn('loan_id', $loanIds)
+                ->where('status', 1)
+                ->pluck('loan_id')
+                ->unique()
+                ->flip()
+            : collect();
+
+        return $loans
+            ->groupBy('assigned_to')
+            ->map(function ($items) use ($documentedByFile, $documentedByCash) {
+                $documented = $items->filter(function ($loan) use ($documentedByFile, $documentedByCash) {
+                    return $documentedByFile->has($loan->id)
+                        || $documentedByCash->has($loan->id)
+                        || $this->loanHasCollateralText($loan);
+                })->count();
+
+                return [
+                    'documented' => $documented,
+                    'total' => $items->count(),
+                ];
+            });
+    }
+
+    private function growthByUser(Carbon $periodStart, Carbon $periodEnd, ?int $branchId): Collection
+    {
+        $days = max(1, (int) $periodStart->diffInDays($periodEnd) + 1);
+        $previousStart = $periodStart->copy()->subDays($days);
+        $previousEnd = $periodStart->copy()->subSecond();
+
+        $current = $this->newLoansByUser($periodStart, $periodEnd, $branchId);
+        $previous = $this->newLoansByUser($previousStart, $previousEnd, $branchId);
+
+        return collect()
+            ->merge($current->keys())
+            ->merge($previous->keys())
+            ->unique()
+            ->mapWithKeys(function ($userId) use ($current, $previous) {
+                $currentCount = (int) ($current[$userId] ?? 0);
+                $previousCount = (int) ($previous[$userId] ?? 0);
+
+                if ($previousCount <= 0) {
+                    return [$userId => $currentCount > 0 ? 100 : 0];
+                }
+
+                $growthPercent = (($currentCount - $previousCount) / $previousCount) * 100;
+                return [$userId => $growthPercent > 0 ? min(100, ($growthPercent / 7) * 100) : 0];
+            });
+    }
+
+    private function retentionByUser(?int $branchId): Collection
+    {
+        $base = PersonalLoan::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('status', [2, 3, 6])
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->groupBy('assigned_to')
+            ->selectRaw('assigned_to as user_id, COUNT(*) as total')
+            ->pluck('total', 'user_id');
+
+        $retained = PersonalLoan::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('status', [2, 3])
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->groupBy('assigned_to')
+            ->selectRaw('assigned_to as user_id, COUNT(*) as total')
+            ->pluck('total', 'user_id');
+
+        return $base->mapWithKeys(function ($total, $userId) use ($retained) {
+            $score = (int) $total > 0
+                ? (((int) ($retained[$userId] ?? 0) / (int) $total) * 100)
+                : 0;
+
+            return [$userId => min(100, $score)];
+        });
+    }
+
+    private function newLoansByUser(Carbon $periodStart, Carbon $periodEnd, ?int $branchId): Collection
+    {
+        return PersonalLoan::query()
+            ->whereNotNull('assigned_to')
+            ->whereIn('status', [2, 3])
+            ->whereBetween('datecreated', [$periodStart, $periodEnd])
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->groupBy('assigned_to')
+            ->selectRaw('assigned_to as user_id, COUNT(*) as total')
+            ->pluck('total', 'user_id');
+    }
+
+    private function confirmedRepaymentQuery()
+    {
+        return DB::table('repayments as r')
+            ->join('personal_loans as pl', 'pl.id', '=', 'r.loan_id')
+            ->whereNotNull('pl.assigned_to')
+            ->where('r.amount', '>', 0)
+            ->whereNotIn('r.status', [-1, 2])
+            ->where(function ($query) {
+                $query->where('r.status', 1)
+                    ->orWhereIn('r.payment_status', ['Completed', 'Confirmed']);
+            });
+    }
+
+    private function loanHasCollateralText(PersonalLoan $loan): bool
+    {
+        foreach (['immovable_assets', 'moveable_assets', 'intellectual_property', 'stocks_collateral', 'livestock_collateral'] as $field) {
+            $value = trim((string) ($loan->{$field} ?? ''));
+            if ($value !== '' && $value !== '[]' && strtolower($value) !== 'null') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function weightedStewardshipScore(float $collection, float $par, float $documentation, float $growth, float $retention): float
+    {
+        return (($collection * self::COLLECTION_WEIGHT)
+            + ($par * self::PAR_WEIGHT)
+            + ($documentation * self::DOCUMENTATION_WEIGHT)
+            + ($growth * self::GROWTH_WEIGHT)
+            + ($retention * self::RETENTION_WEIGHT)) / 100;
+    }
+
+    private function stewardshipLevelAndRate(float $score): array
+    {
+        if ($score >= self::STEWARDSHIP_EXCELLENCE_SCORE) {
+            return ['Stewardship Excellence', self::STEWARDSHIP_EXCELLENCE_RATE];
+        }
+
+        if ($score >= self::STEWARDSHIP_WATCH_SCORE) {
+            return ['Stewardship Watch', self::STEWARDSHIP_WATCH_RATE];
+        }
+
+        return ['Stewardship Intervention', 0.0];
+    }
+
+    private function staffPaymentPolicy(): array
+    {
+        return [
+            'policy' => 'portfolio_stewardship_v1',
+            'payment_cycle' => 'weekly',
+            'catch_up_calculation' => 'sum_each_week_separately',
+            'scheduled_payment_time' => 'Saturday 15:00',
+            'minimum_wage' => self::STAFF_MINIMUM_WAGE,
+            'officer_overhead' => self::STAFF_WEEKLY_OVERHEAD,
+            'qualified_revenue_sources' => [
+                'interest income',
+                'administration fees',
+                'registration fees',
+                'late payment fees',
+                'other approved service charges',
+            ],
+            'excluded_sources' => [
+                'loan principal repayments',
+                'insurance contributions',
+                'security revolving fund contributions',
+                'client savings',
+                'cash security deposits',
+                'loan disbursements',
+                'internal transfers',
+            ],
+            'score_weights' => [
+                'collection' => self::COLLECTION_WEIGHT,
+                'par' => self::PAR_WEIGHT,
+                'documentation' => self::DOCUMENTATION_WEIGHT,
+                'growth' => self::GROWTH_WEIGHT,
+                'retention' => self::RETENTION_WEIGHT,
+            ],
+            'levels' => [
+                'stewardship_excellence' => [
+                    'minimum_score' => self::STEWARDSHIP_EXCELLENCE_SCORE,
+                    'rate_percent' => self::STEWARDSHIP_EXCELLENCE_RATE,
+                ],
+                'stewardship_watch' => [
+                    'minimum_score' => self::STEWARDSHIP_WATCH_SCORE,
+                    'rate_percent' => self::STEWARDSHIP_WATCH_RATE,
+                ],
+                'stewardship_intervention' => [
+                    'maximum_score' => self::STEWARDSHIP_WATCH_SCORE,
+                    'rate_percent' => 0,
+                ],
+            ],
+        ];
+    }
+
+    private function parseStaffPaymentNotes(string $notes): array
+    {
+        $marker = 'Staff payment basis:';
+        if (!str_contains($notes, $marker)) {
+            return [
+                'note' => trim($notes),
+                'basis' => [],
+            ];
+        }
+
+        [$note, $basisJson] = explode($marker, $notes, 2);
+        $decoded = json_decode(trim($basisJson), true);
+
+        return [
+            'note' => trim($note),
+            'basis' => is_array($decoded) ? $decoded : [],
+        ];
     }
 
     private function markExpenditurePaid(Expenditure $expenditure, ?int $userId): void
@@ -1029,10 +1687,10 @@ class ExpenditureController extends Controller
             ->update($data);
     }
 
-    private function ensureSuperAdmin(Request $request): void
+    private function ensureStaffPaymentRolloutAccess(Request $request): void
     {
-        if (!$request->user()?->isSuperAdmin()) {
-            abort(403, 'Access denied. Super Administrator role required.');
+        if (!$request->user()?->canManageStaffPaymentRollout()) {
+            abort(403, 'Access denied. Only the Super Administrator or Administrator can manage staff payment rollout.');
         }
     }
 

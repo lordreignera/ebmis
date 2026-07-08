@@ -6,7 +6,26 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 <style>
     .schedules-table-wrap {
-        overflow-x: visible;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .schedule-export-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
+
+    .schedule-export-actions .btn {
+        border-radius: 6px;
+        color: #fff !important;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        min-width: 132px;
+        white-space: nowrap;
     }
 
     #schedulesTable.schedules-table-compact {
@@ -183,6 +202,10 @@
 @endpush
 
 @section('content')
+@php
+    $canManageSensitiveLoanOperations = app(\App\Services\LoanAccessService::class)
+        ->canManageSensitiveLoanOperations(auth()->user());
+@endphp
 <div class="container-fluid">
     <!-- Page Header -->
     <div class="row">
@@ -205,16 +228,27 @@
         </div>
     </div>
 
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-check-circle-outline me-1"></i>{{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle-outline me-1"></i>{{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
     <!-- Loan Summary -->
     <div class="row" id="loan-summary-section">
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0">Loan Summary</h5>
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-primary" onclick="printSchedules()">
-                            <i class="mdi mdi-printer"></i> Print Schedules
-                        </button>
+                    <div class="schedule-export-actions">
                         <button type="button" class="btn btn-sm btn-danger" onclick="exportToPDF()">
                             <i class="mdi mdi-file-pdf"></i> Export to PDF
                         </button>
@@ -303,8 +337,10 @@
                         <p class="mb-0">
                             This loan has <strong>{{ $overdueCount }} overdue payment(s)</strong> 
                             totaling <strong>UGX {{ number_format($overdueAmount, 0) }}</strong>.
-                            @if($loan->days_overdue > 7)
+                            @if($loan->days_overdue > 7 && $canManageSensitiveLoanOperations)
                                 Consider immediate collection or restructuring.
+                            @elseif($loan->days_overdue > 7)
+                                Consider immediate collection follow-up.
                             @endif
                         </p>
                     </div>
@@ -383,7 +419,7 @@
                             @endif
                         @endif
                         
-                        @if($loan->days_overdue > 7)
+                        @if($loan->days_overdue > 7 && $canManageSensitiveLoanOperations)
                             <div class="col-md-3">
                                 <a href="{{ route('admin.loans.restructure', $loan->id) }}" class="btn btn-warning w-100">
                                     <i class="mdi mdi-account-convert me-1"></i>
@@ -432,7 +468,7 @@
                             <h5 class="card-title mb-0">Repayment Schedules ({{ count($schedules) }} installments)</h5>
                         </div>
                         <div class="col-auto">
-                            @if($overdueCount > 0)
+                            @if($overdueCount > 0 && $canManageSensitiveLoanOperations)
                                 <button type="button" class="btn btn-warning btn-sm me-2" onclick="openRescheduleModal()" title="Reschedule overdue payments due to system upgrade">
                                     <i class="mdi mdi-calendar-refresh"></i> Reschedule Overdue
                                 </button>
@@ -1128,6 +1164,7 @@
         </div>
     </div>
 </div>
+@if($canManageSensitiveLoanOperations)
 <div class="modal fade" id="rescheduleModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content bg-white">
@@ -1192,6 +1229,7 @@
         </div>
     </div>
 </div>
+@endif
 
 {{-- All Payments Modal --}}
 <div class="modal fade" id="allPaymentsModal" tabindex="-1">
@@ -1340,24 +1378,42 @@ function openRepayModal(scheduleId, dueDate, amount) {
 }
 
 $(document).ready(function() {
+    function applyScheduleFilter(filter) {
+        var $rows = $('.schedule-row');
+        var allowedFilters = ['all', 'pending', 'paid', 'overdue'];
+
+        if (!filter || allowedFilters.indexOf(filter) === -1) {
+            filter = 'all';
+        }
+
+        if (filter === 'all') {
+            $rows.show();
+        } else {
+            $rows.hide();
+            var $matchedRows = $rows.filter('[data-filter="' + filter + '"]');
+            if ($matchedRows.length) {
+                $matchedRows.show();
+            } else {
+                filter = 'all';
+                $rows.show();
+            }
+        }
+
+        $('input[name="scheduleFilter"][value="' + filter + '"]').prop('checked', true);
+        sessionStorage.setItem('repaymentScheduleFilter', filter);
+    }
+
     // Schedule filtering
     $('input[name="scheduleFilter"]').change(function() {
-        var filter = $(this).val();
-        sessionStorage.setItem('repaymentScheduleFilter', filter);
-        
-        $('.schedule-row').hide();
-        
-        if (filter === 'all') {
-            $('.schedule-row').show();
-        } else {
-            $('.schedule-row[data-filter="' + filter + '"]').show();
-        }
+        applyScheduleFilter($(this).val());
     });
 
     var savedScheduleFilter = sessionStorage.getItem('repaymentScheduleFilter') || 'all';
     var $savedFilter = $('input[name="scheduleFilter"][value="' + savedScheduleFilter + '"]');
     if ($savedFilter.length) {
-        $savedFilter.prop('checked', true).trigger('change');
+        applyScheduleFilter(savedScheduleFilter);
+    } else {
+        applyScheduleFilter('all');
     }
     
     // Handle repayment form submission with mobile money polling
@@ -2578,6 +2634,7 @@ function startManualPolling(transactionId, maxSeconds) {
     }, 3000);
 }
 
+@if($canManageSensitiveLoanOperations)
 // Reschedule Functions
 function openRescheduleModal() {
     const modal = new bootstrap.Modal(document.getElementById('rescheduleModal'));
@@ -2715,6 +2772,51 @@ document.getElementById('rescheduleForm').addEventListener('submit', function(e)
         }
     });
 });
+@endif
+
+const scheduleExportMeta = {
+    loanCode: @json($loan->loan_code),
+    borrower: @json($loan->borrower_name),
+    phone: @json($loan->phone_number),
+    branch: @json($loan->branch_name ?? 'N/A'),
+    principal: @json(number_format($loan->principal_amount, 0)),
+    interestRate: @json(number_format($loan->interest_rate, 2) . '%'),
+    term: @json($loan->loan_term . ' ' . ($loan->period_type_name ?? 'installments')),
+    totalPayable: @json(number_format($loan->total_payable, 0)),
+    amountPaid: @json(number_format($loan->amount_paid, 0)),
+    outstanding: @json(number_format($loan->outstanding_balance, 0)),
+    nextDueDate: @json($nextDue ? date('M d, Y', strtotime($nextDue->due_date)) : 'No pending payments'),
+    nextDueAmount: @json($nextDue ? number_format($nextDue->due_amount, 0) : ''),
+};
+
+function cleanScheduleCellText(cell) {
+    const badge = cell.querySelector('.badge');
+    const source = badge || cell;
+
+    return source.textContent.trim().replace(/\s+/g, ' ');
+}
+
+function getScheduleExportRows() {
+    const table = document.getElementById('schedulesTable');
+    if (!table) {
+        return [];
+    }
+
+    return Array.from(table.querySelectorAll('tbody tr'))
+        .map((row) => Array.from(row.querySelectorAll('td'))
+            .slice(0, -1)
+            .map(cleanScheduleCellText))
+        .filter((row) => row.length > 0);
+}
+
+function csvEscape(value) {
+    const text = String(value ?? '').replace(/\r?\n|\r/g, ' ').trim();
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportFileLoanCode() {
+    return String(scheduleExportMeta.loanCode || 'Loan').replace(/[^A-Za-z0-9_-]+/g, '_');
+}
 
 // Export to PDF function - generates and downloads PDF directly
 function exportToPDF() {
@@ -2729,8 +2831,21 @@ function exportToPDF() {
     
     setTimeout(() => {
         try {
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                throw new Error('PDF library is still loading. Please try again.');
+            }
+
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape', 'mm', 'a4');
+
+            if (typeof doc.autoTable !== 'function') {
+                throw new Error('PDF table library is still loading. Please try again.');
+            }
+
+            const tableData = getScheduleExportRows();
+            if (tableData.length === 0) {
+                throw new Error('No schedule rows were found to export.');
+            }
             
             // Add header
             doc.setFontSize(14);
@@ -2772,49 +2887,23 @@ function exportToPDF() {
             
             yPos += 4;
             doc.setFont(undefined, 'normal');
-            doc.text('Name: {{ $loan->borrower_name }}', col1X, yPos);
-            doc.text('Principal: UGX {{ number_format($loan->principal_amount, 0) }}', col2X, yPos);
-            doc.text('Total Payable: UGX {{ number_format($loan->total_payable, 0) }}', col3X, yPos);
-            @if($nextDue)
-            doc.text('Due Date: {{ date("M d, Y", strtotime($nextDue->due_date)) }}', col4X, yPos);
-            @else
-            doc.text('No pending payments', col4X, yPos);
-            @endif
+            doc.text('Name: ' + scheduleExportMeta.borrower, col1X, yPos);
+            doc.text('Principal: UGX ' + scheduleExportMeta.principal, col2X, yPos);
+            doc.text('Total Payable: UGX ' + scheduleExportMeta.totalPayable, col3X, yPos);
+            doc.text(scheduleExportMeta.nextDueAmount ? 'Due Date: ' + scheduleExportMeta.nextDueDate : scheduleExportMeta.nextDueDate, col4X, yPos);
             
             yPos += 3.5;
-            doc.text('Phone: {{ $loan->phone_number }}', col1X, yPos);
-            doc.text('Interest: {{ number_format($loan->interest_rate, 2) }}%', col2X, yPos);
-            doc.text('Amount Paid: UGX {{ number_format($loan->amount_paid, 0) }}', col3X, yPos);
-            @if($nextDue)
-            doc.text('Amount: UGX {{ number_format($nextDue->due_amount, 0) }}', col4X, yPos);
-            @endif
+            doc.text('Phone: ' + scheduleExportMeta.phone, col1X, yPos);
+            doc.text('Interest: ' + scheduleExportMeta.interestRate, col2X, yPos);
+            doc.text('Amount Paid: UGX ' + scheduleExportMeta.amountPaid, col3X, yPos);
+            if (scheduleExportMeta.nextDueAmount) {
+                doc.text('Amount: UGX ' + scheduleExportMeta.nextDueAmount, col4X, yPos);
+            }
             
             yPos += 3.5;
-            doc.text('Branch: {{ $loan->branch_name ?? "N/A" }}', col1X, yPos);
-            doc.text('Term: {{ $loan->loan_term }} {{ $loan->period_type_name ?? "installments" }}', col2X, yPos);
-            doc.text('Outstanding: UGX {{ number_format($loan->outstanding_balance, 0) }}', col3X, yPos);
-            
-            // Get table data
-            const tableData = [];
-            const rows = document.querySelectorAll('#schedulesTable tbody tr');
-            rows.forEach((row) => {
-                const cells = row.querySelectorAll('td');
-                if (cells.length > 0) {
-                    const rowData = [];
-                    for (let i = 0; i < cells.length - 1; i++) { // Skip action column
-                        let text = cells[i].textContent.trim().replace(/\s+/g, ' ');
-                        // Clean up status badges
-                        if (i === cells.length - 2) {
-                            const badge = cells[i].querySelector('.badge');
-                            if (badge) {
-                                text = badge.textContent.trim();
-                            }
-                        }
-                        rowData.push(text);
-                    }
-                    tableData.push(rowData);
-                }
-            });
+            doc.text('Branch: ' + scheduleExportMeta.branch, col1X, yPos);
+            doc.text('Term: ' + scheduleExportMeta.term, col2X, yPos);
+            doc.text('Outstanding: UGX ' + scheduleExportMeta.outstanding, col3X, yPos);
             
             // Add table
             doc.autoTable({
@@ -2853,7 +2942,7 @@ function exportToPDF() {
             });
             
             // Save the PDF
-            const fileName = 'Loan_{{ $loan->loan_code }}_Repayment_Schedule_' + new Date().toISOString().split('T')[0] + '.pdf';
+            const fileName = 'Loan_' + exportFileLoanCode() + '_Repayment_Schedule_' + new Date().toISOString().split('T')[0] + '.pdf';
             doc.save(fileName);
             
             Swal.fire({
@@ -2876,52 +2965,44 @@ function exportToPDF() {
 
 // Export to Excel function
 function exportToExcel() {
-    // Get table data
     const table = document.getElementById('schedulesTable');
-    const rows = table.querySelectorAll('tbody tr');
+    const rows = getScheduleExportRows();
+
+    if (!table || rows.length === 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Nothing to Export',
+            text: 'No repayment schedule rows were found.'
+        });
+        return;
+    }
     
     // Prepare CSV data with UTF-8 BOM for proper Excel encoding
     let csvContent = '\uFEFF'; // UTF-8 BOM
     
     // Add header with loan information
-    csvContent += 'Emuria Business Investment and Management Software (E-BIMS) Ltd\n';
-    csvContent += 'LOAN REPAYMENT SCHEDULE\n';
+    csvContent += csvEscape('Emuria Business Investment and Management Software (E-BIMS) Ltd') + '\n';
+    csvContent += csvEscape('LOAN REPAYMENT SCHEDULE') + '\n';
     csvContent += '\n';
-    csvContent += 'Loan Code:,{{ $loan->loan_code }}\n';
-    csvContent += 'Borrower:,{{ $loan->borrower_name }}\n';
-    csvContent += 'Phone:,{{ $loan->phone_number }}\n';
-    csvContent += 'Branch:,{{ $loan->branch_name ?? "N/A" }}\n';
-    csvContent += 'Principal Amount:,{{ number_format($loan->principal_amount, 0) }}\n';
-    csvContent += 'Interest Rate:,{{ number_format($loan->interest_rate, 2) }}%\n';
-    csvContent += 'Total Payable:,{{ number_format($loan->total_payable, 0) }}\n';
-    csvContent += 'Amount Paid:,{{ number_format($loan->amount_paid, 0) }}\n';
-    csvContent += 'Outstanding Balance:,{{ number_format($loan->outstanding_balance, 0) }}\n';
+    csvContent += [csvEscape('Loan Code'), csvEscape(scheduleExportMeta.loanCode)].join(',') + '\n';
+    csvContent += [csvEscape('Borrower'), csvEscape(scheduleExportMeta.borrower)].join(',') + '\n';
+    csvContent += [csvEscape('Phone'), csvEscape(scheduleExportMeta.phone)].join(',') + '\n';
+    csvContent += [csvEscape('Branch'), csvEscape(scheduleExportMeta.branch)].join(',') + '\n';
+    csvContent += [csvEscape('Principal Amount'), csvEscape(scheduleExportMeta.principal)].join(',') + '\n';
+    csvContent += [csvEscape('Interest Rate'), csvEscape(scheduleExportMeta.interestRate)].join(',') + '\n';
+    csvContent += [csvEscape('Total Payable'), csvEscape(scheduleExportMeta.totalPayable)].join(',') + '\n';
+    csvContent += [csvEscape('Amount Paid'), csvEscape(scheduleExportMeta.amountPaid)].join(',') + '\n';
+    csvContent += [csvEscape('Outstanding Balance'), csvEscape(scheduleExportMeta.outstanding)].join(',') + '\n';
     csvContent += '\n';
     
     // Add column headers
-    csvContent += '#,Due Date,Principal,Interest,Arrears,Late Fees,Total Due,Paid,Balance,Status\n';
+    csvContent += ['#', 'Due Date', 'Principal', 'Interest', 'Arrears', 'Late Fees', 'Total Due', 'Paid', 'Balance', 'Status']
+        .map(csvEscape)
+        .join(',') + '\n';
     
     // Add rows data
-    rows.forEach((row, index) => {
-        const cells = row.querySelectorAll('td');
-        const rowData = [];
-        
-        // Skip the last cell (Action column)
-        for (let i = 0; i < cells.length - 1; i++) {
-            let cellText = cells[i].textContent.trim().replace(/\s+/g, ' ');
-            // Remove commas from numbers for Excel
-            cellText = cellText.replace(/,/g, '');
-            // Handle status badges - extract text only
-            if (i === cells.length - 2) { // Status column
-                const badge = cells[i].querySelector('.badge');
-                if (badge) {
-                    cellText = badge.textContent.trim();
-                }
-            }
-            rowData.push(cellText);
-        }
-        
-        csvContent += rowData.join(',') + '\n';
+    rows.forEach((row) => {
+        csvContent += row.map(csvEscape).join(',') + '\n';
     });
     
     // Add totals row
@@ -2930,11 +3011,9 @@ function exportToExcel() {
         const footerCells = tfoot.querySelectorAll('th');
         const footerData = [];
         for (let i = 0; i < footerCells.length - 2; i++) { // Skip last 2 cells
-            let cellText = footerCells[i].textContent.trim().replace(/\s+/g, ' ');
-            cellText = cellText.replace(/,/g, '');
-            footerData.push(cellText);
+            footerData.push(cleanScheduleCellText(footerCells[i]));
         }
-        csvContent += footerData.join(',') + '\n';
+        csvContent += footerData.map(csvEscape).join(',') + '\n';
     }
     
     // Create download link
@@ -2943,7 +3022,7 @@ function exportToExcel() {
     const url = URL.createObjectURL(blob);
     
     link.setAttribute('href', url);
-    link.setAttribute('download', 'Loan_{{ $loan->loan_code }}_Repayment_Schedule_' + new Date().toISOString().split('T')[0] + '.csv');
+    link.setAttribute('download', 'Loan_' + exportFileLoanCode() + '_Repayment_Schedule_' + new Date().toISOString().split('T')[0] + '.csv');
     link.style.visibility = 'hidden';
     
     document.body.appendChild(link);

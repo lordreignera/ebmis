@@ -317,7 +317,7 @@ class LoanAccessServiceTest extends TestCase
         (new SuperAdminMiddleware())->handle(Request::create('/admin/logs'), fn () => response('not allowed'));
     }
 
-    public function test_stop_loan_and_disbursement_mutations_require_super_admin_middleware(): void
+    public function test_disbursement_mutations_require_super_admin_middleware(): void
     {
         foreach ([
             'admin.loan-management.disbursements.process',
@@ -334,12 +334,29 @@ class LoanAccessServiceTest extends TestCase
             'admin.loans.disbursements.approve.show',
             'admin.loans.disbursements.approve',
             'admin.loans.disbursements.check-status',
-            'admin.loans.stop',
         ] as $routeName) {
             $route = app('router')->getRoutes()->getByName($routeName);
 
             $this->assertNotNull($route, 'Route not found: ' . $routeName);
             $this->assertContains('super_admin', $route->middleware(), 'Route must require super_admin: ' . $routeName);
+        }
+    }
+
+    public function test_sensitive_loan_operations_require_admin_operations_middleware(): void
+    {
+        foreach ([
+            'admin.loans.active.operations',
+            'admin.loans.reschedule',
+            'admin.loans.restructure',
+            'admin.loans.restructure.store',
+            'admin.loans.revert',
+            'admin.loans.revert-restructure',
+            'admin.loans.stop',
+        ] as $routeName) {
+            $route = app('router')->getRoutes()->getByName($routeName);
+
+            $this->assertNotNull($route, 'Route not found: ' . $routeName);
+            $this->assertContains('loan_operations_admin', $route->middleware(), 'Route must require loan_operations_admin: ' . $routeName);
         }
     }
 

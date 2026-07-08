@@ -62,7 +62,7 @@ return [
         'restructure-loan' => [
             'group' => 'Loans',
             'label' => 'Restructure Loan',
-            'description' => 'Restructure or reschedule an eligible loan.',
+            'description' => 'Restructure an eligible loan. Restricted to Super Administrators and Administrators.',
         ],
         'generate-loan-schedules' => [
             'group' => 'Loans',
@@ -143,6 +143,7 @@ return [
     'route_permissions' => array_merge(
         $routes('view-branch-dashboard', [
             'admin.home',
+            'admin.global-search',
             'admin.api.states',
             'admin.api.cities',
         ]),
@@ -250,6 +251,10 @@ return [
         ]),
         $routes('view-active-loans', [
             'admin.loans.active',
+            'admin.loans.active.collections',
+            'admin.loans.active.risk-follow-up',
+            'admin.loans.active.security-gaps',
+            'admin.loans.active.operations',
             'admin.loans.active.export',
             'admin.loans.active.assign',
             'admin.loans.collateral.show',
@@ -292,7 +297,9 @@ return [
             'admin.loans.reschedule',
             'admin.loans.restructure',
             'admin.loans.restructure.store',
+            'admin.loans.revert',
             'admin.loans.revert-restructure',
+            'admin.loans.stop',
         ]),
         $routes('view-disbursements', [
             'admin.loan-management.disbursements',
@@ -492,7 +499,6 @@ return [
     */
     'sensitive_super_admin_routes' => [
         'admin.loans.destroy',
-        'admin.loans.revert',
         'admin.loans.close-manual',
         'admin.loan-management.disbursements.process',
         'admin.disbursements.create',
@@ -508,7 +514,6 @@ return [
         'admin.loans.disbursements.approve.show',
         'admin.loans.disbursements.approve',
         'admin.loans.disbursements.check-status',
-        'admin.loans.stop',
         'admin.repayments.create',
         'admin.repayments.store',
         'admin.repayments.edit',
@@ -522,6 +527,19 @@ return [
         'admin.loans.carry-over',
         'admin.fees.mark-paid',
         'admin.loan-management.mobile-money.test',
+    ],
+
+    'sensitive_loan_operations_admin_routes' => [
+        'admin.loans.active.operations',
+        'admin.loans.reschedule',
+        'admin.loans.restructure',
+        'admin.loans.restructure.store',
+        'admin.loans.revert',
+        'admin.loans.revert-restructure',
+        'admin.loans.stop',
+    ],
+
+    'sensitive_staff_payment_rollout_routes' => [
         'admin.expenditures.rollout',
         'admin.expenditures.rollout.generate',
         'admin.expenditures.rollout.individual',
@@ -609,7 +627,6 @@ return [
             'manage-loan-agreements',
             'collect-loan-fees',
             'record-mobile-money-repayment',
-            'restructure-loan',
             'generate-loan-schedules',
             'manage-loan-charge-type',
             'view-disbursements',

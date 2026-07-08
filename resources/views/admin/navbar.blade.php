@@ -51,15 +51,16 @@
         </button>
         
         <!-- Search Bar -->
-        <div class="d-none d-lg-flex align-items-center flex-grow-1" style="max-width: 600px; margin-left: 2rem;">
-            <form class="w-100" style="margin: 0;">
+        <div class="d-none d-lg-flex align-items-center flex-grow-1 ebims-navbar-search" style="max-width: 600px; margin-left: 2rem;">
+            <form class="w-100" id="globalSearchForm" style="margin: 0;">
                 <div class="input-group" style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2px;">
                     <span class="input-group-text" style="background: transparent; border: none; color: #111827;">
                         <i class="mdi mdi-magnify"></i>
                     </span>
-                    <input type="text" class="form-control" placeholder="Search members, loans, transactions..." 
+                    <input type="text" class="form-control" id="globalSearchInput" autocomplete="off" placeholder="Search pages, reports, ledgers, settings..." 
                            style="background: transparent; border: none; color: #111827 !important; padding: 0.5rem 1rem;">
                 </div>
+                <div class="ebims-global-search-results" id="globalSearchResults" aria-live="polite"></div>
             </form>
         </div>
         
@@ -442,6 +443,98 @@
     color: #6b7280 !important;
 }
 
+.ebims-navbar-search {
+    position: relative;
+}
+
+.ebims-navbar-search form {
+    position: relative;
+}
+
+.ebims-global-search-results {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+    display: none;
+    left: 0;
+    max-height: 420px;
+    overflow-y: auto;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.45rem);
+    z-index: 1060;
+}
+
+.ebims-global-search-results.is-open {
+    display: block;
+}
+
+.ebims-search-state,
+.ebims-search-result {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem 0.9rem;
+}
+
+.ebims-search-state {
+    color: #64748b;
+    font-size: 0.86rem;
+}
+
+.ebims-search-result {
+    color: #111827 !important;
+    text-decoration: none !important;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.ebims-search-result:last-child {
+    border-bottom: 0;
+}
+
+.ebims-search-result:hover,
+.ebims-search-result:focus,
+.ebims-search-result.is-active {
+    background: #f8fafc;
+}
+
+.ebims-search-icon {
+    align-items: center;
+    background: #e0f2fe;
+    border-radius: 6px;
+    color: #0369a1;
+    display: inline-flex;
+    flex: 0 0 34px;
+    height: 34px;
+    justify-content: center;
+    width: 34px;
+}
+
+.ebims-search-title {
+    color: #0f172a;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.ebims-search-subtitle {
+    color: #64748b;
+    font-size: 0.76rem;
+    line-height: 1.25;
+    margin-top: 0.1rem;
+}
+
+.ebims-search-type {
+    color: #2563eb;
+    flex: 0 0 auto;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    margin-left: auto;
+    text-transform: uppercase;
+}
+
 /* Ensure navbar stays on top */
 .navbar.fixed-top {
     z-index: 1030 !important;
@@ -493,6 +586,193 @@
     display: block !important;
 }
 </style>
+
+<script>
+(function() {
+    const searchUrl = @json(route('admin.global-search'));
+    let activeIndex = -1;
+    let lastResults = [];
+    let searchTimer = null;
+    let currentController = null;
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function openResults(resultsBox) {
+        resultsBox.classList.add('is-open');
+    }
+
+    function closeResults(resultsBox) {
+        resultsBox.classList.remove('is-open');
+        activeIndex = -1;
+    }
+
+    function renderState(resultsBox, message) {
+        resultsBox.innerHTML = '<div class="ebims-search-state">' + escapeHtml(message) + '</div>';
+        openResults(resultsBox);
+    }
+
+    function setActiveResult(resultsBox, index) {
+        const links = Array.from(resultsBox.querySelectorAll('.ebims-search-result'));
+        links.forEach((link) => link.classList.remove('is-active'));
+
+        if (!links.length) {
+            activeIndex = -1;
+            return;
+        }
+
+        activeIndex = Math.max(0, Math.min(index, links.length - 1));
+        links[activeIndex].classList.add('is-active');
+        links[activeIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    function renderResults(resultsBox, results) {
+        lastResults = results || [];
+        activeIndex = -1;
+
+        if (!lastResults.length) {
+            renderState(resultsBox, 'No matching pages or modules found.');
+            return;
+        }
+
+        resultsBox.innerHTML = lastResults.map(function(result, index) {
+            return [
+                '<a class="ebims-search-result" href="', escapeHtml(result.url), '" data-index="', index, '">',
+                    '<span class="ebims-search-icon"><i class="mdi ', escapeHtml(result.icon || 'mdi-magnify'), '"></i></span>',
+                    '<span class="flex-grow-1">',
+                        '<span class="ebims-search-title">', escapeHtml(result.title), '</span>',
+                        '<span class="ebims-search-subtitle">', escapeHtml(result.subtitle), '</span>',
+                    '</span>',
+                    '<span class="ebims-search-type">', escapeHtml(result.type), '</span>',
+                '</a>'
+            ].join('');
+        }).join('');
+
+        openResults(resultsBox);
+    }
+
+    function performSearch(input, resultsBox) {
+        const query = input.value.trim();
+
+        if (query.length < 2) {
+            resultsBox.innerHTML = '';
+            closeResults(resultsBox);
+            return;
+        }
+
+        if (currentController) {
+            currentController.abort();
+        }
+
+        currentController = new AbortController();
+        renderState(resultsBox, 'Searching...');
+
+        fetch(searchUrl + '?q=' + encodeURIComponent(query), {
+            headers: { 'Accept': 'application/json' },
+            signal: currentController.signal
+        })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('Search failed');
+                }
+
+                return response.json();
+            })
+            .then(function(payload) {
+                renderResults(resultsBox, payload.results || []);
+            })
+            .catch(function(error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+
+                renderState(resultsBox, 'Search is unavailable right now.');
+            });
+    }
+
+    function initGlobalSearch() {
+        const form = document.getElementById('globalSearchForm');
+        const input = document.getElementById('globalSearchInput');
+        const resultsBox = document.getElementById('globalSearchResults');
+
+        if (!form || !input || !resultsBox || form.dataset.ebimsSearchReady === '1') {
+            return;
+        }
+
+        form.dataset.ebimsSearchReady = '1';
+
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            if (activeIndex >= 0 && lastResults[activeIndex]) {
+                window.location.href = lastResults[activeIndex].url;
+                return;
+            }
+
+            if (lastResults[0]) {
+                window.location.href = lastResults[0].url;
+            } else {
+                performSearch(input, resultsBox);
+            }
+        });
+
+        input.addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() {
+                performSearch(input, resultsBox);
+            }, 250);
+        });
+
+        input.addEventListener('keydown', function(event) {
+            const links = resultsBox.querySelectorAll('.ebims-search-result');
+
+            if (event.key === 'Escape') {
+                closeResults(resultsBox);
+                return;
+            }
+
+            if (!links.length) {
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setActiveResult(resultsBox, activeIndex + 1);
+            }
+
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setActiveResult(resultsBox, activeIndex <= 0 ? links.length - 1 : activeIndex - 1);
+            }
+        });
+
+        resultsBox.addEventListener('mouseover', function(event) {
+            const link = event.target.closest('.ebims-search-result');
+            if (link) {
+                setActiveResult(resultsBox, Number(link.dataset.index || 0));
+            }
+        });
+
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.ebims-navbar-search')) {
+                closeResults(resultsBox);
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initGlobalSearch);
+    } else {
+        initGlobalSearch();
+    }
+})();
+</script>
 
 <script>
 // IMMEDIATE dropdown toggle - no waiting

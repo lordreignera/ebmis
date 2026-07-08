@@ -3,6 +3,10 @@
     $sidebarUser = auth()->user();
     $sidebarCan = fn (string $permission): bool => $sidebarUser->isSuperAdmin() || $sidebarUser->can($permission);
     $sidebarCanAny = fn (array $permissions): bool => collect($permissions)->contains(fn (string $permission): bool => $sidebarCan($permission));
+    $sidebarCanManageSensitiveLoanOperations = $sidebarUser->isSuperAdmin()
+        || in_array($sidebarUser->user_type, ['administrator', 'admin'], true)
+        || $sidebarUser->hasRole(['Administrator', 'admin']);
+    $sidebarCanManageStaffPaymentRollout = $sidebarUser->canManageStaffPaymentRollout();
   @endphp
 
   <div class="sidebar-brand-wrapper d-flex align-items-center justify-content-center">
@@ -514,7 +518,13 @@
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
           @endif
           @if($sidebarCan('view-active-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Personal Loans</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Loans: Schedules & Payments</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.collections') }}">Collections Queue</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.risk-follow-up') }}">Risk Follow-up</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.security-gaps') }}">Security Gaps</a></li>
+          @if($sidebarCanManageSensitiveLoanOperations)
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.operations') }}">Loan Operations</a></li>
+          @endif
           @endif
           @if($sidebarCan('manage-loans'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=personal">Rejected Personal Loans</a></li>
@@ -559,7 +569,7 @@
     </li>
     @endif
 
-    @if($sidebarCan('manage-expenditures'))
+    @if($sidebarCan('manage-expenditures') || $sidebarCanManageStaffPaymentRollout)
     <li class="nav-item menu-items">
       <a class="nav-link" data-bs-toggle="collapse" href="#expenditures" aria-expanded="false" aria-controls="expenditures">
         <span class="menu-icon">
@@ -570,10 +580,12 @@
       </a>
       <div class="collapse" id="expenditures">
         <ul class="nav flex-column sub-menu">
+          @if($sidebarCan('manage-expenditures'))
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.index') }}">Expenditures</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.create') }}">New Expenditure</a></li>
-          @if($sidebarUser->isSuperAdmin())
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.rollout') }}">Rollout</a></li>
+          @endif
+          @if($sidebarCanManageStaffPaymentRollout)
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.rollout') }}">Staff Payment Rollout</a></li>
           @endif
         </ul>
       </div>

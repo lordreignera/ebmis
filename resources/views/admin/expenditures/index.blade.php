@@ -3,6 +3,7 @@
 @section('title', 'Expenditures')
 
 @section('content')
+@php($canManageStaffPaymentRollout = auth()->user()->canManageStaffPaymentRollout())
 <div class="container-fluid expenditure-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
@@ -15,9 +16,9 @@
             </nav>
         </div>
         <div class="d-flex gap-2">
-            @if(auth()->user()->isSuperAdmin())
+            @if($canManageStaffPaymentRollout)
             <a href="{{ route('admin.expenditures.rollout') }}" class="btn btn-outline-dark">
-                <i class="mdi mdi-account-cash-outline me-1"></i> Payment Rollout
+                <i class="mdi mdi-account-cash-outline me-1"></i> Staff Payment Rollout
             </a>
             @endif
             <a href="{{ route('admin.expenditures.create') }}" class="btn btn-dark">
@@ -66,8 +67,8 @@
                     <label class="form-label">Status</label>
                     <select name="status" class="form-select">
                         <option value="">All</option>
-                        @foreach(['pending', 'approved', 'paid', 'rejected'] as $status)
-                            <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst($status) }}</option>
+                        @foreach(['pending', 'approved', 'payment_pending', 'payment_failed', 'paid', 'rejected'] as $status)
+                            <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst(str_replace('_', ' ', $status)) }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -76,7 +77,7 @@
                     <select name="type" class="form-select">
                         <option value="">All</option>
                         <option value="operational" @selected(request('type') === 'operational')>Operational</option>
-                        <option value="performance_payout" @selected(request('type') === 'performance_payout')>Performance payout</option>
+                        <option value="performance_payout" @selected(request('type') === 'performance_payout')>Staff payment</option>
                         <option value="allowance" @selected(request('type') === 'allowance')>Allowance</option>
                         <option value="other" @selected(request('type') === 'other')>Other</option>
                     </select>
@@ -119,7 +120,7 @@
                                 <td>
                                     <a href="{{ route('admin.expenditures.show', $expense) }}" class="fw-semibold text-dark">{{ $expense->expense_number }}</a>
                                     <div>{{ $expense->title }}</div>
-                                    <small class="text-muted">{{ str_replace('_', ' ', ucfirst($expense->type)) }}</small>
+                                    <small class="text-muted">{{ $expense->type === 'performance_payout' ? 'Staff payment' : str_replace('_', ' ', ucfirst($expense->type)) }}</small>
                                 </td>
                                 <td>
                                     <div>{{ $expense->expenseAccount->name ?? 'N/A' }}</div>
@@ -136,7 +137,7 @@
                                     @endif
                                 </td>
                                 <td class="text-end fw-semibold">UGX {{ number_format((float) $expense->amount, 0) }}</td>
-                                <td><span class="status-pill status-{{ $expense->status }}">{{ ucfirst($expense->status) }}</span></td>
+                                <td><span class="status-pill status-{{ $expense->status }}">{{ ucfirst(str_replace('_', ' ', $expense->status)) }}</span></td>
                                 <td class="text-end">
                                     <a href="{{ route('admin.expenditures.show', $expense) }}" class="btn btn-sm btn-outline-dark">
                                         <i class="mdi mdi-eye-outline"></i> View
@@ -199,5 +200,7 @@
 .status-paid { background: #ecfdf5; border-color: #a7f3d0; }
 .status-rejected { background: #fef2f2; border-color: #fecaca; }
 .status-approved { background: #f8fafc; border-color: #cbd5e1; }
+.status-payment_pending { background: #eff6ff; border-color: #bfdbfe; }
+.status-payment_failed { background: #fff1f2; border-color: #fecdd3; }
 </style>
 @endpush

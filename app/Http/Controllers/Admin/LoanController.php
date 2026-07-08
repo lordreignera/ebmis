@@ -20,6 +20,7 @@ use App\Services\FileStorageService;
 use App\Services\LoanAccessService;
 use App\Services\LoanClosureService;
 use App\Services\RepaymentService;
+use App\Support\ActiveLoanStatsCache;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -3111,10 +3112,16 @@ class LoanController extends Controller
      */
     public function restructure($id)
     {
+        if (!$this->loanAccessService->canManageSensitiveLoanOperations(request()->user())) {
+            abort(403, 'Unauthorized. Only the Super Administrator or Administrator can restructure loans.');
+        }
+
         $loan = PersonalLoan::with(['member', 'product', 'branch', 'schedules'])
             ->findOrFail($id);
 
         $this->loanAccessService->ensureLoanAccess($loan);
+        $this->clearAbandonedRestructureIfPresent($loan);
+        $loan->refresh()->load(['member', 'product', 'branch', 'schedules']);
 
         // Check if loan is eligible for restructuring. Some legacy loans were
         // marked completed while schedules were still unpaid; allow those to be
@@ -3176,6 +3183,10 @@ class LoanController extends Controller
      */
     public function restructureStore(Request $request, $id)
     {
+        if (!$this->loanAccessService->canManageSensitiveLoanOperations($request->user())) {
+            abort(403, 'Unauthorized. Only the Super Administrator or Administrator can restructure loans.');
+        }
+
         $validated = $request->validate([
             'reason' => 'required|string',
             'comments' => 'required|string|min:20',
@@ -3193,6 +3204,8 @@ class LoanController extends Controller
 
             $originalLoan = PersonalLoan::with(['member', 'product', 'schedules'])->findOrFail($id);
             $this->loanAccessService->ensureLoanAccess($originalLoan);
+            $this->clearAbandonedRestructureIfPresent($originalLoan);
+            $originalLoan->refresh()->load(['member', 'product', 'schedules']);
 
             // Verify loan can be restructured
             if (!$this->canRestructureLoan($originalLoan)) {
@@ -3200,9 +3213,9 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', 'Only active loans with an outstanding schedule balance can be restructured.');
             }
 
-            if ($originalLoan->restructured == 1) {
+            if ((int) $originalLoan->status === 5) {
                 DB::rollBack();
-                return redirect()->back()->with('error', 'This loan has already been restructured.');
+                return redirect()->back()->with('error', 'This original loan has already been replaced by a restructured loan.');
             }
 
             $newProduct = Product::active()
@@ -3320,6 +3333,7 @@ class LoanController extends Controller
             }
 
             DB::commit();
+            ActiveLoanStatsCache::bust();
 
             return redirect()->to(route('admin.loans.active', [], false))
                 ->with('success', 'Loan restructured successfully! New loan code: ' . $restructuredLoan->code . 
@@ -3341,8 +3355,8 @@ class LoanController extends Controller
      */
     public function revertRestructure(Request $request, $id)
     {
-        if (!$request->user()?->isSuperAdmin()) {
-            return $this->restructureRevertResponse($request, false, 'Unauthorized. Only the Super Administrator can revert restructured loans.', 403);
+        if (!$this->loanAccessService->canManageSensitiveLoanOperations($request->user())) {
+            return $this->restructureRevertResponse($request, false, 'Unauthorized. Only the Super Administrator or Administrator can revert restructured loans.', 403);
         }
 
         try {
@@ -3403,6 +3417,7 @@ class LoanController extends Controller
                 ]);
 
             DB::commit();
+            ActiveLoanStatsCache::bust();
 
             Log::info('Loan restructure reverted', [
                 'original_loan_id' => $originalLoan->id,
@@ -3452,6 +3467,84 @@ class LoanController extends Controller
         }
 
         return [null, null];
+    }
+
+    private function clearAbandonedRestructureIfPresent(PersonalLoan $originalLoan): void
+    {
+        $candidate = PersonalLoan::where('OLoanID', $originalLoan->code)
+            ->where('id', '!=', $originalLoan->id)
+            ->whereIn('status', [4, 6])
+            ->latest('datecreated')
+            ->first();
+
+        if (!$candidate || $this->getRestructureRevertBlocker($candidate)) {
+            return;
+        }
+
+        $cleared = false;
+
+        DB::transaction(function () use ($originalLoan, $candidate, &$cleared) {
+            $candidate = PersonalLoan::whereKey($candidate->id)->lockForUpdate()->first();
+            $original = PersonalLoan::whereKey($originalLoan->id)->lockForUpdate()->first();
+
+            if (!$candidate || !$original || !in_array((int) $candidate->status, [4, 6], true)) {
+                return;
+            }
+
+            if ($this->getRestructureRevertBlocker($candidate)) {
+                return;
+            }
+
+            $candidateCode = $candidate->code;
+
+            if (Schema::hasTable('late_fees')) {
+                DB::table('late_fees')
+                    ->where('loan_id', $candidate->id)
+                    ->where('status', 0)
+                    ->delete();
+            }
+
+            LoanSchedule::where('loan_id', $candidate->id)->delete();
+            $candidate->delete();
+
+            if ((int) ($original->restructured ?? 0) === 1 || (int) $original->status === 5) {
+                $original->status = 2;
+                $original->restructured = 0;
+                $original->date_closed = null;
+                $original->Rcomments = trim(sprintf(
+                    "%s\n[%s] Abandoned restructure %s was cleared automatically so the loan can be restructured again.",
+                    (string) ($original->Rcomments ?? ''),
+                    now()->format('Y-m-d H:i:s'),
+                    $candidateCode
+                ));
+                $original->save();
+            }
+
+            if (Schema::hasTable('late_fees')) {
+                DB::table('late_fees')
+                    ->where('loan_id', $original->id)
+                    ->where('status', 2)
+                    ->where('waiver_reason', 'Waived during loan restructure to ' . $candidateCode)
+                    ->update([
+                        'status' => 0,
+                        'waiver_reason' => null,
+                        'waived_at' => null,
+                        'waived_by' => null,
+                    ]);
+            }
+
+            Log::info('Abandoned loan restructure cleared', [
+                'original_loan_id' => $original->id,
+                'original_loan_code' => $original->code,
+                'abandoned_restructure_code' => $candidateCode,
+            ]);
+
+            $cleared = true;
+        });
+
+        if ($cleared) {
+            ActiveLoanStatsCache::bust();
+        }
     }
 
     private function getRestructureRevertBlocker(PersonalLoan $restructuredLoan): ?string
@@ -3562,10 +3655,6 @@ class LoanController extends Controller
      */
     private function canRestructureLoan(PersonalLoan $loan): bool
     {
-        if ((int) ($loan->restructured ?? 0) === 1) {
-            return false;
-        }
-
         $status = (int) $loan->status;
         if ($status === 2) {
             return true;
@@ -3801,10 +3890,10 @@ class LoanController extends Controller
     public function revertLoan(Request $request, $id)
     {
         try {
-            if (!$request->user()?->isSuperAdmin()) {
+            if (!$this->loanAccessService->canManageSensitiveLoanOperations($request->user())) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized. Only the Super Administrator can revert rejected loans.'
+                    'message' => 'Unauthorized. Only the Super Administrator or Administrator can revert rejected loans.'
                 ], 403);
             }
 
