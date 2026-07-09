@@ -31,7 +31,7 @@
                 <div class="card-body">
                     <dl class="row mb-0 detail-list">
                         <dt class="col-md-4">Status</dt>
-                        <dd class="col-md-8"><span class="badge bg-light text-dark border">{{ ucfirst(str_replace('_', ' ', $expenditure->status)) }}</span></dd>
+                        <dd class="col-md-8"><span class="badge bg-light text-dark border">{{ $expenditure->status_label }}</span></dd>
                         <dt class="col-md-4">Type</dt>
                         <dd class="col-md-8">{{ $expenditure->type === 'performance_payout' ? 'Staff payment' : str_replace('_', ' ', ucfirst($expenditure->type)) }}</dd>
                         <dt class="col-md-4">Amount</dt>
@@ -138,14 +138,28 @@
             <div class="card">
                 <div class="card-header bg-light text-dark"><strong>Actions</strong></div>
                 <div class="card-body">
-                    @if(!in_array($expenditure->status, ['paid', 'rejected', 'cancelled'], true))
+                    @if($expenditure->status === \App\Models\Expenditure::STATUS_PENDING)
+                        <div class="alert alert-warning small">
+                            This request is pending approval. Payment cannot be sent until it is approved.
+                        </div>
+                    @elseif($expenditure->status === \App\Models\Expenditure::STATUS_APPROVED)
+                        <div class="alert alert-info small">
+                            This request is approved and waiting for mobile-money payment.
+                        </div>
+                    @elseif($expenditure->status === \App\Models\Expenditure::STATUS_PAID)
+                        <div class="alert alert-success small">
+                            This request is approved and paid.
+                        </div>
+                    @endif
+
+                    @if($expenditure->canBeApproved())
                         <form method="POST" action="{{ route('admin.expenditures.approve', $expenditure) }}" class="mb-3">
                             @csrf
                             <button class="btn btn-outline-dark w-100"><i class="mdi mdi-check me-1"></i> Approve</button>
                         </form>
                     @endif
 
-                    @if($expenditure->status !== 'paid' && !in_array($expenditure->status, ['rejected', 'cancelled'], true))
+                    @if($expenditure->canBePaid())
                         <form method="POST" action="{{ route('admin.expenditures.pay', $expenditure) }}" class="mb-3">
                             @csrf
                             <input type="hidden" name="payment_channel" id="payment_channel" value="mobile_money">
@@ -179,18 +193,21 @@
                                     <option value="AIRTEL" @selected(old('mobile_money_network', $expenditure->mobile_money_network) === 'AIRTEL')>Airtel</option>
                                 </select>
                             </div>
-                            <button class="btn btn-dark w-100"><i class="mdi mdi-cellphone-arrow-down me-1"></i> Send Mobile Money</button>
+                            <button class="btn btn-dark w-100">
+                                <i class="mdi mdi-cellphone-arrow-down me-1"></i>
+                                {{ $expenditure->status === \App\Models\Expenditure::STATUS_PAYMENT_FAILED ? 'Retry Mobile Money' : 'Send Mobile Money' }}
+                            </button>
                         </form>
                     @endif
 
-                    @if($expenditure->status === 'payment_pending' && $expenditure->mobile_money_reference)
+                    @if($expenditure->status === \App\Models\Expenditure::STATUS_PAYMENT_PENDING && $expenditure->mobile_money_reference)
                         <form method="POST" action="{{ route('admin.expenditures.mobile-money.status', $expenditure) }}" class="mb-3">
                             @csrf
                             <button class="btn btn-outline-dark w-100"><i class="mdi mdi-refresh me-1"></i> Check Mobile Money Status</button>
                         </form>
                     @endif
 
-                    @if($expenditure->status !== 'paid' && $expenditure->status !== 'rejected')
+                    @if($expenditure->canBeRejected())
                         <form method="POST" action="{{ route('admin.expenditures.reject', $expenditure) }}">
                             @csrf
                             <label class="form-label">Rejection Reason</label>

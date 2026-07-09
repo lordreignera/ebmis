@@ -770,23 +770,34 @@ class ReportsController extends Controller
      */
     public function cashSecurities(Request $request)
     {
-        $query = CashSecurity::with(['member', 'loan']);
+        $query = CashSecurity::with(['member', 'loan', 'addedBy', 'returnedBy']);
 
-        // Apply date filters
-        if ($request->has('start_date') && !empty($request->start_date)) {
-            $query->whereDate('created_at', '>=', $request->start_date);
-        }
-        if ($request->has('end_date') && !empty($request->end_date)) {
-            $query->whereDate('created_at', '<=', $request->end_date);
+        if ($request->filled('start_date')) {
+            $query->whereDate('datecreated', '>=', $request->start_date);
         }
 
-        $securities = $query->orderBy('created_at', 'desc')->paginate(20);
+        if ($request->filled('end_date')) {
+            $query->whereDate('datecreated', '<=', $request->end_date);
+        }
+
+        if ($request->filled('status')) {
+            match ($request->status) {
+                'pending' => $query->where('status', CashSecurity::STATUS_PENDING),
+                'paid' => $query->where('status', CashSecurity::STATUS_PAID)->where('returned', 0),
+                'failed' => $query->where('status', CashSecurity::STATUS_FAILED),
+                'returned' => $query->where('returned', 1),
+                default => null,
+            };
+        }
+
+        $securities = $query->latest('datecreated')->latest('id')->paginate(20)->withQueryString();
         
         $stats = [
             'total_securities' => CashSecurity::count(),
             'total_amount' => CashSecurity::sum('amount'),
-            'released_amount' => CashSecurity::where('status', 'released')->sum('amount'),
-            'held_amount' => CashSecurity::where('status', 'held')->sum('amount'),
+            'pending_amount' => CashSecurity::where('status', CashSecurity::STATUS_PENDING)->sum('amount'),
+            'held_amount' => CashSecurity::where('status', CashSecurity::STATUS_PAID)->where('returned', 0)->sum('amount'),
+            'returned_amount' => CashSecurity::where('returned', 1)->sum('amount'),
             'average_security' => CashSecurity::avg('amount'),
         ];
 

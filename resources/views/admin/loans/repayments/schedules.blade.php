@@ -148,8 +148,42 @@
     }
 
     @media (max-width: 991.98px) {
+        #repayment-schedules-section .card-header .row {
+            gap: 0.75rem;
+        }
+
+        #repayment-schedules-section .card-header .col,
+        #repayment-schedules-section .card-header .col-auto {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+
+        #repayment-schedules-section .card-title {
+            font-size: 1rem;
+            line-height: 1.25;
+        }
+
+        #repayment-schedules-section .card-header .btn-group {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            width: 100%;
+        }
+
+        #repayment-schedules-section .card-header .btn-group .btn {
+            border-radius: 0;
+            min-height: 38px;
+            white-space: normal;
+        }
+
+        #repayment-schedules-section .card-header .btn-warning.me-2 {
+            margin-right: 0 !important;
+            margin-bottom: 0.5rem;
+            width: 100%;
+        }
+
         .schedules-table-wrap {
-            padding: 0.75rem;
+            overflow: visible;
+            padding: 0;
         }
 
         #schedulesTable.schedules-table-compact,
@@ -163,20 +197,50 @@
             width: 100%;
         }
 
+        #schedulesTable.schedules-table-compact {
+            border: 0;
+            font-size: 0.84rem;
+        }
+
         #schedulesTable.schedules-table-compact thead {
             display: none;
         }
 
         #schedulesTable.schedules-table-compact tbody tr {
+            background: #ffffff !important;
             border: 1px solid #e5e7eb;
             border-radius: 8px;
+            box-shadow: 0 1px 5px rgba(15, 23, 42, 0.06);
             margin-bottom: 0.75rem;
-            padding: 0.65rem;
+            overflow: hidden;
+            padding: 0.35rem 0.75rem;
+        }
+
+        #schedulesTable.schedules-table-compact tbody tr[data-filter="paid"] {
+            border-left: 4px solid #16a34a;
+        }
+
+        #schedulesTable.schedules-table-compact tbody tr[data-filter="pending"] {
+            border-left: 4px solid #f59e0b;
+        }
+
+        #schedulesTable.schedules-table-compact tbody tr[data-filter="overdue"] {
+            border-left: 4px solid #dc2626;
         }
 
         #schedulesTable.schedules-table-compact td {
             border: 0;
-            padding: 0.35rem 0;
+            border-bottom: 1px solid #f1f5f9;
+            display: grid;
+            grid-template-columns: 7.75rem minmax(0, 1fr);
+            gap: 0.75rem;
+            min-height: 36px;
+            padding: 0.48rem 0;
+            text-align: left !important;
+        }
+
+        #schedulesTable.schedules-table-compact td:last-child {
+            border-bottom: 0;
         }
 
         #schedulesTable.schedules-table-compact td::before {
@@ -185,12 +249,81 @@
             color: #64748b;
             font-size: 0.7rem;
             font-weight: 800;
-            text-transform: uppercase;
+            grid-column: 1;
+            line-height: 1.2;
             margin-bottom: 0.15rem;
+            text-transform: uppercase;
+        }
+
+        #schedulesTable.schedules-table-compact td > * {
+            grid-column: 2;
+            justify-self: end;
+            max-width: 100%;
+            text-align: right;
+        }
+
+        #schedulesTable .schedule-main-amount {
+            font-size: 0.9rem;
+        }
+
+        #schedulesTable .schedule-note {
+            font-size: 0.7rem;
+        }
+
+        #schedulesTable.schedules-table-compact .btn-group,
+        #schedulesTable.schedules-table-compact .schedule-actions {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+        }
+
+        #schedulesTable.schedules-table-compact td[data-label="Action"] .btn,
+        #schedulesTable.schedules-table-compact td[data-label="Balance"] .btn {
+            min-height: 34px;
+            white-space: normal;
         }
 
         #schedulesTable.schedules-table-compact tfoot {
             display: none;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .schedule-export-actions {
+            justify-content: stretch;
+            width: 100%;
+        }
+
+        .schedule-export-actions .btn {
+            flex: 1 1 100%;
+            width: 100%;
+        }
+
+        #repayment-schedules-section .card-body {
+            padding: 0.75rem;
+        }
+
+        #repayment-schedules-section .card-header .btn-group {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        #schedulesTable.schedules-table-compact td {
+            grid-template-columns: minmax(6.5rem, 42%) minmax(0, 1fr);
+            gap: 0.5rem;
+        }
+    }
+
+    @media (max-width: 399.98px) {
+        #schedulesTable.schedules-table-compact td {
+            grid-template-columns: 1fr;
+            gap: 0.2rem;
+        }
+
+        #schedulesTable.schedules-table-compact td::before,
+        #schedulesTable.schedules-table-compact td > * {
+            grid-column: 1;
+            justify-self: start;
+            text-align: left;
         }
     }
 </style>
@@ -293,7 +426,10 @@
                         <div class="col-md-3">
                             <div class="border-end pe-3">
                                 <h6 class="text-muted">Late Fees</h6>
-                                <p class="mb-1"><strong>Total Late Fees:</strong> <span class="text-danger">UGX {{ number_format($totalLateFees ?? 0, 0) }}</span></p>
+                                <p class="mb-1"><strong>Late Fees Due:</strong> <span class="text-danger">UGX {{ number_format($lateFeesOutstanding ?? 0, 0) }}</span></p>
+                                @if(($totalLateFees ?? 0) > ($lateFeesOutstanding ?? 0))
+                                    <p class="mb-1"><strong>Gross Late Fees:</strong> <span class="text-muted">UGX {{ number_format($totalLateFees ?? 0, 0) }}</span></p>
+                                @endif
                                 <p class="mb-1"><strong>Late Fees Paid:</strong> <span class="text-success">UGX {{ number_format($lateFeesPaid ?? 0, 0) }}</span></p>
                                 <p class="mb-0"><strong>Late Fees Waived:</strong> <span class="text-info">UGX {{ number_format($lateFeesWaived ?? 0, 0) }}</span></p>
                             </div>
@@ -550,10 +686,13 @@
                                         @php
                                             $originalLateFee = $schedule->penalty_original ?? $schedule->penalty;
                                             $waivedAmount = $schedule->penalty_waived ?? 0;
+                                            $paidLateFeeRecorded = $schedule->penalty_paid_recorded ?? 0;
+                                            $netLateFee = $schedule->penalty ?? 0;
+                                            $netLateFeeDue = max(0, $netLateFee - ($schedule->penalty_paid ?? 0));
                                             $displayBalance = (float) ($schedule->total_balance ?? 0);
                                             $excessAmount = $schedule->excess_amount ?? 0;
                                         @endphp
-                                        <td class="text-center" data-label="#">{{ $loop->iteration }}</td>
+                                        <td class="text-center" data-label="Installment">{{ $loop->iteration }}</td>
                                         <td class="text-center" data-label="Due Date">{{ date('d-m-Y', strtotime($schedule->payment_date)) }}</td>
                                         <td class="text-end" data-label="Principal">
                                             <span class="schedule-main-amount">{{ number_format($schedule->principal, 0) }}</span>
@@ -565,9 +704,18 @@
                                             <span class="schedule-main-amount">{{ number_format($schedule->periods_in_arrears, 0) }}</span>
                                         </td>
                                         <td class="text-end" data-label="Late Fees">
-                                            <span class="schedule-main-amount {{ $originalLateFee > 0 ? 'text-danger' : '' }}">{{ number_format($originalLateFee, 0) }}</span>
+                                            <span class="schedule-main-amount {{ $netLateFeeDue > 0 ? 'text-danger' : 'text-success' }}">{{ number_format($netLateFeeDue, 0) }}</span>
+                                            @if($originalLateFee > $netLateFeeDue)
+                                                <span class="schedule-note text-muted">Gross {{ number_format($originalLateFee, 0) }}</span>
+                                            @endif
                                             @if($waivedAmount > 0)
                                                 <span class="schedule-note text-info">{{ number_format($waivedAmount, 0) }} waived</span>
+                                            @endif
+                                            @if(($schedule->penalty_paid ?? 0) > 0)
+                                                <span class="schedule-note text-success">{{ number_format($schedule->penalty_paid, 0) }} paid by repayment</span>
+                                            @endif
+                                            @if($paidLateFeeRecorded > 0)
+                                                <span class="schedule-note text-success">{{ number_format($paidLateFeeRecorded, 0) }} paid</span>
                                             @endif
                                         </td>
                                         <td class="text-end" data-label="Total Due">
@@ -736,7 +884,10 @@
                                         <strong>{{ number_format($schedules->sum('periods_in_arrears'), 0) }}</strong>
                                     </th>
                                     <th class="text-end">
-                                        <strong>{{ number_format($schedules->sum('penalty_original'), 0) }}</strong>
+                                        <strong>{{ number_format($lateFeesOutstanding ?? 0, 0) }}</strong>
+                                        @if($schedules->sum('penalty_original') > ($lateFeesOutstanding ?? 0))
+                                            <br><small class="text-muted">{{ number_format($schedules->sum('penalty_original'), 0) }} gross</small>
+                                        @endif
                                         @if($schedules->sum('penalty_waived') > 0)
                                             <br><small class="text-info">{{ number_format($schedules->sum('penalty_waived'), 0) }} waived</small>
                                         @endif

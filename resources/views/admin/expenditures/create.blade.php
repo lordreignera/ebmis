@@ -6,12 +6,12 @@
 <div class="container-fluid expenditure-page">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h4 class="mb-1">New Expenditure</h4>
+            <h4 class="mb-1">New Money Request</h4>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Home</a></li>
                     <li class="breadcrumb-item"><a href="{{ route('admin.expenditures.index') }}">Expenditures</a></li>
-                    <li class="breadcrumb-item active">New</li>
+                    <li class="breadcrumb-item active">New request</li>
                 </ol>
             </nav>
         </div>
@@ -51,7 +51,7 @@
                 <div class="col-md-6">
                     <label class="form-label">Payment Account</label>
                     <select name="payment_account_id" class="form-select">
-                        <option value="">Choose when paying</option>
+                        <option value="">Choose after approval when paying</option>
                         @foreach($paymentAccounts as $account)
                             <option value="{{ $account->Id }}" @selected((string) old('payment_account_id') === (string) $account->Id)>{{ $account->full_name }}</option>
                         @endforeach
@@ -60,7 +60,7 @@
                 <div class="col-md-6">
                     <label class="form-label">Investment Account</label>
                     <select name="investment_id" class="form-select">
-                        <option value="">Choose when paying</option>
+                        <option value="">Choose after approval when paying</option>
                         @foreach($investments as $investment)
                             <option value="{{ $investment->id }}" @selected((string) old('investment_id') === (string) $investment->id)>
                                 {{ $investment->name }} - UGX {{ number_format((float) $investment->amount, 0) }}
@@ -114,7 +114,7 @@
         </div>
         <div class="card-footer bg-white d-flex justify-content-end gap-2">
             <a href="{{ route('admin.expenditures.index') }}" class="btn btn-outline-secondary">Cancel</a>
-            <button class="btn btn-dark"><i class="mdi mdi-content-save-outline me-1"></i> Save Expenditure</button>
+            <button class="btn btn-dark"><i class="mdi mdi-content-save-outline me-1"></i> Submit Request for Approval</button>
         </div>
     </form>
 </div>

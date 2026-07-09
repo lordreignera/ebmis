@@ -15,6 +15,7 @@ use App\Models\LoanCollateralDocument;
 use App\Models\SmsLog;
 use App\Models\Member;
 use App\Models\Branch;
+use App\Models\LateFee;
 use App\Models\LoanSchedule;
 use App\Models\Product;
 use App\Models\RawPayment;
@@ -165,17 +166,25 @@ class RepaymentController extends Controller
 
         $latepaymentOriginal = (($schedule->principal + $schedule->interest) * 0.06) * $dd;
 
-        $totalWaivedAmount = DB::table('late_fees')
+        $totalWaivedAmount = (float) DB::table('late_fees')
             ->where('schedule_id', $schedule->id)
-            ->where('status', 2)
+            ->where('status', LateFee::STATUS_WAIVED)
             ->sum('amount');
 
-        $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
+        $totalPaidLateFeeRows = (float) DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', LateFee::STATUS_PAID)
+            ->sum('amount');
+
+        $effectiveWaivedAmount = min($latepaymentOriginal, $totalWaivedAmount);
+        $effectivePaidLateFeeRows = min(max(0, $latepaymentOriginal - $effectiveWaivedAmount), $totalPaidLateFeeRows);
+        $latepayment = max(0, $latepaymentOriginal - $effectiveWaivedAmount - $effectivePaidLateFeeRows);
 
         return [
             'gross' => $latepaymentOriginal,
             'net' => $latepayment,
-            'waived' => $totalWaivedAmount,
+            'waived' => $effectiveWaivedAmount,
+            'paid' => $effectivePaidLateFeeRows,
             'days_overdue' => $d,
             'periods_overdue' => $dd
         ];
@@ -567,11 +576,12 @@ class RepaymentController extends Controller
         }
 
         $gross = (((float) $schedule->principal + (float) $schedule->interest) * 0.06) * $periodsOverdue;
+        $effectiveWaivedAmount = min($gross, $waivedAmount);
 
         return [
             'gross' => $gross,
-            'net' => max(0, $gross - $waivedAmount),
-            'waived' => $waivedAmount,
+            'net' => max(0, $gross - $effectiveWaivedAmount),
+            'waived' => $effectiveWaivedAmount,
             'days_overdue' => $daysOverdue,
             'periods_overdue' => $periodsOverdue,
         ];
@@ -2142,10 +2152,10 @@ class RepaymentController extends Controller
 
         return DB::table('late_fees')
             ->whereIn('schedule_id', $scheduleIds)
-            ->where('status', 2)
+            ->whereIn('status', [LateFee::STATUS_PAID, LateFee::STATUS_WAIVED])
             ->groupBy('schedule_id')
-            ->select('schedule_id', DB::raw('SUM(amount) as total_waived'))
-            ->pluck('total_waived', 'schedule_id')
+            ->select('schedule_id', DB::raw('SUM(amount) as total_settled'))
+            ->pluck('total_settled', 'schedule_id')
             ->map(fn ($amount) => (float) $amount)
             ->toArray();
     }
@@ -2364,9 +2374,9 @@ class RepaymentController extends Controller
                     ->select('schedule_id', DB::raw('SUM(amount) as paid'));
 
                 $waivedSubquery = DB::table('late_fees')
-                    ->where('status', 2)
+                    ->whereIn('status', [LateFee::STATUS_PAID, LateFee::STATUS_WAIVED])
                     ->groupBy('schedule_id')
-                    ->select('schedule_id', DB::raw('SUM(amount) as waived'));
+                    ->select('schedule_id', DB::raw('SUM(amount) as settled_late_fees'));
 
                 $dueDateExpression = "COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date))";
                 $daysOverdueExpression = "GREATEST(0, DATEDIFF(CURDATE(), {$dueDateExpression}))";
@@ -2391,7 +2401,7 @@ class RepaymentController extends Controller
                     ->selectRaw("
                         SUM(GREATEST(0, s.interest - COALESCE(p.paid, 0))) as outstanding_interest,
                         SUM(GREATEST(0, s.principal - GREATEST(0, COALESCE(p.paid, 0) - s.interest))) as outstanding_principal,
-                        SUM(GREATEST(0, {$grossLateFeeExpression} - COALESCE(w.waived, 0) - {$lateFeePaidExpression})) as outstanding_late_fees
+                        SUM(GREATEST(0, {$grossLateFeeExpression} - COALESCE(w.settled_late_fees, 0) - {$lateFeePaidExpression})) as outstanding_late_fees
                     ")
                     ->first();
 
@@ -2578,9 +2588,9 @@ class RepaymentController extends Controller
                     ->select('schedule_id', DB::raw('SUM(amount) as paid'));
 
                 $waivedSubquery = DB::table('late_fees')
-                    ->where('status', 2)
+                    ->whereIn('status', [LateFee::STATUS_PAID, LateFee::STATUS_WAIVED])
                     ->groupBy('schedule_id')
-                    ->select('schedule_id', DB::raw('SUM(amount) as waived'));
+                    ->select('schedule_id', DB::raw('SUM(amount) as settled_late_fees'));
 
                 $dueDateExpression      = "COALESCE(STR_TO_DATE(s.payment_date, '%d-%m-%Y'), DATE(s.payment_date))";
                 $daysOverdueExpression  = "GREATEST(0, DATEDIFF(CURDATE(), {$dueDateExpression}))";
@@ -2605,7 +2615,7 @@ class RepaymentController extends Controller
                     ->selectRaw("
                         SUM(GREATEST(0, s.interest - COALESCE(p.paid, 0))) as outstanding_interest,
                         SUM(GREATEST(0, s.principal - GREATEST(0, COALESCE(p.paid, 0) - s.interest))) as outstanding_principal,
-                        SUM(GREATEST(0, {$grossLateFeeExpression} - COALESCE(w.waived, 0) - {$lateFeePaidExpression})) as outstanding_late_fees
+                        SUM(GREATEST(0, {$grossLateFeeExpression} - COALESCE(w.settled_late_fees, 0) - {$lateFeePaidExpression})) as outstanding_late_fees
                     ")
                     ->first();
 
@@ -3030,22 +3040,31 @@ class RepaymentController extends Controller
                 
                 $latepaymentOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $periodsLateAtPayment;
                 
-                // Check for waivers - only manually waived late fees count
+                // Check for waiver/payment rows recorded against this late fee.
                 if ($periodsLateAtPayment > 0) {
-                    $totalWaivedAmount = DB::table('late_fees')
+                    $totalWaivedAmount = (float) DB::table('late_fees')
                         ->where('schedule_id', $schedule->id)
-                        ->where('status', 2) // Status 2 = manually waived by admin
+                        ->where('status', LateFee::STATUS_WAIVED)
+                        ->sum('amount');
+
+                    $totalPaidLateFeeRows = (float) DB::table('late_fees')
+                        ->where('schedule_id', $schedule->id)
+                        ->where('status', LateFee::STATUS_PAID)
                         ->sum('amount');
                 } else {
                     $totalWaivedAmount = 0;
+                    $totalPaidLateFeeRows = 0;
                 }
                 
-                $latepayment = max(0, $latepaymentOriginal - $totalWaivedAmount);
+                $effectiveWaivedAmount = min($latepaymentOriginal, $totalWaivedAmount);
+                $effectivePaidLateFeeRows = min(max(0, $latepaymentOriginal - $effectiveWaivedAmount), $totalPaidLateFeeRows);
+                $latepayment = max(0, $latepaymentOriginal - $effectiveWaivedAmount - $effectivePaidLateFeeRows);
                 $lateFeeData = [
                     'days_overdue' => $daysLateAtPayment,
                     'periods_overdue' => $periodsLateAtPayment,
                     'gross' => $latepaymentOriginal,
-                    'waived' => $totalWaivedAmount,
+                    'waived' => $effectiveWaivedAmount,
+                    'paid' => $effectivePaidLateFeeRows,
                     'net' => $latepayment
                 ];
             } else {
@@ -3057,6 +3076,7 @@ class RepaymentController extends Controller
             
             $latepaymentOriginal = $lateFeeData['gross'];
             $totalWaivedAmount = $lateFeeData['waived'];
+            $totalPaidLateFeeRows = $lateFeeData['paid'] ?? 0;
             $latepayment = $lateFeeData['net'];
             
             // Store the actual periods used for late fee calculation
@@ -3160,6 +3180,7 @@ class RepaymentController extends Controller
             $schedule->periods_in_arrears = $displayPeriods;
             $schedule->penalty_original = $latepaymentOriginal; // Late fee BEFORE waiver
             $schedule->penalty_waived = $totalWaivedAmount; // Amount waived by admin
+            $schedule->penalty_paid_recorded = $totalPaidLateFeeRows; // Paid via late_fees records/carry-over
             $schedule->penalty = $latepayment; // Late fee AFTER waiver (what client owes)
             $schedule->total_payment = $schedule->principal + $intrestamtpayable + $latepayment;
             $schedule->principal_paid = $pafterprinicpalpayment;
@@ -3228,6 +3249,9 @@ class RepaymentController extends Controller
         $totalLateFees = $schedules->sum('penalty_original'); // Total BEFORE waiver
         $lateFeesWaived = $schedules->sum('penalty_waived'); // Total waived by admin
         $lateFeesPaid = $schedules->sum('penalty_paid'); // Total actually paid by client
+        $lateFeesOutstanding = $schedules->sum(function ($schedule) {
+            return max(0, (float) ($schedule->penalty ?? 0) - (float) ($schedule->penalty_paid ?? 0));
+        });
 
         // RECALCULATE SUMMARY from processed schedules (with freeze logic applied)
         $totalDue = $schedules->sum('total_payment'); // Use calculated total_payment from each schedule
@@ -3246,7 +3270,7 @@ class RepaymentController extends Controller
 
         return view('admin.loans.repayments.schedules', compact(
             'loan', 'schedules', 'nextDue', 'overdueCount', 'overdueAmount',
-            'totalLateFees', 'lateFeesWaived', 'lateFeesPaid'
+            'totalLateFees', 'lateFeesWaived', 'lateFeesPaid', 'lateFeesOutstanding'
         ));
     }
 
@@ -3402,6 +3426,44 @@ class RepaymentController extends Controller
                 ], 422);
             }
 
+            $schedule = LoanSchedule::find($scheduleId);
+            if (!$schedule || (int) $schedule->loan_id !== (int) $loan->id) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected schedule does not belong to this loan.'
+                ], 422);
+            }
+
+            $sequenceCheck = $this->checkEarlierSchedulesPaid($schedule->id, $loan->id);
+            if (!$sequenceCheck['allowed']) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => $sequenceCheck['message']
+                ], 422);
+            }
+
+            $components = $this->repaymentService->getScheduleOutstandingComponents($schedule, $loan);
+            $requiredAmount = round((float) $components['outstanding']);
+
+            if ($requiredAmount <= 1) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This installment has already been fully paid.'
+                ], 422);
+            }
+
+            if (abs((float) $request->amount - $requiredAmount) > 1) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment must equal the exact selected schedule balance: UGX ' . number_format($requiredAmount, 0),
+                    'required_amount' => $requiredAmount,
+                ], 422);
+            }
+
             $repaymentData = [
                 'type' => $paymentTypeCode,
                 'details' => $request->input('notes') ?: $request->input('details', 'Quick repayment'),
@@ -3419,6 +3481,7 @@ class RepaymentController extends Controller
                 $network = $request->input('network');
                 
                 if (!$phone) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => 'Phone number is required for mobile money payments.'
@@ -3426,6 +3489,7 @@ class RepaymentController extends Controller
                 }
                 
                 if (!$network) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => 'Network is required for mobile money payments.'
@@ -3498,9 +3562,10 @@ class RepaymentController extends Controller
 
             // Update loan balance and schedules if confirmed
             if ($repaymentData['status'] == 1) {
-                // NOTE: personal_loans table doesn't have 'paid' column
-                // Payment tracking is done via loan_schedules.paid only
-                $this->updateLoanSchedules($loan, $repayment);
+                $this->repaymentService->syncScheduleSettlement(
+                    LoanSchedule::findOrFail($repayment->schedule_id),
+                    $loan
+                );
                 
                 // Check if loan is fully paid by checking ALL schedules
                 $this->repaymentService->checkAndCloseLoanIfComplete($loan->id);
@@ -4590,6 +4655,7 @@ class RepaymentController extends Controller
     {
         $validated = $request->validate([
             'loan_id' => 'required|exists:loans,id',
+            'schedule_id' => 'nullable|exists:loan_schedules,id',
             'amount' => 'required|numeric|min:1',
             'type' => 'required|integer|in:1,2,3', // 1=cash, 2=mobile, 3=bank
             'txn_id' => 'nullable|string|max:255',
@@ -4606,18 +4672,24 @@ class RepaymentController extends Controller
 
         $isMobileMoney = (int) $validated['type'] === 2;
 
-        if ($isMobileMoney && $request->boolean('status')) {
+        if ($isMobileMoney) {
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Mobile money repayments can only be completed after the gateway callback or status confirmation.');
+                ->with('error', 'Please use the loan schedules page for Mobile Money repayments so the gateway request, callback, and schedule update are linked correctly.');
         }
 
         $isConfirmed = !$isMobileMoney && $request->boolean('status');
 
+        if (!$isConfirmed) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Cash and bank repayments must be confirmed immediately by the Super Administrator.');
+        }
+
         try {
             DB::beginTransaction();
 
-            $loan = Loan::find($validated['loan_id']);
+            $loan = Loan::with('product')->find($validated['loan_id']);
             
             // SECURITY: Prevent payments on stopped loans
             if ($loan && $loan->status == 6) {
@@ -4627,35 +4699,76 @@ class RepaymentController extends Controller
                 ]);
             }
 
+            $scheduleQuery = LoanSchedule::where('loan_id', $loan->id)
+                ->where('status', '!=', 1)
+                ->orderBy('payment_date')
+                ->orderBy('id');
+
+            if (!empty($validated['schedule_id'])) {
+                $scheduleQuery->where('id', $validated['schedule_id']);
+            }
+
+            $schedule = $scheduleQuery->lockForUpdate()->first();
+            if (!$schedule) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'No unpaid schedule was found for this loan.');
+            }
+
+            $paymentDate = !empty($validated['date']) ? Carbon::parse($validated['date']) : now();
+            $components = $this->repaymentService->getScheduleOutstandingComponents($schedule, $loan, $paymentDate);
+            $requiredAmount = round((float) $components['outstanding']);
+
+            if ($requiredAmount <= 1) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'This installment has already been fully paid.');
+            }
+
+            if (abs((float) $validated['amount'] - $requiredAmount) > 1) {
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Payment must equal the exact selected schedule balance: UGX ' . number_format($requiredAmount, 0));
+            }
+
+            $reference = $validated['txn_id'] ?: sprintf(
+                '%s-%s-%04d',
+                (int) $validated['type'] === 1 ? 'CH' : 'BT',
+                now()->format('YmdHisv'),
+                mt_rand(1000, 9999)
+            );
+
+            $paymentMethodName = (int) $validated['type'] === 1 ? 'Cash' : 'Bank Transfer';
+
             // Prepare repayment data for old structure
             $repaymentData = [
                 'type' => $validated['type'],
                 'details' => $validated['details'] ?? 'Loan payment',
                 'loan_id' => $validated['loan_id'],
-                'schedule_id' => 0, // We'll update this if needed
-                'amount' => $validated['amount'],
-                'date_created' => $validated['date'] ?? now(),
+                'schedule_id' => $schedule->id,
+                'amount' => $requiredAmount,
+                'date_created' => $paymentDate,
                 'added_by' => auth()->id(),
-                'status' => $isConfirmed ? 1 : 0,
-                'payment_status' => $isConfirmed ? 'Confirmed' : 'Pending',
+                'status' => 1,
+                'payment_status' => 'Confirmed',
                 'platform' => 'Web',
-                'txn_id' => $validated['txn_id'],
-                'pay_status' => $isConfirmed ? 'SUCCESS' : 'PENDING',
-                'pay_message' => $isConfirmed ? 'Payment confirmed' : 'Payment pending verification',
+                'txn_id' => $reference,
+                'transaction_reference' => $reference,
+                'pay_status' => 'SUCCESS',
+                'pay_message' => $paymentMethodName . ' payment confirmed by ' . auth()->user()->name,
             ];
 
             $repayment = Repayment::create($repaymentData);
 
-            // NOTE: personal_loans table doesn't have 'paid' column
-            // Payment tracking is done via loan_schedules.paid only
-            if ($isConfirmed) {
-                // Check if loan is fully paid - validates ALL schedules before closing
-                $this->repaymentService->checkAndCloseLoanIfComplete($validated['loan_id']);
-                
-                $loanForGL = PersonalLoan::with(['member', 'product'])->find($validated['loan_id']);
-                if ($loanForGL && !$this->postGLEntry($repayment, $loanForGL)) {
-                    session()->flash('warning', 'Repayment saved but GL journal entry could not be posted automatically. Please post manually via Journal Entries.');
-                }
+            $this->repaymentService->syncScheduleSettlement($schedule->fresh(), $loan, $paymentDate);
+            $this->repaymentService->checkAndCloseLoanIfComplete($validated['loan_id']);
+
+            $loanForGL = PersonalLoan::with(['member', 'product'])->find($validated['loan_id']);
+            if ($loanForGL && !$this->postGLEntry($repayment, $loanForGL)) {
+                session()->flash('warning', 'Repayment saved but GL journal entry could not be posted automatically. Please post manually via Journal Entries.');
             }
 
             DB::commit();
@@ -4828,108 +4941,6 @@ class RepaymentController extends Controller
     }
 
     /**
-     * Calculate repayment breakdown
-     */
-    private function calculateRepaymentBreakdown(Loan $loan, $amount)
-    {
-        $breakdown = [
-            'principal' => 0,
-            'interest' => 0,
-            'fees' => 0,
-            'penalty' => 0
-        ];
-
-        // Get next due schedule
-        $schedule = LoanSchedule::where('loan_id', $loan->id)
-                               ->where('status', 0)
-                               ->orderBy('payment_date')
-                               ->first();
-
-        if ($schedule) {
-            $remaining = $amount;
-
-            // First pay penalties and fees
-            if ($schedule->penalty > 0) {
-                $penaltyPayment = min($remaining, $schedule->penalty);
-                $breakdown['penalty'] = $penaltyPayment;
-                $remaining -= $penaltyPayment;
-            }
-
-            if ($schedule->fees > 0 && $remaining > 0) {
-                $feesPayment = min($remaining, $schedule->fees);
-                $breakdown['fees'] = $feesPayment;
-                $remaining -= $feesPayment;
-            }
-
-            // Then pay interest
-            if ($schedule->interest > 0 && $remaining > 0) {
-                $interestPayment = min($remaining, $schedule->interest);
-                $breakdown['interest'] = $interestPayment;
-                $remaining -= $interestPayment;
-            }
-
-            // Finally pay principal
-            if ($remaining > 0) {
-                $breakdown['principal'] = $remaining;
-            }
-        } else {
-            // If no schedule, assume it's all principal
-            $breakdown['principal'] = $amount;
-        }
-
-        return $breakdown;
-    }
-
-    /**
-     * Update loan schedules after repayment
-     */
-    private function updateLoanSchedules(Loan $loan, Repayment $repayment)
-    {
-        $schedules = LoanSchedule::where('loan_id', $loan->id)
-                                ->where('status', 0)
-                                ->orderBy('payment_date')
-                                ->get();
-
-        $remainingAmount = $repayment->amount;
-
-        foreach ($schedules as $schedule) {
-            if ($remainingAmount <= 0) break;
-
-            $totalDue = $schedule->payment + $schedule->penalty + $schedule->fees;
-            
-            if ($remainingAmount >= $totalDue) {
-                // Full payment for this schedule
-                // CRITICAL: Only set date_cleared if TOTAL balance (including late fees) is zero
-                $pendingLateFees = DB::table('late_fees')
-                    ->where('schedule_id', $schedule->id)
-                    ->where('status', 0)
-                    ->sum('amount');
-                
-                $updateData = [
-                    'status' => 1, // Paid
-                    'paid_amount' => $totalDue,
-                    'payment_date' => $repayment->date
-                ];
-                
-                // Only freeze late fees if they're also paid
-                if ($pendingLateFees <= 0.01) {
-                    $updateData['date_cleared'] = now();
-                }
-                
-                $schedule->update($updateData);
-                $remainingAmount -= $totalDue;
-            } else {
-                // Partial payment
-                $schedule->update([
-                    'paid_amount' => $remainingAmount,
-                    'status' => 2 // Partially paid
-                ]);
-                $remainingAmount = 0;
-            }
-        }
-    }
-
-    /**
      * Get loan details for AJAX
      */
     public function getLoanDetails(Loan $loan)
@@ -4939,6 +4950,9 @@ class RepaymentController extends Controller
         }]);
 
         $nextDue = $loan->schedules->first();
+        $components = $nextDue
+            ? $this->repaymentService->getScheduleOutstandingComponents($nextDue, $loan)
+            : null;
 
         return response()->json([
             'success' => true,
@@ -4948,10 +4962,12 @@ class RepaymentController extends Controller
                 'member_name' => $loan->member->fname . ' ' . $loan->member->lname,
                 'principal' => $loan->principal,
                 'balance' => $loan->outstanding_balance ?? ($loan->principal - $loan->paid),
+                'next_schedule_id' => $nextDue ? $nextDue->id : null,
                 'next_due_date' => $nextDue ? $nextDue->payment_date : null,
-                'next_due_amount' => $nextDue ? $nextDue->payment : 0,
-                'interest_due' => $nextDue ? $nextDue->interest : 0,
-                'penalty' => $nextDue ? ($nextDue->penalty ?? 0) : 0,
+                'next_due_amount' => $components ? round((float) $components['outstanding']) : 0,
+                'principal_due' => $components ? (float) $components['principal'] : 0,
+                'interest_due' => $components ? (float) $components['interest'] : 0,
+                'penalty' => $components ? (float) $components['late_fee_net'] : 0,
                 'fees' => $nextDue ? ($nextDue->fees ?? 0) : 0,
             ]
         ]);
@@ -6289,6 +6305,7 @@ class RepaymentController extends Controller
             $waivedCount = 0;
             $totalWaived = 0;
             $failedIds = [];
+            $affectedScheduleIds = [];
             
             foreach ($lateFees as $lateFee) {
                 // Check if this is an existing late_fee record or a calculated penalty from schedule
@@ -6323,28 +6340,40 @@ class RepaymentController extends Controller
                     if ($updated) {
                         $waivedCount++;
                         $totalWaived += $lateFeeRecord->amount;
+                        $affectedScheduleIds[] = (int) $lateFeeRecord->schedule_id;
                     } else {
                         $failedIds[] = $lateFeeId;
                     }
                     
                 } else if (isset($lateFee['schedule_id'])) {
-                    // Calculated penalty from schedule - create late_fee record and mark as waived
+                    // Calculated penalty from schedule - calculate fresh server-side,
+                    // then create a waiver only for the currently outstanding net fee.
                     $scheduleId = $lateFee['schedule_id'];
-                    $amount = $lateFee['amount'];
                     
                     // Get schedule details
                     $schedule = $loan instanceof GroupLoan
-                        ? GroupLoanSchedule::find($scheduleId)
-                        : LoanSchedule::find($scheduleId);
+                        ? GroupLoanSchedule::where('id', $scheduleId)->lockForUpdate()->first()
+                        : LoanSchedule::where('id', $scheduleId)->lockForUpdate()->first();
 
                     if (!$schedule || $schedule->loan_id != $loanId) {
                         $failedIds[] = $scheduleId;
                         continue;
                     }
+
+                    if (method_exists($loan, 'loadMissing')) {
+                        $loan->loadMissing('product');
+                    }
+
+                    $lateFeeData = $this->repaymentService->calculateLateFee($schedule, $loan);
+                    $amount = round((float) ($lateFeeData['net'] ?? 0), 2);
+
+                    if ($amount <= 1) {
+                        $failedIds[] = $scheduleId;
+                        continue;
+                    }
                     
-                    // Calculate days overdue
-                    $dueDate = Carbon::parse($schedule->payment_date);
-                    $daysOverdue = $dueDate->isPast() ? $dueDate->diffInDays(now(), false) : 0;
+                    $dueTimestamp = $this->parsePaymentDate($schedule->payment_date);
+                    $scheduleDueDate = $dueTimestamp ? date('Y-m-d', $dueTimestamp) : $schedule->payment_date;
                     
                     // Insert late fee record as waived
                     $inserted = DB::table('late_fees')->insert([
@@ -6352,9 +6381,16 @@ class RepaymentController extends Controller
                         'schedule_id' => $scheduleId,
                         'member_id' => $memberId,
                         'amount' => $amount,
-                        'days_overdue' => $daysOverdue,
-                        'schedule_due_date' => $schedule->payment_date,
+                        'days_overdue' => (int) ($lateFeeData['days_overdue'] ?? 0),
+                        'periods_overdue' => (int) ($lateFeeData['periods_overdue'] ?? 0),
+                        'period_type' => optional($loan->product)->period_type,
+                        'schedule_due_date' => $scheduleDueDate,
                         'calculated_date' => now(),
+                        'calculation_details' => json_encode([
+                            'gross' => (float) ($lateFeeData['gross'] ?? 0),
+                            'already_waived' => (float) ($lateFeeData['waived'] ?? 0),
+                            'already_paid' => (float) ($lateFeeData['paid'] ?? 0),
+                        ]),
                         'status' => 2, // 2 = waived (create as already waived)
                         'waiver_reason' => $waiverReason,
                         'waived_at' => now(),
@@ -6366,10 +6402,25 @@ class RepaymentController extends Controller
                     if ($inserted) {
                         $waivedCount++;
                         $totalWaived += $amount;
+                        $affectedScheduleIds[] = (int) $scheduleId;
                     } else {
                         $failedIds[] = $scheduleId;
                     }
                 }
+            }
+
+            $settledSchedules = 0;
+            if ($waivedCount > 0 && $loan instanceof PersonalLoan) {
+                $loan->loadMissing('product');
+                $affectedSchedules = LoanSchedule::whereIn('id', array_unique($affectedScheduleIds))->get();
+
+                foreach ($affectedSchedules as $affectedSchedule) {
+                    if ($this->repaymentService->syncScheduleSettlement($affectedSchedule, $loan)) {
+                        $settledSchedules++;
+                    }
+                }
+
+                $this->repaymentService->checkAndCloseLoanIfComplete((int) $loan->id);
             }
             
             // Log the waiver action
@@ -6379,6 +6430,7 @@ class RepaymentController extends Controller
                 'waived_by_name' => $user->name ?? $user->fname . ' ' . $user->lname,
                 'count' => $waivedCount,
                 'total_amount' => $totalWaived,
+                'settled_schedules' => $settledSchedules,
                 'reason' => $waiverReason,
                 'failed_ids' => $failedIds
             ]);
@@ -6494,13 +6546,21 @@ class RepaymentController extends Controller
                     
                     $paymentAmount = min($remainingExcess, $lateFee->amount);
                     
-                    DB::table('late_fees')->where('id', $lateFee->id)->update([
-                        'status' => $paymentAmount >= $lateFee->amount ? 1 : 0,
-                        'date_paid' => now()
-                    ]);
+                    if ($paymentAmount >= $lateFee->amount) {
+                        DB::table('late_fees')->where('id', $lateFee->id)->update([
+                            'status' => LateFee::STATUS_PAID,
+                            'paid_at' => now(),
+                            'payment_reference' => 'CARRY-' . $validated['schedule_id'],
+                            'updated_at' => now(),
+                        ]);
+                    }
                     
                     $remainingExcess -= $paymentAmount;
                 }
+
+                $this->repaymentService->syncScheduleSettlement(
+                    LoanSchedule::findOrFail($validated['schedule_id'])
+                );
                 
                 DB::commit();
                 return redirect()->back()->with('success', 'Excess payment of UGX ' . number_format($excess, 0) . ' applied to late fees.');
@@ -6515,23 +6575,30 @@ class RepaymentController extends Controller
                 DB::table('loan_schedules')->where('id', $targetSchedule->id)->update([
                     'paid' => DB::raw('paid + ' . $excess)
                 ]);
+
+                $carryReference = 'CARRY-' . $validated['schedule_id'] . '-TO-' . $targetSchedule->id . '-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999);
                 
                 // Create audit log
-                DB::table('repayments')->insert([
+                Repayment::create([
+                    'type' => 1,
+                    'details' => ($validated['carry_note'] ?? 'Manual carry-over') . ' (From Schedule ' . $validated['schedule_id'] . ')',
                     'loan_id' => $validated['loan_id'],
                     'schedule_id' => $targetSchedule->id,
-                    'member_id' => $sourceSchedule->member_id,
                     'amount' => $excess,
-                    'payment_method' => 'CARRY_OVER',
-                    'reference_number' => 'CARRY-' . $validated['schedule_id'] . '-TO-' . $targetSchedule->id,
                     'status' => 1,
                     'payment_status' => 'Completed',
-                    'pay_status' => 'Completed',
-                    'notes' => ($validated['carry_note'] ?? 'Manual carry-over') . ' (From Schedule ' . $validated['schedule_id'] . ')',
+                    'pay_status' => 'SUCCESS',
+                    'pay_message' => 'Manual carry-over from schedule ' . $validated['schedule_id'],
+                    'txn_id' => $carryReference,
+                    'transaction_reference' => $carryReference,
+                    'platform' => 'CarryOver',
                     'date_created' => now(),
-                    'date_updated' => now(),
                     'added_by' => auth()->id()
                 ]);
+
+                $this->repaymentService->syncScheduleSettlement(
+                    LoanSchedule::findOrFail($targetSchedule->id)
+                );
                 
                 DB::commit();
                 

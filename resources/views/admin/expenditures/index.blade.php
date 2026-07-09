@@ -4,6 +4,14 @@
 
 @section('content')
 @php($canManageStaffPaymentRollout = auth()->user()->canManageStaffPaymentRollout())
+@php($statusOptions = [
+    'pending' => 'Pending approval',
+    'approved' => 'Approved, pending payment',
+    'payment_pending' => 'Payment pending',
+    'payment_failed' => 'Payment failed',
+    'paid' => 'Approved and paid',
+    'rejected' => 'Rejected',
+])
 <div class="container-fluid expenditure-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
@@ -32,14 +40,14 @@
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="metric-card">
-                <span>Pending</span>
-                <strong>UGX {{ number_format($stats['pending'], 0) }}</strong>
+                <span>Pending Approval</span>
+                <strong>UGX {{ number_format($stats['pending_approval'], 0) }}</strong>
             </div>
         </div>
         <div class="col-md-3">
             <div class="metric-card">
-                <span>Approved</span>
-                <strong>UGX {{ number_format($stats['approved'], 0) }}</strong>
+                <span>Pending Payment</span>
+                <strong>UGX {{ number_format($stats['pending_payment'], 0) }}</strong>
             </div>
         </div>
         <div class="col-md-3">
@@ -67,8 +75,8 @@
                     <label class="form-label">Status</label>
                     <select name="status" class="form-select">
                         <option value="">All</option>
-                        @foreach(['pending', 'approved', 'payment_pending', 'payment_failed', 'paid', 'rejected'] as $status)
-                            <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst(str_replace('_', ' ', $status)) }}</option>
+                        @foreach($statusOptions as $status => $label)
+                            <option value="{{ $status }}" @selected(request('status') === $status)>{{ $label }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -137,7 +145,7 @@
                                     @endif
                                 </td>
                                 <td class="text-end fw-semibold">UGX {{ number_format((float) $expense->amount, 0) }}</td>
-                                <td><span class="status-pill status-{{ $expense->status }}">{{ ucfirst(str_replace('_', ' ', $expense->status)) }}</span></td>
+                                <td><span class="status-pill status-{{ $expense->status }}">{{ $expense->status_label }}</span></td>
                                 <td class="text-end">
                                     <a href="{{ route('admin.expenditures.show', $expense) }}" class="btn btn-sm btn-outline-dark">
                                         <i class="mdi mdi-eye-outline"></i> View
@@ -197,6 +205,7 @@
     background: #fff;
     font-size: 12px;
 }
+.status-pending { background: #fffbeb; border-color: #fde68a; }
 .status-paid { background: #ecfdf5; border-color: #a7f3d0; }
 .status-rejected { background: #fef2f2; border-color: #fecaca; }
 .status-approved { background: #f8fafc; border-color: #cbd5e1; }

@@ -110,6 +110,7 @@
                                         </option>
                                     @endforeach
                                 </select>
+                                <input type="hidden" name="schedule_id" id="scheduleIdInput" value="{{ old('schedule_id') }}">
                                 @error('loan_id')
                                     <small class="text-warning d-block mt-1">{{ $message }}</small>
                                 @enderror
@@ -174,12 +175,12 @@
                                     <option value="">Select method...</option>
                                     @if(auth()->user()->isSuperAdmin())
                                         <option value="1" {{ old('type') == '1' ? 'selected' : '' }}>Cash</option>
-                                        <option value="2" {{ old('type') == '2' ? 'selected' : '' }}>Mobile Money</option>
                                         <option value="3" {{ old('type') == '3' ? 'selected' : '' }}>Bank Transfer</option>
                                     @else
-                                        <option value="2" {{ old('type') == '2' ? 'selected' : '' }}>Mobile Money</option>
+                                        <option value="">No manual payment method available</option>
                                     @endif
                                 </select>
+                                <small class="text-muted">Use the loan schedules page for Mobile Money repayments.</small>
                                 @error('type')
                                     <small class="text-danger">{{ $message }}</small>
                                 @enderror
@@ -214,14 +215,15 @@
                             </div>
 
                             <div class="col-12">
+                                <input type="hidden" name="status" value="1">
                                 <div class="form-check" id="manualConfirmWrap">
-                                    <input class="form-check-input" type="checkbox" name="status" value="1" 
-                                           id="manualConfirmCheckbox" {{ old('status') == '1' ? 'checked' : '' }}>
+                                    <input class="form-check-input" type="checkbox" value="1"
+                                           id="manualConfirmCheckbox" checked disabled>
                                     <label class="form-check-label">
                                         Confirm cash/bank payment immediately
                                     </label>
                                 </div>
-                                <small class="text-muted" id="manualConfirmHint">Mobile Money is completed only after the gateway callback/status confirmation.</small>
+                                <small class="text-muted" id="manualConfirmHint">Cash and bank payments are saved as successful immediately by the Super Administrator.</small>
                             </div>
 
                             <div class="col-12 mt-4">
@@ -254,19 +256,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const paymentTypeSelect = document.getElementById('paymentTypeSelect');
     const manualConfirmCheckbox = document.getElementById('manualConfirmCheckbox');
     const manualConfirmWrap = document.getElementById('manualConfirmWrap');
+    const scheduleIdInput = document.getElementById('scheduleIdInput');
+    const amountInput = document.getElementById('amountInput');
 
     function syncManualConfirmation() {
         if (!paymentTypeSelect || !manualConfirmCheckbox || !manualConfirmWrap) {
             return;
         }
 
-        const isMobileMoney = paymentTypeSelect.value === '2';
-        manualConfirmCheckbox.disabled = isMobileMoney;
-        manualConfirmWrap.classList.toggle('text-muted', isMobileMoney);
-
-        if (isMobileMoney) {
-            manualConfirmCheckbox.checked = false;
-        }
+        manualConfirmCheckbox.checked = true;
+        manualConfirmCheckbox.disabled = true;
     }
 
     if (paymentTypeSelect) {
@@ -280,6 +279,12 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (!selectedOption || !selectedOption.value) {
             loanDetailsPanel.style.display = 'none';
+            if (scheduleIdInput) {
+                scheduleIdInput.value = '';
+            }
+            if (amountInput) {
+                amountInput.value = '';
+            }
             return;
         }
 
@@ -322,6 +327,10 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 if (data.success && data.loan) {
                     if (data.loan.next_due_date) {
+                        if (scheduleIdInput) {
+                            scheduleIdInput.value = data.loan.next_schedule_id || '';
+                        }
+
                         scheduleContent.innerHTML = `
                             <div class="breakdown-item">
                                 <span>Due Date:</span>
@@ -329,11 +338,15 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                             <div class="breakdown-item">
                                 <span>Principal Due:</span>
-                                <span>UGX ${parseFloat(data.loan.next_due_amount - data.loan.interest_due).toLocaleString()}</span>
+                                <span>UGX ${parseFloat(data.loan.principal_due).toLocaleString()}</span>
                             </div>
                             <div class="breakdown-item">
                                 <span>Interest Due:</span>
                                 <span>UGX ${parseFloat(data.loan.interest_due).toLocaleString()}</span>
+                            </div>
+                            <div class="breakdown-item">
+                                <span>Net Late Fees:</span>
+                                <span>UGX ${parseFloat(data.loan.penalty || 0).toLocaleString()}</span>
                             </div>
                             <div class="breakdown-item">
                                 <span>Total Due:</span>
@@ -342,8 +355,21 @@ document.addEventListener('DOMContentLoaded', function() {
                         `;
                         scheduleDetails.style.display = 'block';
                         
-                        // Pre-fill amount with due amount
-                        document.getElementById('amountInput').placeholder = `Due: UGX ${parseFloat(data.loan.next_due_amount).toLocaleString()}`;
+                        if (amountInput) {
+                            amountInput.value = Math.round(parseFloat(data.loan.next_due_amount || 0));
+                            amountInput.placeholder = `Due: UGX ${parseFloat(data.loan.next_due_amount).toLocaleString()}`;
+                            amountInput.readOnly = true;
+                        }
+                    } else {
+                        scheduleDetails.style.display = 'none';
+                        if (scheduleIdInput) {
+                            scheduleIdInput.value = '';
+                        }
+                        if (amountInput) {
+                            amountInput.value = '';
+                            amountInput.readOnly = true;
+                            amountInput.placeholder = 'No unpaid schedule found';
+                        }
                     }
                 }
             })

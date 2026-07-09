@@ -432,8 +432,8 @@
       </a>
       <div class="collapse" id="cashsecurity">
         <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Add Cash Security</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Withdraw Cash Security</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.cash-securities.index') }}">View Cash Securities</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.cash-securities.create') }}">Add Cash Security</a></li>
         </ul>
       </div>
     </li>

@@ -9,6 +9,14 @@ class CashSecurity extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 0;
+    public const STATUS_PAID = 1;
+    public const STATUS_FAILED = 2;
+
+    public const PAYMENT_MOBILE_MONEY = 1;
+    public const PAYMENT_CASH = 2;
+    public const PAYMENT_BANK_TRANSFER = 3;
+
     protected $fillable = [
         'member_id',
         'loan_id',
@@ -38,6 +46,7 @@ class CashSecurity extends Model
         'datecreated' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'returned_at' => 'datetime',
     ];
 
     /**
@@ -64,18 +73,47 @@ class CashSecurity extends Model
         return $this->belongsTo(User::class, 'added_by');
     }
 
+    public function returnedBy()
+    {
+        return $this->belongsTo(User::class, 'returned_by');
+    }
+
     /**
      * Get payment type name
      */
     public function getPaymentTypeNameAttribute()
     {
         $paymentTypes = [
-            1 => 'Mobile Money',
-            2 => 'Cash',
-            3 => 'Bank Transfer'
+            self::PAYMENT_MOBILE_MONEY => 'Mobile Money',
+            self::PAYMENT_CASH => 'Cash',
+            self::PAYMENT_BANK_TRANSFER => 'Bank Transfer',
         ];
 
         return $paymentTypes[$this->payment_type] ?? 'Unknown';
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        if ((int) $this->returned === 1) {
+            return 'Returned';
+        }
+
+        return match ((int) $this->status) {
+            self::STATUS_PENDING => 'Pending',
+            self::STATUS_PAID => 'Paid',
+            self::STATUS_FAILED => 'Failed',
+            default => 'Unknown',
+        };
+    }
+
+    public function getCanEditFinancialsAttribute(): bool
+    {
+        return (int) $this->status !== self::STATUS_PAID && (int) $this->returned !== 1;
+    }
+
+    public function getCanDeleteAttribute(): bool
+    {
+        return (int) $this->status !== self::STATUS_PAID && (int) $this->returned !== 1;
     }
 
     /**
@@ -84,10 +122,14 @@ class CashSecurity extends Model
     public function getStatusBadgeAttribute()
     {
         $statusBadges = [
-            0 => '<span class="badge bg-warning">Pending</span>',
-            1 => '<span class="badge bg-success">Paid</span>',
-            2 => '<span class="badge bg-danger">Failed</span>',
+            self::STATUS_PENDING => '<span class="badge bg-warning">Pending</span>',
+            self::STATUS_PAID => '<span class="badge bg-success">Paid</span>',
+            self::STATUS_FAILED => '<span class="badge bg-danger">Failed</span>',
         ];
+
+        if ((int) $this->returned === 1) {
+            return '<span class="badge bg-info">Returned</span>';
+        }
 
         return $statusBadges[$this->status] ?? '<span class="badge bg-secondary">Unknown</span>';
     }

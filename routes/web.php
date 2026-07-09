@@ -159,9 +159,14 @@ Route::middleware([
     
     // Cash Security Routes
     Route::prefix('cash-securities')->name('cash-securities.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\CashSecurityController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\CashSecurityController::class, 'create'])->name('create');
+        Route::get('/export', [\App\Http\Controllers\Admin\CashSecurityController::class, 'export'])->name('export');
         Route::post('/store', [\App\Http\Controllers\Admin\CashSecurityController::class, 'store'])->name('store');
         Route::post('/return', [\App\Http\Controllers\Admin\CashSecurityController::class, 'returnCashSecurity'])->name('return');
         Route::get('/check-status/{transactionRef}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'checkPaymentStatus'])->name('check-status');
+        Route::get('/{cashSecurity}/edit', [\App\Http\Controllers\Admin\CashSecurityController::class, 'edit'])->name('edit');
+        Route::put('/{cashSecurity}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'update'])->name('update');
         Route::get('/{cashSecurity}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'show'])->name('show');
         Route::get('/{cashSecurity}/receipt', [\App\Http\Controllers\Admin\CashSecurityController::class, 'receipt'])->name('receipt');
         Route::delete('/{cashSecurity}', [\App\Http\Controllers\Admin\CashSecurityController::class, 'destroy'])->name('destroy');

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Repayment;
 use App\Models\LoanSchedule;
+use App\Models\LateFee;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\Loan;
@@ -664,7 +665,7 @@ class RepaymentService
         $interest = (float) ($schedule->interest ?? 0);
         $lateFeeData = $loan
             ? $this->calculateLateFee($schedule, $loan, $asOfDate)
-            : ['gross' => 0.0, 'net' => 0.0, 'waived' => 0.0, 'days_overdue' => 0, 'periods_overdue' => 0];
+            : ['gross' => 0.0, 'net' => 0.0, 'waived' => 0.0, 'paid' => 0.0, 'days_overdue' => 0, 'periods_overdue' => 0];
         $validPaid = $this->getValidPaidForSchedule((int) $schedule->id);
         $totalDue = $principal + $interest + (float) $lateFeeData['net'];
 
@@ -673,6 +674,7 @@ class RepaymentService
             'interest' => $interest,
             'late_fee_gross' => (float) $lateFeeData['gross'],
             'late_fee_waived' => (float) $lateFeeData['waived'],
+            'late_fee_paid' => (float) ($lateFeeData['paid'] ?? 0),
             'late_fee_net' => (float) $lateFeeData['net'],
             'valid_paid' => $validPaid,
             'total_due' => $totalDue,
@@ -680,6 +682,33 @@ class RepaymentService
             'days_overdue' => (int) $lateFeeData['days_overdue'],
             'periods_overdue' => (int) $lateFeeData['periods_overdue'],
         ];
+    }
+
+    /**
+     * Freeze a schedule once principal, interest, and net late fees are settled.
+     */
+    public function syncScheduleSettlement(LoanSchedule $schedule, $loan = null, ?Carbon $asOfDate = null): bool
+    {
+        $components = $this->getScheduleOutstandingComponents($schedule, $loan, $asOfDate);
+
+        if ((float) $components['outstanding'] > 1) {
+            return false;
+        }
+
+        $updates = [
+            'paid' => (float) ($schedule->payment ?? 0),
+            'pending_count' => 0,
+            'status' => 1,
+        ];
+
+        if (!$schedule->date_cleared) {
+            $updates['date_cleared'] = $asOfDate ?: Carbon::now();
+        }
+
+        $schedule->update($updates);
+        ActiveLoanStatsCache::bust();
+
+        return true;
     }
 
     /**
@@ -889,18 +918,27 @@ class RepaymentService
         $intrestamtpayable = $schedule->interest;
         $lateFeeOriginal = (($schedule->principal + $intrestamtpayable) * 0.06) * $dd;
         
-        // Check for waivers in late_fees table (status = 2 means waived)
-        $totalWaivedAmount = DB::table('late_fees')
+        // Check for late-fee settlements recorded outside normal repayment rows.
+        // status 1 = paid from a late-fee record/carry-over, status 2 = waived.
+        $totalWaivedAmount = (float) DB::table('late_fees')
             ->where('schedule_id', $schedule->id)
-            ->where('status', 2) // Status 2 = waived
+            ->where('status', LateFee::STATUS_WAIVED)
+            ->sum('amount');
+
+        $totalPaidLateFeeRows = (float) DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', LateFee::STATUS_PAID)
             ->sum('amount');
         
-        $netLateFee = max(0, $lateFeeOriginal - $totalWaivedAmount);
+        $effectiveWaivedAmount = min($lateFeeOriginal, $totalWaivedAmount);
+        $effectivePaidLateFeeRows = min(max(0, $lateFeeOriginal - $effectiveWaivedAmount), $totalPaidLateFeeRows);
+        $netLateFee = max(0, $lateFeeOriginal - $effectiveWaivedAmount - $effectivePaidLateFeeRows);
         
         return [
             'gross' => $lateFeeOriginal,
             'net' => $netLateFee,
-            'waived' => $totalWaivedAmount,
+            'waived' => $effectiveWaivedAmount,
+            'paid' => $effectivePaidLateFeeRows,
             'days_overdue' => $d,
             'periods_overdue' => $dd
         ];

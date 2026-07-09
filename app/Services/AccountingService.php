@@ -6,6 +6,7 @@ use App\Models\JournalEntry;
 use App\Models\SystemAccount;
 use App\Models\Fund;
 use App\Models\Disbursement;
+use App\Models\LateFee;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
 use App\Models\FeeType;
@@ -1251,7 +1252,7 @@ class AccountingService
 
     /**
      * Calculate net late fee due for a schedule at a specific date.
-     * Uses repayment-date periods and subtracts waived late fees (status=2).
+     * Uses repayment-date periods and subtracts waived and paid late-fee records.
      */
     private function calculateScheduleLateFeeAtDate($schedule, $loan, Carbon $asOfDate): float
     {
@@ -1286,10 +1287,15 @@ class AccountingService
 
         $waivedLateFees = (float) DB::table('late_fees')
             ->where('schedule_id', $schedule->id)
-            ->where('status', 2)
+            ->where('status', LateFee::STATUS_WAIVED)
             ->sum('amount');
 
-        return max(0.0, $grossLateFee - $waivedLateFees);
+        $paidLateFees = (float) DB::table('late_fees')
+            ->where('schedule_id', $schedule->id)
+            ->where('status', LateFee::STATUS_PAID)
+            ->sum('amount');
+
+        return max(0.0, $grossLateFee - $waivedLateFees - $paidLateFees);
     }
 
     /**

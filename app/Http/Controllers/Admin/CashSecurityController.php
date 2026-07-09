@@ -13,6 +13,166 @@ use Illuminate\Support\Facades\Log;
 
 class CashSecurityController extends Controller
 {
+    public function index(Request $request)
+    {
+        $securities = $this->cashSecurityQuery($request)
+            ->latest('datecreated')
+            ->latest('id')
+            ->paginate((int) $request->get('per_page', 20))
+            ->withQueryString();
+
+        $stats = [
+            'total_count' => CashSecurity::count(),
+            'held_amount' => CashSecurity::where('status', CashSecurity::STATUS_PAID)->where('returned', 0)->sum('amount'),
+            'pending_amount' => CashSecurity::where('status', CashSecurity::STATUS_PENDING)->sum('amount'),
+            'returned_amount' => CashSecurity::where('returned', 1)->sum('amount'),
+        ];
+
+        return view('admin.cash-securities.index', compact('securities', 'stats'));
+    }
+
+    public function create(Request $request)
+    {
+        $cashSecurity = new CashSecurity([
+            'member_id' => $request->integer('member_id') ?: null,
+            'loan_id' => $request->integer('loan_id') ?: null,
+            'payment_type' => CashSecurity::PAYMENT_MOBILE_MONEY,
+        ]);
+
+        return view('admin.cash-securities.create', $this->formOptions($cashSecurity));
+    }
+
+    public function edit(CashSecurity $cashSecurity)
+    {
+        $cashSecurity->load(['member', 'loan']);
+
+        return view('admin.cash-securities.edit', $this->formOptions($cashSecurity));
+    }
+
+    public function update(Request $request, CashSecurity $cashSecurity)
+    {
+        $rules = [
+            'loan_id' => ['nullable', 'integer'],
+            'loan_type' => ['nullable', 'in:personal,group'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'member_phone' => ['nullable', 'string', 'max:20'],
+        ];
+
+        if ($cashSecurity->can_edit_financials) {
+            $rules = array_merge($rules, [
+                'member_id' => ['required', 'exists:members,id'],
+                'loan_type' => ['nullable', 'in:personal,group'],
+                'amount' => ['required', 'numeric', 'min:0.01'],
+                'payment_type' => ['required', 'integer', 'in:1,2,3'],
+            ]);
+        }
+
+        $validated = $request->validate($rules);
+
+        if (
+            $cashSecurity->can_edit_financials
+            && !$request->user()?->isSuperAdmin()
+            && (int) $validated['payment_type'] !== CashSecurity::PAYMENT_MOBILE_MONEY
+        ) {
+            return back()
+                ->withInput()
+                ->with('error', 'Only the Super Administrator can set cash or bank cash-security records.');
+        }
+
+        if ($cashSecurity->can_edit_financials) {
+            $member = Member::findOrFail($validated['member_id']);
+            $loanValidation = $this->validateLinkedLoan($request, $validated, $member);
+            if ($loanValidation) {
+                return $loanValidation;
+            }
+
+            $cashSecurity->fill([
+                'member_id' => $validated['member_id'],
+                'loan_id' => $validated['loan_id'] ?? null,
+                'amount' => $validated['amount'],
+                'payment_type' => $validated['payment_type'],
+                'payment_phone' => $validated['member_phone'] ?? $member->contact,
+                'description' => $validated['description'] ?? null,
+            ]);
+        } else {
+            $cashSecurity->loadMissing('member');
+            if ($cashSecurity->member) {
+                $loanValidation = $this->validateLinkedLoan($request, $validated, $cashSecurity->member);
+                if ($loanValidation) {
+                    return $loanValidation;
+                }
+            }
+
+            $cashSecurity->fill([
+                'loan_id' => $validated['loan_id'] ?? null,
+                'payment_phone' => $validated['member_phone'] ?? $cashSecurity->payment_phone,
+                'description' => $validated['description'] ?? null,
+            ]);
+        }
+
+        $cashSecurity->save();
+
+        return redirect()
+            ->route('admin.cash-securities.show', $cashSecurity)
+            ->with('success', $cashSecurity->can_edit_financials
+                ? 'Cash security updated.'
+                : 'Cash security notes updated. Paid or returned financial records cannot have amount, member, or payment method changed.');
+    }
+
+    public function export(Request $request)
+    {
+        $rows = $this->cashSecurityQuery($request)
+            ->latest('datecreated')
+            ->latest('id')
+            ->get();
+
+        $filename = 'cash_securities_' . now()->format('Ymd_His') . '.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $handle = fopen('php://output', 'w');
+
+            fputcsv($handle, [
+                'Security ID',
+                'Date',
+                'Member Code',
+                'Member Name',
+                'Phone',
+                'Cash Security Account',
+                'Loan',
+                'Amount',
+                'Payment Type',
+                'Status',
+                'Reference',
+                'Returned',
+                'Added By',
+                'Description',
+            ]);
+
+            foreach ($rows as $security) {
+                fputcsv($handle, [
+                    'CS-' . str_pad((string) $security->id, 6, '0', STR_PAD_LEFT),
+                    optional($security->datecreated ?? $security->created_at)->format('Y-m-d H:i'),
+                    $security->member->code ?? '',
+                    $security->member?->full_name ?? '',
+                    $security->member->contact ?? $security->payment_phone,
+                    $security->member->cash_security_account_number ?? '',
+                    $security->loan->code ?? '',
+                    number_format((float) $security->amount, 2, '.', ''),
+                    $security->payment_type_name,
+                    $security->status_label,
+                    $security->transaction_reference ?: $security->pay_ref,
+                    (int) $security->returned === 1 ? optional($security->returned_at)->format('Y-m-d H:i') : 'No',
+                    $security->addedBy->name ?? '',
+                    $security->description ?? '',
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     /**
      * Store a new cash security payment
      */
@@ -29,46 +189,10 @@ class CashSecurityController extends Controller
             'member_name' => 'nullable|string',
         ]);
 
-        // Get member info
         $member = Member::findOrFail($validated['member_id']);
-        $loanType = $validated['loan_type'] ?? 'personal';
-
-        if (!empty($validated['loan_id'])) {
-            if ($loanType === 'personal') {
-                $loan = PersonalLoan::find($validated['loan_id']);
-
-                if (!$loan) {
-                    $message = 'Selected personal loan was not found for this cash security.';
-
-                    if ($request->expectsJson()) {
-                        return response()->json(['success' => false, 'message' => $message], 422);
-                    }
-
-                    return redirect()->back()->withInput()->with('error', $message);
-                }
-
-                if ((int) $loan->member_id !== (int) $member->id) {
-                    $message = 'Cash security must be linked to a loan owned by the selected member.';
-
-                    if ($request->expectsJson()) {
-                        return response()->json(['success' => false, 'message' => $message], 422);
-                    }
-
-                    return redirect()->back()->withInput()->with('error', $message);
-                }
-            } else {
-                $loan = GroupLoan::find($validated['loan_id']);
-
-                if (!$loan) {
-                    $message = 'Selected group loan was not found for this cash security.';
-
-                    if ($request->expectsJson()) {
-                        return response()->json(['success' => false, 'message' => $message], 422);
-                    }
-
-                    return redirect()->back()->withInput()->with('error', $message);
-                }
-            }
+        $loanValidation = $this->validateLinkedLoan($request, $validated, $member);
+        if ($loanValidation) {
+            return $loanValidation;
         }
 
         if (!$request->user()?->isSuperAdmin() && (int) $validated['payment_type'] !== 1) {
@@ -138,14 +262,19 @@ class CashSecurityController extends Controller
 
                 DB::commit();
 
-                // Return success with transaction reference for polling
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Payment request sent to member\'s phone',
-                    'transaction_reference' => $transactionRef,
-                    'cash_security_id' => $cashSecurity->id,
-                    'status_code' => $result['status_code'] ?? 'PENDING'
-                ]);
+                if (!$request->boolean('manager_form') || $request->expectsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Payment request sent to member\'s phone',
+                        'transaction_reference' => $transactionRef,
+                        'cash_security_id' => $cashSecurity->id,
+                        'status_code' => $result['status_code'] ?? 'PENDING'
+                    ]);
+                }
+
+                return redirect()
+                    ->route('admin.cash-securities.show', $cashSecurity)
+                    ->with('info', 'Mobile money request sent to the member phone. Check status before treating it as paid.');
                                 
             } else { // Cash or Bank Transfer
                 $cashSecurity = CashSecurity::create([
@@ -189,8 +318,14 @@ class CashSecurityController extends Controller
                     ]);
                 }
                 
+                if ($request->boolean('manager_form')) {
+                    return redirect()
+                        ->route('admin.cash-securities.show', $cashSecurity)
+                        ->with('success', 'Cash security payment recorded successfully.');
+                }
+
                 return redirect()->back()
-                                ->with('success', 'Cash security payment recorded successfully.');
+                    ->with('success', 'Cash security payment recorded successfully.');
             }
 
         } catch (\Exception $e) {
@@ -336,7 +471,7 @@ class CashSecurityController extends Controller
      */
     public function show(CashSecurity $cashSecurity)
     {
-        $cashSecurity->load(['member', 'loan', 'addedBy']);
+        $cashSecurity->load(['member', 'loan', 'addedBy', 'returnedBy']);
         
         return view('admin.cash-securities.show', compact('cashSecurity'));
     }
@@ -500,14 +635,115 @@ class CashSecurityController extends Controller
      */
     public function destroy(CashSecurity $cashSecurity)
     {
-        if ($cashSecurity->status == 1) {
+        if (!$cashSecurity->can_delete) {
             return redirect()->back()
-                            ->with('error', 'Cannot delete paid cash security.');
+                ->with('error', 'Cannot delete paid or returned cash security.');
         }
 
         $cashSecurity->delete();
 
         return redirect()->back()
                         ->with('success', 'Cash security deleted successfully.');
+    }
+
+    private function cashSecurityQuery(Request $request)
+    {
+        $query = CashSecurity::with(['member', 'loan', 'addedBy', 'returnedBy']);
+
+        if ($request->filled('q')) {
+            $search = trim((string) $request->q);
+            $query->where(function ($q) use ($search) {
+                $q->where('id', $search)
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('pay_ref', 'like', "%{$search}%")
+                    ->orWhere('transaction_reference', 'like', "%{$search}%")
+                    ->orWhereHas('member', function ($memberQuery) use ($search) {
+                        $memberQuery->where('code', 'like', "%{$search}%")
+                            ->orWhere('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%")
+                            ->orWhere('contact', 'like', "%{$search}%")
+                            ->orWhere('cash_security_account_number', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('loan', fn ($loanQuery) => $loanQuery->where('code', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($request->filled('status')) {
+            match ($request->status) {
+                'pending' => $query->where('status', CashSecurity::STATUS_PENDING),
+                'paid' => $query->where('status', CashSecurity::STATUS_PAID)->where('returned', 0),
+                'failed' => $query->where('status', CashSecurity::STATUS_FAILED),
+                'returned' => $query->where('returned', 1),
+                default => null,
+            };
+        }
+
+        if ($request->filled('payment_type')) {
+            $query->where('payment_type', (int) $request->payment_type);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('datecreated', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('datecreated', '<=', $request->date_to);
+        }
+
+        return $query;
+    }
+
+    private function formOptions(CashSecurity $cashSecurity): array
+    {
+        return [
+            'cashSecurity' => $cashSecurity,
+            'members' => Member::notDeleted()
+                ->orderBy('fname')
+                ->orderBy('lname')
+                ->limit(1000)
+                ->get(['id', 'code', 'fname', 'mname', 'lname', 'contact', 'cash_security_account_number']),
+            'loans' => PersonalLoan::with('member:id,code,fname,mname,lname')
+                ->latest('id')
+                ->limit(1000)
+                ->get(['id', 'member_id', 'code', 'principal', 'status']),
+        ];
+    }
+
+    private function validateLinkedLoan(Request $request, array $validated, Member $member)
+    {
+        $loanType = $validated['loan_type'] ?? 'personal';
+
+        if (empty($validated['loan_id'])) {
+            return null;
+        }
+
+        if ($loanType === 'personal') {
+            $loan = PersonalLoan::find($validated['loan_id']);
+
+            if (!$loan) {
+                return $this->loanValidationResponse($request, 'Selected personal loan was not found for this cash security.');
+            }
+
+            if ((int) $loan->member_id !== (int) $member->id) {
+                return $this->loanValidationResponse($request, 'Cash security must be linked to a loan owned by the selected member.');
+            }
+
+            return null;
+        }
+
+        if (!GroupLoan::find($validated['loan_id'])) {
+            return $this->loanValidationResponse($request, 'Selected group loan was not found for this cash security.');
+        }
+
+        return null;
+    }
+
+    private function loanValidationResponse(Request $request, string $message)
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+
+        return redirect()->back()->withInput()->with('error', $message);
     }
 }

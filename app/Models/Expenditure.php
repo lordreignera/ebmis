@@ -9,6 +9,14 @@ class Expenditure extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_APPROVED = 'approved';
+    public const STATUS_PAYMENT_PENDING = 'payment_pending';
+    public const STATUS_PAYMENT_FAILED = 'payment_failed';
+    public const STATUS_PAID = 'paid';
+    public const STATUS_REJECTED = 'rejected';
+    public const STATUS_CANCELLED = 'cancelled';
+
     protected $fillable = [
         'expense_number',
         'type',
@@ -101,5 +109,34 @@ class Expenditure extends Model
     public function rollout()
     {
         return $this->belongsTo(ExpenditureRollout::class, 'rollout_batch_id');
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        return match ($this->status) {
+            self::STATUS_PENDING => 'Pending approval',
+            self::STATUS_APPROVED => 'Approved, pending payment',
+            self::STATUS_PAYMENT_PENDING => 'Payment pending',
+            self::STATUS_PAYMENT_FAILED => 'Payment failed',
+            self::STATUS_PAID => 'Approved and paid',
+            self::STATUS_REJECTED => 'Rejected',
+            self::STATUS_CANCELLED => 'Cancelled',
+            default => ucwords(str_replace('_', ' ', (string) $this->status)),
+        };
+    }
+
+    public function canBeApproved(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function canBePaid(): bool
+    {
+        return in_array($this->status, [self::STATUS_APPROVED, self::STATUS_PAYMENT_FAILED], true);
+    }
+
+    public function canBeRejected(): bool
+    {
+        return in_array($this->status, [self::STATUS_PENDING, self::STATUS_APPROVED, self::STATUS_PAYMENT_FAILED], true);
     }
 }

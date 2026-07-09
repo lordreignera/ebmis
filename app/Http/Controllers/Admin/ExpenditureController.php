@@ -107,7 +107,7 @@ class ExpenditureController extends Controller
 
         $validated['expense_number'] = $this->nextExpenseNumber();
         $validated['requested_by'] = $request->user()?->id;
-        $validated['status'] = 'pending';
+        $validated['status'] = Expenditure::STATUS_PENDING;
         $validated['payment_method'] = self::MOBILE_MONEY_METHOD;
         $validated['payment_channel'] = 'mobile_money';
 
@@ -115,7 +115,7 @@ class ExpenditureController extends Controller
 
         return redirect()
             ->route('admin.expenditures.show', $expense)
-            ->with('success', 'Expenditure recorded and is pending approval.');
+            ->with('success', 'Expenditure request recorded and is pending approval.');
     }
 
     public function show(Expenditure $expenditure)
@@ -143,17 +143,17 @@ class ExpenditureController extends Controller
 
     public function approve(Request $request, Expenditure $expenditure)
     {
-        if (in_array($expenditure->status, ['paid', 'cancelled', 'rejected'], true)) {
-            return back()->with('error', 'This expenditure cannot be approved in its current status.');
+        if (!$expenditure->canBeApproved()) {
+            return back()->with('error', 'Only expenditures pending approval can be approved.');
         }
 
         $expenditure->update([
-            'status' => 'approved',
+            'status' => Expenditure::STATUS_APPROVED,
             'approved_by' => $request->user()?->id,
             'approved_at' => now(),
         ]);
 
-        return back()->with('success', 'Expenditure approved.');
+        return back()->with('success', 'Expenditure approved and is now pending payment.');
     }
 
     public function reject(Request $request, Expenditure $expenditure)
@@ -162,12 +162,12 @@ class ExpenditureController extends Controller
             'rejection_reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        if ($expenditure->status === 'paid') {
-            return back()->with('error', 'A paid expenditure cannot be rejected.');
+        if (!$expenditure->canBeRejected()) {
+            return back()->with('error', 'Only unpaid expenditures that are not already processing can be rejected.');
         }
 
         $expenditure->update([
-            'status' => 'rejected',
+            'status' => Expenditure::STATUS_REJECTED,
             'rejection_reason' => $validated['rejection_reason'],
         ]);
 
@@ -176,15 +176,19 @@ class ExpenditureController extends Controller
 
     public function pay(Request $request, Expenditure $expenditure)
     {
-        if ($expenditure->status === 'paid') {
+        if ($expenditure->status === Expenditure::STATUS_PAID) {
             return back()->with('error', 'This expenditure has already been paid.');
         }
 
-        if ($expenditure->status === 'payment_pending') {
+        if ($expenditure->status === Expenditure::STATUS_PAYMENT_PENDING) {
             return back()->with('error', 'This expenditure already has a pending mobile-money payment. Check the payment status before retrying.');
         }
 
-        if (in_array($expenditure->status, ['rejected', 'cancelled'], true)) {
+        if ($expenditure->status === Expenditure::STATUS_PENDING) {
+            return back()->with('error', 'Approve this expenditure before sending mobile-money payment.');
+        }
+
+        if (!$expenditure->canBePaid()) {
             return back()->with('error', 'This expenditure cannot be paid in its current status.');
         }
 
@@ -227,7 +231,7 @@ class ExpenditureController extends Controller
             return back()->with('error', 'No mobile-money reference is recorded for this expenditure.');
         }
 
-        if ($expenditure->status === 'paid') {
+        if ($expenditure->status === Expenditure::STATUS_PAID) {
             return back()->with('info', 'This expenditure is already paid.');
         }
 
@@ -246,10 +250,10 @@ class ExpenditureController extends Controller
             if ($gatewayStatus === 'completed') {
                 $this->markExpenditurePaid($expenditure, $request->user()?->id);
             } elseif ($gatewayStatus === 'failed') {
-                $expenditure->status = 'payment_failed';
+                $expenditure->status = Expenditure::STATUS_PAYMENT_FAILED;
                 $expenditure->save();
             } else {
-                $expenditure->status = 'payment_pending';
+                $expenditure->status = Expenditure::STATUS_PAYMENT_PENDING;
                 $expenditure->save();
             }
 
@@ -449,7 +453,7 @@ class ExpenditureController extends Controller
             'assigned_user_id' => $row['user_id'],
             'amount' => $payoutAmount,
             'expense_date' => now()->toDateString(),
-            'status' => 'approved',
+            'status' => Expenditure::STATUS_APPROVED,
             'payment_method' => self::MOBILE_MONEY_METHOD,
             'payment_channel' => 'mobile_money',
             'approved_by' => $request->user()?->id,
@@ -633,7 +637,7 @@ class ExpenditureController extends Controller
                     'assigned_user_id' => $item->user_id,
                     'amount' => $item->payout_amount,
                     'expense_date' => now()->toDateString(),
-                    'status' => 'approved',
+                    'status' => Expenditure::STATUS_APPROVED,
                     'payment_method' => self::MOBILE_MONEY_METHOD,
                     'payment_channel' => 'mobile_money',
                     'approved_by' => $request->user()?->id,
@@ -733,7 +737,7 @@ class ExpenditureController extends Controller
         $phoneValidation = $this->mobileMoneyService->validatePhoneNumber($phone);
         if (!$phoneValidation['valid']) {
             $expenditure->update([
-                'status' => 'payment_failed',
+                'status' => Expenditure::STATUS_PAYMENT_FAILED,
                 'mobile_money_message' => $phoneValidation['message'],
             ]);
 
@@ -776,7 +780,7 @@ class ExpenditureController extends Controller
             $expenditure->mobile_money_raw = json_encode($result);
             $expenditure->payment_initiated_at = now();
 
-            if ($expenditure->status !== 'approved') {
+            if ($expenditure->status === Expenditure::STATUS_APPROVED && !$expenditure->approved_at) {
                 $expenditure->approved_by = $request->user()?->id;
                 $expenditure->approved_at = now();
             }
@@ -786,10 +790,10 @@ class ExpenditureController extends Controller
             if (($result['success'] ?? false) && $immediateSuccess) {
                 $this->markExpenditurePaid($expenditure, $request->user()?->id);
             } elseif ($result['success'] ?? false) {
-                $expenditure->status = 'payment_pending';
+                $expenditure->status = Expenditure::STATUS_PAYMENT_PENDING;
                 $expenditure->save();
             } else {
-                $expenditure->status = 'payment_failed';
+                $expenditure->status = Expenditure::STATUS_PAYMENT_FAILED;
                 $expenditure->save();
             }
 
@@ -825,9 +829,13 @@ class ExpenditureController extends Controller
         }
 
         return [
-            'pending' => (clone $base)->where('status', 'pending')->sum('amount'),
-            'approved' => (clone $base)->where('status', 'approved')->sum('amount'),
-            'paid' => (clone $base)->where('status', 'paid')->sum('amount'),
+            'pending_approval' => (clone $base)->where('status', Expenditure::STATUS_PENDING)->sum('amount'),
+            'pending_payment' => (clone $base)->whereIn('status', [
+                Expenditure::STATUS_APPROVED,
+                Expenditure::STATUS_PAYMENT_PENDING,
+                Expenditure::STATUS_PAYMENT_FAILED,
+            ])->sum('amount'),
+            'paid' => (clone $base)->where('status', Expenditure::STATUS_PAID)->sum('amount'),
             'count' => (clone $base)->count(),
         ];
     }
@@ -1527,7 +1535,12 @@ class ExpenditureController extends Controller
             }
         }
 
-        $expenditure->status = 'paid';
+        if (!$expenditure->approved_at) {
+            $expenditure->approved_by = $expenditure->approved_by ?: $userId;
+            $expenditure->approved_at = now();
+        }
+
+        $expenditure->status = Expenditure::STATUS_PAID;
         $expenditure->paid_at = now();
         $expenditure->paid_by = $userId;
         $expenditure->save();

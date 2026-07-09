@@ -482,32 +482,56 @@ class LateFeeController extends Controller
         try {
             $created = 0;
             $updated = 0;
+            $skipped = 0;
+            $appliedWaiverAmount = 0;
             $waiver_reason = 'Late fees accumulated during system upgrade period (Oct 30 - Nov 27, 2025)';
             
             foreach ($waiversToApply as $waiver) {
                 if ($waiver['late_fee_id']) {
+                    $pendingLateFee = DB::table('late_fees')
+                        ->where('id', $waiver['late_fee_id'])
+                        ->where('status', LateFee::STATUS_PENDING)
+                        ->first();
+
+                    if (!$pendingLateFee) {
+                        $skipped++;
+                        continue;
+                    }
+
                     DB::table('late_fees')
                         ->where('id', $waiver['late_fee_id'])
                         ->update([
-                            'status' => 2,
+                            'status' => LateFee::STATUS_WAIVED,
                             'waiver_reason' => $waiver_reason,
                             'waived_at' => now(),
                             'waived_by' => auth()->id(),
                             'updated_at' => now()
                         ]);
                     $updated++;
+                    $appliedWaiverAmount += (float) $pendingLateFee->amount;
                 } else {
+                    $alreadyWaived = (float) DB::table('late_fees')
+                        ->where('schedule_id', $waiver['schedule_id'])
+                        ->where('status', LateFee::STATUS_WAIVED)
+                        ->sum('amount');
+                    $remainingWaiver = max(0, (float) $waiver['waiver_amount'] - $alreadyWaived);
+
+                    if ($remainingWaiver <= 1) {
+                        $skipped++;
+                        continue;
+                    }
+
                     DB::table('late_fees')->insert([
                         'loan_id' => $waiver['loan_id'],
                         'schedule_id' => $waiver['schedule_id'],
                         'member_id' => $waiver['member_id'],
-                        'amount' => $waiver['waiver_amount'],
+                        'amount' => $remainingWaiver,
                         'days_overdue' => $waiver['days_in_upgrade'],
                         'periods_overdue' => $waiver['upgrade_periods'],
                         'period_type' => $waiver['period_type'],
                         'schedule_due_date' => \Carbon\Carbon::parse($waiver['due_date'])->format('Y-m-d'),
                         'calculated_date' => now(),
-                        'status' => 2,
+                        'status' => LateFee::STATUS_WAIVED,
                         'waiver_reason' => $waiver_reason,
                         'waived_at' => now(),
                         'waived_by' => auth()->id(),
@@ -515,12 +539,13 @@ class LateFeeController extends Controller
                         'updated_at' => now()
                     ]);
                     $created++;
+                    $appliedWaiverAmount += $remainingWaiver;
                 }
             }
             
             DB::commit();
             
-            return back()->with('success', "Successfully waived " . number_format($totalWaiverAmount, 0) . " UGX in late fees ({$created} created, {$updated} updated).");
+            return back()->with('success', "Successfully waived " . number_format($appliedWaiverAmount, 0) . " UGX in late fees ({$created} created, {$updated} updated, {$skipped} already covered).");
             
         } catch (\Exception $e) {
             DB::rollBack();
