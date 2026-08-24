@@ -1,8 +1,36 @@
 @extends('layouts.admin')
 
 @section('content')
-<div class="main-panel">
-    <div class="content-wrapper">
+<style>
+    .settings-action-grid {
+        display: grid;
+        gap: 0.65rem;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    }
+
+    .settings-action-btn {
+        align-items: center;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        justify-content: center;
+        min-height: 74px;
+        white-space: normal;
+    }
+
+    .settings-action-btn i {
+        font-size: 1.35rem;
+        line-height: 1;
+    }
+
+    .settings-action-btn span {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+</style>
+
         <div class="row">
             <div class="col-md-12 grid-margin">
                 <div class="row">
@@ -28,20 +56,29 @@
                                 <i class="mdi mdi-office-building"></i>
                             </div>
                         </div>
-                        <div class="row mt-3">
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.agencies') }}" class="btn btn-outline-primary btn-sm">
-                                    <i class="mdi mdi-domain"></i><br>Agencies
+                        <div class="settings-action-grid mt-3">
+                            <div>
+                                <a href="{{ route('admin.settings.agencies') }}" class="btn btn-outline-primary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-domain"></i>
+                                    <span>Agency Management</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.branches') }}" class="btn btn-outline-primary btn-sm">
-                                    <i class="mdi mdi-source-branch"></i><br>Branches
+                            <div>
+                                <a href="{{ route('admin.settings.branches') }}" class="btn btn-outline-primary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-source-branch"></i>
+                                    <span>Branch Management</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.company-info') }}" class="btn btn-outline-primary btn-sm">
-                                    <i class="mdi mdi-information"></i><br>Company
+                            <div>
+                                <a href="{{ route('admin.settings.field-users') }}" class="btn btn-outline-primary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-account-hard-hat"></i>
+                                    <span>Field Users</span>
+                                </a>
+                            </div>
+                            <div>
+                                <a href="{{ route('admin.settings.company-info') }}" class="btn btn-outline-primary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-information"></i>
+                                    <span>Company Information</span>
                                 </a>
                             </div>
                         </div>
@@ -61,20 +98,35 @@
                                 <i class="mdi mdi-package-variant"></i>
                             </div>
                         </div>
-                        <div class="row mt-3">
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.loan-products') }}" class="btn btn-outline-success btn-sm">
-                                    <i class="mdi mdi-cash"></i><br>Loans
+                        <div class="settings-action-grid mt-3">
+                            <div>
+                                <a href="{{ route('admin.settings.loan-products') }}" class="btn btn-outline-success btn-sm settings-action-btn">
+                                    <i class="mdi mdi-cash"></i>
+                                    <span>Loan Products</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.savings-products') }}" class="btn btn-outline-success btn-sm">
-                                    <i class="mdi mdi-piggy-bank"></i><br>Savings
+                            <div>
+                                <a href="{{ route('admin.settings.school-loan-products') }}" class="btn btn-outline-success btn-sm settings-action-btn">
+                                    <i class="mdi mdi-school"></i>
+                                    <span>School Loan Products</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.fees-products') }}" class="btn btn-outline-success btn-sm">
-                                    <i class="mdi mdi-calculator"></i><br>Fees
+                            <div>
+                                <a href="{{ route('admin.settings.savings-products') }}" class="btn btn-outline-success btn-sm settings-action-btn">
+                                    <i class="mdi mdi-piggy-bank"></i>
+                                    <span>Savings Products</span>
+                                </a>
+                            </div>
+                            <div>
+                                <a href="{{ route('admin.settings.fees-products') }}" class="btn btn-outline-success btn-sm settings-action-btn">
+                                    <i class="mdi mdi-calculator"></i>
+                                    <span>Fees & Products</span>
+                                </a>
+                            </div>
+                            <div>
+                                <a href="{{ route('admin.settings.product-categories') }}" class="btn btn-outline-success btn-sm settings-action-btn">
+                                    <i class="mdi mdi-shape-outline"></i>
+                                    <span>Product Categories</span>
                                 </a>
                             </div>
                         </div>
@@ -97,20 +149,17 @@
                                 <i class="mdi mdi-bank"></i>
                             </div>
                         </div>
-                        <div class="row mt-3">
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.system-accounts') }}" class="btn btn-outline-info btn-sm">
-                                    <i class="mdi mdi-bank-outline"></i><br>System
+                        <div class="settings-action-grid mt-3">
+                            <div>
+                                <a href="{{ route('admin.settings.system-accounts') }}" class="btn btn-outline-info btn-sm settings-action-btn">
+                                    <i class="mdi mdi-chart-line"></i>
+                                    <span>System Accounts / Chart of Accounts</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.chart-accounts') }}" class="btn btn-outline-info btn-sm">
-                                    <i class="mdi mdi-chart-line"></i><br>Chart
-                                </a>
-                            </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.account-types') }}" class="btn btn-outline-info btn-sm">
-                                    <i class="mdi mdi-format-list-bulleted-type"></i><br>Types
+                            <div>
+                                <a href="{{ route('admin.settings.account-types') }}" class="btn btn-outline-info btn-sm settings-action-btn">
+                                    <i class="mdi mdi-format-list-bulleted-type"></i>
+                                    <span>System Account Types</span>
                                 </a>
                             </div>
                         </div>
@@ -130,20 +179,23 @@
                                 <i class="mdi mdi-security"></i>
                             </div>
                         </div>
-                        <div class="row mt-3">
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.security-codes') }}" class="btn btn-outline-warning btn-sm">
-                                    <i class="mdi mdi-key-variant"></i><br>Security
+                        <div class="settings-action-grid mt-3">
+                            <div>
+                                <a href="{{ route('admin.settings.security-codes') }}" class="btn btn-outline-warning btn-sm settings-action-btn">
+                                    <i class="mdi mdi-key-variant"></i>
+                                    <span>Security Codes</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.transaction-codes') }}" class="btn btn-outline-warning btn-sm">
-                                    <i class="mdi mdi-code-tags"></i><br>Trans
+                            <div>
+                                <a href="{{ route('admin.settings.transaction-codes') }}" class="btn btn-outline-warning btn-sm settings-action-btn">
+                                    <i class="mdi mdi-code-tags"></i>
+                                    <span>Transaction Codes</span>
                                 </a>
                             </div>
-                            <div class="col-4 text-center">
-                                <a href="{{ route('admin.settings.audit-trail') }}" class="btn btn-outline-warning btn-sm">
-                                    <i class="mdi mdi-history"></i><br>Audit
+                            <div>
+                                <a href="{{ route('admin.settings.audit-trail') }}" class="btn btn-outline-warning btn-sm settings-action-btn">
+                                    <i class="mdi mdi-history"></i>
+                                    <span>Audit Trail Settings</span>
                                 </a>
                             </div>
                         </div>
@@ -166,25 +218,35 @@
                                 <i class="mdi mdi-wrench"></i>
                             </div>
                         </div>
-                        <div class="row mt-3">
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.general-config') }}" class="btn btn-outline-danger btn-sm">
-                                    <i class="mdi mdi-settings"></i><br>General
+                        <div class="settings-action-grid mt-3">
+                            <div>
+                                <a href="{{ route('admin.settings.general-config') }}" class="btn btn-outline-danger btn-sm settings-action-btn">
+                                    <i class="mdi mdi-settings"></i>
+                                    <span>General Settings</span>
                                 </a>
                             </div>
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.email-config') }}" class="btn btn-outline-danger btn-sm">
-                                    <i class="mdi mdi-email"></i><br>Email
+                            <div>
+                                <a href="{{ route('admin.settings.email-config') }}" class="btn btn-outline-danger btn-sm settings-action-btn">
+                                    <i class="mdi mdi-email"></i>
+                                    <span>Email Configuration</span>
                                 </a>
                             </div>
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.sms-config') }}" class="btn btn-outline-danger btn-sm">
-                                    <i class="mdi mdi-message-text"></i><br>SMS
+                            <div>
+                                <a href="{{ route('admin.settings.sms-config') }}" class="btn btn-outline-danger btn-sm settings-action-btn">
+                                    <i class="mdi mdi-message-text"></i>
+                                    <span>SMS Configuration</span>
                                 </a>
                             </div>
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.notification-config') }}" class="btn btn-outline-danger btn-sm">
-                                    <i class="mdi mdi-bell"></i><br>Notify
+                            <div>
+                                <a href="{{ route('admin.settings.notification-config') }}" class="btn btn-outline-danger btn-sm settings-action-btn">
+                                    <i class="mdi mdi-bell"></i>
+                                    <span>Notification Settings</span>
+                                </a>
+                            </div>
+                            <div>
+                                <a href="{{ route('admin.settings.loan-policy-controls') }}" class="btn btn-outline-danger btn-sm settings-action-btn">
+                                    <i class="mdi mdi-tune"></i>
+                                    <span>Loan Policy Controls</span>
                                 </a>
                             </div>
                         </div>
@@ -204,25 +266,29 @@
                                 <i class="mdi mdi-tools"></i>
                             </div>
                         </div>
-                        <div class="row mt-3">
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.backup') }}" class="btn btn-outline-secondary btn-sm">
-                                    <i class="mdi mdi-backup-restore"></i><br>Backup
+                        <div class="settings-action-grid mt-3">
+                            <div>
+                                <a href="{{ route('admin.settings.backup') }}" class="btn btn-outline-secondary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-backup-restore"></i>
+                                    <span>Backup & Restore</span>
                                 </a>
                             </div>
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.database-maintenance') }}" class="btn btn-outline-secondary btn-sm">
-                                    <i class="mdi mdi-database"></i><br>DB
+                            <div>
+                                <a href="{{ route('admin.settings.database-maintenance') }}" class="btn btn-outline-secondary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-database"></i>
+                                    <span>Database Maintenance</span>
                                 </a>
                             </div>
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.system-logs') }}" class="btn btn-outline-secondary btn-sm">
-                                    <i class="mdi mdi-file-document"></i><br>Logs
+                            <div>
+                                <a href="{{ route('admin.settings.system-logs') }}" class="btn btn-outline-secondary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-file-document"></i>
+                                    <span>System Logs</span>
                                 </a>
                             </div>
-                            <div class="col-3 text-center">
-                                <a href="{{ route('admin.settings.data-import') }}" class="btn btn-outline-secondary btn-sm">
-                                    <i class="mdi mdi-import"></i><br>Import
+                            <div>
+                                <a href="{{ route('admin.settings.data-import') }}" class="btn btn-outline-secondary btn-sm settings-action-btn">
+                                    <i class="mdi mdi-import"></i>
+                                    <span>Data Import/Export</span>
                                 </a>
                             </div>
                         </div>
@@ -287,8 +353,6 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 @endsection
 
 @section('scripts')

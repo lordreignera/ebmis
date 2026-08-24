@@ -71,16 +71,13 @@
 
 @section('content')
 <div class="container-fluid px-4">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-1 text-gray-800">Record New Repayment</h1>
-            <p class="text-muted mb-0">Record a new loan repayment transaction</p>
-        </div>
-        <a href="{{ route('admin.repayments.index') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-arrow-left me-2"></i>Back to Repayments
-        </a>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Record New Repayment',
+        'subtitle' => 'Record a new loan repayment transaction.',
+        'icon' => 'mdi mdi-cash-check',
+        'backFallback' => route('admin.repayments.index'),
+        'backLabel' => 'Back to Repayments',
+    ])
 
     <form method="POST" action="{{ route('admin.repayments.store') }}" id="repaymentForm">
         @csrf

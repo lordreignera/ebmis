@@ -108,9 +108,11 @@
                     <p class="text-white-50 mb-0">Transaction ID: {{ $repayment->txn_id ?? 'N/A' }}</p>
                 </div>
                 <div class="d-flex action-buttons">
-                    <a href="{{ route('admin.repayments.index') }}" class="btn btn-outline-light btn-sm">
-                        <i class="fas fa-arrow-left me-1"></i>Back
-                    </a>
+                    @include('admin.partials.back-button', [
+                        'fallback' => route('admin.repayments.index'),
+                        'label' => 'Back',
+                        'class' => 'btn btn-outline-light btn-sm',
+                    ])
                     @if($repayment->status == 0 && $repayment->created_at->diffInHours(now()) <= 24)
                         <a href="{{ route('admin.repayments.edit', $repayment) }}" class="btn btn-light btn-sm">
                             <i class="fas fa-edit me-1"></i>Edit

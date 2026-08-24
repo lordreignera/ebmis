@@ -1,0 +1,138 @@
+/* Shared EBIMS page chrome and low-risk consistency helpers. */
+
+.ebims-page-header {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06);
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding: 18px 20px;
+}
+
+.ebims-page-heading {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    min-width: 0;
+}
+
+.ebims-page-heading h3 {
+    color: #111827;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.25;
+    margin: 0;
+}
+
+.ebims-page-heading p {
+    color: #64748b;
+    font-size: 14px;
+    margin: 4px 0 0;
+}
+
+.ebims-page-icon {
+    align-items: center;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: #2563eb;
+    display: inline-flex;
+    flex: 0 0 44px;
+    font-size: 22px;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+}
+
+.ebims-page-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.ebims-back-button {
+    align-items: center;
+    display: inline-flex;
+    gap: 4px;
+}
+
+.ebims-filter-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05);
+    margin-bottom: 20px;
+}
+
+.ebims-filter-card .card-body {
+    padding: 18px !important;
+}
+
+.ebims-table-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 1px 8px rgba(17, 24, 39, 0.06);
+}
+
+.ebims-table-card .table-responsive {
+    box-shadow: none !important;
+    max-height: none !important;
+}
+
+.metric-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05);
+    padding: 18px;
+}
+
+.metric-card span {
+    color: #6b7280;
+    display: block;
+    font-size: 13px;
+}
+
+.metric-card strong {
+    color: #111827;
+    font-size: 20px;
+}
+
+.detail-list dt {
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.detail-list dd {
+    color: #111827;
+    overflow-wrap: anywhere;
+}
+
+.ebims-empty-state,
+.table-empty {
+    color: #64748b;
+    padding: 36px 20px !important;
+    text-align: center;
+}
+
+.ebims-empty-state i,
+.table-empty i {
+    color: #94a3b8;
+}
+
+@media (max-width: 767.98px) {
+    .ebims-page-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .ebims-page-actions {
+        justify-content: flex-start;
+    }
+}

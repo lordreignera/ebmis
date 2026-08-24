@@ -50,9 +50,11 @@
                     <h1 class="h3 mb-1 text-white">Edit Repayment</h1>
                     <p class="text-white-50 mb-0">Modify repayment details - Transaction: {{ $repayment->txn_id ?? 'N/A' }}</p>
                 </div>
-                <a href="{{ route('admin.repayments.show', $repayment) }}" class="btn btn-outline-light">
-                    <i class="fas fa-arrow-left me-2"></i>Back to Details
-                </a>
+                @include('admin.partials.back-button', [
+                    'fallback' => route('admin.repayments.show', $repayment),
+                    'label' => 'Back to Details',
+                    'class' => 'btn btn-outline-light',
+                ])
             </div>
         </div>
     </div>

@@ -24,10 +24,15 @@ return [
             'label' => 'View Branch Dashboard',
             'description' => 'View the main operational dashboard.',
         ],
+        'manage-dashboard-events' => [
+            'group' => 'Workspace',
+            'label' => 'Manage Dashboard Events',
+            'description' => 'Add operational events to the dashboard calendar preview.',
+        ],
         'view-active-loans' => [
             'group' => 'Loans',
-            'label' => 'View Active Loans Across Branches',
-            'description' => 'View and work with active loans from all branches.',
+            'label' => 'View Active Loans',
+            'description' => 'View and work with assigned active loans. Super Administrators and Administrators can work across branches.',
         ],
         'view-loan-details' => [
             'group' => 'Loans',
@@ -144,9 +149,20 @@ return [
         $routes('view-branch-dashboard', [
             'admin.home',
             'admin.global-search',
+            'admin.help.guide',
+            'admin.help.guide.download',
             'admin.api.states',
             'admin.api.cities',
         ]),
+        $routes('access-ebmis-modules', [
+            'admin.modules.dashboard',
+            'admin.modules.clients',
+            'admin.modules.loan-portfolio',
+            'admin.modules.collections',
+            'admin.modules.reports-accounting',
+        ]),
+        $routes('manage-investments', ['admin.modules.investments']),
+        $routes('manage-dashboard-events', ['admin.dashboard-events.store']),
         $routes('manage-client-applications', [
             'admin.client-applications.index',
             'admin.client-applications.show',
@@ -227,7 +243,6 @@ return [
         $routes('view-loan-details', [
             'admin.loans.show',
             'admin.loans.details',
-            'admin.loans.personal.preview-dashboard',
             'admin.loans.next-schedule',
             'admin.loans.history',
             'admin.loans.statements.print',
@@ -610,6 +625,7 @@ return [
         'Branch Manager' => [
             'access-ebmis-modules',
             'view-branch-dashboard',
+            'manage-dashboard-events',
             'view-active-loans',
             'view-assigned-loans',
             'view-loan-schedule',
@@ -660,6 +676,7 @@ return [
         'Loan Officer' => [
             'access-ebmis-modules',
             'view-branch-dashboard',
+            'manage-dashboard-events',
             'view-active-loans',
             'view-assigned-loans',
             'view-loan-schedule',
@@ -675,6 +692,7 @@ return [
         'Field Officer' => [
             'access-ebmis-modules',
             'view-branch-dashboard',
+            'manage-dashboard-events',
             'view-active-loans',
             'view-assigned-loans',
             'view-loan-schedule',

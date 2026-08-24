@@ -3,26 +3,13 @@
 @section('title', 'Create New Member')
 
 @section('content')
-<div class="row">
-    <div class="col-md-12 grid-margin">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h4 class="font-weight-bold mb-0">Create New Member</h4>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="{{ route('admin.members.index') }}">Members</a></li>
-                        <li class="breadcrumb-item active">Create New</li>
-                    </ol>
-                </nav>
-            </div>
-            <div>
-                <a href="{{ route('admin.members.index') }}" class="btn btn-outline-secondary btn-sm">
-                    <i class="mdi mdi-arrow-left"></i> Back to List
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
+@include('admin.partials.page-header', [
+    'title' => 'Create New Member',
+    'subtitle' => 'Register a client and capture their account profile details.',
+    'icon' => 'mdi mdi-account-plus',
+    'backFallback' => route('admin.members.index'),
+    'backLabel' => 'Back to Members',
+])
 
 <div class="row">
     <div class="col-md-12 grid-margin stretch-card">

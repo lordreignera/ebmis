@@ -4,21 +4,13 @@
 
 @section('content')
 <div class="container-fluid expenditure-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h4 class="mb-1">{{ $expenditure->expense_number }}</h4>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Home</a></li>
-                    <li class="breadcrumb-item"><a href="{{ route('admin.expenditures.index') }}">Expenditures</a></li>
-                    <li class="breadcrumb-item active">{{ $expenditure->expense_number }}</li>
-                </ol>
-            </nav>
-        </div>
-        <a href="{{ route('admin.expenditures.index') }}" class="btn btn-outline-secondary">
-            <i class="mdi mdi-arrow-left me-1"></i> Back
-        </a>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => $expenditure->expense_number,
+        'subtitle' => $expenditure->title,
+        'icon' => 'mdi mdi-cash-multiple',
+        'backFallback' => route('admin.expenditures.index'),
+        'backLabel' => 'Back',
+    ])
 
     @include('admin.expenditures.partials.alerts')
 
@@ -224,9 +216,6 @@
 
 @push('styles')
 <style>
-.expenditure-page .card { border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05); }
-.detail-list dt { color: #6b7280; font-weight: 600; }
-.detail-list dd { color: #111827; }
 .mobile-money-fields { display: none; }
 .staff-payment-breakdown {
     border: 1px solid #dbeafe;

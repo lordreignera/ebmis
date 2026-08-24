@@ -4,30 +4,15 @@
 
 @section('content')
 <div class="container-fluid">
-    <!-- Page Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="h4 mb-1" style="color: #000000;">
-                        <i class="mdi mdi-account-multiple me-2"></i>Manage Students
-                    </h2>
-                    <p class="text-muted mb-0">View and manage all students</p>
-                </div>
-                <div>
-                    <a href="{{ route('school.dashboard') }}" class="btn btn-outline-secondary me-2">
-                        <i class="mdi mdi-arrow-left me-1"></i>Dashboard
-                    </a>
-                    <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#importModal">
-                        <i class="mdi mdi-file-excel me-1"></i>Import Excel
-                    </button>
-                    <a href="{{ route('school.students.create') }}" class="btn btn-primary">
-                        <i class="mdi mdi-plus me-1"></i>Add Student
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Manage Students',
+        'subtitle' => 'View and manage all students.',
+        'icon' => 'mdi mdi-account-multiple',
+        'backFallback' => route('school.dashboard'),
+        'backLabel' => 'Dashboard',
+        'actions' => '<button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#importModal"><i class="mdi mdi-file-excel me-1"></i>Import Excel</button>'
+            . '<a href="' . route('school.students.create') . '" class="btn btn-primary"><i class="mdi mdi-plus me-1"></i>Add Student</a>',
+    ])
 
     <!-- Success/Error Messages -->
     @if(session('success'))
@@ -45,7 +30,7 @@
     @endif
 
     <!-- Filters Card -->
-    <div class="card border-0 shadow-sm mb-4">
+    <div class="card border-0 shadow-sm ebims-filter-card">
         <div class="card-body">
             <form method="GET" action="{{ route('school.students.index') }}">
                 <div class="row g-3">

@@ -210,7 +210,7 @@ class AdminSettingsController extends Controller
 
     public function chartAccounts()
     {
-        return view('admin.settings.chart-accounts');
+        return redirect()->route('admin.settings.system-accounts');
     }
 
     public function accountTypes()

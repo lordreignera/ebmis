@@ -4,27 +4,14 @@
 
 @section('content')
 <div class="container-fluid">
-    <!-- Page Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="h4 mb-1" style="color: #000000;">
-                        <i class="mdi mdi-account-tie me-2"></i>{{ $staff->full_name }}
-                    </h2>
-                    <p class="text-muted mb-0">{{ $staff->staff_id }} - {{ $staff->position }}</p>
-                </div>
-                <div>
-                    <a href="{{ route('school.staff.index') }}" class="btn btn-outline-secondary me-2">
-                        <i class="mdi mdi-arrow-left me-1"></i>Back
-                    </a>
-                    <a href="{{ route('school.staff.edit', $staff) }}" class="btn btn-primary">
-                        <i class="mdi mdi-pencil me-1"></i>Edit
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => $staff->full_name,
+        'subtitle' => $staff->staff_id . ' - ' . $staff->position,
+        'icon' => 'mdi mdi-account-tie',
+        'backFallback' => route('school.staff.index'),
+        'backLabel' => 'Back',
+        'actions' => '<a href="' . route('school.staff.edit', $staff) . '" class="btn btn-primary"><i class="mdi mdi-pencil me-1"></i>Edit</a>',
+    ])
 
     <div class="row">
         <!-- Left Column -->

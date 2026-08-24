@@ -3,9 +3,9 @@
 @section('title', 'Edit System Account')
 
 @section('content')
-<div class="main-panel">
-    <div class="content-wrapper">
-        <!-- Breadcrumb -->
+@include('admin.settings.partials.back-to-dashboard')
+
+<!-- Breadcrumb -->
         <div class="row page-title-header">
             <div class="col-12">
                 <div class="page-header">
@@ -158,8 +158,6 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 @endsection
 
 @push('scripts')

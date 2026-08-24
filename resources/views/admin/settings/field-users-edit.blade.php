@@ -4,6 +4,8 @@
 
 @section('content')
 <div class="container-fluid">
+    @include('admin.settings.partials.back-to-dashboard')
+
     <div class="row">
         <div class="col-12">
             <div class="page-title-box">
@@ -395,4 +397,3 @@ function togglePinVisibility(inputId, iconId) {
 @endpush
 
 @endsection
-

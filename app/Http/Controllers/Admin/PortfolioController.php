@@ -14,17 +14,7 @@ class PortfolioController extends Controller
 {
     public function running(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->where('status', 'disbursed')
-                     ->where('outstanding_amount', '>', 0);
-
-        // Apply filters
-        $this->applyFilters($query, $request);
-
-        $loans = $query->paginate(20);
-        $stats = $this->getRunningLoansStats();
-
-        return view('admin.portfolio.running', compact('loans', 'stats'));
+        return redirect()->route('admin.loans.active', $request->query());
     }
 
     public function pending(Request $request)
@@ -59,13 +49,14 @@ class PortfolioController extends Controller
 
     public function paid(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->where('status', 'paid');
+        $query = Loan::with(['member', 'product', 'branch', 'repayments'])
+                     ->where('status', 3);
 
         // Apply filters
         $this->applyFilters($query, $request);
 
-        $loans = $query->paginate(20);
+        $loans = $query->orderByDesc('date_closed')->paginate(20);
+        $loans->getCollection()->transform(fn ($loan) => $this->hydratePaidLoan($loan));
         $stats = $this->getPaidLoansStats();
 
         return view('admin.portfolio.paid', compact('loans', 'stats'));
@@ -163,21 +154,22 @@ class PortfolioController extends Controller
         if ($request->has('search') && !empty($request->search)) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('loan_id', 'LIKE', "%{$search}%")
+                $q->where('code', 'LIKE', "%{$search}%")
                   ->orWhereHas('member', function ($q2) use ($search) {
-                      $q2->where('first_name', 'LIKE', "%{$search}%")
-                         ->orWhere('last_name', 'LIKE', "%{$search}%")
-                         ->orWhere('member_id', 'LIKE', "%{$search}%");
+                      $q2->where('fname', 'LIKE', "%{$search}%")
+                         ->orWhere('lname', 'LIKE', "%{$search}%")
+                         ->orWhere('code', 'LIKE', "%{$search}%")
+                         ->orWhere('contact', 'LIKE', "%{$search}%");
                   });
             });
         }
 
         // Date range filtering
         if ($request->has('start_date') && !empty($request->start_date)) {
-            $query->whereDate('disbursed_at', '>=', $request->start_date);
+            $query->whereDate('date_closed', '>=', $request->start_date);
         }
         if ($request->has('end_date') && !empty($request->end_date)) {
-            $query->whereDate('disbursed_at', '<=', $request->end_date);
+            $query->whereDate('date_closed', '<=', $request->end_date);
         }
 
         // Branch filtering
@@ -187,7 +179,7 @@ class PortfolioController extends Controller
 
         // Product filtering
         if ($request->has('product_id') && !empty($request->product_id)) {
-            $query->where('loan_product_id', $request->product_id);
+            $query->where('product_type', $request->product_id);
         }
     }
 
@@ -221,11 +213,33 @@ class PortfolioController extends Controller
 
     private function getPaidLoansStats()
     {
+        $closedLoans = Loan::with('repayments')->where('status', 3)->get();
+        $averagePaymentPeriod = $closedLoans
+            ->filter(fn ($loan) => $loan->date_approved && $loan->date_closed)
+            ->avg(fn ($loan) => $loan->date_approved->diffInDays($loan->date_closed));
+
         return [
-            'total_paid' => Loan::where('status', 'paid')->count(),
-            'total_paid_amount' => Loan::where('status', 'paid')->sum('loan_amount'),
-            'average_payment_period' => Loan::where('status', 'paid')->avg(DB::raw('DATEDIFF(paid_date, disbursed_at)')),
+            'total_paid' => $closedLoans->count(),
+            'total_paid_amount' => $closedLoans->sum(fn ($loan) => (float) $loan->repayments->sum('amount')),
+            'average_payment_period' => $averagePaymentPeriod,
         ];
+    }
+
+    private function hydratePaidLoan(Loan $loan): Loan
+    {
+        $paidAmount = (float) $loan->repayments->sum('amount');
+
+        $loan->loan_id = $loan->code;
+        $loan->loan_amount = (float) $loan->principal;
+        $loan->loan_period = $loan->period;
+        $loan->loan_type = 'personal';
+        $loan->paid_amount = $paidAmount;
+        $loan->paid_date = $loan->date_closed ?? $loan->repayments->max('date_created') ?? $loan->datecreated;
+        $loan->disbursed_at = $loan->date_approved ?? $loan->datecreated;
+        $loan->interest_rate = $loan->interest;
+        $loan->final_payment = $loan->repayments->sortByDesc('date_created')->first();
+
+        return $loan;
     }
 
     private function getBadLoansStats()

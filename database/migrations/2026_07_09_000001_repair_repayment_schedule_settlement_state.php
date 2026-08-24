@@ -45,6 +45,10 @@ return new class extends Migration
 
     private function repairMissingClearedDates(): void
     {
+        if (!$this->supportsMysqlJoinedUpdates()) {
+            return;
+        }
+
         DB::statement("
             UPDATE loan_schedules ls
             JOIN (
@@ -66,6 +70,10 @@ return new class extends Migration
 
     private function cancelStalePendingRowsOnPaidSchedules(): void
     {
+        if (!$this->supportsMysqlJoinedUpdates()) {
+            return;
+        }
+
         DB::statement("
             UPDATE repayments r
             JOIN loan_schedules ls ON ls.id = r.schedule_id
@@ -96,5 +104,10 @@ return new class extends Migration
             WHERE payment_status = 'Completed'
               AND status IN (-1, 2)
         ");
+    }
+
+    private function supportsMysqlJoinedUpdates(): bool
+    {
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 };

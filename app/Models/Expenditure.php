@@ -25,6 +25,7 @@ class Expenditure extends Model
         'expense_account_id',
         'payment_account_id',
         'investment_id',
+        'investment_debited_at',
         'branch_id',
         'requested_by',
         'assigned_user_id',
@@ -47,6 +48,8 @@ class Expenditure extends Model
         'paid_by',
         'journal_entry_id',
         'rollout_batch_id',
+        'staff_payment_period_start',
+        'staff_payment_period_end',
         'notes',
         'rejection_reason',
         'receipt_path',
@@ -56,8 +59,11 @@ class Expenditure extends Model
         'amount' => 'decimal:2',
         'expense_date' => 'date',
         'due_date' => 'date',
+        'staff_payment_period_start' => 'date',
+        'staff_payment_period_end' => 'date',
         'paid_at' => 'datetime',
         'payment_initiated_at' => 'datetime',
+        'investment_debited_at' => 'datetime',
         'approved_at' => 'datetime',
     ];
 

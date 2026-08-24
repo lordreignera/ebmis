@@ -249,12 +249,14 @@ class RepaymentFinancialRulesTest extends TestCase
             'status' => 0,
         ]);
 
+        $expectedWaiverAmount = app(RepaymentService::class)->calculateLateFee($schedule, $loan)['net'];
+
         $request = Request::create('/admin/loans/late-fees/waive', 'POST', [
             'loan_id' => $loan->id,
             'loan_type' => 'group',
             'late_fees' => json_encode([[
                 'schedule_id' => $schedule->id,
-                'amount' => 12000,
+                'amount' => $expectedWaiverAmount,
                 'schedule_date' => $schedule->payment_date,
             ]]),
             'waiver_reason' => 'Approved test group waiver',
@@ -268,7 +270,7 @@ class RepaymentFinancialRulesTest extends TestCase
             'loan_id' => $loan->id,
             'schedule_id' => $schedule->id,
             'member_id' => $group->id,
-            'amount' => 12000,
+            'amount' => $expectedWaiverAmount,
             'status' => 2,
             'waiver_reason' => 'Approved test group waiver',
             'waived_by' => $superAdmin->id,

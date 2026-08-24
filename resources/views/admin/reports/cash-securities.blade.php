@@ -118,17 +118,3 @@
     </div>
 </div>
 @endsection
-
-@push('styles')
-<style>
-.cash-security-report-page .card,
-.metric-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05);
-}
-.metric-card { background: #fff; padding: 18px; }
-.metric-card span { color: #6b7280; display: block; font-size: 13px; }
-.metric-card strong { color: #111827; font-size: 20px; }
-</style>
-@endpush

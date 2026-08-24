@@ -1,12 +1,12 @@
 @extends('layouts.admin')
 
-@section('title', 'Paid Loans Portfolio')
+@section('title', 'Closed Loans Portfolio')
 
 @section('content')
 <div class="container-fluid">
     <!-- Page Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h1 class="h3 mb-0 text-gray-800">Paid Loans Portfolio</h1>
+        <h1 class="h3 mb-0 text-gray-800">Closed Loans Portfolio</h1>
         <div class="btn-group" role="group">
             <a href="{{ route('admin.loans.export', ['status' => 'paid']) }}" class="btn btn-success">
                 <i class="mdi mdi-download"></i> Export
@@ -25,7 +25,7 @@
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Total Paid Loans
+                                Total Closed Loans
                             </div>
                             <div class="h5 mb-0 font-weight-bold text-gray-800">{{ number_format($stats['total_paid']) }}</div>
                         </div>
@@ -82,7 +82,7 @@
                                 Collection Rate
                             </div>
                             @php
-                                $totalLoans = \App\Models\Loan::whereIn('status', ['disbursed', 'paid'])->count();
+                                $totalLoans = \App\Models\Loan::whereIn('status', [2, 3])->count();
                                 $paidLoans = $stats['total_paid'];
                                 $collectionRate = $totalLoans > 0 ? ($paidLoans / $totalLoans) * 100 : 0;
                             @endphp
@@ -198,7 +198,7 @@
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">
-                <i class="mdi mdi-check-circle"></i> Completed Loans
+                <i class="mdi mdi-check-circle"></i> Closed Loans
                 <span class="badge badge-success ml-2">{{ $loans->total() }}</span>
             </h6>
         </div>
@@ -221,9 +221,9 @@
                         <tbody>
                             @foreach($loans as $loan)
                             @php
-                                $disbursedDate = \Carbon\Carbon::parse($loan->disbursed_at);
-                                $paidDate = \Carbon\Carbon::parse($loan->paid_date);
-                                $actualDays = $disbursedDate->diffInDays($paidDate);
+                                $disbursedDate = $loan->disbursed_at ? \Carbon\Carbon::parse($loan->disbursed_at) : null;
+                                $paidDate = $loan->paid_date ? \Carbon\Carbon::parse($loan->paid_date) : null;
+                                $actualDays = $disbursedDate && $paidDate ? $disbursedDate->diffInDays($paidDate) : 0;
                                 $expectedDays = $loan->loan_period * 30; // Approximate days
                                 $performance = $actualDays <= $expectedDays ? 'excellent' : ($actualDays <= $expectedDays * 1.1 ? 'good' : 'fair');
                                 $performanceColor = $performance == 'excellent' ? 'success' : ($performance == 'good' ? 'info' : 'warning');
@@ -239,14 +239,14 @@
                                         <div class="mr-3">
                                             <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center" 
                                                  style="width: 32px; height: 32px; font-size: 12px;">
-                                                {{ strtoupper(substr($loan->member->fname, 0, 1) . substr($loan->member->lname, 0, 1)) }}
+                                                {{ strtoupper(substr($loan->member->fname ?? 'U', 0, 1) . substr($loan->member->lname ?? '', 0, 1)) }}
                                             </div>
                                         </div>
                                         <div>
-                                            <div class="font-weight-bold">{{ $loan->member->fname }} {{ $loan->member->lname }}</div>
-                                            <small class="text-muted">{{ $loan->member->pm_code }}</small><br>
+                                            <div class="font-weight-bold">{{ $loan->member->fname ?? 'Unknown' }} {{ $loan->member->lname ?? '' }}</div>
+                                            <small class="text-muted">{{ $loan->member->code ?? 'N/A' }}</small><br>
                                             <small class="text-muted">
-                                                <i class="mdi mdi-phone"></i> {{ $loan->member->contact }}
+                                                <i class="mdi mdi-phone"></i> {{ $loan->member->contact ?? 'N/A' }}
                                             </small>
                                         </div>
                                     </div>
@@ -268,11 +268,11 @@
                                 <td>
                                     <div class="mb-1">
                                         <small class="text-muted">Disbursed:</small>
-                                        <div>{{ $disbursedDate->format('M d, Y') }}</div>
+                                        <div>{{ $disbursedDate ? $disbursedDate->format('M d, Y') : 'N/A' }}</div>
                                     </div>
                                     <div class="mb-1">
                                         <small class="text-muted">Completed:</small>
-                                        <div>{{ $paidDate->format('M d, Y') }}</div>
+                                        <div>{{ $paidDate ? $paidDate->format('M d, Y') : 'N/A' }}</div>
                                     </div>
                                     <div>
                                         <small class="text-muted">Duration:</small>
@@ -281,13 +281,13 @@
                                 </td>
                                 <td>
                                     @php
-                                        $finalPayment = $loan->payments()->latest()->first();
+                                        $finalPayment = $loan->final_payment;
                                     @endphp
                                     @if($finalPayment)
                                         <div class="mb-1">
                                             <strong>UGX {{ number_format($finalPayment->amount) }}</strong>
                                         </div>
-                                        <small class="text-muted">{{ \Carbon\Carbon::parse($finalPayment->payment_date)->format('M d, Y') }}</small><br>
+                                        <small class="text-muted">{{ $finalPayment->date_created ? \Carbon\Carbon::parse($finalPayment->date_created)->format('M d, Y') : 'N/A' }}</small><br>
                                         <span class="badge badge-success">Final Payment</span>
                                     @else
                                         <span class="text-muted">No payment record</span>
@@ -326,7 +326,7 @@
                                         <a href="{{ route('admin.loans.show', $loan->id) }}" class="btn btn-sm btn-outline-primary">
                                             <i class="mdi mdi-eye"></i>
                                         </a>
-                                        <a href="{{ route('admin.loans.statement', $loan->id) }}" class="btn btn-sm btn-outline-info">
+                                        <a href="{{ route('admin.loans.statements.print', $loan->id) }}" target="_blank" class="btn btn-sm btn-outline-info">
                                             <i class="mdi mdi-file-document"></i>
                                         </a>
                                         <div class="btn-group" role="group">
@@ -335,12 +335,14 @@
                                                 <i class="mdi mdi-dots-vertical"></i>
                                             </button>
                                             <div class="dropdown-menu">
-                                                <a class="dropdown-item" href="{{ route('admin.loans.payment-history', $loan->id) }}">
+                                                <a class="dropdown-item" href="{{ route('admin.loans.repayments.schedules', $loan->id) }}">
                                                     <i class="mdi mdi-history"></i> Payment History
                                                 </a>
+                                                @if($loan->member)
                                                 <a class="dropdown-item" href="{{ route('admin.members.show', $loan->member->id) }}">
                                                     <i class="mdi mdi-account"></i> View Member
                                                 </a>
+                                                @endif
                                                 <div class="dropdown-divider"></div>
                                                 <a class="dropdown-item" href="#" onclick="generateCertificate({{ $loan->id }})">
                                                     <i class="mdi mdi-certificate"></i> Completion Certificate
@@ -372,7 +374,7 @@
             @else
                 <div class="text-center py-4">
                     <i class="mdi mdi-check-circle-outline" style="font-size: 48px; color: #ccc;"></i>
-                    <h5 class="mt-3 text-muted">No paid loans found</h5>
+                    <h5 class="mt-3 text-muted">No closed loans found</h5>
                     @if(request()->anyFilled(['search', 'start_date', 'end_date', 'branch_id', 'product_id']))
                         <p class="text-muted">Try adjusting your filters or <a href="{{ route('admin.portfolio.paid') }}">clear all filters</a></p>
                     @else

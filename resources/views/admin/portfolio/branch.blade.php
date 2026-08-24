@@ -86,7 +86,7 @@
                             <a href="{{ route('admin.branches.show', $stat['branch']->id) }}" class="btn btn-outline-primary">
                                 <i class="mdi mdi-eye"></i> View
                             </a>
-                            <a href="{{ route('admin.portfolio.running', ['branch_id' => $stat['branch']->id]) }}" class="btn btn-outline-success">
+                            <a href="{{ route('admin.loans.active', ['branch_id' => $stat['branch']->id]) }}" class="btn btn-outline-success">
                                 <i class="mdi mdi-format-list-bulleted"></i> Loans
                             </a>
                             <button type="button" class="btn btn-outline-info" onclick="viewAnalytics({{ $stat['branch']->id }})">
@@ -188,7 +188,7 @@
                                         <a href="{{ route('admin.branches.show', $stat['branch']->id) }}" class="btn btn-outline-primary btn-sm">
                                             <i class="mdi mdi-eye"></i>
                                         </a>
-                                        <a href="{{ route('admin.portfolio.running', ['branch_id' => $stat['branch']->id]) }}" class="btn btn-outline-success btn-sm">
+                                        <a href="{{ route('admin.loans.active', ['branch_id' => $stat['branch']->id]) }}" class="btn btn-outline-success btn-sm">
                                             <i class="mdi mdi-format-list-bulleted"></i>
                                         </a>
                                     </div>

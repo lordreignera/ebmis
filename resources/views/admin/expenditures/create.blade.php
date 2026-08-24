@@ -4,21 +4,13 @@
 
 @section('content')
 <div class="container-fluid expenditure-page">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h4 class="mb-1">New Money Request</h4>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Home</a></li>
-                    <li class="breadcrumb-item"><a href="{{ route('admin.expenditures.index') }}">Expenditures</a></li>
-                    <li class="breadcrumb-item active">New request</li>
-                </ol>
-            </nav>
-        </div>
-        <a href="{{ route('admin.expenditures.index') }}" class="btn btn-outline-secondary">
-            <i class="mdi mdi-arrow-left me-1"></i> Back
-        </a>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'New Money Request',
+        'subtitle' => 'Create an expenditure or staff payment request.',
+        'icon' => 'mdi mdi-cash-plus',
+        'backFallback' => route('admin.expenditures.index'),
+        'backLabel' => 'Back',
+    ])
 
     @include('admin.expenditures.partials.alerts')
 
@@ -119,9 +111,3 @@
     </form>
 </div>
 @endsection
-
-@push('styles')
-<style>
-.expenditure-page .card { border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05); }
-</style>
-@endpush

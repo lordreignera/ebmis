@@ -69,7 +69,7 @@ class LoanAccessServiceTest extends TestCase
         $this->assertSame([$ownLoan->id], $loanIds->all());
     }
 
-    public function test_field_officer_active_loan_query_includes_unassigned_loans_from_all_branches(): void
+    public function test_field_officer_active_loan_query_only_includes_loans_assigned_to_them(): void
     {
         $branch = $this->branch();
         $otherBranch = $this->branch('Other Branch');
@@ -101,26 +101,31 @@ class LoanAccessServiceTest extends TestCase
             ->orderBy('id')
             ->pluck('id');
 
-        $this->assertSame([$assignedLoan->id, $createdLoan->id, $otherOfficerLoan->id, $otherBranchLoan->id], $loanIds->all());
+        $this->assertSame([$assignedLoan->id], $loanIds->all());
     }
 
-    public function test_branch_manager_active_loan_query_includes_loans_from_all_branches(): void
+    public function test_branch_manager_active_loan_query_only_includes_loans_assigned_to_them(): void
     {
         $ownBranch = $this->branch('Own Branch');
         $otherBranch = $this->branch('Other Branch');
         $manager = $this->userWithRole('Branch Manager', $ownBranch->id);
-        $ownLoan = PersonalLoan::factory()->create(['branch_id' => $ownBranch->id]);
-        $otherLoan = PersonalLoan::factory()->create(['branch_id' => $otherBranch->id]);
+        $ownLoan = PersonalLoan::factory()->create([
+            'branch_id' => $ownBranch->id,
+            'assigned_to' => $manager->id,
+        ]);
+        PersonalLoan::factory()->create([
+            'branch_id' => $otherBranch->id,
+        ]);
 
         $loanIds = $this->service
             ->scopeActiveLoanQuery(PersonalLoan::query(), user: $manager)
             ->orderBy('id')
             ->pluck('id');
 
-        $this->assertSame([$ownLoan->id, $otherLoan->id], $loanIds->all());
+        $this->assertSame([$ownLoan->id], $loanIds->all());
     }
 
-    public function test_field_officer_can_open_another_officers_loan_in_their_branch(): void
+    public function test_field_officer_cannot_open_another_officers_active_loan_in_their_branch(): void
     {
         $branch = $this->branch();
         $officer = $this->userWithRole('Loan Officer', $branch->id);
@@ -129,6 +134,22 @@ class LoanAccessServiceTest extends TestCase
             'branch_id' => $branch->id,
             'assigned_to' => $otherOfficer->id,
             'added_by' => $otherOfficer->id,
+            'status' => 2,
+        ]);
+
+        $this->expectException(HttpException::class);
+
+        $this->service->ensureLoanAccess($loan, $officer);
+    }
+
+    public function test_field_officer_can_open_their_assigned_active_loan(): void
+    {
+        $branch = $this->branch();
+        $officer = $this->userWithRole('Loan Officer', $branch->id);
+        $loan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $officer->id,
+            'status' => 2,
         ]);
 
         $this->service->ensureLoanAccess($loan, $officer);
@@ -136,7 +157,7 @@ class LoanAccessServiceTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
-    public function test_field_officer_can_open_an_active_loan_from_another_branch(): void
+    public function test_field_officer_cannot_open_unassigned_active_loan_from_another_branch(): void
     {
         $officer = $this->userWithRole('Loan Officer', $this->branch('Own Branch')->id);
         $otherLoan = PersonalLoan::factory()->create([
@@ -144,7 +165,20 @@ class LoanAccessServiceTest extends TestCase
             'status' => 2,
         ]);
 
+        $this->expectException(HttpException::class);
+
         $this->service->ensureLoanAccess($otherLoan, $officer);
+    }
+
+    public function test_administrator_can_open_an_active_loan_from_another_branch(): void
+    {
+        $administrator = $this->userWithRole('Administrator', $this->branch('Own Branch')->id);
+        $otherLoan = PersonalLoan::factory()->create([
+            'branch_id' => $this->branch('Other Branch')->id,
+            'status' => 2,
+        ]);
+
+        $this->service->ensureLoanAccess($otherLoan, $administrator);
 
         $this->addToAssertionCount(1);
     }
@@ -162,7 +196,7 @@ class LoanAccessServiceTest extends TestCase
         $this->service->ensureLoanAccess($otherLoan, $officer);
     }
 
-    public function test_branch_manager_can_open_an_active_loan_from_another_branch(): void
+    public function test_branch_manager_cannot_open_unassigned_active_loan_from_another_branch(): void
     {
         $manager = $this->userWithRole('Branch Manager', $this->branch('Own Branch')->id);
         $otherLoan = PersonalLoan::factory()->create([
@@ -170,7 +204,36 @@ class LoanAccessServiceTest extends TestCase
             'status' => 2,
         ]);
 
+        $this->expectException(HttpException::class);
+
         $this->service->ensureLoanAccess($otherLoan, $manager);
+    }
+
+    public function test_administrator_active_loan_query_includes_loans_from_all_branches(): void
+    {
+        $ownBranch = $this->branch('Own Branch');
+        $otherBranch = $this->branch('Other Branch');
+        $administrator = $this->userWithRole('Administrator', $ownBranch->id);
+        $ownLoan = PersonalLoan::factory()->create(['branch_id' => $ownBranch->id]);
+        $otherLoan = PersonalLoan::factory()->create(['branch_id' => $otherBranch->id]);
+
+        $loanIds = $this->service
+            ->scopeActiveLoanQuery(PersonalLoan::query(), user: $administrator)
+            ->orderBy('id')
+            ->pluck('id');
+
+        $this->assertSame([$ownLoan->id, $otherLoan->id], $loanIds->all());
+    }
+
+    public function test_administrator_can_open_an_active_loan_from_another_branch_by_role(): void
+    {
+        $administrator = $this->userWithRole('Administrator', $this->branch('Own Branch')->id);
+        $otherLoan = PersonalLoan::factory()->create([
+            'branch_id' => $this->branch('Other Branch')->id,
+            'status' => 2,
+        ]);
+
+        $this->service->ensureLoanAccess($otherLoan, $administrator);
 
         $this->addToAssertionCount(1);
     }
@@ -188,7 +251,7 @@ class LoanAccessServiceTest extends TestCase
         $this->service->ensureLoanAccess($otherLoan, $manager);
     }
 
-    public function test_branch_manager_active_loan_filters_include_all_branches(): void
+    public function test_branch_manager_active_loan_filters_are_limited_to_own_branch(): void
     {
         $ownBranch = $this->branch('Own Branch');
         $otherBranch = $this->branch('Other Branch');
@@ -199,7 +262,7 @@ class LoanAccessServiceTest extends TestCase
             ->orderBy('id')
             ->pluck('id');
 
-        $this->assertSame([$ownBranch->id, $otherBranch->id], $branchIds->all());
+        $this->assertSame([$ownBranch->id], $branchIds->all());
     }
 
     public function test_field_officer_can_enter_the_ebims_module_workspace(): void

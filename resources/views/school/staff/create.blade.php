@@ -4,24 +4,13 @@
 
 @section('content')
 <div class="container-fluid">
-    <!-- Page Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="h4 mb-1" style="color: #000000;">
-                        <i class="mdi mdi-account-tie-voice me-2"></i>Add New Staff Member
-                    </h2>
-                    <p class="text-muted mb-0">Enter staff member information</p>
-                </div>
-                <div>
-                    <a href="{{ route('school.staff.index') }}" class="btn btn-outline-secondary">
-                        <i class="mdi mdi-arrow-left me-1"></i>Back to Staff
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Add New Staff Member',
+        'subtitle' => 'Enter staff member information.',
+        'icon' => 'mdi mdi-account-tie-voice',
+        'backFallback' => route('school.staff.index'),
+        'backLabel' => 'Back to Staff',
+    ])
 
     <!-- Form Card -->
     <div class="row">

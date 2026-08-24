@@ -30,29 +30,18 @@
     </div>
     @endif
 
-    <div class="row">
-        <div class="col-12">
-            <div class="page-title-box">
-                <div class="page-title-right">
-                    <ol class="breadcrumb m-0">
-                        <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Dashboard</a></li>
-                        <li class="breadcrumb-item"><a href="{{ route('admin.loans.approvals') }}">Loan Approvals</a></li>
-                        <li class="breadcrumb-item active">{{ $loan->code }}</li>
-                    </ol>
-                </div>
-                <h4 class="page-title">Loan Profile / <strong class="text-primary">{{ $loan->code }}</strong></h4>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Loan Profile / ' . $loan->code,
+        'subtitle' => 'Review loan details, approvals, fees, guarantors, securities, and repayment history.',
+        'icon' => 'mdi mdi-cash-multiple',
+        'backFallback' => route('admin.loans.approvals'),
+        'backLabel' => 'Back',
+    ])
 
     <!-- Action Buttons -->
     <div class="row mb-3">
         <div class="col-12">
             <div class="d-flex gap-2">
-                <a href="{{ route('admin.loans.approvals') }}" class="btn btn-secondary">
-                    <i class="mdi mdi-arrow-left me-1"></i> Back to Approvals
-                </a>
-
                 @if(auth()->user()->isSuperAdmin() && $loanType === 'personal' && (int) ($loan->restructured ?? 0) === 1 && !empty($loan->OLoanID) && (int) $loan->status !== 5)
                     <form method="POST"
                           action="{{ route('admin.loans.revert-restructure', $loan->id) }}"

@@ -275,16 +275,70 @@
                         </table>
                     </div>
 
-                    <!-- Pagination -->
-                    <div class="d-flex justify-content-between align-items-center mt-3">
-                        <div>
-                            <small class="text-muted">
-                                Showing {{ $payments->firstItem() ?? 0 }} to {{ $payments->lastItem() ?? 0 }} 
-                                of {{ $payments->total() }} results
-                            </small>
+                    <div class="modern-pagination mt-4">
+                        <div class="pagination-info">
+                            Showing {{ $payments->firstItem() ?? 0 }} to {{ $payments->lastItem() ?? 0 }} of {{ $payments->total() }} results
                         </div>
-                        <div>
-                            {{ $payments->appends(request()->query())->links() }}
+
+                        <div class="pagination-controls">
+                            @if ($payments->onFirstPage())
+                                <span class="pagination-btn" disabled>
+                                    <i class="mdi mdi-chevron-left"></i> Previous
+                                </span>
+                            @else
+                                <a href="{{ $payments->appends(request()->except('page'))->previousPageUrl() }}" class="pagination-btn">
+                                    <i class="mdi mdi-chevron-left"></i> Previous
+                                </a>
+                            @endif
+
+                            <div class="pagination-numbers">
+                                @php
+                                    $currentPage = $payments->currentPage();
+                                    $lastPage = $payments->lastPage();
+                                    $start = max(1, $currentPage - 2);
+                                    $end = min($lastPage, $currentPage + 2);
+
+                                    if ($currentPage <= 3) {
+                                        $end = min(5, $lastPage);
+                                    }
+
+                                    if ($currentPage >= $lastPage - 2) {
+                                        $start = max(1, $lastPage - 4);
+                                    }
+                                @endphp
+
+                                @if($start > 1)
+                                    <a href="{{ $payments->appends(request()->except('page'))->url(1) }}" class="pagination-btn">1</a>
+                                    @if($start > 2)
+                                        <span class="pagination-btn" disabled>...</span>
+                                    @endif
+                                @endif
+
+                                @for ($page = $start; $page <= $end; $page++)
+                                    @if ($page == $currentPage)
+                                        <span class="pagination-btn active">{{ $page }}</span>
+                                    @else
+                                        <a href="{{ $payments->appends(request()->except('page'))->url($page) }}" class="pagination-btn">{{ $page }}</a>
+                                    @endif
+                                @endfor
+
+                                @if($end < $lastPage)
+                                    @if($end < $lastPage - 1)
+                                        <span class="pagination-btn" disabled>...</span>
+                                    @endif
+                                    <a href="{{ $payments->appends(request()->except('page'))->url($lastPage) }}" class="pagination-btn">{{ $lastPage }}</a>
+                                @endif
+                            </div>
+
+                            @if ($payments->hasMorePages())
+                                <a href="{{ $payments->appends(request()->except('page'))->nextPageUrl() }}" class="pagination-btn">
+                                    Next <i class="mdi mdi-chevron-right"></i>
+                                </a>
+                            @else
+                                <span class="pagination-btn" disabled>
+                                    Next <i class="mdi mdi-chevron-right"></i>
+                                </span>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -445,7 +499,7 @@ function exportToExcel() {
     window.open('{{ route("admin.reports.loan-repayments") }}?{{ request()->getQueryString() }}&export=excel', '_blank');
 }
 
-function exportPDF() {
+function exportToPDF() {
     window.open('{{ route("admin.reports.loan-repayments") }}?{{ request()->getQueryString() }}&export=pdf', '_blank');
 }
 </script>
@@ -524,6 +578,81 @@ function exportPDF() {
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.modern-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding-top: 18px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.pagination-info {
+    color: #6b7280;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.pagination-controls,
+.pagination-numbers {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #374151 !important;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+}
+
+.pagination-btn:hover:not([disabled]) {
+    border-color: #2563eb;
+    color: #2563eb !important;
+    background: #eff6ff;
+}
+
+.pagination-btn.active {
+    border-color: #111827;
+    background: #111827;
+    color: #ffffff !important;
+}
+
+.pagination-btn[disabled] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+@media (max-width: 768px) {
+    .modern-pagination {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .pagination-info {
+        white-space: normal;
+    }
+
+    .pagination-controls {
+        justify-content: flex-start;
+    }
 }
 </style>
 @endpush

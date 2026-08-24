@@ -19,7 +19,17 @@ class SuperAdminMiddleware
             return redirect()->route('login');
         }
 
-        if (!auth()->user()->isSuperAdmin()) {
+        $user = auth()->user();
+        $isSystemSettingsRoute = $request->routeIs('admin.settings.*')
+            || $request->routeIs('admin.loan-products.*')
+            || $request->routeIs('admin.savings-products.*')
+            || $request->routeIs('admin.product-charges.*');
+
+        if ($isSystemSettingsRoute && $user->isAdministrator()) {
+            return $next($request);
+        }
+
+        if (!$user->isSuperAdmin()) {
             abort(403, 'Access denied. Super Administrator role required.');
         }
 

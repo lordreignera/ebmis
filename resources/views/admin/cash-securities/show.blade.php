@@ -4,31 +4,17 @@
 
 @section('content')
 <div class="container-fluid cash-security-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h4 class="mb-1">CS-{{ str_pad((string) $cashSecurity->id, 6, '0', STR_PAD_LEFT) }}</h4>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Home</a></li>
-                    <li class="breadcrumb-item"><a href="{{ route('admin.cash-securities.index') }}">Cash Securities</a></li>
-                    <li class="breadcrumb-item active">View</li>
-                </ol>
-            </nav>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ route('admin.cash-securities.edit', $cashSecurity) }}" class="btn btn-outline-primary">
-                <i class="mdi mdi-pencil-outline me-1"></i> Edit
-            </a>
-            @if((int) $cashSecurity->status === \App\Models\CashSecurity::STATUS_PAID)
-                <a href="{{ route('admin.cash-securities.receipt', $cashSecurity) }}" class="btn btn-outline-success" target="_blank">
-                    <i class="mdi mdi-receipt-outline me-1"></i> Receipt
-                </a>
-            @endif
-            <a href="{{ route('admin.cash-securities.index') }}" class="btn btn-outline-secondary">
-                <i class="mdi mdi-arrow-left me-1"></i> Back
-            </a>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'CS-' . str_pad((string) $cashSecurity->id, 6, '0', STR_PAD_LEFT),
+        'subtitle' => 'Cash security details, payment status, member link, and return history.',
+        'icon' => 'mdi mdi-shield-account',
+        'backFallback' => route('admin.cash-securities.index'),
+        'backLabel' => 'Back',
+        'actions' => '<a href="' . route('admin.cash-securities.edit', $cashSecurity) . '" class="btn btn-outline-primary"><i class="mdi mdi-pencil-outline me-1"></i> Edit</a>'
+            . (((int) $cashSecurity->status === \App\Models\CashSecurity::STATUS_PAID)
+                ? '<a href="' . route('admin.cash-securities.receipt', $cashSecurity) . '" class="btn btn-outline-success" target="_blank"><i class="mdi mdi-receipt-outline me-1"></i> Receipt</a>'
+                : ''),
+    ])
 
     @include('admin.cash-securities.partials.alerts')
 
@@ -90,11 +76,3 @@
     </div>
 </div>
 @endsection
-
-@push('styles')
-<style>
-.cash-security-page .card { border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05); }
-.detail-list dt { color: #6b7280; font-weight: 600; }
-.detail-list dd { color: #111827; overflow-wrap: anywhere; }
-</style>
-@endpush

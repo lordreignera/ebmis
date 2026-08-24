@@ -328,13 +328,14 @@
                             @endif
                         </div>
                     </a>
-                    @if(Auth::user()->isSuperAdmin())
-                        <a class="dropdown-item d-flex align-items-center"
-                           href="{{ route('admin.settings.dashboard') }}"
-                           style="padding: 12px 20px !important; transition: background 0.2s !important;">
-                            <i class="mdi mdi-settings-outline me-3" style="font-size: 1.25rem; color: #48bb78;"></i>
-                            <span>Settings</span>
-                        </a>
+                    @if(Auth::user()->isSuperAdmin() || Auth::user()->isAdministrator())
+                        <div class="dropdown-divider m-0"></div>
+                        <div class="navbar-settings-panel">
+                            <a class="navbar-settings-head" href="{{ route('admin.settings.dashboard') }}">
+                                <i class="mdi mdi-settings-outline"></i>
+                                <span>System Settings Dashboard</span>
+                            </a>
+                        </div>
                     @endif
                     <a class="dropdown-item d-flex align-items-center" 
                        href="#" 
@@ -380,6 +381,37 @@
     background: #1d4ed8 !important;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18) !important;
+}
+
+.navbar .navbar-settings-panel {
+    padding: 12px 16px 14px;
+    width: 260px;
+    max-width: calc(100vw - 32px);
+}
+
+.navbar .navbar-settings-head {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    color: #111827;
+    display: flex;
+    font-weight: 700;
+    gap: 8px;
+    margin-bottom: 0;
+    padding: 10px 12px;
+    text-decoration: none;
+}
+
+.navbar .navbar-settings-head i {
+    color: #2563eb;
+    font-size: 20px;
+}
+
+@media (max-width: 575px) {
+    .navbar .navbar-settings-panel {
+        width: 260px;
+    }
 }
 
 /* Dropdown Item Hover */

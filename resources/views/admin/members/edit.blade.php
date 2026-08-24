@@ -3,27 +3,13 @@
 @section('title', 'Edit Member - ' . $member->fname . ' ' . $member->lname)
 
 @section('content')
-<div class="row">
-    <div class="col-md-12 grid-margin">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h4 class="font-weight-bold mb-0">Edit Member</h4>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="{{ route('admin.members.index') }}">Members</a></li>
-                        <li class="breadcrumb-item"><a href="{{ route('admin.members.show', $member->id) }}">{{ $member->fname }} {{ $member->lname }}</a></li>
-                        <li class="breadcrumb-item active">Edit</li>
-                    </ol>
-                </nav>
-            </div>
-            <div>
-                <a href="{{ route('admin.members.show', $member->id) }}" class="btn btn-outline-secondary btn-sm">
-                    <i class="mdi mdi-arrow-left"></i> Back to Details
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
+@include('admin.partials.page-header', [
+    'title' => 'Edit Member',
+    'subtitle' => $member->fname . ' ' . $member->lname,
+    'icon' => 'mdi mdi-account-edit',
+    'backFallback' => route('admin.members.show', $member->id),
+    'backLabel' => 'Back to Details',
+])
 
 <div class="row">
     <div class="col-md-12 grid-margin stretch-card">

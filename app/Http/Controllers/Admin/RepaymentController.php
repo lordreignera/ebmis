@@ -2319,7 +2319,8 @@ class RepaymentController extends Controller
 
             $query = $this->loanAccessService->scopeActiveLoanQuery(
                 DB::table('personal_loans as l'),
-                'l.branch_id'
+                'l.branch_id',
+                'l.assigned_to'
             )
                 ->whereIn('l.status', [2, 3])
                 ->whereExists(function ($subquery) {
@@ -2542,7 +2543,8 @@ class RepaymentController extends Controller
 
             $query = $this->loanAccessService->scopeActiveLoanQuery(
                 DB::table('group_loans as l'),
-                'l.branch_id'
+                'l.branch_id',
+                'l.assigned_to'
             )
                 ->whereIn('l.status', [2, 3])
                 ->whereExists(function ($subquery) {
@@ -2684,7 +2686,8 @@ class RepaymentController extends Controller
 
         return (float) ($this->loanAccessService->scopeActiveLoanQuery(
             $query,
-            'l.branch_id'
+            'l.branch_id',
+            'l.assigned_to'
         )->sum('r.amount') ?? 0);
     }
 
@@ -4986,6 +4989,8 @@ class RepaymentController extends Controller
             'schedule'
         ]);
 
+        $this->ensureRepaymentAccess($repayment);
+
         // Calculate payment breakdown if schedule exists
         $paymentBreakdown = null;
         if ($repayment->schedule_id && $repayment->schedule) {
@@ -5113,6 +5118,15 @@ class RepaymentController extends Controller
     public function getPendingTransaction($scheduleId)
     {
         try {
+            $schedule = $this->findAccessiblePersonalLoanSchedule($scheduleId);
+
+            if (!$schedule) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Schedule not found'
+                ], 404);
+            }
+
             // Find the most recent pending repayment for this schedule
             $repayment = Repayment::where('schedule_id', $scheduleId)
                 ->where('status', 0) // Pending
@@ -5159,12 +5173,23 @@ class RepaymentController extends Controller
                 ]);
             }
 
+            $repayment = Repayment::where('txn_id', $transactionId)
+                ->orWhere('transaction_reference', $transactionId)
+                ->first();
+
+            if (!$repayment) {
+                return response()->json([
+                    'status' => 'UNKNOWN',
+                    'message' => 'Repayment not found for this transaction'
+                ], 404);
+            }
+
+            $this->ensureRepaymentAccess($repayment);
+
             // Check if payment status has been updated by CheckTransactions cron
             // pay_status codes: '00' = pending, '01' = success, '02'/'03' = failed
             if ($rawPayment->pay_status === '01') {
                 // Payment successful - update repayment and schedule
-                $repayment = Repayment::where('txn_id', $transactionId)->first();
-                
                 if ($repayment && $repayment->status == 0) {
                     $result = $this->repaymentService->approveRepayment(
                         $repayment->id,
@@ -5291,7 +5316,6 @@ class RepaymentController extends Controller
                     'message' => 'Payment completed successfully'
                 ]);
             } elseif (in_array($rawPayment->pay_status, ['02', '03', 'FAILED'])) {
-                $repayment = Repayment::where('txn_id', $transactionId)->first();
                 if ($repayment && $repayment->status == 0) {
                     $repayment->update([
                         'status' => 2,
@@ -5357,6 +5381,8 @@ class RepaymentController extends Controller
             DB::beginTransaction();
 
             $loan = Loan::findOrFail($validated['loan_id']);
+
+            $this->loanAccessService->ensureLoanAccess($loan);
             
             // SECURITY: Prevent payments on stopped loans
             if ($loan->status == 6) {
@@ -5542,6 +5568,10 @@ class RepaymentController extends Controller
                     'status' => 'error',
                     'message' => 'Repayment not found'
                 ], 404);
+            }
+
+            foreach ($repayments as $repayment) {
+                $this->ensureRepaymentAccess($repayment);
             }
 
             // If already completed, return success
@@ -5849,7 +5879,7 @@ class RepaymentController extends Controller
     public function getSchedulePendingRepayments($scheduleId)
     {
         try {
-            $schedule = LoanSchedule::find($scheduleId);
+            $schedule = $this->findAccessiblePersonalLoanSchedule($scheduleId);
             if (!$schedule || (int) $schedule->status === 1) {
                 if ($schedule && (int) $schedule->pending_count !== 0) {
                     $schedule->update(['pending_count' => 0]);
@@ -6624,6 +6654,15 @@ class RepaymentController extends Controller
     public function getSchedulePayments($scheduleId)
     {
         try {
+            $schedule = $this->findAccessiblePersonalLoanSchedule($scheduleId);
+
+            if (!$schedule) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Schedule not found'
+                ], 404);
+            }
+
             $payments = Repayment::where('schedule_id', $scheduleId)
                 ->where('status', 1)
                 ->where('amount', '>', 0)
@@ -6654,6 +6693,37 @@ class RepaymentController extends Controller
                 'message' => 'Failed to load payments'
             ], 500);
         }
+    }
+
+    protected function findAccessiblePersonalLoanSchedule($scheduleId): ?LoanSchedule
+    {
+        $schedule = LoanSchedule::find($scheduleId);
+
+        if (!$schedule) {
+            return null;
+        }
+
+        $loan = PersonalLoan::find($schedule->loan_id);
+
+        if (!$loan) {
+            abort(404, 'Loan not found for this schedule.');
+        }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
+
+        return $schedule;
+    }
+
+    protected function ensureRepaymentAccess(Repayment $repayment): void
+    {
+        $loanResult = $this->findLoanById($repayment->loan_id);
+        $loan = $loanResult['loan'] ?? null;
+
+        if (!$loan) {
+            abort(404, 'Loan not found for this repayment.');
+        }
+
+        $this->loanAccessService->ensureLoanAccess($loan);
     }
 
     /**

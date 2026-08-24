@@ -104,7 +104,7 @@
                             <a href="{{ route('admin.loan-products.show', $stat['product']->id) }}" class="btn btn-outline-primary">
                                 <i class="mdi mdi-eye"></i> View
                             </a>
-                            <a href="{{ route('admin.portfolio.running', ['product_id' => $stat['product']->id]) }}" class="btn btn-outline-success">
+                            <a href="{{ route('admin.loans.active', ['product_id' => $stat['product']->id]) }}" class="btn btn-outline-success">
                                 <i class="mdi mdi-format-list-bulleted"></i> Loans
                             </a>
                             <a href="{{ route('admin.loan-products.edit', $stat['product']->id) }}" class="btn btn-outline-info">
@@ -199,7 +199,7 @@
                                     <a href="{{ route('admin.loan-products.show', $stat['product']->id) }}" class="btn btn-outline-primary">
                                         <i class="mdi mdi-eye"></i>
                                     </a>
-                                    <a href="{{ route('admin.portfolio.running', ['product_id' => $stat['product']->id]) }}" class="btn btn-outline-success">
+                                    <a href="{{ route('admin.loans.active', ['product_id' => $stat['product']->id]) }}" class="btn btn-outline-success">
                                         <i class="mdi mdi-format-list-bulleted"></i>
                                     </a>
                                     <a href="{{ route('admin.loan-products.edit', $stat['product']->id) }}" class="btn btn-outline-info">

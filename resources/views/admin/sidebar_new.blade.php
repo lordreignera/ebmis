@@ -17,6 +17,16 @@
       <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS" style="max-height: 40px; width: auto;" />
     </a>
   </div>
+
+  <div class="sidebar-menu-tools">
+    <div class="sidebar-menu-search">
+      <i class="mdi mdi-magnify"></i>
+      <input type="search" id="sidebar-menu-search-input" placeholder="Find menu item" autocomplete="off">
+      <button type="button" id="sidebar-menu-search-clear" aria-label="Clear menu search">
+        <i class="mdi mdi-close"></i>
+      </button>
+    </div>
+  </div>
   
   <ul class="nav">
     <li class="nav-item nav-category">
@@ -39,185 +49,12 @@
     </li>
 
     <li class="nav-item menu-items">
-      <a class="nav-link" href="{{ route('admin.schools.index') }}">
+      <a class="nav-link" href="{{ route('admin.schools.dashboard') }}">
         <span class="menu-icon">
           <i class="mdi mdi-school"></i>
         </span>
-        <span class="menu-title">Schools Overview</span>
-      </a>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#schools" aria-expanded="false" aria-controls="schools">
-        <span class="menu-icon">
-          <i class="mdi mdi-domain"></i>
-        </span>
         <span class="menu-title">School Management</span>
-        <i class="menu-arrow"></i>
       </a>
-      <div class="collapse" id="schools">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.schools.index') }}">All Schools</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.schools.index') }}?status=pending">Pending School Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.schools.index') }}?status=approved">Active Schools</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.schools.index') }}?status=suspended">Suspended Schools</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.schools.index') }}?status=rejected">Rejected Schools</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#school-loans" aria-expanded="false" aria-controls="school-loans">
-        <span class="menu-icon">
-          <i class="mdi mdi-bank"></i>
-        </span>
-        <span class="menu-title">School Loans</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="school-loans">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><strong class="text-muted ps-3">Create School Loans</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=school&period=daily">School Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=school&period=weekly">School Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=school&period=monthly">School Loan (Monthly)</a></li>
-          
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">School Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=school">Pending Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=school">Pending Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=school">Active School Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=school">School Loan Repayments</a></li>
-          
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.portfolio') }}?type=school">School Loan Portfolio</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#student-loans" aria-expanded="false" aria-controls="student-loans">
-        <span class="menu-icon">
-          <i class="mdi mdi-account-school"></i>
-        </span>
-        <span class="menu-title">Student Loans</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="student-loans">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><strong class="text-muted ps-3">Create Student Loans</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=student&period=daily">Student Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=student&period=weekly">Student Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=student&period=monthly">Student Loan (Monthly)</a></li>
-          
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">Student Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=student">Pending Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=student">Pending Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=student">Active Student Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=student">Student Loan Repayments</a></li>
-          
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.portfolio') }}?type=student">Student Loan Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Students by School</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#school-advances" aria-expanded="false" aria-controls="school-advances">
-        <span class="menu-icon">
-          <i class="mdi mdi-cash-fast"></i>
-        </span>
-        <span class="menu-title">School Advances</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="school-advances">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Create School Advance</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Advance Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Advances Pending Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Advances Pending Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Advance Repayments</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Active Advances</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Cleared Advances</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#staff-loans" aria-expanded="false" aria-controls="staff-loans">
-        <span class="menu-icon">
-          <i class="mdi mdi-account-tie"></i>
-        </span>
-        <span class="menu-title">Staff Loans</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="staff-loans">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><strong class="text-muted ps-3">Create Staff Loans</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=staff&period=daily">Staff Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=staff&period=weekly">Staff Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.create') }}?type=staff&period=monthly">Staff Loan (Monthly)</a></li>
-          
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">Staff Loan Management</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.approvals') }}?type=staff">Pending Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.disbursements') }}?type=staff">Pending Disbursements</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.active') }}?type=staff">Active Staff Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=staff">Staff Loan Repayments</a></li>
-          
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.school.loans.portfolio') }}?type=staff">Staff Loan Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff by School</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#payroll" aria-expanded="false" aria-controls="payroll">
-        <span class="menu-icon">
-          <i class="mdi mdi-cash-multiple"></i>
-        </span>
-        <span class="menu-title">Payroll Management</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="payroll">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Process Payroll</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Payroll Schedules</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Teacher Payroll</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Salaries</a></li>
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="#">Payroll by School</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Monthly Payroll Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Payroll History</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Payroll Deductions</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Tax Reports</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#school-reports" aria-expanded="false" aria-controls="school-reports">
-        <span class="menu-icon">
-          <i class="mdi mdi-chart-bar"></i>
-        </span>
-        <span class="menu-title">School Reports</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="school-reports">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Schools Performance Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Loans Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Student Loans Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Advances Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Staff Loans Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Payroll Summary Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Payments Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Students by School Report</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">School Staff Report</a></li>
-        </ul>
-      </div>
     </li>
     @endif
     <!-- END SUPER ADMIN ONLY: SCHOOL MANAGEMENT -->
@@ -374,386 +211,73 @@
       <span class="nav-link">EBIMS MODULES</span>
     </li>
 
-    @if($sidebarCanAny(['view-client-details', 'add-client', 'send-sms-notifications']))
     <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#members" aria-expanded="false" aria-controls="members">
+      <a class="nav-link" href="{{ route('admin.modules.dashboard') }}">
+        <span class="menu-icon">
+          <i class="mdi mdi-apps"></i>
+        </span>
+        <span class="menu-title">All EBIMS Modules</span>
+      </a>
+    </li>
+
+    @if($sidebarCanAny(['view-client-details', 'add-client', 'send-sms-notifications', 'manage-group-members']))
+    <li class="nav-item menu-items">
+      <a class="nav-link" href="{{ route('admin.modules.clients') }}">
         <span class="menu-icon">
           <i class="mdi mdi-account-multiple"></i>
         </span>
-        <span class="menu-title">Clients</span>
-        <i class="menu-arrow"></i>
+        <span class="menu-title">Clients Module</span>
       </a>
-      <div class="collapse" id="members">
-        <ul class="nav flex-column sub-menu">
-          @if($sidebarCan('add-client'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.create') }}">Add Client</a></li>
-          @endif
-          @if($sidebarCan('view-client-details'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=1">Individual Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=2">Group Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.index') }}?member_type=3">Corporate Clients</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.members.pending') }}">Clients Pending Approvals</a></li>
-          @endif
-          @if($sidebarCan('send-sms-notifications'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.create') }}">Send Bulk SMS</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.bulk-sms.index') }}">View Bulk SMS Records</a></li>
-          @endif
-        </ul>
-      </div>
-    </li>
-    @endif
-
-    @if($sidebarCan('manage-group-members'))
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#groups" aria-expanded="false" aria-controls="groups">
-        <span class="menu-icon">
-          <i class="mdi mdi-account-group"></i>
-        </span>
-        <span class="menu-title">Groups</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="groups">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.groups.create') }}">Create Group</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.groups.index') }}">View Groups</a></li>
-        </ul>
-      </div>
-    </li>
-    @endif
-
-    @if($sidebarCan('manage-cash-securities'))
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#cashsecurity" aria-expanded="false" aria-controls="cashsecurity">
-        <span class="menu-icon">
-          <i class="mdi mdi-shield-lock"></i>
-        </span>
-        <span class="menu-title">Cash Security</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="cashsecurity">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.cash-securities.index') }}">View Cash Securities</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.cash-securities.create') }}">Add Cash Security</a></li>
-        </ul>
-      </div>
-    </li>
-    @endif
-
-    @if($sidebarCan('manage-investments'))
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#investments" aria-expanded="false" aria-controls="investments">
-        <span class="menu-icon">
-          <i class="mdi mdi-trending-up"></i>
-        </span>
-        <span class="menu-title">Investments</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="investments">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}">Investment Dashboard</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.investors') }}">All Investors</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.create-investor') }}">Add New Investor</a></li>
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.investors') }}?type=local">Local Investors</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.investors') }}?type=international">International Investors</a></li>
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}?status=active">Active Investments</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}?status=pending">Pending Investments</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.investments.index') }}?status=matured">Matured Investments</a></li>
-        </ul>
-      </div>
     </li>
     @endif
 
     @if($sidebarCanAny(['create-loan-application', 'manage-client-applications', 'manage-loans', 'view-disbursements', 'view-active-loans', 'view-repayment-history', 'manage-late-fees', 'generate-loan-reports']))
     <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#loans" aria-expanded="false" aria-controls="loans">
+      <a class="nav-link" href="{{ route('admin.modules.loan-portfolio') }}">
         <span class="menu-icon">
           <i class="mdi mdi-briefcase"></i>
         </span>
         <span class="menu-title">Loan Portfolio</span>
-        <i class="menu-arrow"></i>
       </a>
-      <div class="collapse" id="loans">
-        <ul class="nav flex-column sub-menu">
-          @if($sidebarCan('create-loan-application'))
-          <!-- Personal Loans Section -->
-          <li class="nav-item"><strong class="text-muted ps-3">Personal Loans</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=daily">Personal Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=weekly">Personal Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=personal&period=monthly">Personal Loan (Monthly)</a></li>
-          @endif
-          @if($sidebarCan('manage-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.esign') }}">eSign Personal Loan</a></li>
-          @endif
-          
-          @if($sidebarCan('create-loan-application'))
-          <!-- Group Loans Section -->
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">Group Loans</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=daily">Group Loan (Daily)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=weekly">Group Loan (Weekly)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.create') }}?type=group&period=monthly">Group Loan (Monthly)</a></li>
-          @endif
-          
-          <!-- Personal Loan Management -->
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">Personal Loan Management</strong></li>
-          @if($sidebarCan('manage-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.personal.preview-dashboard') }}">Preview Dashboard</a></li>
-          @endif
-          @if($sidebarCan('manage-client-applications'))
-          <li class="nav-item">
-            <a class="nav-link d-flex align-items-center justify-content-between" href="{{ route('admin.client-applications.index') }}">
-              <span>Self-Applied Applications</span>
-              @php $pendingApps = \App\Models\ClientLoanApplication::whereIn('status',['pending_fo_review','pending_fo_verification'])->count(); @endphp
-              @if($pendingApps > 0)<span class="badge bg-warning text-dark">{{ $pendingApps }}</span>@endif
-            </a>
-          </li>
-          @endif
-          @if($sidebarCan('manage-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=personal">Pending Approvals</a></li>
-          @endif
-          @if($sidebarCan('view-disbursements'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=personal">Pending Disbursements</a></li>
-          @endif
-          @if($sidebarCan('view-active-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=personal">Active Loans: Schedules & Payments</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.collections') }}">Collections Queue</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.risk-follow-up') }}">Risk Follow-up</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.security-gaps') }}">Security Gaps</a></li>
-          @if($sidebarCanManageSensitiveLoanOperations)
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active.operations') }}">Loan Operations</a></li>
-          @endif
-          @endif
-          @if($sidebarCan('manage-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=personal">Rejected Personal Loans</a></li>
-          @endif
-          @if($sidebarCan('view-repayment-history'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=personal">Personal Loan Repayments</a></li>
-          @endif
-          @if($sidebarCan('manage-late-fees'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.late-fees.index') }}">Late Fees</a></li>
-          @endif
-          
-          <!-- Group Loan Management -->
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">Group Loan Management</strong></li>
-          @if($sidebarCan('manage-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.approvals') }}?type=group">Pending Approvals</a></li>
-          @endif
-          @if($sidebarCan('view-disbursements'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.disbursements.pending') }}?type=group">Pending Disbursements</a></li>
-          @endif
-          @if($sidebarCan('view-active-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.active') }}?type=group">Active Group Loans</a></li>
-          @endif
-          @if($sidebarCan('manage-loans'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.loans.rejected') }}?type=group">Rejected Group Loans</a></li>
-          @endif
-          @if($sidebarCan('view-repayment-history'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.repayments.index') }}?type=group">Group Loan Repayments</a></li>
-          @endif
-          
-          @if($sidebarCan('generate-loan-reports'))
-          <!-- Loan Portfolio Reports -->
-          <li class="nav-item"><hr class="dropdown-divider"></li>
-          <li class="nav-item"><strong class="text-muted ps-3">Portfolio Analysis</strong></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.branch') }}">By Branch</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.product') }}">By Product</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.individual') }}">Personal Portfolio</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.portfolio.group') }}">Group Portfolio</a></li>
-          @endif
-        </ul>
-      </div>
     </li>
     @endif
 
-    @if($sidebarCan('manage-expenditures') || $sidebarCanManageStaffPaymentRollout)
+    @if($sidebarCanAny(['view-repayment-history', 'view-active-loans', 'manage-late-fees', 'manage-fees', 'manage-cash-securities', 'manage-savings-accounts']))
     <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#expenditures" aria-expanded="false" aria-controls="expenditures">
+      <a class="nav-link" href="{{ route('admin.modules.collections') }}">
         <span class="menu-icon">
-          <i class="mdi mdi-cash-multiple"></i>
+          <i class="mdi mdi-wallet"></i>
         </span>
-        <span class="menu-title">Expenditures</span>
-        <i class="menu-arrow"></i>
+        <span class="menu-title">Payments & Collections</span>
       </a>
-      <div class="collapse" id="expenditures">
-        <ul class="nav flex-column sub-menu">
-          @if($sidebarCan('manage-expenditures'))
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.index') }}">Expenditures</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.create') }}">New Expenditure</a></li>
-          @endif
-          @if($sidebarCanManageStaffPaymentRollout)
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.expenditures.rollout') }}">Staff Payment Rollout</a></li>
-          @endif
-        </ul>
-      </div>
+    </li>
+    @endif
+
+    @if($sidebarCanAny(['generate-loan-reports', 'view-accounting-reports', 'view-umra-reports']))
+    <li class="nav-item menu-items">
+      <a class="nav-link" href="{{ route('admin.modules.reports-accounting') }}">
+        <span class="menu-icon">
+          <i class="mdi mdi-file-chart-outline"></i>
+        </span>
+        <span class="menu-title">Reports & Accounting</span>
+      </a>
+    </li>
+    @endif
+
+    @if($sidebarCan('manage-investments'))
+    <li class="nav-item menu-items">
+      <a class="nav-link" href="{{ route('admin.modules.investments') }}">
+        <span class="menu-icon">
+          <i class="mdi mdi-trending-up"></i>
+        </span>
+        <span class="menu-title">Investments Module</span>
+      </a>
     </li>
     @endif
 
     <!-- END ADMIN ONLY: EBIMS MODULES -->
 
     @endif
-
-    @if(auth()->user()->user_type !== 'school' && $sidebarCanAny(['generate-loan-reports', 'view-umra-reports']))
-    <!-- ADMIN ONLY: REPORTS & SETTINGS -->
-    <li class="nav-item nav-category">
-      <span class="nav-link">REPORTS</span>
-    </li>
-
-    @if($sidebarCan('generate-loan-reports'))
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#reports" aria-expanded="false" aria-controls="reports">
-        <span class="menu-icon">
-          <i class="mdi mdi-file-chart-outline"></i>
-        </span>
-        <span class="menu-title">Reports</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="reports">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.pending-loans') }}">Pending Loan Applications</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.disbursed-loans') }}">Disbursed Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.rejected-loans') }}">Rejected Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loans-due') }}">Loans Due</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.paid-loans') }}">Paid Loans</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loan-repayments') }}">Loans Repayments</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.payment-transactions') }}">Payments Transactions</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loan-interest') }}">Loans Interest</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.cash-securities') }}">Cash Securities</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.reports.loan-charges') }}">Loan Charges</a></li>
-        </ul>
-      </div>
-    </li>
-    @endif
-
-
-    <!-- UMRA Regulatory Compliance Dashboard -->
-    @if($sidebarCan('view-umra-reports'))
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#umra" aria-expanded="false" aria-controls="umra">
-        <span class="menu-icon">
-          <i class="mdi mdi-clipboard-check-outline"></i>
-        </span>
-        <span class="menu-title">UMRA Compliance</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="umra">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.umra.dashboard') }}">Portfolio Indicators</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.umra.schedule3') }}">Schedule 3 - Risk Classification</a></li>
-        </ul>
-      </div>
-    </li>
-    @endif
-
-    <!-- <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#settings" aria-expanded="false" aria-controls="settings">
-        <span class="menu-icon">
-          <i class="mdi mdi-cog"></i>
-        </span>
-        <span class="menu-title">Settings</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="settings">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Add System Users</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">View System Users</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Add Field Team</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">View Field Team</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Loan Products</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Chart of Accounts</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Savings Products</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Fees Types</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Manage Agencies</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Manage Branches</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Manage Security Code</a></li>
-        </ul>
-      </div>
-    </li> 
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#inv-approvals" aria-expanded="false" aria-controls="inv-approvals">
-        <span class="menu-icon">
-          <i class="mdi mdi-check-decagram"></i>
-        </span>
-        <span class="menu-title">Investment Approvals</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="inv-approvals">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Pending Approvals</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Approved</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Rejected</a></li>
-        </ul>
-      </div>
-    </li>-->
-
-    @if($sidebarUser->isSuperAdmin())
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#agency" aria-expanded="false" aria-controls="agency">
-        <span class="menu-icon">
-          <i class="mdi mdi-domain"></i>
-        </span>
-        <span class="menu-title">Agency</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="agency">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="#">Opening Balances</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Closing Balances</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Reconciliation</a></li>
-        </ul>
-      </div>
-    </li>
-    @endif
-
-@endif
-<!-- END ADMIN ONLY: REPORTS & SETTINGS -->
-
-@if($sidebarCan('view-accounting-reports'))
-    <!-- ACCOUNTING & GL SECTION -->
-    <li class="nav-item nav-category">
-      <span class="nav-link">ACCOUNTING & GENERAL LEDGER</span>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#accounting-gl" aria-expanded="false" aria-controls="accounting-gl">
-        <span class="menu-icon">
-          <i class="mdi mdi-book-open-variant"></i>
-        </span>
-        <span class="menu-title">General Ledger</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="accounting-gl">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.journal-entries') }}">Journal Entries</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.chart-of-accounts') }}">Chart of Accounts</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.trial-balance') }}">Trial Balance</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#accounting-reports" aria-expanded="false" aria-controls="accounting-reports">
-        <span class="menu-icon">
-          <i class="mdi mdi-file-chart"></i>
-        </span>
-        <span class="menu-title">Financial Reports</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="accounting-reports">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.balance-sheet') }}">Balance Sheet</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.income-statement') }}">Income Statement (P&L)</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.accounting.trial-balance') }}">Trial Balance</a></li>
-        </ul>
-      </div>
-    </li>
-
-@endif
-<!-- END ACCOUNTING & GL SECTION -->
 
 @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
         <!-- ACCESS CONTROL SECTION - ADMIN ONLY -->
@@ -812,8 +336,8 @@
 @endif
 <!-- END ADMIN ONLY: ACCESS CONTROL -->
 
-@if(auth()->user()->isSuperAdmin())
-    <!-- SYSTEM SETTINGS SECTION - SUPER ADMIN ONLY -->
+@if(auth()->user()->isSuperAdmin() || auth()->user()->isAdministrator())
+    <!-- SYSTEM SETTINGS SECTION - SUPER ADMIN + ADMINISTRATOR ONLY -->
     <li class="nav-item nav-category">
       <span class="nav-link">SYSTEM SETTINGS</span>
     </li>
@@ -827,122 +351,438 @@
       </a>
     </li>
 
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#organization-settings" aria-expanded="false" aria-controls="organization-settings">
-        <span class="menu-icon">
-          <i class="mdi mdi-city"></i>
-        </span>
-        <span class="menu-title">Organization</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="organization-settings">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.agencies') }}">Agency Management</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.branches') }}">Branch Management</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.field-users') }}">Field Users</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.company-info') }}">Company Information</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#product-settings" aria-expanded="false" aria-controls="product-settings">
-        <span class="menu-icon">
-          <i class="mdi mdi-package-variant-closed"></i>
-        </span>
-        <span class="menu-title">Product Settings</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="product-settings">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.loan-products') }}">Loan Products</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.school-loan-products') }}">School Loan Products</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.savings-products') }}">Savings Products</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.fees-products') }}">Fees & Products</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.product-categories') }}">Product Categories</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#account-settings" aria-expanded="false" aria-controls="account-settings">
-        <span class="menu-icon">
-          <i class="mdi mdi-book-open-variant"></i>
-        </span>
-        <span class="menu-title">Account Settings</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="account-settings">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.system-accounts') }}">System/Chart Accounts</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.account-types') }}">Account Types</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#security-settings" aria-expanded="false" aria-controls="security-settings">
-        <span class="menu-icon">
-          <i class="mdi mdi-lock"></i>
-        </span>
-        <span class="menu-title">Security & Codes</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="security-settings">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.security-codes') }}">Security Codes</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.transaction-codes') }}">Transaction Codes</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.audit-trail') }}">Audit Trail Settings</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#system-config" aria-expanded="false" aria-controls="system-config">
-        <span class="menu-icon">
-          <i class="mdi mdi-tune"></i>
-        </span>
-        <span class="menu-title">System Configuration</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="system-config">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.general-config') }}">General Settings</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.email-config') }}">Email Configuration</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.sms-config') }}">SMS Configuration</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.notification-config') }}">Notification Settings</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.loan-policy-controls') }}">Loan Policy Controls</a></li>
-        </ul>
-      </div>
-    </li>
-
-    <li class="nav-item menu-items">
-      <a class="nav-link" data-bs-toggle="collapse" href="#maintenance-tools" aria-expanded="false" aria-controls="maintenance-tools">
-        <span class="menu-icon">
-          <i class="mdi mdi-hammer-wrench"></i>
-        </span>
-        <span class="menu-title">Maintenance & Tools</span>
-        <i class="menu-arrow"></i>
-      </a>
-      <div class="collapse" id="maintenance-tools">
-        <ul class="nav flex-column sub-menu">
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.backup') }}">Backup & Restore</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.database-maintenance') }}">Database Maintenance</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.system-logs') }}">System Logs</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.settings.data-import') }}">Data Import/Export</a></li>
-        </ul>
-      </div>
-    </li>
-
 @endif
-<!-- END ADMIN ONLY: SYSTEM SETTINGS -->
+<!-- END SUPER ADMIN + ADMINISTRATOR ONLY: SYSTEM SETTINGS -->
 
   </ul>
+
+  <div class="sidebar-help-panel">
+    <a href="{{ route('admin.help.guide') }}" class="sidebar-help-link">
+      <span class="sidebar-help-icon"><i class="mdi mdi-help-circle-outline"></i></span>
+      <span>
+        <strong>Need help?</strong>
+        <small>Open EBIMS user guide</small>
+      </span>
+    </a>
+  </div>
 </nav>
+
+<style>
+.sidebar-menu-tools {
+  position: relative;
+  z-index: 3;
+  padding: 10px 18px 6px;
+}
+
+.sidebar-menu-search {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  display: flex;
+  min-height: 38px;
+  padding: 0 8px;
+  pointer-events: auto;
+  position: relative;
+}
+
+.sidebar-menu-search i {
+  color: #9aa4b2;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sidebar-menu-search input {
+  background: transparent;
+  border: 0;
+  color: #f8fafc;
+  cursor: text;
+  flex: 1;
+  font-size: 13px;
+  min-width: 0;
+  outline: 0;
+  padding: 8px 6px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-menu-search input::placeholder {
+  color: #8b95a4;
+}
+
+.sidebar-menu-search button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  display: none;
+  height: 26px;
+  justify-content: center;
+  padding: 0;
+  pointer-events: auto;
+  width: 26px;
+  z-index: 2;
+}
+
+.sidebar-menu-search.has-query button {
+  display: inline-flex;
+}
+
+.sidebar .sub-menu .nav-item.sidebar-menu-overflow {
+  display: none;
+}
+
+.sidebar .sub-menu.sidebar-menu-expanded .nav-item.sidebar-menu-overflow,
+.sidebar .sub-menu.sidebar-menu-searching .nav-item.sidebar-menu-overflow {
+  display: list-item;
+}
+
+.sidebar .sidebar-show-more .nav-link {
+  color: #cbd5e1 !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar .sidebar-show-more .nav-link i {
+  font-size: 15px;
+  margin-right: 6px;
+}
+
+.sidebar .sidebar-menu-empty {
+  color: #8b95a4;
+  display: none;
+  font-size: 12px;
+  padding: 10px 24px;
+}
+
+.sidebar.sidebar-filtering .nav-item.sidebar-search-hidden {
+  display: none !important;
+}
+
+.sidebar.sidebar-filtering .sidebar-menu-empty.is-visible {
+  display: block;
+}
+
+.sidebar-help-panel {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 12px 18px 18px;
+}
+
+.sidebar-help-link {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  color: #111827 !important;
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  text-decoration: none !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sidebar-help-link:hover {
+  border-color: #2563eb;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
+  color: #111827 !important;
+  transform: translateY(-1px);
+}
+
+.sidebar-help-icon {
+  align-items: center;
+  background: #eff6ff;
+  border-radius: 8px;
+  color: #2563eb;
+  display: inline-flex;
+  flex: 0 0 34px;
+  font-size: 20px;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.sidebar-help-link strong,
+.sidebar-help-link small {
+  display: block;
+  line-height: 1.2;
+}
+
+.sidebar-help-link strong {
+  font-size: 13px;
+}
+
+.sidebar-help-link small {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 2px;
+}
+</style>
 
 <script>
 // Fix sidebar accordion - only one submenu open at a time
 document.addEventListener('DOMContentLoaded', function() {
+    const sidebar = document.getElementById('sidebar');
+    const compactLimit = 6;
+
+    function setupCompactSubmenus() {
+        if (!sidebar) return;
+
+        const submenus = sidebar.querySelectorAll('.sub-menu');
+        submenus.forEach(function(submenu) {
+            if (submenu.dataset.compactReady === 'true') return;
+
+            const items = Array.from(submenu.children).filter(function(item) {
+                return item.classList.contains('nav-item') && item.querySelector('a.nav-link[href]');
+            });
+
+            if (items.length <= compactLimit + 2) {
+                submenu.dataset.compactReady = 'true';
+                return;
+            }
+
+            items.slice(compactLimit).forEach(function(item) {
+                item.classList.add('sidebar-menu-overflow');
+            });
+
+            const moreCount = items.length - compactLimit;
+            const moreItem = document.createElement('li');
+            moreItem.className = 'nav-item sidebar-show-more';
+            moreItem.innerHTML = '<button type="button" class="nav-link border-0 bg-transparent w-100 text-start"><i class="mdi mdi-chevron-down"></i><span>Show all ' + items.length + ' links</span></button>';
+            submenu.appendChild(moreItem);
+
+            const moreButton = moreItem.querySelector('button');
+            moreButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const expanded = submenu.classList.toggle('sidebar-menu-expanded');
+                moreButton.querySelector('i').className = expanded ? 'mdi mdi-chevron-up' : 'mdi mdi-chevron-down';
+                moreButton.querySelector('span').textContent = expanded
+                    ? 'Show fewer links'
+                    : 'Show all ' + items.length + ' links';
+            });
+
+            submenu.dataset.compactReady = 'true';
+            submenu.dataset.moreCount = String(moreCount);
+        });
+    }
+
+    function revealCurrentMenuItem() {
+        if (!sidebar) return;
+
+        const currentUrl = new URL(window.location.href);
+        sidebar.querySelectorAll('.sub-menu a.nav-link[href]').forEach(function(link) {
+            try {
+                const linkUrl = new URL(link.getAttribute('href'), window.location.origin);
+                if (linkUrl.pathname === currentUrl.pathname && linkUrl.search === currentUrl.search) {
+                    const submenu = link.closest('.sub-menu');
+                    if (submenu) {
+                        submenu.classList.add('sidebar-menu-expanded');
+                        const moreButton = submenu.querySelector('.sidebar-show-more button');
+                        if (moreButton) {
+                            moreButton.querySelector('i').className = 'mdi mdi-chevron-up';
+                            moreButton.querySelector('span').textContent = 'Show fewer links';
+                        }
+                    }
+                }
+            } catch (e) {
+                // Skip placeholder or invalid links.
+            }
+        });
+    }
+
+    function setupSidebarSearch() {
+        if (!sidebar) return;
+
+        const input = document.getElementById('sidebar-menu-search-input');
+        const clear = document.getElementById('sidebar-menu-search-clear');
+        const wrapper = sidebar.querySelector('.sidebar-menu-search');
+        if (!input || !clear || !wrapper) return;
+
+        const empty = document.createElement('li');
+        empty.className = 'nav-item sidebar-menu-empty';
+        empty.textContent = 'No matching menu items';
+        sidebar.querySelector(':scope > .nav')?.appendChild(empty);
+
+        const topLevelItems = Array.from(sidebar.querySelectorAll(':scope > .nav > .nav-item'))
+            .filter(function(item) {
+                return !item.classList.contains('sidebar-menu-empty');
+            });
+
+        const searchableItems = topLevelItems
+            .filter(function(item) {
+                return !item.classList.contains('nav-category');
+            })
+            .map(function(item) {
+                const directLink = item.querySelector(':scope > .nav-link');
+                const childLinks = Array.from(item.querySelectorAll('.sub-menu .nav-item a.nav-link[href]'));
+                const keywords = [
+                    directLink ? directLink.textContent : '',
+                    item.dataset.search || '',
+                    childLinks.map(function(link) { return link.textContent; }).join(' ')
+                ].join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+                return {
+                    item: item,
+                    directLink: directLink,
+                    childLinks: childLinks,
+                    collapse: item.querySelector(':scope > .collapse'),
+                    toggle: item.querySelector(':scope > [data-bs-toggle="collapse"]'),
+                    keywords: keywords,
+                    wasOpen: item.querySelector(':scope > .collapse')?.classList.contains('show') || false,
+                };
+            });
+
+        const categories = topLevelItems
+            .filter(function(item) {
+                return item.classList.contains('nav-category');
+            })
+            .map(function(category) {
+                const controlledItems = [];
+                let sibling = category.nextElementSibling;
+
+                while (sibling && !sibling.classList.contains('nav-category')) {
+                    if (sibling.classList.contains('nav-item') && !sibling.classList.contains('sidebar-menu-empty')) {
+                        controlledItems.push(sibling);
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
+
+                return {
+                    category: category,
+                    controlledItems: controlledItems,
+                };
+            });
+
+        function setCollapseState(record, open) {
+            if (!record.collapse) return;
+
+            record.collapse.classList.toggle('show', open);
+            if (record.toggle) {
+                record.toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                record.toggle.classList.toggle('collapsed', !open);
+            }
+        }
+
+        function clearChildFiltering(record) {
+            record.childLinks.forEach(function(link) {
+                const childItem = link.closest('.nav-item');
+                if (childItem) {
+                    childItem.classList.remove('sidebar-search-hidden');
+                }
+            });
+
+            const submenu = record.item.querySelector('.sub-menu');
+            if (submenu) {
+                submenu.classList.remove('sidebar-menu-searching');
+            }
+        }
+
+        function restoreMenuState() {
+            searchableItems.forEach(function(record) {
+                record.item.classList.remove('sidebar-search-hidden');
+                clearChildFiltering(record);
+                setCollapseState(record, record.wasOpen);
+            });
+
+            categories.forEach(function(record) {
+                record.category.classList.remove('sidebar-search-hidden');
+            });
+
+            empty.classList.remove('is-visible');
+        }
+
+        function applyFilter() {
+            const query = input.value.trim().toLowerCase();
+            const filtering = query.length > 0;
+            const wasFiltering = sidebar.classList.contains('sidebar-filtering');
+            let visibleCount = 0;
+
+            if (filtering && !wasFiltering) {
+                searchableItems.forEach(function(record) {
+                    record.wasOpen = record.collapse?.classList.contains('show') || false;
+                });
+            }
+
+            sidebar.classList.toggle('sidebar-filtering', filtering);
+            wrapper.classList.toggle('has-query', filtering);
+
+            if (!filtering) {
+                restoreMenuState();
+                return;
+            }
+
+            searchableItems.forEach(function(record) {
+                const parentMatch = record.keywords.includes(query);
+                let childMatch = false;
+
+                record.childLinks.forEach(function(link) {
+                    const childItem = link.closest('.nav-item');
+                    const matches = link.textContent.toLowerCase().includes(query);
+
+                    if (childItem) {
+                        childItem.classList.toggle('sidebar-search-hidden', !matches && !parentMatch);
+                    }
+
+                    childMatch = childMatch || matches;
+                });
+
+                const isVisible = parentMatch || childMatch;
+                record.item.classList.toggle('sidebar-search-hidden', !isVisible);
+
+                const submenu = record.item.querySelector('.sub-menu');
+                if (submenu) {
+                    submenu.classList.toggle('sidebar-menu-searching', isVisible);
+                }
+
+                setCollapseState(record, isVisible && record.childLinks.length > 0);
+
+                if (isVisible) {
+                    visibleCount++;
+                }
+            });
+
+            categories.forEach(function(record) {
+                const hasVisibleItems = record.controlledItems.some(function(item) {
+                    return !item.classList.contains('sidebar-search-hidden');
+                });
+                record.category.classList.toggle('sidebar-search-hidden', !hasVisibleItems);
+            });
+
+            empty.classList.toggle('is-visible', visibleCount === 0);
+        }
+
+        input.addEventListener('input', applyFilter);
+        input.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter') return;
+
+            const firstVisibleLink = Array.from(sidebar.querySelectorAll('.nav-item:not(.sidebar-search-hidden) a.nav-link[href]'))
+                .find(function(link) {
+                    const href = link.getAttribute('href') || '';
+                    return href !== '#'
+                        && !href.startsWith('#')
+                        && link.closest('.nav-item')
+                        && !link.closest('.nav-item').classList.contains('nav-category');
+                });
+
+            if (firstVisibleLink) {
+                e.preventDefault();
+                firstVisibleLink.click();
+            }
+        });
+
+        clear.addEventListener('click', function() {
+            input.value = '';
+            input.focus();
+            applyFilter();
+        });
+    }
+
+    setupCompactSubmenus();
+    revealCurrentMenuItem();
+    setupSidebarSearch();
+
     // Function to manage sidebar menus
     function manageSidebarMenus() {
         const currentPath = window.location.pathname;
@@ -1018,11 +858,17 @@ document.addEventListener('DOMContentLoaded', function() {
         // STEP 3: Open the found menu
         if (menuToOpen) {
             menuToOpen.classList.add('show');
+            menuToOpen.classList.add('sidebar-menu-expanded');
             const collapseId = menuToOpen.getAttribute('id');
             const toggle = document.querySelector(`[data-bs-toggle="collapse"][href="#${collapseId}"]`);
             if (toggle) {
                 toggle.setAttribute('aria-expanded', 'true');
                 toggle.classList.remove('collapsed');
+            }
+            const moreButton = menuToOpen.querySelector('.sidebar-show-more button');
+            if (moreButton) {
+                moreButton.querySelector('i').className = 'mdi mdi-chevron-up';
+                moreButton.querySelector('span').textContent = 'Show fewer links';
             }
         }
     }

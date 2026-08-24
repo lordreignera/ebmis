@@ -96,6 +96,10 @@ return new class extends Migration
 
     private function indexExists(string $table, string $name): bool
     {
+        if (!$this->supportsMysqlIndexInspection()) {
+            return false;
+        }
+
         return !empty(DB::select("SHOW INDEX FROM `{$table}` WHERE Key_name = ?", [$name]));
     }
 
@@ -105,6 +109,10 @@ return new class extends Migration
      */
     private function hasEquivalentIndex(string $table, array $columns): bool
     {
+        if (!$this->supportsMysqlIndexInspection()) {
+            return false;
+        }
+
         $byName = [];
 
         foreach (DB::select("SHOW INDEX FROM `{$table}`") as $row) {
@@ -121,5 +129,10 @@ return new class extends Migration
         }
 
         return false;
+    }
+
+    private function supportsMysqlIndexInspection(): bool
+    {
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 };

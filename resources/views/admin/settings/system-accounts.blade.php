@@ -86,9 +86,9 @@
 @endpush
 
 @section('content')
-<div class="main-panel">
-    <div class="content-wrapper">
-        <!-- Breadcrumb -->
+@include('admin.settings.partials.back-to-dashboard')
+
+<!-- Breadcrumb -->
         <div class="row page-title-header">
             <div class="col-12">
                 <div class="page-header">
@@ -538,8 +538,6 @@
                 </div>
             </form>
         </div>
-    </div>
-</div>
 
 <!-- View Account Modal -->
 <div class="modal fade" id="viewAccountModal" tabindex="-1" aria-labelledby="viewAccountModalLabel" aria-hidden="true">

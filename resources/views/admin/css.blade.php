@@ -21,6 +21,8 @@
     <link rel="stylesheet" href="{{ asset('css/enhanced-tables.css') }}">
     <!-- Modern Clean Table Styles -->
     <link rel="stylesheet" href="{{ asset('css/modern-tables.css') }}">
+    <!-- Shared EBIMS UI Styles -->
+    <link rel="stylesheet" href="{{ asset('css/ebims-ui.css') }}">
     <!-- Force Scroll CSS -->
     <link rel="stylesheet" href="{{ asset('css/force-scroll.css') }}">
     <!-- Select2 CSS -->
@@ -201,6 +203,51 @@
         border-radius: 12px;
         border: 1px solid #e5e7eb;
         box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .page-header > .btn,
+    .page-header > a.btn,
+    .page-header > div:last-child {
+        margin-left: auto;
+    }
+
+    .content-wrapper > .container-fluid > .d-sm-flex.align-items-center.justify-content-between,
+    .content-wrapper > .container-fluid > .d-flex.justify-content-between,
+    .content-wrapper .page-title-box,
+    .content-wrapper > .row:first-child .d-flex.justify-content-between.align-items-center {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06);
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: space-between;
+        margin-bottom: 1.25rem !important;
+        padding: 20px;
+    }
+
+    .content-wrapper > .container-fluid > .d-sm-flex.align-items-center.justify-content-between .btn-group,
+    .content-wrapper > .container-fluid > .d-flex.justify-content-between > .btn,
+    .content-wrapper > .container-fluid > .d-flex.justify-content-between > a.btn,
+    .content-wrapper > .container-fluid > .d-flex.justify-content-between > div:last-child,
+    .content-wrapper .page-title-box .page-title-right,
+    .content-wrapper > .row:first-child .d-flex.justify-content-between.align-items-center > div:last-child {
+        margin-left: auto;
+    }
+
+    .content-wrapper .page-title-box .page-title {
+        order: 1;
+    }
+
+    .content-wrapper .page-title-box .page-title-right {
+        order: 2;
     }
 
     .page-header .page-title {

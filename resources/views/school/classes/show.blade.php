@@ -4,27 +4,14 @@
 
 @section('content')
 <div class="container-fluid">
-    <!-- Page Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="h4 mb-1" style="color: #000000;">
-                        <i class="mdi mdi-google-classroom me-2"></i>{{ $class->class_name }}
-                    </h2>
-                    <p class="text-muted mb-0">Class Details and Student List</p>
-                </div>
-                <div>
-                    <a href="{{ route('school.classes.index') }}" class="btn btn-outline-secondary me-2">
-                        <i class="mdi mdi-arrow-left me-1"></i>Back to Classes
-                    </a>
-                    <a href="{{ route('school.classes.edit', $class) }}" class="btn btn-primary">
-                        <i class="mdi mdi-pencil me-1"></i>Edit Class
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => $class->class_name,
+        'subtitle' => 'Class details and student list.',
+        'icon' => 'mdi mdi-google-classroom',
+        'backFallback' => route('school.classes.index'),
+        'backLabel' => 'Back to Classes',
+        'actions' => '<a href="' . route('school.classes.edit', $class) . '" class="btn btn-primary"><i class="mdi mdi-pencil me-1"></i>Edit Class</a>',
+    ])
 
     <div class="row">
         <!-- Class Information Card -->

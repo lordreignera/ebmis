@@ -4,27 +4,14 @@
 
 @section('content')
 <div class="container-fluid">
-    <!-- Page Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="h4 mb-1" style="color: #000000;">
-                        <i class="mdi mdi-google-classroom me-2"></i>Manage Classes
-                    </h2>
-                    <p class="text-muted mb-0">Organize and manage your school classes</p>
-                </div>
-                <div>
-                    <a href="{{ route('school.dashboard') }}" class="btn btn-outline-secondary me-2">
-                        <i class="mdi mdi-arrow-left me-1"></i>Back to Dashboard
-                    </a>
-                    <a href="{{ route('school.classes.create') }}" class="btn btn-primary">
-                        <i class="mdi mdi-plus me-1"></i>Add New Class
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Manage Classes',
+        'subtitle' => 'Organize and manage your school classes.',
+        'icon' => 'mdi mdi-google-classroom',
+        'backFallback' => route('school.dashboard'),
+        'backLabel' => 'Dashboard',
+        'actions' => '<a href="' . route('school.classes.create') . '" class="btn btn-primary"><i class="mdi mdi-plus me-1"></i>Add New Class</a>',
+    ])
 
     <!-- Success Message -->
     @if(session('success'))
@@ -35,7 +22,7 @@
     @endif
 
     <!-- Classes List -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm ebims-table-card">
         <div class="card-header bg-white border-bottom">
             <h5 class="mb-0" style="color: #000000;">
                 <i class="mdi mdi-view-list me-2"></i>All Classes ({{ $classes->total() }})

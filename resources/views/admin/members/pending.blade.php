@@ -4,23 +4,18 @@
 
 @section('content')
 <div class="container-fluid">
+    @include('admin.partials.page-header', [
+        'title' => 'Pending Members Approval',
+        'subtitle' => 'Review members waiting for approval and registration fee confirmation.',
+        'icon' => 'mdi mdi-clock-alert',
+        'backFallback' => route('admin.members.index'),
+        'backLabel' => 'Back to Members',
+        'actions' => '<a href="' . route('admin.members.create') . '" class="btn btn-primary"><i class="mdi mdi-plus"></i> Add New Member</a>',
+    ])
+
     <div class="row">
         <div class="col-md-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h3 class="card-title mb-0">
-                        <i class="mdi mdi-clock-alert"></i> Pending Members Approval
-                    </h3>
-                    <div>
-                        <a href="{{ route('admin.members.index') }}" class="btn btn-outline-secondary">
-                            <i class="mdi mdi-arrow-left"></i> Back to All Members
-                        </a>
-                        <a href="{{ route('admin.members.create') }}" class="btn btn-primary">
-                            <i class="mdi mdi-plus"></i> Add New Member
-                        </a>
-                    </div>
-                </div>
-                
                 <div class="card-body">
                     <!-- Important Notice -->
                     <div class="alert alert-info alert-dismissible fade show" role="alert">

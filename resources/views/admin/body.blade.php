@@ -248,72 +248,408 @@
     margin-bottom: 0 !important;
   }
 
-  /* Dashboard monochrome palette */
-  .card-bordered,
-  .audit-card {
-    background: #ffffff !important;
-    border: 1px solid #e5e7eb !important;
+  /* Dashboard operational color palette */
+  .dashboard-page {
+    --ebims-ink: #172033;
+    --ebims-muted: #64748b;
+    --ebims-border: #dfe7ef;
+    --ebims-panel: #ffffff;
+    --ebims-green: #16804f;
+    --ebims-green-soft: #e8f7ef;
+    --ebims-blue: #2563eb;
+    --ebims-blue-soft: #eaf1ff;
+    --ebims-red: #dc2626;
+    --ebims-red-soft: #fff1f2;
+    --ebims-amber: #b7791f;
+    --ebims-amber-soft: #fff7e6;
+    --ebims-teal: #0f766e;
+    --ebims-teal-soft: #e6fffb;
+    --ebims-violet: #7c3aed;
+    --ebims-violet-soft: #f3edff;
+  }
+
+  .dashboard-page .page-header {
+    background: #ffffff;
+    border: 1px solid var(--ebims-border);
+    border-left: 5px solid var(--ebims-blue);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 8px 22px rgba(23, 32, 51, 0.05);
+  }
+
+  .dashboard-page .page-title {
+    color: var(--ebims-ink);
+    margin-bottom: 0.35rem;
+  }
+
+  .dashboard-page .page-title-icon {
+    background: var(--ebims-blue) !important;
     border-radius: 8px !important;
-    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06) !important;
   }
 
-  .card-bordered:hover,
-  .audit-card:hover {
-    box-shadow: 0 1px 8px rgba(17, 24, 39, 0.08) !important;
-    transform: none !important;
+  .dashboard-page .breadcrumb {
+    margin-bottom: 0;
   }
 
-  .audit-card h3,
-  .audit-card h6,
-  .audit-card p,
-  .audit-card strong,
-  .audit-card .text-primary,
-  .audit-card .text-success,
-  .audit-card .text-info,
-  .audit-card .text-warning,
-  .audit-card .text-danger,
-  .analytic-au-data .amount,
-  .analytic-au-data .amount.text-primary,
-  .analytic-au-data .amount.text-success,
-  .analytic-au-data .amount.text-info,
-  .analytic-au-data .amount.text-warning,
-  .analytic-au-data .amount.text-danger,
-  .analytic-au-data i.text-primary,
-  .analytic-au-data i.text-success,
-  .analytic-au-data i.text-info,
-  .analytic-au-data i.text-warning,
-  .analytic-au-data i.text-danger {
-    color: #111827 !important;
+  .dashboard-page .breadcrumb-item {
+    color: var(--ebims-muted);
   }
 
-  .audit-card .icon,
-  .icon-box-primary,
-  .icon-box-success,
-  .icon-box-info,
-  .icon-box-warning,
-  .icon-box-danger {
-    background: #f3f4f6 !important;
-    border: 1px solid #e5e7eb !important;
-    color: #111827 !important;
-    box-shadow: none !important;
+  .dashboard-page .card-bordered,
+  .dashboard-page .audit-card {
+    background: var(--ebims-panel) !important;
+    border: 1px solid var(--ebims-border) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 24px rgba(23, 32, 51, 0.06) !important;
   }
 
-  .audit-card .icon-item,
-  .icon-box-primary .icon-item,
-  .icon-box-success .icon-item,
-  .icon-box-info .icon-item,
-  .icon-box-warning .icon-item,
-  .icon-box-danger .icon-item {
-    color: #111827 !important;
+  .dashboard-page .card-bordered:hover,
+  .dashboard-page .audit-card:hover {
+    box-shadow: 0 12px 30px rgba(23, 32, 51, 0.09) !important;
+    transform: translateY(-1px) !important;
   }
 
-  .nk-tb-head {
+  .dashboard-page .audit-card {
+    border-top-width: 4px !important;
+    overflow: hidden;
+  }
+
+  .dashboard-page .audit-card h3 {
+    color: var(--card-accent, var(--ebims-blue)) !important;
+  }
+
+  .dashboard-page .audit-card h6,
+  .dashboard-page .card-title-sm h6.title,
+  .dashboard-page .card-title h6.title {
+    color: var(--ebims-ink) !important;
+  }
+
+  .dashboard-page .audit-card p,
+  .dashboard-page .analytic-au-data .title,
+  .dashboard-page .card-title-sm p {
+    color: var(--ebims-muted) !important;
+  }
+
+  .dashboard-page .audit-card .icon {
+    background: var(--card-soft, var(--ebims-blue-soft)) !important;
+    border: 1px solid rgba(23, 32, 51, 0.06) !important;
+    color: var(--card-accent, var(--ebims-blue)) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8) !important;
+  }
+
+  .dashboard-page .audit-card .icon-item,
+  .dashboard-page .analytic-au-data i {
+    color: var(--card-accent, var(--panel-accent, var(--ebims-blue))) !important;
+  }
+
+  .dashboard-page .kpi-members {
+    --card-accent: var(--ebims-green);
+    --card-soft: var(--ebims-green-soft);
+    border-top-color: var(--ebims-green) !important;
+  }
+
+  .dashboard-page .kpi-active-loans {
+    --card-accent: var(--ebims-blue);
+    --card-soft: var(--ebims-blue-soft);
+    border-top-color: var(--ebims-blue) !important;
+  }
+
+  .dashboard-page .kpi-overdue {
+    --card-accent: var(--ebims-red);
+    --card-soft: var(--ebims-red-soft);
+    border-top-color: var(--ebims-red) !important;
+  }
+
+  .dashboard-page .kpi-due-today {
+    --card-accent: var(--ebims-amber);
+    --card-soft: var(--ebims-amber-soft);
+    border-top-color: var(--ebims-amber) !important;
+  }
+
+  .dashboard-page .panel-members {
+    --panel-accent: var(--ebims-green);
+    --panel-soft: var(--ebims-green-soft);
+  }
+
+  .dashboard-page .panel-investments {
+    --panel-accent: var(--ebims-violet);
+    --panel-soft: var(--ebims-violet-soft);
+  }
+
+  .dashboard-page .panel-securities {
+    --panel-accent: var(--ebims-teal);
+    --panel-soft: var(--ebims-teal-soft);
+  }
+
+  .dashboard-page .panel-loans {
+    --panel-accent: var(--ebims-blue);
+    --panel-soft: var(--ebims-blue-soft);
+  }
+
+  .dashboard-page .panel-actions {
+    --panel-accent: var(--ebims-amber);
+    --panel-soft: var(--ebims-amber-soft);
+  }
+
+  .dashboard-page .panel-chart {
+    --panel-accent: var(--ebims-blue);
+    --panel-soft: var(--ebims-blue-soft);
+  }
+
+  .dashboard-page .panel-calendar {
+    --panel-accent: var(--ebims-teal);
+    --panel-soft: var(--ebims-teal-soft);
+  }
+
+  .dashboard-page .panel-events {
+    --panel-accent: var(--ebims-violet);
+    --panel-soft: var(--ebims-violet-soft);
+  }
+
+  .dashboard-page .dashboard-help-card {
+    --panel-accent: var(--ebims-blue);
+    --panel-soft: var(--ebims-blue-soft);
+  }
+
+  .dashboard-page .dashboard-help-card .card-inner {
+    padding: 1.2rem 1.4rem !important;
+  }
+
+  .dashboard-page .dashboard-help-icon {
+    align-items: center;
+    background: var(--ebims-blue-soft);
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: var(--ebims-blue);
+    display: inline-flex;
+    flex: 0 0 46px;
+    font-size: 26px;
+    height: 46px;
+    justify-content: center;
+    width: 46px;
+  }
+
+  .dashboard-page .card-bordered {
+    border-left: 4px solid var(--panel-accent, var(--ebims-blue)) !important;
+  }
+
+  .dashboard-page .card-bordered .card-title-group {
+    background: var(--panel-soft, var(--ebims-blue-soft));
+    margin: -1.5rem -1.5rem 1rem;
+    padding: 1rem 1.5rem !important;
+    border-bottom: 1px solid var(--ebims-border);
+  }
+
+  .dashboard-page .analytic-au-data {
+    border-bottom-color: #edf2f7;
+  }
+
+  .dashboard-page .analytic-au-data .amount,
+  .dashboard-page .tb-amount {
+    color: var(--ebims-ink) !important;
+  }
+
+  .dashboard-page .analytic-au-data .amount.text-primary,
+  .dashboard-page .analytic-au-data .amount.text-success,
+  .dashboard-page .analytic-au-data .amount.text-info,
+  .dashboard-page .analytic-au-data .amount.text-warning,
+  .dashboard-page .analytic-au-data .amount.text-danger {
+    color: var(--panel-accent, var(--ebims-blue)) !important;
+  }
+
+  .dashboard-page a .analytic-au-data:hover {
+    background-color: var(--panel-soft, #f8fafc) !important;
+  }
+
+  .dashboard-page .nk-ck {
+    min-height: 320px;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.88), #ffffff);
+    border-top: 1px solid var(--ebims-border);
+  }
+
+  .dashboard-page #loansVsSavingsChart {
+    max-height: 320px;
+  }
+
+  .dashboard-page .nk-tb-head {
     background: #eef4f8 !important;
-    color: #111827 !important;
+    color: var(--ebims-ink) !important;
+  }
+
+  .dashboard-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .dashboard-calendar-weekday {
+    color: var(--ebims-muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .dashboard-calendar-day {
+    align-items: flex-start;
+    aspect-ratio: 1 / 0.74;
+    background: #f8fafc;
+    border: 1px solid #e8eef5;
+    border-radius: 8px;
+    color: var(--ebims-ink);
+    display: flex;
+    flex-direction: column;
+    font-weight: 700;
+    justify-content: space-between;
+    min-height: 58px;
+    padding: 0.55rem;
+  }
+
+  .dashboard-calendar-day.is-muted {
+    background: #ffffff;
+    color: #b3bfcc;
+  }
+
+  .dashboard-calendar-day.is-today {
+    border-color: var(--ebims-blue);
+    box-shadow: inset 0 0 0 1px var(--ebims-blue);
+  }
+
+  .dashboard-calendar-day.has-events {
+    background: #ffffff;
+  }
+
+  .dashboard-event-dots {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    min-height: 0.65rem;
+  }
+
+  .dashboard-event-dot {
+    border-radius: 999px;
+    display: inline-block;
+    height: 0.48rem;
+    width: 0.48rem;
+  }
+
+  .dashboard-event-dot.collection {
+    background: var(--ebims-teal);
+  }
+
+  .dashboard-event-dot.manual {
+    background: var(--ebims-violet);
+  }
+
+  .dashboard-event-count {
+    color: var(--ebims-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+  }
+
+  .dashboard-event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  .dashboard-event-item {
+    align-items: flex-start;
+    border-bottom: 1px solid #edf2f7;
+    display: flex;
+    gap: 0.75rem;
+    padding-bottom: 0.8rem;
+  }
+
+  .dashboard-event-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .dashboard-event-date {
+    align-items: center;
+    background: var(--panel-soft, #f8fafc);
+    border: 1px solid var(--ebims-border);
+    border-radius: 8px;
+    color: var(--panel-accent, var(--ebims-blue));
+    display: flex;
+    flex: 0 0 48px;
+    flex-direction: column;
+    font-weight: 800;
+    line-height: 1;
+    padding: 0.45rem 0.25rem;
+    text-align: center;
+  }
+
+  .dashboard-event-date .month {
+    font-size: 0.68rem;
+    margin-top: 0.2rem;
+    text-transform: uppercase;
+  }
+
+  .dashboard-event-title {
+    color: var(--ebims-ink);
+    font-weight: 700;
+    line-height: 1.25;
+    text-decoration: none;
+  }
+
+  .dashboard-event-title:hover {
+    color: var(--panel-accent, var(--ebims-blue));
+    text-decoration: none;
+  }
+
+  .dashboard-event-meta {
+    color: var(--ebims-muted);
+    font-size: 0.78rem;
+    margin-top: 0.2rem;
+  }
+
+  .dashboard-event-badge {
+    background: var(--panel-soft, #f8fafc);
+    border-radius: 999px;
+    color: var(--panel-accent, var(--ebims-blue));
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    margin-top: 0.35rem;
+    padding: 0.18rem 0.55rem;
+    text-transform: uppercase;
+  }
+
+  .dashboard-add-event-btn {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 575px) {
+    .dashboard-calendar-grid {
+      gap: 0.3rem;
+    }
+
+    .dashboard-calendar-day {
+      aspect-ratio: 1 / 0.9;
+      font-size: 0.78rem;
+      min-height: 44px;
+      padding: 0.35rem;
+    }
+
+    .dashboard-calendar-weekday {
+      font-size: 0.68rem;
+    }
   }
 </style>
 
-    
+<div class="dashboard-page">
+    @php
+      $canManageDashboardEvents = auth()->user()?->isSuperAdmin()
+        || auth()->user()?->isAdministrator()
+        || auth()->user()?->can('manage-dashboard-events');
+    @endphp
+
     <!-- Welcome Message -->
     <div class="page-header mb-4">
       <h3 class="page-title">
@@ -324,10 +660,31 @@
       <nav aria-label="breadcrumb">
         <ul class="breadcrumb">
           <li class="breadcrumb-item active" aria-current="page">
-            <span></span>Welcome back, {{ Auth::user()->name }}! 👋
+            <span></span>Welcome back, {{ Auth::user()->name }}.
           </li>
         </ul>
       </nav>
+    </div>
+
+    <div class="row">
+      <div class="col-12 grid-margin">
+        <div class="card card-bordered dashboard-help-card">
+          <div class="card-inner d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="dashboard-help-icon">
+                <i class="mdi mdi-help-circle-outline"></i>
+              </div>
+              <div>
+                <h5 class="mb-1">Need help using EBIMS?</h5>
+                <p class="mb-0 text-muted">Open the user guide for menu navigation, daily workflows, and screenshot-based steps.</p>
+              </div>
+            </div>
+            <a href="{{ route('admin.help.guide') }}" class="btn btn-primary">
+              <i class="mdi mdi-book-open-page-variant"></i> Open User Guide
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Top Statistics Cards Row 1 - Main Metrics -->
@@ -335,7 +692,7 @@
       
       <!-- Total Members Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card h-100">
+        <div class="card audit-card kpi-members h-100">
           <div class="card-body d-flex flex-column">
             <div class="row flex-grow-1">
               <div class="col-9">
@@ -362,7 +719,7 @@
 
       <!-- Active Loans Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card h-100">
+        <div class="card audit-card kpi-active-loans h-100">
           <div class="card-body d-flex flex-column">
             <div class="row flex-grow-1">
               <div class="col-9">
@@ -387,7 +744,7 @@
 
       <!-- Repayments Due (Overdue) Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card h-100">
+        <div class="card audit-card kpi-overdue h-100">
           <div class="card-body d-flex flex-column">
             <div class="row flex-grow-1">
               <div class="col-9">
@@ -412,7 +769,7 @@
 
       <!-- Repayments Due Today Card -->
       <div class="col-xl-3 col-sm-6 grid-margin stretch-card">
-        <div class="card audit-card h-100">
+        <div class="card audit-card kpi-due-today h-100">
           <div class="card-body d-flex flex-column">
             <div class="row flex-grow-1">
               <div class="col-9">
@@ -441,7 +798,7 @@
       
       <!-- Members Overview Card -->
       <div class="col-lg-6 col-xxl-3 col-md-6 grid-margin stretch-card">
-        <div class="card card-bordered h-100">
+        <div class="card card-bordered panel-members h-100">
           <div class="card-inner">
             <div class="card-title-group pb-3 g-2">
               <div class="card-title card-title-sm">
@@ -471,7 +828,7 @@
 
       <!-- Investments Overview Card -->
       <div class="col-lg-6 col-xxl-3 col-md-6 grid-margin stretch-card">
-        <div class="card card-bordered h-100">
+        <div class="card card-bordered panel-investments h-100">
           <div class="card-inner">
             <div class="card-title-group pb-3 g-2">
               <div class="card-title card-title-sm">
@@ -501,7 +858,7 @@
 
       <!-- Cash Securities Card -->
       <div class="col-lg-6 col-xxl-3 col-md-6 grid-margin stretch-card">
-        <div class="card card-bordered h-100">
+        <div class="card card-bordered panel-securities h-100">
           <div class="card-inner">
             <div class="card-title-group pb-3 g-2">
               <div class="card-title card-title-sm">
@@ -531,7 +888,7 @@
 
       <!-- Loans Card -->
       <div class="col-lg-6 col-xxl-3 col-md-6 grid-margin stretch-card">
-        <div class="card card-bordered h-100">
+        <div class="card card-bordered panel-loans h-100">
           <div class="card-inner">
             <div class="card-title-group pb-3 g-2">
               <div class="card-title card-title-sm">
@@ -566,7 +923,7 @@
       
       <!-- Loans vs Savings Chart -->
       <div class="col-lg-8 col-xxl-8">
-        <div class="card card-bordered h-100">
+        <div class="card card-bordered panel-chart h-100">
           <div class="card-inner mb-n2">
             <div class="card-title-group">
               <div class="card-title card-title-sm">
@@ -582,7 +939,7 @@
 
       <!-- Pending Actions Card -->
       <div class="col-lg-4 col-xxl-4">
-        <div class="card card-bordered h-100">
+        <div class="card card-bordered panel-actions h-100">
           <div class="card-inner">
             <div class="card-title-group pb-3">
               <div class="card-title">
@@ -631,6 +988,85 @@
 
     </div>
 
+    <!-- Calendar Preview Row -->
+    <div class="row mt-4">
+      <div class="col-lg-8 grid-margin stretch-card">
+        <div class="card card-bordered panel-calendar h-100">
+          <div class="card-inner">
+            <div class="card-title-group pb-3 g-2 align-items-center">
+              <div class="card-title card-title-sm">
+                <h6 class="title">Calendar Preview</h6>
+                <p>{{ $calendarPreview['month_label'] ?? now()->format('F Y') }}</p>
+              </div>
+              @if($canManageDashboardEvents && ($calendarPreview['events_enabled'] ?? false))
+                <button type="button" class="btn btn-sm btn-primary dashboard-add-event-btn" data-bs-toggle="modal" data-bs-target="#addDashboardEventModal">
+                  <i class="mdi mdi-plus"></i> Add Event
+                </button>
+              @endif
+            </div>
+            <div class="dashboard-calendar-grid">
+              @foreach(($calendarPreview['weekdays'] ?? []) as $weekday)
+                <div class="dashboard-calendar-weekday">{{ $weekday }}</div>
+              @endforeach
+              @foreach(($calendarPreview['days'] ?? []) as $day)
+                <div class="dashboard-calendar-day {{ empty($day['in_month']) ? 'is-muted' : '' }} {{ !empty($day['is_today']) ? 'is-today' : '' }} {{ ($day['events_count'] ?? 0) > 0 ? 'has-events' : '' }}">
+                  <span>{{ $day['day'] }}</span>
+                  @if(($day['events_count'] ?? 0) > 0)
+                    <div class="dashboard-event-dots">
+                      @if(!empty($day['has_collection']))
+                        <span class="dashboard-event-dot collection"></span>
+                      @endif
+                      @if(!empty($day['has_manual']))
+                        <span class="dashboard-event-dot manual"></span>
+                      @endif
+                      @if(($day['events_count'] ?? 0) > 1)
+                        <span class="dashboard-event-count">{{ $day['events_count'] }}</span>
+                      @endif
+                    </div>
+                  @endif
+                </div>
+              @endforeach
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4 grid-margin stretch-card">
+        <div class="card card-bordered panel-events h-100">
+          <div class="card-inner">
+            <div class="card-title-group pb-3">
+              <div class="card-title card-title-sm">
+                <h6 class="title">Upcoming Events</h6>
+              </div>
+            </div>
+            <hr>
+            <div class="dashboard-event-list">
+              @forelse(($calendarPreview['upcoming'] ?? []) as $event)
+                @php($eventDate = \Carbon\Carbon::parse($event['date']))
+                <div class="dashboard-event-item">
+                  <div class="dashboard-event-date">
+                    <span>{{ $eventDate->format('d') }}</span>
+                    <span class="month">{{ $eventDate->format('M') }}</span>
+                  </div>
+                  <div class="flex-grow-1">
+                    @if(!empty($event['url']))
+                      <a href="{{ $event['url'] }}" class="dashboard-event-title">{{ $event['title'] }}</a>
+                    @else
+                      <div class="dashboard-event-title">{{ $event['title'] }}</div>
+                    @endif
+                    <div class="dashboard-event-meta">{{ $event['time_label'] }} @if(!empty($event['subtitle'])) - {{ $event['subtitle'] }} @endif</div>
+                    <span class="dashboard-event-badge">{{ $event['badge'] }}</span>
+                  </div>
+                </div>
+              @empty
+                <div class="text-muted py-4 text-center">No upcoming events</div>
+              @endforelse
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Recent Activity Table -->
     <div class="row mt-4">
       <div class="col-md-12 grid-margin stretch-card">
@@ -654,44 +1090,31 @@
                     <td>{{ $activity->created_at->diffForHumans() }}</td>
                     <td>{{ $activity->description }}</td>
                     <td class="text-center">
-                      @if(isset($activity->loan_id) && $activity->loan_id)
-                        @php
-                          // Check if loan has been disbursed by checking disbursements table
-                          $loan = \App\Models\PersonalLoan::find($activity->loan_id);
-                          if (!$loan) {
-                            $loan = \App\Models\GroupLoan::find($activity->loan_id);
-                          }
-                          $hasDisbursement = false;
-                          
-                          if ($loan) {
-                            $hasDisbursement = $loan->disbursements()->where('status', 2)->exists();
-                          }
-                          
-                          // Route based on loan status and disbursement status
-                          // 0=Pending Approval, 1=Approved (Pending Disbursement), 2=Disbursed (Active/Schedules), 3=Completed
-                          if ($hasDisbursement || $activity->status == '2') {
-                            // If disbursed or status is 2, show repayment schedules
+                      <?php
+                        $viewUrl = null;
+
+                        if (isset($activity->loan_id) && $activity->loan_id) {
+                          $loan = \App\Models\PersonalLoan::find($activity->loan_id) ?: \App\Models\GroupLoan::find($activity->loan_id);
+                          $hasDisbursement = $loan ? $loan->disbursements()->where('status', 2)->exists() : false;
+                          $status = $activity->status ?? '0';
+
+                          if ($hasDisbursement || $status == '2' || $status == '3') {
                             $viewUrl = route('admin.loans.repayments.schedules', $activity->loan_id);
+                          } elseif ($status == '1') {
+                            $viewUrl = route('admin.loans.disbursements.approve.show', $activity->loan_id);
                           } else {
-                            // Otherwise route based on status
-                            $status = $activity->status ?? '0';
-                            if ($status == '0') {
-                              $viewUrl = route('admin.loans.show', $activity->loan_id); // Pending approval - loan details
-                            } elseif ($status == '1') {
-                              $viewUrl = route('admin.loans.disbursements.approve.show', $activity->loan_id); // Approved - disbursement page
-                            } elseif ($status == '3') {
-                              $viewUrl = route('admin.loans.repayments.schedules', $activity->loan_id); // Completed - repayment schedules
-                            } else {
-                              $viewUrl = route('admin.loans.show', $activity->loan_id);
-                            }
+                            $viewUrl = route('admin.loans.show', $activity->loan_id);
                           }
-                        @endphp
-                        <a href="{{ $viewUrl }}" class="btn btn-sm btn-primary">
+                        }
+                      ?>
+
+                      <?php if ($viewUrl): ?>
+                        <a href="<?php echo e($viewUrl); ?>" class="btn btn-sm btn-primary">
                           <i class="mdi mdi-eye"></i> View
                         </a>
-                      @else
+                      <?php else: ?>
                         <span class="text-muted">-</span>
-                      @endif
+                      <?php endif; ?>
                     </td>
                   </tr>
                   @empty
@@ -706,6 +1129,67 @@
         </div>
       </div>
     </div>
+
+  </div>
+
+  @if($canManageDashboardEvents && ($calendarPreview['events_enabled'] ?? false))
+    <div class="modal fade" id="addDashboardEventModal" tabindex="-1" aria-labelledby="addDashboardEventModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="POST" action="{{ route('admin.dashboard-events.store') }}">
+          @csrf
+          <div class="modal-header">
+            <h5 class="modal-title" id="addDashboardEventModalLabel">
+              <i class="mdi mdi-calendar-plus me-2"></i>Add Event
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            @if($errors->dashboardEvent->any())
+              <div class="alert alert-danger">
+                @foreach($errors->dashboardEvent->all() as $error)
+                  <div>{{ $error }}</div>
+                @endforeach
+              </div>
+            @endif
+            <div class="mb-3">
+              <label for="dashboardEventTitle" class="form-label">Title</label>
+              <input type="text" id="dashboardEventTitle" name="title" class="form-control" value="{{ old('title') }}" maxlength="120" required>
+            </div>
+            <div class="row">
+              <div class="col-md-7 mb-3">
+                <label for="dashboardEventDate" class="form-label">Date</label>
+                <input type="date" id="dashboardEventDate" name="event_date" class="form-control" value="{{ old('event_date', now()->toDateString()) }}" required>
+              </div>
+              <div class="col-md-5 mb-3">
+                <label for="dashboardEventTime" class="form-label">Time</label>
+                <input type="time" id="dashboardEventTime" name="event_time" class="form-control" value="{{ old('event_time') }}">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="dashboardEventCategory" class="form-label">Category</label>
+              <select id="dashboardEventCategory" name="category" class="form-control" required>
+                <option value="general" @selected(old('category', 'general') === 'general')>General</option>
+                <option value="collection" @selected(old('category') === 'collection')>Collection</option>
+                <option value="field_visit" @selected(old('category') === 'field_visit')>Field Visit</option>
+                <option value="meeting" @selected(old('category') === 'meeting')>Meeting</option>
+                <option value="approval" @selected(old('category') === 'approval')>Approval</option>
+              </select>
+            </div>
+            <div class="mb-0">
+              <label for="dashboardEventNotes" class="form-label">Notes</label>
+              <textarea id="dashboardEventNotes" name="notes" class="form-control" rows="3" maxlength="500">{{ old('notes') }}</textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">
+              <i class="mdi mdi-content-save me-1"></i>Save Event
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  @endif
 
   <!-- Chart.js Script -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -722,16 +1206,30 @@
               {
                 label: 'Loans Disbursed',
                 data: {!! json_encode($chartData['loans'] ?? []) !!},
-                borderColor: '#111827',
-                backgroundColor: 'rgba(17, 24, 39, 0.10)',
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                pointBackgroundColor: '#2563eb',
+                pointBorderColor: '#ffffff',
+                pointHoverBackgroundColor: '#1d4ed8',
+                pointHoverBorderColor: '#ffffff',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                borderWidth: 3,
                 tension: 0.4,
                 fill: true
               },
               {
                 label: 'Cash Securities',
                 data: {!! json_encode($chartData['savings'] ?? []) !!},
-                borderColor: '#6b7280',
-                backgroundColor: 'rgba(107, 114, 128, 0.12)',
+                borderColor: '#0f766e',
+                backgroundColor: 'rgba(15, 118, 110, 0.13)',
+                pointBackgroundColor: '#0f766e',
+                pointBorderColor: '#ffffff',
+                pointHoverBackgroundColor: '#115e59',
+                pointHoverBorderColor: '#ffffff',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                borderWidth: 3,
                 tension: 0.4,
                 fill: true
               }
@@ -743,6 +1241,18 @@
             plugins: {
               legend: {
                 position: 'top',
+                align: 'end',
+                labels: {
+                  color: '#172033',
+                  usePointStyle: true,
+                  pointStyle: 'circle',
+                  padding: 20,
+                  boxWidth: 8,
+                  font: {
+                    size: 12,
+                    weight: '600'
+                  }
+                }
               },
               title: {
                 display: false
@@ -751,15 +1261,36 @@
             scales: {
               y: {
                 beginAtZero: true,
+                grid: {
+                  color: 'rgba(100, 116, 139, 0.16)',
+                  drawBorder: false
+                },
                 ticks: {
+                  color: '#64748b',
                   callback: function(value) {
                     return 'UGX ' + value.toLocaleString();
                   }
+                }
+              },
+              x: {
+                grid: {
+                  display: false,
+                  drawBorder: false
+                },
+                ticks: {
+                  color: '#64748b'
                 }
               }
             }
           }
         });
       }
+
+      @if($errors->dashboardEvent->any())
+        const addEventModal = document.getElementById('addDashboardEventModal');
+        if (addEventModal && window.bootstrap && bootstrap.Modal) {
+          bootstrap.Modal.getOrCreateInstance(addEventModal).show();
+        }
+      @endif
     });
   </script>

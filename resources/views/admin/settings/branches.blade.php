@@ -12,9 +12,9 @@
 </style>
 @endpush
 
-<div class="main-panel">
-    <div class="content-wrapper">
-        <!-- Page Header -->
+@include('admin.settings.partials.back-to-dashboard')
+
+<!-- Page Header -->
         <div class="row">
             <div class="col-md-12 grid-margin">
                 <div class="row">
@@ -116,8 +116,6 @@
                 </table>
             </div>
         </div>
-    </div>
-</div>
 
 <!-- Add Branch Modal -->
 <div class="modal fade" id="addBranchModal" tabindex="-1" aria-labelledby="addBranchModalLabel" aria-hidden="true">

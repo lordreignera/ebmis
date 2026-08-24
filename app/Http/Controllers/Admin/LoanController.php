@@ -2765,6 +2765,8 @@ class LoanController extends Controller
             $borrowerName = ($loan->member->fname ?? '') . ' ' . ($loan->member->lname ?? '');
         }
 
+        $this->loanAccessService->ensureLoanAccess($loan);
+
         // Get loan schedules (unpaid)
         $schedules = LoanSchedule::where('loan_id', $id)
             ->where('status', 0) // Unpaid

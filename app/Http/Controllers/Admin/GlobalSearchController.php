@@ -90,7 +90,7 @@ class GlobalSearchController extends Controller
             $this->component('Fees', 'Member and loan fee collections.', 'Collections', 'admin.fees.index', 'mdi-cash-multiple', ['fees', 'charges', 'collections']),
             $this->component('Late Fees', 'Late fee records and monitoring.', 'Collections', 'admin.late-fees.index', 'mdi-timer-alert-outline', ['late fees', 'penalties']),
             $this->component('Cash Securities', 'Add, view, edit, delete pending records, and export cash securities.', 'Collections', 'admin.cash-securities.index', 'mdi-shield-check-outline', ['cash security', 'cash securities', 'security deposits', 'collateral', 'export securities']),
-            $this->component('Portfolio Running', 'Running loan portfolio report.', 'Reports', 'admin.portfolio.running', 'mdi-chart-line', ['portfolio', 'running loans']),
+            $this->component('Running Loans', 'Schedules and payments for active loans.', 'Loans', 'admin.loans.active', 'mdi-chart-line', ['portfolio', 'running loans', 'active loans']),
             $this->component('Pending Loan Report', 'Pending loan applications report.', 'Reports', 'admin.reports.pending-loans', 'mdi-file-clock-outline', ['reports', 'pending loans']),
             $this->component('Disbursed Loans Report', 'Disbursed loans report.', 'Reports', 'admin.reports.disbursed-loans', 'mdi-file-chart-outline', ['reports', 'disbursed loans']),
             $this->component('Rejected Loans Report', 'Rejected loans report.', 'Reports', 'admin.reports.rejected-loans', 'mdi-file-remove-outline', ['reports', 'rejected loans']),

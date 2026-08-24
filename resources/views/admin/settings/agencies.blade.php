@@ -98,9 +98,9 @@
 @endpush
 
 @section('content')
-<div class="main-panel">
-    <div class="content-wrapper">
-        <!-- Page Header -->
+@include('admin.settings.partials.back-to-dashboard')
+
+<!-- Page Header -->
         <div class="row">
             <div class="col-md-12 grid-margin">
                 <div class="row">
@@ -229,8 +229,6 @@
                 </nav>
             </div>
         </div>
-    </div>
-</div>
 
 <!-- Add Agency Modal -->
 <div class="modal fade" id="addAgencyModal" tabindex="-1" aria-labelledby="addAgencyModalLabel" aria-hidden="true">

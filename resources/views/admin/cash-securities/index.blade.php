@@ -4,25 +4,13 @@
 
 @section('content')
 <div class="container-fluid cash-security-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h4 class="mb-1">Cash Securities</h4>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Home</a></li>
-                    <li class="breadcrumb-item active">Cash Securities</li>
-                </ol>
-            </nav>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ route('admin.cash-securities.export', request()->query()) }}" class="btn btn-outline-success">
-                <i class="mdi mdi-file-export-outline me-1"></i> Export CSV
-            </a>
-            <a href="{{ route('admin.cash-securities.create') }}" class="btn btn-dark">
-                <i class="mdi mdi-plus me-1"></i> Add Security
-            </a>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Cash Securities',
+        'subtitle' => 'Track deposits, held securities, pending payments, and returned cash securities.',
+        'icon' => 'mdi mdi-shield-account',
+        'actions' => '<a href="' . route('admin.cash-securities.export', request()->query()) . '" class="btn btn-outline-success"><i class="mdi mdi-file-export-outline me-1"></i> Export CSV</a>'
+            . '<a href="' . route('admin.cash-securities.create') . '" class="btn btn-dark"><i class="mdi mdi-plus me-1"></i> Add Security</a>',
+    ])
 
     @include('admin.cash-securities.partials.alerts')
 
@@ -33,7 +21,7 @@
         <div class="col-md-3"><div class="metric-card"><span>Returned</span><strong>UGX {{ number_format((float) $stats['returned_amount'], 0) }}</strong></div></div>
     </div>
 
-    <div class="card mb-4">
+    <div class="card ebims-filter-card">
         <div class="card-body">
             <form method="GET" action="{{ route('admin.cash-securities.index') }}" class="row g-3 align-items-end">
                 <div class="col-md-3">
@@ -75,7 +63,7 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="card ebims-table-card">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
@@ -134,15 +122,6 @@
 
 @push('styles')
 <style>
-.cash-security-page .card,
-.metric-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    box-shadow: 0 1px 6px rgba(17, 24, 39, 0.05);
-}
-.metric-card { background: #fff; padding: 18px; }
-.metric-card span { color: #6b7280; display: block; font-size: 13px; }
-.metric-card strong { color: #111827; font-size: 20px; }
 @media (max-width: 575.98px) {
     .cash-security-page .btn-group { display: grid; gap: 0.35rem; width: 100%; }
     .cash-security-page .btn-group .btn { border-radius: 6px !important; }

@@ -22,6 +22,51 @@
                     </div>
                 @endif
 
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="card school-overview-actions">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                    <div>
+                                        <h5 class="mb-1" style="color: #000000;">School Management</h5>
+                                        <p class="text-muted mb-0">Quick access to every school list and approval view.</p>
+                                    </div>
+                                    <a href="{{ route('admin.schools.index') }}" class="btn btn-outline-dark btn-sm">
+                                        <i class="mdi mdi-view-list"></i> All Schools
+                                    </a>
+                                </div>
+                                <div class="school-overview-link-grid">
+                                    <a href="{{ route('admin.schools.index') }}" class="school-overview-link">
+                                        <i class="mdi mdi-domain"></i>
+                                        <span>All Schools</span>
+                                        <strong>{{ App\Models\School::count() }}</strong>
+                                    </a>
+                                    <a href="{{ route('admin.schools.index') }}?status=pending" class="school-overview-link">
+                                        <i class="mdi mdi-clock-outline text-warning"></i>
+                                        <span>Pending School Approvals</span>
+                                        <strong>{{ App\Models\School::where('status', 'pending')->count() }}</strong>
+                                    </a>
+                                    <a href="{{ route('admin.schools.index') }}?status=approved" class="school-overview-link">
+                                        <i class="mdi mdi-check-circle-outline text-success"></i>
+                                        <span>Active Schools</span>
+                                        <strong>{{ App\Models\School::where('status', 'approved')->count() }}</strong>
+                                    </a>
+                                    <a href="{{ route('admin.schools.index') }}?status=suspended" class="school-overview-link">
+                                        <i class="mdi mdi-pause-circle-outline text-secondary"></i>
+                                        <span>Suspended Schools</span>
+                                        <strong>{{ App\Models\School::where('status', 'suspended')->count() }}</strong>
+                                    </a>
+                                    <a href="{{ route('admin.schools.index') }}?status=rejected" class="school-overview-link">
+                                        <i class="mdi mdi-close-circle-outline text-danger"></i>
+                                        <span>Rejected Schools</span>
+                                        <strong>{{ App\Models\School::where('status', 'rejected')->count() }}</strong>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Statistics Cards -->
                 <div class="row mb-4">
                     <div class="col-md-3">
@@ -104,10 +149,10 @@
                                     <div class="col-md-3">
                                         <select class="form-select" id="statusFilter">
                                             <option value="">All Status</option>
-                                            <option value="pending">Pending</option>
-                                            <option value="approved">Approved</option>
-                                            <option value="suspended">Suspended</option>
-                                            <option value="rejected">Rejected</option>
+                                            <option value="pending" @selected(request('status') === 'pending')>Pending</option>
+                                            <option value="approved" @selected(request('status') === 'approved')>Approved</option>
+                                            <option value="suspended" @selected(request('status') === 'suspended')>Suspended</option>
+                                            <option value="rejected" @selected(request('status') === 'rejected')>Rejected</option>
                                         </select>
                                     </div>
                                 </div>
@@ -129,7 +174,8 @@
                                             </tr>
                                         </thead>
                                         <tbody id="schoolsTableBody">
-                                            @forelse($schools as $school)
+                                            @if($schools->count())
+                                            @foreach($schools as $school)
                                                 <tr style="color: #000000;">
                                                     <td>{{ $school->id }}</td>
                                                     <td><strong>{{ $school->school_name }}</strong></td>
@@ -219,14 +265,15 @@
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            @empty
+                                            @endforeach
+                                            @else
                                                 <tr>
                                                     <td colspan="10" class="text-center py-4">
                                                         <i class="mdi mdi-information mdi-48px text-muted"></i>
                                                         <p class="text-muted mb-0">No schools registered yet</p>
                                                     </td>
                                                 </tr>
-                                            @endforelse
+                                            @endif
                                         </tbody>
                                     </table>
                                 </div>
@@ -299,21 +346,14 @@
 
     // Status filter
     document.getElementById('statusFilter').addEventListener('change', function() {
-        const status = this.value.toLowerCase();
-        const rows = document.querySelectorAll('#schoolsTableBody tr');
-        
-        rows.forEach(row => {
-            if (status === '') {
-                row.style.display = '';
-            } else {
-                const statusBadge = row.querySelector('.badge');
-                if (statusBadge && statusBadge.textContent.toLowerCase().includes(status)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            }
-        });
+        const url = new URL(window.location.href);
+        if (this.value) {
+            url.searchParams.set('status', this.value);
+        } else {
+            url.searchParams.delete('status');
+        }
+        url.searchParams.delete('page');
+        window.location.href = url.toString();
     });
 
     // Copy assessment link
@@ -331,3 +371,54 @@
     }
 </script>
 @endsection
+
+@push('styles')
+<style>
+.school-overview-actions {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(17, 24, 39, 0.05);
+}
+
+.school-overview-link-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.school-overview-link {
+    align-items: center;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    color: #111827;
+    display: grid;
+    gap: 4px;
+    grid-template-columns: 32px 1fr auto;
+    min-height: 64px;
+    padding: 10px 12px;
+    text-decoration: none;
+}
+
+.school-overview-link:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #111827;
+    text-decoration: none;
+}
+
+.school-overview-link i {
+    font-size: 24px;
+}
+
+.school-overview-link span {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.school-overview-link strong {
+    color: #111827;
+    font-size: 18px;
+}
+</style>
+@endpush

@@ -12,11 +12,13 @@ class SchoolsController extends Controller
     /**
      * Display a listing of schools.
      */
-    public function index()
+    public function index(Request $request)
     {
         $schools = School::with('approvedBy')
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->status))
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
         return view('admin.schools.index', compact('schools'));
     }

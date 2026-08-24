@@ -84,6 +84,28 @@ Route::middleware([
     // School Dashboard Route
     Route::get('/school/dashboard', [\App\Http\Controllers\School\SchoolDashboardController::class, 'index'])
         ->name('school.dashboard');
+
+    Route::get('/admin/help/guide', function () {
+        return view('admin.help.guide');
+    })->middleware(['ebims_module', 'ebmis_permission'])->name('admin.help.guide');
+
+    Route::get('/admin/help/guide/download', function () {
+        $options = new \Dompdf\Options();
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('isRemoteEnabled', true);
+
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->loadHtml(view('admin.help.guide-pdf', [
+            'generatedAt' => now(),
+        ])->render());
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="EBIMS-User-Manual.pdf"',
+        ]);
+    })->middleware(['ebims_module', 'ebmis_permission'])->name('admin.help.guide.download');
 });
 
 // EBIMS Module Routes (Super Admin + Branch Manager access)
@@ -109,6 +131,15 @@ Route::middleware([
     })->middleware('super_admin')->name('logs.download');
 
     Route::get('/global-search', \App\Http\Controllers\Admin\GlobalSearchController::class)->name('global-search');
+    Route::post('/dashboard-events', [\App\Http\Controllers\AdminController::class, 'storeDashboardEvent'])->name('dashboard-events.store');
+    Route::prefix('modules')->name('modules.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'index'])->name('dashboard');
+        Route::get('/clients', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'clients'])->name('clients');
+        Route::get('/loan-portfolio', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'loanPortfolio'])->name('loan-portfolio');
+        Route::get('/collections', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'collections'])->name('collections');
+        Route::get('/reports-accounting', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'reportsAccounting'])->name('reports-accounting');
+        Route::get('/investments', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'investments'])->name('investments');
+    });
     
     // Self-Applied Client Loan Applications
     Route::prefix('client-applications')->name('client-applications.')->group(function () {
@@ -330,10 +361,6 @@ Route::middleware([
         Route::get('/schedule-pending/{scheduleId}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePendingRepayments'])->name('schedule-pending');
     });
 
-    // Personal Loan Management Preview Dashboard
-    Route::get('/loans/personal/preview-dashboard', [\App\Http\Controllers\Admin\LoanManagementController::class, 'personalPreviewDashboard'])
-        ->name('loans.personal.preview-dashboard');
-    
     // Get all payments for a schedule
     Route::get('/loans/schedules/{id}/payments', [\App\Http\Controllers\Admin\RepaymentController::class, 'getSchedulePayments'])->name('loans.schedules.payments');
     
@@ -540,7 +567,7 @@ Route::middleware([
     
     // School Management Routes
     Route::get('/schools/dashboard', function () {
-        return redirect()->route('admin.schools.index');
+        return view('admin.navigation.school-management');
     })->name('schools.dashboard');
     Route::resource('schools', \App\Http\Controllers\Admin\SchoolsController::class);
     Route::post('/schools/{school}/approve', [\App\Http\Controllers\Admin\SchoolsController::class, 'approve'])->name('schools.approve');

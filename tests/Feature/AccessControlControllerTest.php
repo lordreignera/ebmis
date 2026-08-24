@@ -55,6 +55,36 @@ class AccessControlControllerTest extends TestCase
             ->assertDontSee('Test Api Robot');
     }
 
+    public function test_system_settings_allow_super_admin_and_administrator_only(): void
+    {
+        $superAdmin = User::factory()->create(['user_type' => 'super_admin']);
+        $administrator = User::factory()->create(['user_type' => 'branch']);
+        $administrator->assignRole(Role::create(['name' => 'Administrator', 'guard_name' => 'web']));
+        $branchUser = User::factory()->create(['user_type' => 'branch']);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.settings.dashboard'))
+            ->assertOk();
+
+        $this->actingAs($administrator)
+            ->get(route('admin.settings.dashboard'))
+            ->assertOk();
+
+        $this->actingAs($branchUser)
+            ->get(route('admin.settings.dashboard'))
+            ->assertForbidden();
+    }
+
+    public function test_administrator_system_settings_access_does_not_open_super_admin_access_control(): void
+    {
+        $administrator = User::factory()->create(['user_type' => 'branch']);
+        $administrator->assignRole(Role::create(['name' => 'Administrator', 'guard_name' => 'web']));
+
+        $this->actingAs($administrator)
+            ->get(route('admin.access-control.index'))
+            ->assertForbidden();
+    }
+
     public function test_role_update_syncs_web_guard_permissions(): void
     {
         $admin = User::factory()->create(['user_type' => 'super_admin']);

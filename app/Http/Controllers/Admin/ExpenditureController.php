@@ -240,25 +240,46 @@ class ExpenditureController extends Controller
             $expenditure->mobile_money_network
         );
 
-        $gatewayStatus = $result['status'] ?? 'pending';
+        $gatewayStatus = $result['status'] ?? null;
 
-        DB::transaction(function () use ($request, $expenditure, $result, $gatewayStatus) {
-            $expenditure->mobile_money_status = $gatewayStatus;
-            $expenditure->mobile_money_message = $result['message'] ?? null;
-            $expenditure->mobile_money_raw = json_encode($result);
-
-            if ($gatewayStatus === 'completed') {
-                $this->markExpenditurePaid($expenditure, $request->user()?->id);
-            } elseif ($gatewayStatus === 'failed') {
-                $expenditure->status = Expenditure::STATUS_PAYMENT_FAILED;
+        if (!($result['success'] ?? false) || !in_array($gatewayStatus, ['completed', 'failed', 'pending'], true)) {
+            DB::transaction(function () use ($expenditure, $result) {
+                $expenditure->mobile_money_message = $result['message'] ?? 'Unable to confirm mobile-money status.';
+                $expenditure->mobile_money_raw = json_encode($result);
                 $expenditure->save();
-            } else {
-                $expenditure->status = Expenditure::STATUS_PAYMENT_PENDING;
-                $expenditure->save();
-            }
+            });
 
-            $this->updateRawPaymentTrace($expenditure, $gatewayStatus, $result);
-        });
+            return back()->with('error', $result['message'] ?? 'Unable to confirm mobile-money status. Local payment state was not changed.');
+        }
+
+        try {
+            DB::transaction(function () use ($request, $expenditure, $result, $gatewayStatus) {
+                $expenditure = Expenditure::whereKey($expenditure->id)->lockForUpdate()->firstOrFail();
+
+                if ($expenditure->status === Expenditure::STATUS_PAID) {
+                    return;
+                }
+
+                $expenditure->mobile_money_status = $gatewayStatus;
+                $expenditure->mobile_money_message = $result['message'] ?? null;
+                $expenditure->mobile_money_raw = json_encode($result);
+
+                if ($gatewayStatus === 'completed') {
+                    $this->markExpenditurePaid($expenditure, $request->user()?->id);
+                } elseif ($gatewayStatus === 'failed') {
+                    $this->releaseInvestmentDebit($expenditure);
+                    $expenditure->status = Expenditure::STATUS_PAYMENT_FAILED;
+                    $expenditure->save();
+                } else {
+                    $expenditure->status = Expenditure::STATUS_PAYMENT_PENDING;
+                    $expenditure->save();
+                }
+
+                $this->updateRawPaymentTrace($expenditure, $gatewayStatus, $result);
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         if ($expenditure->rollout_batch_id) {
             $this->refreshRolloutPaymentStatus((int) $expenditure->rollout_batch_id, $request->user()?->id);
@@ -427,12 +448,7 @@ class ExpenditureController extends Controller
         $periodStart = Carbon::parse($validated['period_start'])->toDateString();
         $periodEnd = Carbon::parse($validated['period_end'])->toDateString();
 
-        $existing = Expenditure::where('type', 'performance_payout')
-            ->where('assigned_user_id', $row['user_id'])
-            ->whereNotIn('status', ['rejected', 'cancelled'])
-            ->where('description', 'like', "%{$periodStart}%")
-            ->where('description', 'like', "%{$periodEnd}%")
-            ->first();
+        $existing = $this->existingStaffPaymentForPeriod((int) $row['user_id'], $periodStart, $periodEnd);
 
         if ($existing) {
             return redirect()
@@ -458,6 +474,8 @@ class ExpenditureController extends Controller
             'payment_channel' => 'mobile_money',
             'approved_by' => $request->user()?->id,
             'approved_at' => now(),
+            'staff_payment_period_start' => $periodStart,
+            'staff_payment_period_end' => $periodEnd,
             'notes' => trim(($validated['notes'] ?? '') . "\nStaff payment basis: "
                 . json_encode([
                     'assigned_loans' => $row['assigned_loans_count'],
@@ -604,7 +622,7 @@ class ExpenditureController extends Controller
             return back()->withInput()->with('error', 'Mobile-money payout has invalid staff phone numbers for: ' . $invalidPhones->implode(', '));
         }
 
-        DB::transaction(function () use ($request, $rollout, $validated) {
+        $createdExpenses = DB::transaction(function () use ($request, $rollout, $validated) {
             if ($rollout->status !== 'approved') {
                 $rollout->approved_by = $request->user()?->id;
                 $rollout->approved_at = now();
@@ -618,6 +636,7 @@ class ExpenditureController extends Controller
             $rollout->save();
 
             $rollout->loadMissing('items.user');
+            $createdExpenses = collect();
 
             foreach ($rollout->items as $item) {
                 if ($item->expenditure_id || (float) $item->payout_amount <= 0) {
@@ -643,6 +662,8 @@ class ExpenditureController extends Controller
                     'approved_by' => $request->user()?->id,
                     'approved_at' => now(),
                     'rollout_batch_id' => $rollout->id,
+                    'staff_payment_period_start' => $rollout->period_start->toDateString(),
+                    'staff_payment_period_end' => $rollout->period_end->toDateString(),
                     'notes' => 'Auto-created from staff payment rollout ' . $rollout->rollout_number . "\nStaff payment basis: " . json_encode([
                         'principal_collected' => (float) $item->principal_collected,
                         'interest_collected' => (float) $item->interest_collected,
@@ -658,16 +679,31 @@ class ExpenditureController extends Controller
                     ]),
                 ]);
 
-                $this->processExpenditureMobileMoneyPayment(
-                    $request,
-                    $expense,
-                    $validated,
-                    (string) ($item->user->phone ?? '')
-                );
-
                 $item->update(['expenditure_id' => $expense->id]);
+                $createdExpenses->push([
+                    'expense_id' => $expense->id,
+                    'phone' => (string) ($item->user->phone ?? ''),
+                ]);
             }
 
+            return $createdExpenses;
+        });
+
+        foreach ($createdExpenses as $createdExpense) {
+            $expense = Expenditure::with('assignedUser')->find($createdExpense['expense_id']);
+            if (!$expense) {
+                continue;
+            }
+
+            $this->processExpenditureMobileMoneyPayment(
+                $request,
+                $expense,
+                $validated,
+                $createdExpense['phone']
+            );
+        }
+
+        DB::transaction(function () use ($request, $rollout) {
             $hasPendingPayments = $rollout->items()
                 ->whereHas('expenditure', fn ($query) => $query->where('status', 'payment_pending'))
                 ->exists();
@@ -751,6 +787,51 @@ class ExpenditureController extends Controller
         $formattedPhone = $phoneValidation['formatted_phone'];
         $network = ($validated['mobile_money_network'] ?? null) ?: ($phoneValidation['network'] ?? null);
 
+        try {
+            DB::transaction(function () use ($request, $expenditure, $validated, $formattedPhone, $network) {
+                $lockedExpenditure = Expenditure::whereKey($expenditure->id)->lockForUpdate()->firstOrFail();
+
+                if (!$lockedExpenditure->canBePaid()) {
+                    throw new \RuntimeException('This expenditure cannot be paid in its current status.');
+                }
+
+                $lockedExpenditure->payment_account_id = $validated['payment_account_id'];
+                $lockedExpenditure->investment_id = $validated['investment_id'];
+                $lockedExpenditure->payment_method = self::MOBILE_MONEY_METHOD;
+                $lockedExpenditure->payment_channel = 'mobile_money';
+                $lockedExpenditure->mobile_money_phone = $formattedPhone;
+                $lockedExpenditure->mobile_money_network = $network;
+                $lockedExpenditure->mobile_money_status = 'pending';
+                $lockedExpenditure->payment_initiated_at = now();
+
+                if ($lockedExpenditure->status === Expenditure::STATUS_APPROVED && !$lockedExpenditure->approved_at) {
+                    $lockedExpenditure->approved_by = $request->user()?->id;
+                    $lockedExpenditure->approved_at = now();
+                }
+
+                $this->debitInvestmentForExpenditure($lockedExpenditure);
+                $lockedExpenditure->status = Expenditure::STATUS_PAYMENT_PENDING;
+                $lockedExpenditure->save();
+
+                $expenditure->setRawAttributes($lockedExpenditure->getAttributes(), true);
+                $expenditure->syncOriginal();
+            });
+        } catch (\Throwable $e) {
+            $currentStatus = Expenditure::whereKey($expenditure->id)->value('status');
+            if (in_array($currentStatus, [Expenditure::STATUS_APPROVED, Expenditure::STATUS_PAYMENT_FAILED], true)) {
+                $expenditure->update([
+                    'status' => Expenditure::STATUS_PAYMENT_FAILED,
+                    'mobile_money_message' => $e->getMessage(),
+                ]);
+            }
+
+            return [
+                'success' => false,
+                'completed' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+
         $expenditure->loadMissing('assignedUser');
         $recipientName = $expenditure->assignedUser->name ?? $expenditure->title;
 
@@ -767,23 +848,13 @@ class ExpenditureController extends Controller
             ?? $result['request_id']
             ?? ('EXP-' . $expenditure->id . '-' . time());
 
-        DB::transaction(function () use ($request, $expenditure, $validated, $formattedPhone, $network, $result, $reference) {
-            $expenditure->payment_account_id = $validated['payment_account_id'];
-            $expenditure->investment_id = $validated['investment_id'];
-            $expenditure->payment_method = self::MOBILE_MONEY_METHOD;
-            $expenditure->payment_channel = 'mobile_money';
-            $expenditure->mobile_money_phone = $formattedPhone;
-            $expenditure->mobile_money_network = $network;
+        DB::transaction(function () use ($request, $expenditure, $formattedPhone, $network, $result, $reference) {
+            $expenditure = Expenditure::whereKey($expenditure->id)->lockForUpdate()->firstOrFail();
             $expenditure->mobile_money_reference = $reference;
             $expenditure->mobile_money_status = $result['status_code'] ?? ($result['status'] ?? 'pending');
             $expenditure->mobile_money_message = $result['message'] ?? null;
             $expenditure->mobile_money_raw = json_encode($result);
             $expenditure->payment_initiated_at = now();
-
-            if ($expenditure->status === Expenditure::STATUS_APPROVED && !$expenditure->approved_at) {
-                $expenditure->approved_by = $request->user()?->id;
-                $expenditure->approved_at = now();
-            }
 
             $immediateSuccess = ($result['status_code'] ?? null) === '00';
 
@@ -793,6 +864,7 @@ class ExpenditureController extends Controller
                 $expenditure->status = Expenditure::STATUS_PAYMENT_PENDING;
                 $expenditure->save();
             } else {
+                $this->releaseInvestmentDebit($expenditure);
                 $expenditure->status = Expenditure::STATUS_PAYMENT_FAILED;
                 $expenditure->save();
             }
@@ -1080,7 +1152,11 @@ class ExpenditureController extends Controller
             ->whereNotNull('assigned_user_id')
             ->whereNotIn('status', ['rejected', 'cancelled'])
             ->where(function ($query) use ($start, $end) {
-                $query->where(function ($descriptionQuery) use ($start, $end) {
+                $query->where(function ($periodQuery) use ($start, $end) {
+                    $periodQuery->whereNotNull('staff_payment_period_start')
+                        ->whereDate('staff_payment_period_start', '<=', $end)
+                        ->whereDate('staff_payment_period_end', '>=', $start);
+                })->orWhere(function ($descriptionQuery) use ($start, $end) {
                     $descriptionQuery->where('description', 'like', "%{$start}%")
                         ->where('description', 'like', "%{$end}%");
                 })->orWhere(function ($notesQuery) use ($start, $end) {
@@ -1091,6 +1167,27 @@ class ExpenditureController extends Controller
             ->pluck('assigned_user_id')
             ->unique()
             ->values();
+    }
+
+    private function existingStaffPaymentForPeriod(int $userId, string $periodStart, string $periodEnd): ?Expenditure
+    {
+        return Expenditure::where('type', 'performance_payout')
+            ->where('assigned_user_id', $userId)
+            ->whereNotIn('status', ['rejected', 'cancelled'])
+            ->where(function ($query) use ($periodStart, $periodEnd) {
+                $query->where(function ($periodQuery) use ($periodStart, $periodEnd) {
+                    $periodQuery->whereNotNull('staff_payment_period_start')
+                        ->whereDate('staff_payment_period_start', '<=', $periodEnd)
+                        ->whereDate('staff_payment_period_end', '>=', $periodStart);
+                })->orWhere(function ($descriptionQuery) use ($periodStart, $periodEnd) {
+                    $descriptionQuery->where('description', 'like', "%{$periodStart}%")
+                        ->where('description', 'like', "%{$periodEnd}%");
+                })->orWhere(function ($notesQuery) use ($periodStart, $periodEnd) {
+                    $notesQuery->where('notes', 'like', "%{$periodStart}%")
+                        ->where('notes', 'like', "%{$periodEnd}%");
+                });
+            })
+            ->first();
     }
 
     private function aggregateWeeklyStaffPaymentRows(Collection $weeklyRows, int $weeksCount): Collection
@@ -1529,9 +1626,8 @@ class ExpenditureController extends Controller
             $journal = $this->postExpenditureJournal($expenditure, $userId);
             $expenditure->journal_entry_id = $journal->Id;
 
-            if (!$alreadyPosted && $expenditure->investment_id) {
-                Investment::where('id', $expenditure->investment_id)
-                    ->decrement('amount', (float) $expenditure->amount);
+            if (!$alreadyPosted) {
+                $this->debitInvestmentForExpenditure($expenditure);
             }
         }
 
@@ -1544,6 +1640,40 @@ class ExpenditureController extends Controller
         $expenditure->paid_at = now();
         $expenditure->paid_by = $userId;
         $expenditure->save();
+    }
+
+    private function debitInvestmentForExpenditure(Expenditure $expenditure): void
+    {
+        if (!$expenditure->investment_id || $expenditure->investment_debited_at) {
+            return;
+        }
+
+        $updated = Investment::where('id', $expenditure->investment_id)
+            ->where('amount', '>=', (float) $expenditure->amount)
+            ->decrement('amount', (float) $expenditure->amount);
+
+        if ($updated < 1) {
+            $investment = Investment::find($expenditure->investment_id);
+            $available = $investment ? (float) $investment->amount : 0.0;
+
+            throw new \RuntimeException('Insufficient funds in selected investment account. Required: UGX '
+                . number_format((float) $expenditure->amount, 0)
+                . ', available: UGX ' . number_format($available, 0) . '.');
+        }
+
+        $expenditure->investment_debited_at = now();
+    }
+
+    private function releaseInvestmentDebit(Expenditure $expenditure): void
+    {
+        if (!$expenditure->investment_id || !$expenditure->investment_debited_at) {
+            return;
+        }
+
+        Investment::where('id', $expenditure->investment_id)
+            ->increment('amount', (float) $expenditure->amount);
+
+        $expenditure->investment_debited_at = null;
     }
 
     private function refreshRolloutPaymentStatus(int $rolloutId, ?int $userId): void

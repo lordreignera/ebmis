@@ -120,6 +120,18 @@
         .btn {
             font-weight: 500;
         }
+
+        .page-back-nav {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+        }
+
+        .page-back-nav .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
         
         /* Role Badge */
         .role-badge {
@@ -256,7 +268,8 @@
         .sidebar,
         #sidebar,
         nav#sidebar.sidebar.sidebar-offcanvas {
-            display: block !important;
+            display: flex !important;
+            flex-direction: column !important;
             visibility: visible !important;
             opacity: 1 !important;
             position: fixed !important;
@@ -268,7 +281,7 @@
             background: #eef6ff !important;
             border-right: 1px solid #bfdbfe !important;
             z-index: 9999 !important;
-            overflow-y: auto !important;
+            overflow-y: hidden !important;
             overflow-x: hidden !important;
             transform: translateX(0) !important;
             transition: transform 0.25s ease !important;
@@ -294,6 +307,9 @@
         /* Sidebar Navigation */
         .sidebar ul.nav {
             display: block !important;
+            flex: 1 1 auto !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
             padding: 10px 0 !important;
             margin: 0 !important;
             list-style: none !important;
@@ -792,6 +808,54 @@
             box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06) !important;
         }
 
+        .content-wrapper .page-header {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: space-between;
+        }
+
+        .content-wrapper .page-header > .btn,
+        .content-wrapper .page-header > a.btn,
+        .content-wrapper .page-header > div:last-child {
+            margin-left: auto;
+        }
+
+        .content-wrapper > .container-fluid > .d-sm-flex.align-items-center.justify-content-between,
+        .content-wrapper > .container-fluid > .d-flex.justify-content-between,
+        .content-wrapper .page-title-box,
+        .content-wrapper > .row:first-child .d-flex.justify-content-between.align-items-center {
+            background: #ffffff !important;
+            border: 1px solid #e5e7eb !important;
+            border-radius: 8px !important;
+            box-shadow: 0 1px 6px rgba(17, 24, 39, 0.06) !important;
+            align-items: center !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 1rem !important;
+            justify-content: space-between !important;
+            margin-bottom: 1.25rem !important;
+            padding: 20px !important;
+        }
+
+        .content-wrapper > .container-fluid > .d-sm-flex.align-items-center.justify-content-between .btn-group,
+        .content-wrapper > .container-fluid > .d-flex.justify-content-between > .btn,
+        .content-wrapper > .container-fluid > .d-flex.justify-content-between > a.btn,
+        .content-wrapper > .container-fluid > .d-flex.justify-content-between > div:last-child,
+        .content-wrapper .page-title-box .page-title-right,
+        .content-wrapper > .row:first-child .d-flex.justify-content-between.align-items-center > div:last-child {
+            margin-left: auto !important;
+        }
+
+        .content-wrapper .page-title-box .page-title {
+            order: 1 !important;
+        }
+
+        .content-wrapper .page-title-box .page-title-right {
+            order: 2 !important;
+        }
+
         .content-wrapper .card > .card-header,
         .content-wrapper .modal-header {
             border-width: 0 0 1px 0 !important;
@@ -1162,6 +1226,13 @@
             color: #6b7280 !important;
             opacity: 1 !important;
         }
+
+        .content-wrapper .card > .card-header .btn-primary,
+        .content-wrapper .card > .card-header .btn-primary *,
+        .content-wrapper .card > .card-header .btn-dark,
+        .content-wrapper .card > .card-header .btn-dark * {
+            color: #ffffff !important;
+        }
     </style>
 </head>
 <body>
@@ -1180,6 +1251,15 @@
                 <div class="content-wrapper">
                     <!-- Password Change Reminder -->
                     <x-password-change-reminder />
+
+                    @unless(request()->routeIs('admin.home') || request()->routeIs('school.dashboard') || request()->routeIs('admin.modules.*'))
+                        <div class="page-back-nav">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-fallback-url="{{ route('admin.home') }}" id="globalBackButton">
+                                <i class="mdi mdi-arrow-left"></i>
+                                <span>Back</span>
+                            </button>
+                        </div>
+                    @endunless
                     
                     @yield('content')
                 </div>
@@ -1274,6 +1354,22 @@
         nav#sidebar.sidebar .nav-link i {
             color: #111827 !important;
         }
+
+        nav#sidebar.sidebar .sidebar-menu-tools,
+        nav#sidebar.sidebar .sidebar-menu-search,
+        nav#sidebar.sidebar .sidebar-menu-search input,
+        nav#sidebar.sidebar .sidebar-menu-search button {
+            pointer-events: auto !important;
+        }
+
+        nav#sidebar.sidebar .sidebar-menu-search {
+            background: #ffffff !important;
+            border-color: #dbeafe !important;
+        }
+
+        nav#sidebar.sidebar .sidebar-menu-search input {
+            color: #111827 !important;
+        }
     </style>
 
     <script>
@@ -1282,6 +1378,18 @@
             const sidebar = document.getElementById('sidebar');
             const sidebarOverlay = document.getElementById('sidebarOverlay');
             const offcanvasToggles = document.querySelectorAll('[data-toggle="offcanvas"]');
+            const globalBackButton = document.getElementById('globalBackButton');
+
+            if (globalBackButton) {
+                globalBackButton.addEventListener('click', function () {
+                    if (window.history.length > 1) {
+                        window.history.back();
+                        return;
+                    }
+
+                    window.location.href = this.dataset.fallbackUrl;
+                });
+            }
 
             if (!sidebar || offcanvasToggles.length === 0) {
                 return;

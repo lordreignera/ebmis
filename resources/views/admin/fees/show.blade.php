@@ -10,12 +10,15 @@
             <div class="page-title-box d-sm-flex align-items-center justify-content-between">
                 <h4 class="mb-sm-0 font-size-18">Fee Payment Details</h4>
                 
-                <div class="page-title-right">
+                <div class="page-title-right d-flex align-items-center gap-2 flex-wrap justify-content-end">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="{{ route('admin.home') }}">Dashboard</a></li>
                         <li class="breadcrumb-item"><a href="{{ route('admin.fees.index') }}">Fee Payments</a></li>
                         <li class="breadcrumb-item active">Payment Details</li>
                     </ol>
+                    <a href="{{ route('admin.fees.index') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Back to Fees
+                    </a>
                 </div>
             </div>
         </div>
@@ -117,10 +120,7 @@
                     </div>
                     @endif
 
-                    <div class="d-flex justify-content-between">
-                        <a href="{{ route('admin.fees.index') }}" class="btn btn-outline-secondary">
-                            <i class="fas fa-arrow-left"></i> Back to Fees
-                        </a>
+                    <div class="d-flex justify-content-end">
                         <div>
                             @if($fee->status == 0 && auth()->user()->isSuperAdmin() && $fee->payment_type != 1)
                                 <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#markPaidModal">

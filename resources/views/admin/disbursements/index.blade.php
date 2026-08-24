@@ -2,7 +2,89 @@
 
 @section('title', 'Disbursements Management')
 
+@push('styles')
+<style>
+    .disbursements-page .table-container {
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+
+    .disbursements-page .table-header {
+        align-items: center;
+    }
+
+    .disbursements-page .table-title {
+        color: #111827;
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: .15rem;
+    }
+
+    .disbursements-page .table-subtitle {
+        color: #64748b;
+        font-size: .82rem;
+    }
+
+    .disbursements-page .modern-table td {
+        white-space: normal;
+    }
+
+    .disbursement-money {
+        color: #047857;
+        font-weight: 800;
+    }
+
+    .status-failed {
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+    }
+
+    .status-approved {
+        background: #dbeafe;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+    }
+
+    .status-unknown {
+        background: #e5e7eb;
+        border: 1px solid #d1d5db;
+        color: #374151;
+    }
+
+    .method-mobile {
+        background: #dcfce7;
+        border: 1px solid #bbf7d0;
+        color: #166534;
+    }
+
+    .method-bank {
+        background: #dbeafe;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+    }
+
+    .method-unknown {
+        background: #e5e7eb;
+        border: 1px solid #d1d5db;
+        color: #374151;
+    }
+
+    @media (max-width: 767.98px) {
+        .disbursements-page .pagination-controls {
+            flex-wrap: wrap;
+        }
+
+        .disbursements-page .pagination-numbers {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+    }
+</style>
+@endpush
+
 @section('content')
+<div class="disbursements-page">
 <div class="row">
     <div class="col-md-12 grid-margin">
         <div class="d-flex justify-content-between align-items-center">
@@ -196,16 +278,23 @@
 <!-- Disbursements Table -->
 <div class="row">
     <div class="col-md-12 grid-margin stretch-card">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="card-title">Disbursements List</h4>
-                    <span class="text-muted">{{ $disbursements->total() }} total disbursements</span>
+        <div class="table-container">
+            <div class="table-header">
+                <div>
+                    <div class="table-title">Disbursements List</div>
+                    <div class="table-subtitle">{{ number_format($disbursements->total()) }} total disbursements</div>
                 </div>
+                <div class="table-actions">
+                    <a href="{{ route('admin.loans.disbursements.pending') }}" class="export-btn">
+                        <i class="mdi mdi-cash-check"></i>
+                        Ready to Disburse
+                    </a>
+                </div>
+            </div>
                 
                 @if($disbursements->count() > 0)
                 <div class="table-responsive">
-                    <table class="table table-striped">
+                    <table class="modern-table table-hover">
                         <thead>
                             <tr>
                                 <th>Disbursement ID</th>
@@ -257,7 +346,7 @@
                                 </td>
                                 <td>
                                     <div>
-                                        <span class="font-weight-bold">UGX {{ number_format($disbursement->amount) }}</span>
+                                            <span class="disbursement-money">UGX {{ number_format($disbursement->amount) }}</span>
                                         @if($disbursement->fees > 0)
                                             <br><small class="text-muted">Fees: UGX {{ number_format($disbursement->fees) }}</small>
                                         @endif
@@ -266,48 +355,48 @@
                                 <td>
                                     @switch($disbursement->payment_type)
                                         @case(1)
-                                            <span class="badge badge-success">
+                                            <span class="status-badge method-mobile">
                                                 <i class="mdi mdi-cellphone"></i> Mobile Money
                                             </span>
                                             @break
                                         @case(2)
-                                            <span class="badge badge-info">
+                                            <span class="status-badge method-bank">
                                                 <i class="mdi mdi-bank"></i> Bank/Cheque (Historical)
                                             </span>
                                             @break
                                         @case(3)
-                                            <span class="badge badge-success">
+                                            <span class="status-badge method-mobile">
                                                 <i class="mdi mdi-cellphone"></i> Mobile Money (Legacy)
                                             </span>
                                             @break
                                         @default
-                                            <span class="badge badge-secondary">-</span>
+                                            <span class="status-badge method-unknown">-</span>
                                     @endswitch
                                 </td>
                                 <td>
                                     @switch($disbursement->status)
                                         @case(0)
-                                            <span class="badge badge-warning">
+                                            <span class="status-badge status-pending">
                                                 <i class="mdi mdi-clock-outline"></i> Pending
                                             </span>
                                             @break
                                         @case(1)
-                                            <span class="badge badge-info">
+                                            <span class="status-badge status-approved">
                                                 <i class="mdi mdi-check"></i> Approved
                                             </span>
                                             @break
                                         @case(2)
-                                            <span class="badge badge-success">
+                                            <span class="status-badge status-disbursed">
                                                 <i class="mdi mdi-check-circle"></i> Disbursed
                                             </span>
                                             @break
                                         @case(3)
-                                            <span class="badge badge-danger">
+                                            <span class="status-badge status-failed">
                                                 <i class="mdi mdi-close-circle"></i> Failed
                                             </span>
                                             @break
                                         @default
-                                            <span class="badge badge-secondary">Unknown</span>
+                                            <span class="status-badge status-unknown">Unknown</span>
                                     @endswitch
                                 </td>
                                 <td>
@@ -358,14 +447,79 @@
                 </div>
                 
                 <!-- Pagination -->
-                <div class="d-flex justify-content-between align-items-center mt-3">
-                    <div>
-                        <span class="text-muted">
-                            Showing {{ $disbursements->firstItem() }} to {{ $disbursements->lastItem() }} of {{ $disbursements->total() }} results
-                        </span>
+                <div class="modern-pagination">
+                    <div class="pagination-info">
+                        Showing {{ $disbursements->firstItem() ?? 0 }} to {{ $disbursements->lastItem() ?? 0 }} of {{ $disbursements->total() }} entries
                     </div>
-                    <div>
-                        {{ $disbursements->appends(request()->query())->links() }}
+                    <div class="pagination-controls">
+                        @php
+                            $pagedDisbursements = $disbursements->appends(request()->query());
+                        @endphp
+
+                        @if($pagedDisbursements->hasPages())
+                            @if ($pagedDisbursements->onFirstPage())
+                                <span class="pagination-btn" disabled>
+                                    <i class="mdi mdi-chevron-left"></i>
+                                    Previous
+                                </span>
+                            @else
+                                <a href="{{ $pagedDisbursements->previousPageUrl() }}" class="pagination-btn">
+                                    <i class="mdi mdi-chevron-left"></i>
+                                    Previous
+                                </a>
+                            @endif
+
+                            <div class="pagination-numbers">
+                                @php
+                                    $currentPage = $pagedDisbursements->currentPage();
+                                    $lastPage = $pagedDisbursements->lastPage();
+                                    $start = max(1, $currentPage - 2);
+                                    $end = min($lastPage, $currentPage + 2);
+
+                                    if ($currentPage <= 3) {
+                                        $end = min(5, $lastPage);
+                                    }
+
+                                    if ($currentPage >= $lastPage - 2) {
+                                        $start = max(1, $lastPage - 4);
+                                    }
+                                @endphp
+
+                                @if($start > 1)
+                                    <a href="{{ $pagedDisbursements->url(1) }}" class="pagination-btn">1</a>
+                                    @if($start > 2)
+                                        <span class="pagination-btn" disabled>...</span>
+                                    @endif
+                                @endif
+
+                                @for ($page = $start; $page <= $end; $page++)
+                                    @if ($page === $currentPage)
+                                        <span class="pagination-btn active">{{ $page }}</span>
+                                    @else
+                                        <a href="{{ $pagedDisbursements->url($page) }}" class="pagination-btn">{{ $page }}</a>
+                                    @endif
+                                @endfor
+
+                                @if($end < $lastPage)
+                                    @if($end < $lastPage - 1)
+                                        <span class="pagination-btn" disabled>...</span>
+                                    @endif
+                                    <a href="{{ $pagedDisbursements->url($lastPage) }}" class="pagination-btn">{{ $lastPage }}</a>
+                                @endif
+                            </div>
+
+                            @if ($pagedDisbursements->hasMorePages())
+                                <a href="{{ $pagedDisbursements->nextPageUrl() }}" class="pagination-btn">
+                                    Next
+                                    <i class="mdi mdi-chevron-right"></i>
+                                </a>
+                            @else
+                                <span class="pagination-btn" disabled>
+                                    Next
+                                    <i class="mdi mdi-chevron-right"></i>
+                                </span>
+                            @endif
+                        @endif
                     </div>
                 </div>
                 @else
@@ -378,16 +532,16 @@
                     </a>
                 </div>
                 @endif
-            </div>
         </div>
     </div>
+</div>
 </div>
 
 @push('scripts')
 <script>
 $(document).ready(function() {
     // Auto-submit form on filter change
-    $('select[name="status"], select[name="method"]').change(function() {
+    $('select[name="status"], select[name="payment_type"]').change(function() {
         $(this).closest('form').submit();
     });
 });

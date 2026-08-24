@@ -57,9 +57,11 @@ body.modal-open {
                         <i class="mdi mdi-account"></i> Member Details
                     </h3>
                     <div class="btn-group">
-                        <a href="{{ route('admin.members.index') }}" class="btn btn-secondary">
-                            <i class="mdi mdi-arrow-left"></i> Back to List
-                        </a>
+                        @include('admin.partials.back-button', [
+                            'fallback' => route('admin.members.index'),
+                            'label' => 'Back',
+                            'class' => 'btn btn-secondary',
+                        ])
                         <a href="{{ route('admin.members.edit', $member) }}" class="btn btn-warning">
                             <i class="mdi mdi-pencil"></i> Edit
                         </a>

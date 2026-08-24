@@ -57,7 +57,7 @@ class LoanAccessService
 
         return (bool) (
             $user?->isSuperAdmin() ||
-            $user?->can('view-active-loans')
+            $user?->isAdministrator()
         );
     }
 
@@ -107,7 +107,12 @@ class LoanAccessService
             ->get();
     }
 
-    public function scopeActiveLoanQuery($query, string $branchColumn = 'branch_id', ?User $user = null)
+    public function scopeActiveLoanQuery(
+        $query,
+        string $branchColumn = 'branch_id',
+        string $assignedColumn = 'assigned_to',
+        ?User $user = null
+    )
     {
         $user ??= auth()->user();
 
@@ -119,7 +124,7 @@ class LoanAccessService
             return $query;
         }
 
-        return $this->scopeBranchQuery($query, $branchColumn, $user);
+        return $query->where($assignedColumn, $user->id);
     }
 
     public function ensureBranchAccess($record, string $branchKey = 'branch_id', ?User $user = null): void
@@ -151,11 +156,18 @@ class LoanAccessService
             return;
         }
 
-        if (
-            $this->canWorkAcrossBranchesOnActiveLoans($user) &&
-            in_array((string) $loan->status, ['2', '3'], true)
-        ) {
+        $isActiveLoan = in_array((string) $loan->status, ['2', '3'], true);
+
+        if ($this->canWorkAcrossBranchesOnActiveLoans($user) && $isActiveLoan) {
             return;
+        }
+
+        if ($isActiveLoan) {
+            if ((int) ($loan->assigned_to ?? 0) === (int) $user->id) {
+                return;
+            }
+
+            abort(403, 'Access denied. This active loan is assigned to another user.');
         }
 
         $this->ensureBranchAccess($loan, 'branch_id', $user);

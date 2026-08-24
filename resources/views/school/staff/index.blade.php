@@ -4,27 +4,14 @@
 
 @section('content')
 <div class="container-fluid">
-    <!-- Page Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="h4 mb-1" style="color: #000000;">
-                        <i class="mdi mdi-account-tie me-2"></i>Manage Staff
-                    </h2>
-                    <p class="text-muted mb-0">View and manage all staff members</p>
-                </div>
-                <div>
-                    <a href="{{ route('school.dashboard') }}" class="btn btn-outline-secondary me-2">
-                        <i class="mdi mdi-arrow-left me-1"></i>Dashboard
-                    </a>
-                    <a href="{{ route('school.staff.create') }}" class="btn btn-primary">
-                        <i class="mdi mdi-plus me-1"></i>Add Staff
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.partials.page-header', [
+        'title' => 'Manage Staff',
+        'subtitle' => 'View and manage all staff members.',
+        'icon' => 'mdi mdi-account-tie',
+        'backFallback' => route('school.dashboard'),
+        'backLabel' => 'Dashboard',
+        'actions' => '<a href="' . route('school.staff.create') . '" class="btn btn-primary"><i class="mdi mdi-plus me-1"></i>Add Staff</a>',
+    ])
 
     <!-- Success Message -->
     @if(session('success'))
@@ -35,7 +22,7 @@
     @endif
 
     <!-- Filters -->
-    <div class="card border-0 shadow-sm mb-4">
+    <div class="card border-0 shadow-sm ebims-filter-card">
         <div class="card-body">
             <form method="GET">
                 <div class="row g-3">
@@ -67,7 +54,7 @@
     </div>
 
     <!-- Staff List -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm ebims-table-card">
         <div class="card-header bg-white border-bottom">
             <h5 class="mb-0" style="color: #000000;">
                 <i class="mdi mdi-view-list me-2"></i>All Staff ({{ $staff->total() }})

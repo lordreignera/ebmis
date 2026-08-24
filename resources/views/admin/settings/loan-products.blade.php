@@ -3,9 +3,9 @@
 @section('title', 'Loan Products Settings')
 
 @section('content')
-<div class="main-panel">
-    <div class="content-wrapper">
-        <!-- Breadcrumb -->
+@include('admin.settings.partials.back-to-dashboard')
+
+<!-- Breadcrumb -->
         <div class="row page-title-header">
             <div class="col-12">
                 <div class="page-header">
@@ -326,9 +326,6 @@
                 </div>
             </div>
         </div>
-
-    </div>
-</div>
 
 <!-- View Product Modal -->
 <div class="modal fade" id="viewProductModal" tabindex="-1" aria-labelledby="viewProductModalLabel" aria-hidden="true">

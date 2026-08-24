@@ -36,9 +36,9 @@
 </style>
 @endpush
 
-<div class="main-panel">
-    <div class="content-wrapper">
-        <!-- Page Header -->
+@include('admin.settings.partials.back-to-dashboard')
+
+<!-- Page Header -->
         <div class="row">
             <div class="col-md-12 grid-margin">
                 <div class="row">
@@ -141,8 +141,6 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
 <!-- Edit Company Info Modal -->
 <div class="modal fade" id="editCompanyModal" tabindex="-1" aria-labelledby="editCompanyModalLabel" aria-hidden="true">
