@@ -124,6 +124,11 @@ class Investor extends Model
         return $statuses[$this->status] ?? 'Unknown';
     }
 
+    public function getIsActiveAttribute(): bool
+    {
+        return (int) $this->status === 1 && (int) $this->soft_delete === 0;
+    }
+
     /**
      * Scope for active investors
      */

@@ -155,6 +155,18 @@
     border: 1px solid #bfdbfe;
 }
 
+.status-restructured {
+    background: #f3e8ff;
+    color: #7e22ce;
+    border: 1px solid #d8b4fe;
+}
+
+.status-stopped {
+    background: #e5e7eb;
+    color: #1f2937;
+    border: 1px solid #9ca3af;
+}
+
 /* Action Buttons */
 .action-buttons {
     display: flex;

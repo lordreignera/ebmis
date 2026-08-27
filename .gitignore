@@ -72,3 +72,4 @@ schema_*.php
 *.md
 !README.md
 !/docs/route-security.md
+!/docs/SYSTEM_MODULE_REVIEW_2026-08-27.md

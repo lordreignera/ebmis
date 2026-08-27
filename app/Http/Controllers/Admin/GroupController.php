@@ -361,10 +361,10 @@ class GroupController extends Controller
     public function toggleStatus(Group $group)
     {
         $group->update([
-            'status' => $group->status === 1 ? 0 : 1
+            'verified' => $group->status === 'active' ? 2 : 1,
         ]);
 
-        $status = $group->status === 1 ? 'activated' : 'deactivated';
+        $status = $group->fresh()->status === 'active' ? 'activated' : 'suspended';
 
         return redirect()->back()
                         ->with('success', "Group {$status} successfully.");
@@ -443,16 +443,40 @@ class GroupController extends Controller
                 return redirect()->back()->with('error', 'Only pending groups can be approved.');
             }
 
-            $group->update([
-                'status' => 'active',
-                'approved_at' => now(),
-                'approved_by' => auth()->id()
-            ]);
+            $group->update(['verified' => 1]);
 
             return redirect()->back()->with('success', 'Group approved successfully.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Failed to approve group: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Suspend an active group while preserving its records and membership.
+     */
+    public function suspend(Group $group)
+    {
+        if ($group->status !== 'active') {
+            return redirect()->back()->with('error', 'Only active groups can be suspended.');
+        }
+
+        $group->update(['verified' => 2]);
+
+        return redirect()->back()->with('success', 'Group suspended successfully.');
+    }
+
+    /**
+     * Reactivate a suspended group.
+     */
+    public function activate(Group $group)
+    {
+        if ($group->status !== 'suspended') {
+            return redirect()->back()->with('error', 'Only suspended groups can be activated.');
+        }
+
+        $group->update(['verified' => 1]);
+
+        return redirect()->back()->with('success', 'Group activated successfully.');
     }
 
     /**

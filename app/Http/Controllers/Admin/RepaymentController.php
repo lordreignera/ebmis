@@ -26,6 +26,7 @@ use App\Services\LoanAccessService;
 use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 use App\Support\ActiveLoanStatsCache;
+use App\Traits\ExportsData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -87,6 +88,8 @@ use Carbon\Carbon;
  */
 class RepaymentController extends Controller
 {
+    use ExportsData;
+
     protected $mobileMoneyService;
     protected $repaymentService;
     protected $accountingService;
@@ -1337,6 +1340,69 @@ class RepaymentController extends Controller
         return $this->activePersonalLoansOptimized($request);
     }
 
+    /**
+     * Export every active loan matching the current workbench filters.
+     */
+    public function exportActiveLoans(Request $request)
+    {
+        $format = strtolower((string) $request->get('format', 'excel'));
+        abort_unless(in_array($format, ['excel', 'pdf'], true), 422, 'Unsupported export format.');
+
+        $rows = collect();
+        $page = 1;
+        $originalPage = $request->query('page');
+        $originalPerPage = $request->query('per_page');
+
+        try {
+            do {
+                // Laravel's paginator resolves the page from the container request,
+                // so update this request while walking every export page.
+                $request->query->set('page', $page);
+                $request->query->set('per_page', 100);
+
+                $view = $this->activeLoans($request);
+                $paginator = $view->getData()['loans'];
+
+                foreach ($paginator->getCollection() as $loan) {
+                    $rows->push([
+                        $loan->loan_code ?? $loan->code,
+                        ucfirst((string) ($loan->loan_type ?? $request->get('type', 'personal'))),
+                        $loan->borrower_name ?? 'N/A',
+                        $loan->phone_number ?? 'N/A',
+                        $loan->branch_name ?? 'N/A',
+                        $loan->product_name ?? 'N/A',
+                        number_format((float) ($loan->principal_amount ?? $loan->principal), 0, '.', ''),
+                        number_format((float) ($loan->outstanding_balance ?? 0), 0, '.', ''),
+                        $loan->next_due_date ?? '',
+                        number_format((float) ($loan->next_due_amount ?? 0), 0, '.', ''),
+                        $loan->risk_classification ?? 'Performing',
+                        (string) ($loan->assignedTo->name ?? 'Unassigned'),
+                    ]);
+                }
+
+                $page++;
+            } while ($page <= $paginator->lastPage());
+        } finally {
+            $originalPage === null
+                ? $request->query->remove('page')
+                : $request->query->set('page', $originalPage);
+            $originalPerPage === null
+                ? $request->query->remove('per_page')
+                : $request->query->set('per_page', $originalPerPage);
+        }
+
+        $headers = [
+            'Loan Code', 'Type', 'Borrower', 'Phone', 'Branch', 'Product',
+            'Principal', 'Outstanding', 'Next Due Date', 'Next Due Amount',
+            'Risk Classification', 'Assigned To',
+        ];
+        $filename = 'active-loans-' . now()->format('Y-m-d-His');
+
+        return $format === 'pdf'
+            ? $this->exportToPdf($rows->all(), $headers, $filename, 'Active Loans', 'landscape')
+            : $this->exportToExcel($rows->all(), $headers, $filename, 'Active Loans');
+    }
+
     public function activeLoanCollections(Request $request)
     {
         return $this->activePersonalLoanWorkbench($request, 'collections');
@@ -1881,7 +1947,20 @@ class RepaymentController extends Controller
 
     protected function activeLoanDueDateExpression(string $scheduleAlias = 'loan_schedules'): string
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $column = "{$scheduleAlias}.payment_date";
+
+            return "CASE WHEN substr({$column}, 3, 1) = '-' AND substr({$column}, 6, 1) = '-' "
+                . "THEN date(substr({$column}, 7, 4) || '-' || substr({$column}, 4, 2) || '-' || substr({$column}, 1, 2)) "
+                . "ELSE date({$column}) END";
+        }
+
         return "COALESCE(STR_TO_DATE({$scheduleAlias}.payment_date, '%d-%m-%Y'), DATE({$scheduleAlias}.payment_date))";
+    }
+
+    protected function activeLoanTodayExpression(): string
+    {
+        return DB::connection()->getDriverName() === 'sqlite' ? "date('now')" : 'CURDATE()';
     }
 
     protected function applyActivePersonalLoanPageScope($query, Request $request): void
@@ -1911,7 +1990,7 @@ class RepaymentController extends Controller
     {
         $query->whereHas('schedules', function ($scheduleQuery) use ($operator) {
             $scheduleQuery->where('status', '!=', 1)
-                ->whereRaw($this->activeLoanDueDateExpression('loan_schedules') . " {$operator} CURDATE()");
+                ->whereRaw($this->activeLoanDueDateExpression('loan_schedules') . " {$operator} " . $this->activeLoanTodayExpression());
         });
     }
 
@@ -1919,7 +1998,7 @@ class RepaymentController extends Controller
     {
         $query->whereDoesntHave('schedules', function ($scheduleQuery) use ($operator) {
             $scheduleQuery->where('status', '!=', 1)
-                ->whereRaw($this->activeLoanDueDateExpression('loan_schedules') . " {$operator} CURDATE()");
+                ->whereRaw($this->activeLoanDueDateExpression('loan_schedules') . " {$operator} " . $this->activeLoanTodayExpression());
         });
     }
 
@@ -2008,6 +2087,14 @@ class RepaymentController extends Controller
                 'description' => 'Use this page to open group repayment schedules.',
                 'route' => 'admin.loans.active',
             ];
+        }
+
+        if ($portfolioTitle = $request->attributes->get('portfolio_title')) {
+            $pages[$page]['title'] = $portfolioTitle;
+            $pages[$page]['heading'] = $portfolioTitle;
+            if ($request->get('status') === 'overdue') {
+                $pages[$page]['description'] = 'Active loans with one or more unpaid schedules past their due date.';
+            }
         }
 
         $canManageSensitiveLoanOperations = $this->loanAccessService->canManageSensitiveLoanOperations($request->user());
@@ -2249,7 +2336,7 @@ class RepaymentController extends Controller
                 ->from('loan_schedules as sd')
                 ->whereColumn('sd.loan_id', 'l.id')
                 ->where('sd.status', '!=', 1)
-                ->whereRaw($this->activeLoanDueDateExpression('sd') . " {$operator} CURDATE()");
+                ->whereRaw($this->activeLoanDueDateExpression('sd') . " {$operator} " . $this->activeLoanTodayExpression());
         });
     }
 
@@ -2260,7 +2347,7 @@ class RepaymentController extends Controller
                 ->from('loan_schedules as sd')
                 ->whereColumn('sd.loan_id', 'l.id')
                 ->where('sd.status', '!=', 1)
-                ->whereRaw($this->activeLoanDueDateExpression('sd') . " {$operator} CURDATE()");
+                ->whereRaw($this->activeLoanDueDateExpression('sd') . " {$operator} " . $this->activeLoanTodayExpression());
         });
     }
 
@@ -4463,6 +4550,20 @@ class RepaymentController extends Controller
     /**
      * Display a listing of repayments
      */
+    public function pending(Request $request)
+    {
+        $request->attributes->set('repayment_view', 'pending');
+
+        return $this->index($request);
+    }
+
+    public function history(Request $request)
+    {
+        $request->attributes->set('repayment_view', 'history');
+
+        return $this->index($request);
+    }
+
     public function index(Request $request)
     {
         // Get loan type filter (school, student, staff, or default to personal/group)
@@ -4503,13 +4604,28 @@ class RepaymentController extends Controller
                 ->with('info', 'Repayment tracking for ' . ucfirst($loanType) . ' loans will be available once loans are disbursed and repayments begin. The system is ready to track repayments for school, student, and staff loans.');
         }
 
-        // Default behavior: show successful personal repayments only.
+        $repaymentView = $request->attributes->get('repayment_view', 'completed');
+        $pageTitle = match ($repaymentView) {
+            'pending' => 'Pending Repayments',
+            'history' => 'Repayment History',
+            default => 'Loan Repayments',
+        };
+
         $query = Repayment::with(['loan.member', 'loan.product', 'loan.branch', 'addedBy'])
-            ->where(function ($q) {
+            ->where('amount', '>', 0);
+
+        if ($repaymentView === 'pending') {
+            $query->where('status', 0)
+                ->where(function ($q) {
+                    $q->whereNull('payment_status')
+                        ->orWhereNotIn('payment_status', ['Completed', 'Confirmed']);
+                });
+        } elseif ($repaymentView === 'completed') {
+            $query->where(function ($q) {
                 $q->where('status', 1)
                     ->orWhere('payment_status', 'Completed');
-            })
-            ->where('amount', '>', 0);
+            });
+        }
         
         // Search functionality
         $search = trim((string) $request->input('search', ''));
@@ -4617,14 +4733,34 @@ class RepaymentController extends Controller
             });
         }
 
-        $totals = $this->calculateRepaymentKpiTotalsFast($request, $kpiStart, $kpiEnd, (float) $feesQuery->sum('amount'));
+        if ($repaymentView === 'completed') {
+            $totals = $this->calculateRepaymentKpiTotalsFast($request, $kpiStart, $kpiEnd, (float) $feesQuery->sum('amount'));
+        } else {
+            $summary = (clone $query)
+                ->selectRaw('COUNT(*) as record_count, COALESCE(SUM(amount), 0) as total_amount')
+                ->first();
+            $recordCount = (int) ($summary->record_count ?? 0);
+            $totalAmount = (float) ($summary->total_amount ?? 0);
+            $totals = [
+                'total_amount' => $totalAmount,
+                'total_principal' => 0,
+                'total_interest' => 0,
+                'total_penalty' => 0,
+                'total_fees' => 0,
+                'record_count' => $recordCount,
+                'average_payment' => $recordCount > 0 ? $totalAmount / $recordCount : 0,
+            ];
+        }
 
         $repayments = (clone $query)
             ->orderBy('date_created', 'desc')
             ->paginate($perPage)
             ->withQueryString();
 
-        return view('admin.repayments.index', compact('repayments', 'branches', 'totals', 'loanType', 'kpiMonth', 'kpiPeriodLabel'));
+        return view('admin.repayments.index', compact(
+            'repayments', 'branches', 'totals', 'loanType', 'kpiMonth',
+            'kpiPeriodLabel', 'repaymentView', 'pageTitle'
+        ));
     }
 
     /**

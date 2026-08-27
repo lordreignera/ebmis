@@ -8,6 +8,7 @@ use App\Models\Investor;
 use App\Models\Country;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
 class InvestmentController extends Controller
@@ -111,6 +112,13 @@ class InvestmentController extends Controller
         return view('admin.investments.create-investor', compact('countries'));
     }
 
+    public function editInvestor(Investor $investor)
+    {
+        $countries = Country::orderBy('name')->get();
+
+        return view('admin.investments.create-investor', compact('countries', 'investor'));
+    }
+
     /**
      * Store a newly created investor
      */
@@ -133,6 +141,8 @@ class InvestmentController extends Controller
             'dob' => 'required|date'
         ]);
 
+        $validated['description'] = $validated['description'] ?? '';
+
         // Generate passcode
         $validated['passcode'] = rand(100000, 999999);
         $validated['status'] = 1; // Active by default
@@ -141,6 +151,58 @@ class InvestmentController extends Controller
 
         return redirect()->route('admin.investments.investors')
                         ->with('success', 'Investor created successfully.');
+    }
+
+    public function updateInvestor(Request $request, Investor $investor)
+    {
+        $validated = $request->validate([
+            'title' => 'required|integer|in:1,2,3,4,5',
+            'fname' => 'required|string|max:200',
+            'lname' => 'required|string|max:200',
+            'address' => 'required|string|max:500',
+            'city' => 'required|string|max:500',
+            'country' => 'required|exists:countries,id',
+            'zip' => 'nullable|string|max:100',
+            'email' => ['required', 'email', 'max:500', Rule::unique('investors', 'email')->ignore($investor->id)],
+            'phone' => 'required|string|max:100',
+            'gender' => 'required|string|in:Male,Female',
+            'IDtype' => 'required|string|max:500',
+            'IDnumber' => 'required|string|max:500',
+            'description' => 'nullable|string',
+            'dob' => 'required|date',
+            'status' => 'required|integer|in:0,1,2,3',
+        ]);
+
+        $validated['description'] = $validated['description'] ?? '';
+        $investor->update($validated);
+
+        return redirect()->route('admin.investments.show-investor', $investor)
+            ->with('success', 'Investor updated successfully.');
+    }
+
+    public function activateInvestor(Investor $investor)
+    {
+        $investor->update([
+            'status' => 1,
+            'soft_delete' => 0,
+            'del_user' => null,
+            'del_comments' => null,
+        ]);
+
+        return redirect()->back()->with('success', 'Investor activated successfully.');
+    }
+
+    public function deactivateInvestor(Request $request, Investor $investor)
+    {
+        $validated = $request->validate(['reason' => 'nullable|string|max:100']);
+
+        $investor->update([
+            'status' => 3,
+            'del_user' => auth()->id(),
+            'del_comments' => $validated['reason'] ?? 'Deactivated by administrator',
+        ]);
+
+        return redirect()->back()->with('success', 'Investor deactivated successfully.');
     }
 
     /**
@@ -312,6 +374,65 @@ class InvestmentController extends Controller
 
         return redirect()->route('admin.investments.show-investment', $investment->id)
                         ->with('success', 'Investment updated successfully.');
+    }
+
+    /**
+     * Cancel an investment without erasing its financial history.
+     */
+    public function destroyInvestment(Investment $investment)
+    {
+        if ((int) $investment->status === 3) {
+            return redirect()->back()->with('error', 'Investment is already cancelled.');
+        }
+
+        $investment->update([
+            'status' => 3,
+            'details' => trim((string) $investment->details . "\nCancelled by " . (auth()->user()->name ?? 'administrator') . ' on ' . now()->format('Y-m-d H:i')),
+        ]);
+
+        return redirect()->route('admin.investments.show-investor', $investment->userid)
+            ->with('success', 'Investment cancelled successfully. Its financial history was retained.');
+    }
+
+    public function getInvestorPortfolio(Investor $investor)
+    {
+        $investments = $investor->investments()->orderByDesc('id')->get();
+
+        return response()->json([
+            'investor' => [
+                'id' => $investor->id,
+                'name' => $investor->full_name,
+                'status' => $investor->status_name,
+            ],
+            'summary' => [
+                'count' => $investments->count(),
+                'active_count' => $investments->where('status', 1)->count(),
+                'total_invested' => (float) $investments->sum('amount'),
+                'projected_interest' => (float) $investments->sum('interest'),
+            ],
+            'investments' => $investments->map(fn (Investment $investment) => [
+                'id' => $investment->id,
+                'name' => $investment->name,
+                'amount' => (float) $investment->amount,
+                'interest' => (float) $investment->interest,
+                'status' => $investment->status_name,
+                'start' => $investment->start,
+                'end' => $investment->end,
+            ])->values(),
+        ]);
+    }
+
+    public function getInvestmentStatistics()
+    {
+        return response()->json([
+            'total_investors' => Investor::notDeleted()->count(),
+            'active_investors' => Investor::notDeleted()->active()->count(),
+            'total_investments' => Investment::count(),
+            'active_investments' => Investment::active()->count(),
+            'pending_investments' => Investment::pending()->count(),
+            'total_amount' => (float) Investment::sum(DB::raw('CAST(amount AS DECIMAL(15,2))')),
+            'projected_interest' => (float) Investment::sum(DB::raw('CAST(interest AS DECIMAL(15,2))')),
+        ]);
     }
 
     /**

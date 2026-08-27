@@ -46,15 +46,39 @@ class SavingController extends Controller
 
         // Filter by product
         if ($request->has('product_id') && $request->product_id) {
-            $query->where('product_id', $request->product_id);
+            $query->where('pdt_id', $request->product_id);
         }
 
-        $savings = $query->orderBy('created_at', 'desc')->paginate(20);
+        $savings = $query->orderBy('datecreated', 'desc')->paginate(20)->withQueryString();
 
         $branches = Branch::active()->get();
         $products = SavingsProduct::active()->get();
 
-        return view('admin.savings.index', compact('savings', 'branches', 'products'));
+        $pageTitle = $request->attributes->get('savings_page_title', 'Savings Accounts');
+
+        return view('admin.savings.index', compact('savings', 'branches', 'products', 'pageTitle'));
+    }
+
+    /**
+     * Display savings deposits awaiting confirmation.
+     */
+    public function pending(Request $request)
+    {
+        $request->merge(['status' => 0]);
+        $request->attributes->set('savings_page_title', 'Pending Savings');
+
+        return $this->index($request);
+    }
+
+    /**
+     * Display confirmed savings deposits.
+     */
+    public function approved(Request $request)
+    {
+        $request->merge(['status' => 1]);
+        $request->attributes->set('savings_page_title', 'Approved Savings');
+
+        return $this->index($request);
     }
 
     /**

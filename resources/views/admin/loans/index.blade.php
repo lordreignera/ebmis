@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', ucfirst($loanType ?? 'All') . ' Loans' . (isset($repayPeriod) && $repayPeriod !== 'all' ? ' (' . ucfirst($repayPeriod) . ')' : ''))
+@section('title', $portfolioTitle ?? (ucfirst($loanType ?? 'All') . ' Loans' . (isset($repayPeriod) && $repayPeriod !== 'all' ? ' (' . ucfirst($repayPeriod) . ')' : '')))
 
 @section('content')
 <div class="container-fluid">
@@ -10,7 +10,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h3 class="card-title mb-0">
                         <i class="mdi mdi-cash-multiple"></i> 
-                        {{ ucfirst($loanType ?? 'All') }} Loan Portfolio
+                        {{ $portfolioTitle ?? (ucfirst($loanType ?? 'All') . ' Loan Portfolio') }}
                         @if(isset($repayPeriod) && $repayPeriod !== 'all')
                             <span class="badge bg-info">{{ ucfirst($repayPeriod) }}</span>
                         @endif
@@ -82,7 +82,7 @@
                                     <div class="d-flex justify-content-between">
                                         <div>
                                             <h4 class="mb-0">{{ $stats['disbursed'] ?? 0 }}</h4>
-                                            <small>Disbursed</small>
+                                            <small>Active / Disbursed</small>
                                         </div>
                                         <i class="mdi mdi-cash-usd mdi-24px"></i>
                                     </div>
@@ -95,7 +95,7 @@
                                     <div class="d-flex justify-content-between">
                                         <div>
                                             <h4 class="mb-0">{{ $stats['completed'] ?? 0 }}</h4>
-                                            <small>Completed</small>
+                                            <small>Closed</small>
                                         </div>
                                         <i class="mdi mdi-check-all mdi-24px"></i>
                                     </div>
@@ -117,46 +117,51 @@
                         </div>
                     </div>
 
-                    <!-- Quick Action Tabs -->
+                    <!-- Loan lifecycle navigation -->
                     <div class="row mb-3">
                         <div class="col-md-12">
                             <div class="card">
                                 <div class="card-body">
-                                    <ul class="nav nav-pills nav-fill">
+                                    <ul class="nav nav-pills nav-fill flex-wrap gap-1">
                                         <li class="nav-item">
-                                            <a class="nav-link {{ !request('filter') ? 'active' : '' }}" 
+                                            <a class="nav-link {{ request()->routeIs('admin.loans.index') && request('status') === null ? 'active' : '' }}"
                                                href="{{ route('admin.loans.index') }}">
                                                 <i class="mdi mdi-view-list"></i> All Loans
                                             </a>
                                         </li>
                                         <li class="nav-item">
-                                            <a class="nav-link {{ request('filter') === 'pending' ? 'active' : '' }}" 
-                                               href="{{ route('admin.loans.index') }}?filter=pending">
-                                                <i class="mdi mdi-clock"></i> Pending Approvals
+                                            <a class="nav-link {{ request('status') === '0' ? 'active' : '' }}" href="{{ route('admin.portfolio.pending') }}">
+                                                <i class="mdi mdi-clock"></i> Pending
                                             </a>
                                         </li>
                                         <li class="nav-item">
-                                            <a class="nav-link {{ request('filter') === 'approved' ? 'active' : '' }}" 
-                                               href="{{ route('admin.loans.index') }}?filter=approved">
-                                                <i class="mdi mdi-check-circle"></i> Approved Loans
+                                            <a class="nav-link {{ request('status') === '1' ? 'active' : '' }}" href="{{ route('admin.portfolio.approved') }}">
+                                                <i class="mdi mdi-check-circle"></i> Approved
                                             </a>
                                         </li>
                                         <li class="nav-item">
-                                            <a class="nav-link {{ request('filter') === 'disbursed' ? 'active' : '' }}" 
-                                               href="{{ route('admin.loans.index') }}?filter=disbursed">
-                                                <i class="mdi mdi-cash-usd"></i> Disbursed Loans
+                                            <a class="nav-link" href="{{ route('admin.portfolio.running') }}">
+                                                <i class="mdi mdi-cash-usd"></i> Active
                                             </a>
                                         </li>
                                         <li class="nav-item">
-                                            <a class="nav-link {{ request('filter') === 'due' ? 'active' : '' }}" 
-                                               href="{{ route('admin.loans.index') }}?filter=due">
-                                                <i class="mdi mdi-alert-circle"></i> Due Loans
+                                            <a class="nav-link {{ request('status') === '3' ? 'active' : '' }}" href="{{ route('admin.portfolio.paid') }}">
+                                                <i class="mdi mdi-check-all"></i> Closed
                                             </a>
                                         </li>
                                         <li class="nav-item">
-                                            <a class="nav-link {{ request('filter') === 'overdue' ? 'active' : '' }}" 
-                                               href="{{ route('admin.loans.index') }}?filter=overdue">
-                                                <i class="mdi mdi-alert"></i> Overdue Loans
+                                            <a class="nav-link {{ request('status') === '4' ? 'active' : '' }}" href="{{ route('admin.portfolio.rejected') }}">
+                                                <i class="mdi mdi-close-circle"></i> Rejected
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link {{ request()->routeIs('admin.portfolio.restructured') ? 'active' : '' }}" href="{{ route('admin.portfolio.restructured') }}">
+                                                <i class="mdi mdi-file-refresh"></i> Restructured
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link {{ request('status') === '6' ? 'active' : '' }}" href="{{ route('admin.portfolio.stopped') }}">
+                                                <i class="mdi mdi-stop-circle"></i> Stopped
                                             </a>
                                         </li>
                                     </ul>
@@ -170,7 +175,7 @@
                         <div class="col-md-12">
                             <div class="card">
                                 <div class="card-body">
-                                    <form method="GET" action="{{ route('admin.loans.index') }}" class="row g-3">
+                                    <form method="GET" action="{{ url()->current() }}" class="row g-3">
                                         <div class="col-md-2">
                                             <select name="product_id" class="form-select">
                                                 <option value="">All Products</option>
@@ -193,13 +198,16 @@
                                         </div>
                                         <div class="col-md-2">
                                             <select name="status" class="form-select">
-                                                <option value="">All Status</option>
+                                                <option value="">{{ ($isRestructuredPortfolio ?? false) ? 'All Current States' : 'All Status' }}</option>
                                                 <option value="0" {{ request('status') === '0' ? 'selected' : '' }}>Pending</option>
                                                 <option value="1" {{ request('status') === '1' ? 'selected' : '' }}>Approved</option>
-                                                <option value="2" {{ request('status') === '2' ? 'selected' : '' }}>Disbursed</option>
-                                                <option value="3" {{ request('status') === '3' ? 'selected' : '' }}>Completed</option>
+                                                <option value="2" {{ request('status') === '2' ? 'selected' : '' }}>Active / Disbursed</option>
+                                                <option value="3" {{ request('status') === '3' ? 'selected' : '' }}>Closed</option>
                                                 <option value="4" {{ request('status') === '4' ? 'selected' : '' }}>Rejected</option>
-                                                <option value="5" {{ request('status') === '5' ? 'selected' : '' }}>Restructured</option>
+                                                @unless($isRestructuredPortfolio ?? false)
+                                                    <option value="5" {{ request('status') === '5' ? 'selected' : '' }}>Restructured</option>
+                                                @endunless
+                                                <option value="6" {{ request('status') === '6' ? 'selected' : '' }}>Stopped</option>
                                             </select>
                                         </div>
                                         <div class="col-md-2">
@@ -217,7 +225,7 @@
                                                 <button type="submit" class="btn btn-primary">
                                                     <i class="mdi mdi-magnify"></i>
                                                 </button>
-                                                <a href="{{ route('admin.loans.index') }}" class="btn btn-outline-secondary">
+                                                <a href="{{ url()->current() }}" class="btn btn-outline-secondary">
                                                     <i class="mdi mdi-refresh"></i>
                                                 </a>
                                             </div>
@@ -294,24 +302,39 @@
                                         <td>{{ $loan->period }} {{ $loan->period_type ?? 'days' }}</td>
                                         <td>
                                             @php
-                                                $statusClass = match($loan->status) {
+                                                $operationalStatus = (int) $loan->status;
+                                                $operationalStatusText = match($operationalStatus) {
+                                                    0 => 'Pending',
+                                                    1 => 'Approved — Awaiting Disbursement',
+                                                    2 => 'Active / Disbursed',
+                                                    3 => 'Closed',
+                                                    4 => 'Rejected',
+                                                    5 => 'Restructured',
+                                                    6 => 'Stopped',
+                                                    default => 'Unknown state'
+                                                };
+
+                                                $statusClass = match($operationalStatus) {
                                                     0 => 'status-pending',
                                                     1 => 'status-approved',
                                                     2 => 'status-disbursed',
                                                     3 => 'status-verified',
                                                     4 => 'status-not-verified',
+                                                    5 => 'status-restructured',
+                                                    6 => 'status-stopped',
                                                     default => 'status-not-verified'
                                                 };
-                                                $statusText = match($loan->status) {
-                                                    0 => 'Pending',
-                                                    1 => 'Approved for Disbursement',
-                                                    2 => 'Disbursed',
-                                                    3 => 'Completed',
-                                                    4 => 'Rejected',
-                                                    default => 'Unknown'
-                                                };
+                                                $statusText = $operationalStatusText;
+
+                                                if ($isRestructuredPortfolio ?? false) {
+                                                    $statusClass = 'status-restructured';
+                                                    $statusText = 'Restructured';
+                                                }
                                             @endphp
                                             <span class="status-badge {{ $statusClass }}">{{ $statusText }}</span>
+                                            @if($isRestructuredPortfolio ?? false)
+                                                <br><small class="text-muted">Current state: {{ $operationalStatusText }}</small>
+                                            @endif
                                             
                                             @if($loan->member->status !== 'approved')
                                                 <br><small class="text-danger">

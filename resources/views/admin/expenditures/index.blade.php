@@ -3,15 +3,17 @@
 @section('title', 'Expenditures')
 
 @section('content')
-@php($canManageStaffPaymentRollout = auth()->user()->canManageStaffPaymentRollout())
-@php($statusOptions = [
-    'pending' => 'Pending approval',
-    'approved' => 'Approved, pending payment',
-    'payment_pending' => 'Payment pending',
-    'payment_failed' => 'Payment failed',
-    'paid' => 'Approved and paid',
-    'rejected' => 'Rejected',
-])
+@php
+    $canManageStaffPaymentRollout = auth()->user()->canManageStaffPaymentRollout();
+    $statusOptions = [
+        'pending' => 'Pending approval',
+        'approved' => 'Approved, pending payment',
+        'payment_pending' => 'Payment pending',
+        'payment_failed' => 'Payment failed',
+        'paid' => 'Approved and paid',
+        'rejected' => 'Rejected',
+    ];
+@endphp
 <div class="container-fluid expenditure-page">
     @php
         $expenditureActions = ($canManageStaffPaymentRollout

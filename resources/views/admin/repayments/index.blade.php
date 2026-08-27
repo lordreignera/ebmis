@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'Loan Repayments')
+@section('title', $pageTitle ?? 'Loan Repayments')
 
 @push('styles')
 <style>
@@ -275,7 +275,7 @@
 <div class="container-fluid px-4 repayment-page">
     <div class="repayment-toolbar">
         <div>
-            <h1 class="h3 mb-1 text-gray-800">Loan Repayments</h1>
+            <h1 class="h3 mb-1 text-gray-800">{{ $pageTitle ?? 'Loan Repayments' }}</h1>
             <p class="text-muted mb-0">Filtered repayment records and collection KPIs</p>
         </div>
         <a href="{{ route('admin.repayments.create', $resetParams) }}" class="btn btn-primary">

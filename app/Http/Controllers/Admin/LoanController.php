@@ -45,6 +45,7 @@ class LoanController extends Controller
             ->selectRaw("
                 id, code, member_id, product_type, principal, interest, period,
                 installment as max_installment, branch_id, status, verified, added_by,
+                restructured, OLoanID,
                 datecreated as loan_date,
                 datecreated as created_at, NULL as updated_at,
                 'personal' as loan_type_display,
@@ -75,9 +76,36 @@ class LoanController extends Controller
                                   ->orWhere('code', 'like', "%{$search}%");
                   });
             });
+
+            $groupLoans->where(function($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                  ->orWhereHas('group', function($groupQuery) use ($search) {
+                      $groupQuery->where('name', 'like', "%{$search}%")
+                                 ->orWhere('code', 'like', "%{$search}%");
+                  });
+            });
         }
 
-        // Apply status filter
+        // Apply loan-type filter to the two-table register.
+        if ($request->type === 'personal') {
+            $groupLoans->whereRaw('1 = 0');
+        } elseif ($request->type === 'group') {
+            $personalLoans->whereRaw('1 = 0');
+        }
+
+        $isRestructuredPortfolio = (bool) $request->attributes->get('portfolio_restructured_replacements', false);
+
+        if ($isRestructuredPortfolio) {
+            // The original facility is status 5. Display its R-prefixed
+            // replacement, which remains active/closed according to its real
+            // operational state and is the record used for repayments.
+            $personalLoans
+                ->where('restructured', 1)
+                ->where('code', 'like', 'R%');
+            $groupLoans->whereRaw('1 = 0');
+        }
+
+        // Apply the requested operational status filter, when supplied.
         if ($request->has('status') && $request->status !== '') {
             $personalLoans->where('status', $request->status);
             $groupLoans->where('status', $request->status);
@@ -87,6 +115,21 @@ class LoanController extends Controller
         if ($request->has('branch_id') && $request->branch_id) {
             $personalLoans->where('branch_id', $request->branch_id);
             $groupLoans->where('branch_id', $request->branch_id);
+        }
+
+        if ($request->filled('product_id')) {
+            $personalLoans->where('product_type', $request->product_id);
+            $groupLoans->where('product_type', $request->product_id);
+        }
+
+        if ($request->filled('date_from')) {
+            $personalLoans->whereDate('datecreated', '>=', $request->date_from);
+            $groupLoans->whereDate('datecreated', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $personalLoans->whereDate('datecreated', '<=', $request->date_to);
+            $groupLoans->whereDate('datecreated', '<=', $request->date_to);
         }
 
         // Combine all loans and paginate
@@ -159,6 +202,30 @@ class LoanController extends Controller
         // Get statistics from all tables
         $personalStats = $this->loanAccessService->scopeLoanQuery(PersonalLoan::query());
         $groupStats = $this->loanAccessService->scopeLoanQuery(GroupLoan::query());
+
+        if ($loanType === 'personal') {
+            $groupStats->whereRaw('1 = 0');
+        } elseif ($loanType === 'group') {
+            $personalStats->whereRaw('1 = 0');
+        }
+
+        if ($isRestructuredPortfolio) {
+            $personalStats
+                ->where('restructured', 1)
+                ->where('code', 'like', 'R%');
+            $groupStats->whereRaw('1 = 0');
+        }
+
+        if ($request->filled('branch_id')) {
+            $personalStats->where('branch_id', $request->branch_id);
+            $groupStats->where('branch_id', $request->branch_id);
+        }
+
+        if ($request->filled('product_id')) {
+            $personalStats->where('product_type', $request->product_id);
+            $groupStats->where('product_type', $request->product_id);
+        }
+
         $stats = [
             'total' => (clone $personalStats)->count() + (clone $groupStats)->count(),
             'pending' => (clone $personalStats)->where('status', 0)->count() + (clone $groupStats)->where('status', 0)->count(),
@@ -168,7 +235,12 @@ class LoanController extends Controller
             'total_value' => (clone $personalStats)->sum('principal') + (clone $groupStats)->sum('principal'),
         ];
 
-        return view('admin.loans.index', compact('loans', 'branches', 'products', 'stats', 'loanType', 'repayPeriod'));
+        $portfolioTitle = $request->attributes->get('portfolio_title');
+
+        return view('admin.loans.index', compact(
+            'loans', 'branches', 'products', 'stats', 'loanType', 'repayPeriod', 'portfolioTitle',
+            'isRestructuredPortfolio'
+        ));
     }
 
     /**

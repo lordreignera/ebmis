@@ -9,6 +9,15 @@
     $canManageSensitiveLoanOperations = $user->isSuperAdmin()
         || in_array($user->user_type, ['administrator', 'admin'], true)
         || $user->hasRole(['Administrator', 'admin']);
+    $loanStates = [
+        ['code' => 0, 'label' => 'Pending', 'detail' => 'Awaiting review', 'icon' => 'mdi-clock-outline', 'class' => 'pending', 'route' => 'admin.portfolio.pending'],
+        ['code' => 1, 'label' => 'Approved', 'detail' => 'Awaiting disbursement', 'icon' => 'mdi-check-decagram', 'class' => 'approved', 'route' => 'admin.portfolio.approved'],
+        ['code' => 2, 'label' => 'Active', 'detail' => 'Disbursed and collecting', 'icon' => 'mdi-play-circle', 'class' => 'active', 'route' => 'admin.portfolio.running'],
+        ['code' => 3, 'label' => 'Closed', 'detail' => 'Fully settled', 'icon' => 'mdi-check-circle', 'class' => 'closed', 'route' => 'admin.portfolio.paid'],
+        ['code' => 4, 'label' => 'Rejected', 'detail' => 'Application declined', 'icon' => 'mdi-close-octagon', 'class' => 'rejected', 'route' => 'admin.portfolio.rejected'],
+        ['code' => '5 → R loan', 'label' => 'Restructured', 'detail' => 'Replacement facility', 'icon' => 'mdi-file-refresh', 'class' => 'restructured', 'route' => 'admin.portfolio.restructured'],
+        ['code' => 6, 'label' => 'Stopped', 'detail' => 'Collections stopped', 'icon' => 'mdi-stop-circle', 'class' => 'stopped', 'route' => 'admin.portfolio.stopped'],
+    ];
 @endphp
 
 @include('admin.partials.page-header', [
@@ -114,21 +123,31 @@
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
-                        <h4 class="card-title mb-2">Portfolio Analysis</h4>
-                        <p class="text-muted">Portfolio slices and performance views</p>
+                        <h4 class="card-title mb-2">Loan Lifecycle & Portfolio</h4>
+                        <p class="text-muted">Loan states and the linked restructured replacement facility</p>
                     </div>
                     <div class="icon-lg text-info"><i class="mdi mdi-chart-box"></i></div>
                 </div>
-                <div class="module-action-grid mt-3">
-                    <a href="{{ route('admin.loans.active') }}?per_page=20" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-play-circle"></i><span>Running Loans</span></a>
-                    <a href="{{ route('admin.portfolio.pending') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-clock-outline"></i><span>Pending Portfolio</span></a>
-                    <a href="{{ route('admin.portfolio.overdue') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-alarm"></i><span>Overdue Loans</span></a>
-                    <a href="{{ route('admin.portfolio.paid') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-check-circle"></i><span>Closed Loans</span></a>
-                    <a href="{{ route('admin.portfolio.bad') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-alert-circle"></i><span>Bad Loans</span></a>
+                <div class="portfolio-state-grid mt-3">
+                    @foreach($loanStates as $state)
+                        <a href="{{ route($state['route']) }}" class="portfolio-state-card state-{{ $state['class'] }}">
+                            <span class="portfolio-state-code">Status {{ $state['code'] }}</span>
+                            <i class="mdi {{ $state['icon'] }}"></i>
+                            <strong>{{ $state['label'] }}</strong>
+                            <small>{{ $state['detail'] }}</small>
+                        </a>
+                    @endforeach
+                    <a href="{{ route('admin.portfolio.overdue') }}" class="portfolio-state-card state-overdue">
+                        <span class="portfolio-state-code">Derived</span>
+                        <i class="mdi mdi-alarm"></i>
+                        <strong>Overdue</strong>
+                        <small>Active with missed dues</small>
+                    </a>
+                </div>
+                <div class="portfolio-analysis-grid mt-3 pt-3 border-top">
                     <a href="{{ route('admin.portfolio.branch') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-source-branch"></i><span>By Branch</span></a>
                     <a href="{{ route('admin.portfolio.product') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-package-variant"></i><span>By Product</span></a>
-                    <a href="{{ route('admin.portfolio.individual') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-account-box"></i><span>Personal Portfolio</span></a>
-                    <a href="{{ route('admin.portfolio.group') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-account-multiple"></i><span>Group Portfolio</span></a>
+                    <a href="{{ route('admin.portfolio.group') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-account-multiple"></i><span>Group Loans</span></a>
                 </div>
             </div>
         </div>

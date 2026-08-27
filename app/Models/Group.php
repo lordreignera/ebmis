@@ -111,6 +111,19 @@ class Group extends Model
     }
 
     /**
+     * Present the legacy numeric verification flag as an operational status.
+     * 0 = pending, 1 = active, 2 = suspended.
+     */
+    public function getStatusAttribute(): string
+    {
+        return match ((int) $this->verified) {
+            1 => 'active',
+            2 => 'suspended',
+            default => 'pending',
+        };
+    }
+
+    /**
      * Get total members count
      */
     public function getTotalMembersAttribute()

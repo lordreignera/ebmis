@@ -559,7 +559,7 @@ class SchoolLoanController extends Controller
 
         $loanTypeDisplay = ucfirst($loanType);
         
-        return view('admin.portfolio.individual', compact('loans', 'stats', 'loanType', 'loanTypeDisplay'));
+        return view('admin.portfolio.school-loans', compact('loans', 'stats', 'loanType', 'loanTypeDisplay'));
     }
 
     /**

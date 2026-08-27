@@ -3,269 +3,154 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Loan;
-use App\Models\Member;
 use App\Models\Branch;
+use App\Models\GroupLoan;
+use App\Models\PersonalLoan;
 use App\Models\Product;
+use App\Services\LoanAccessService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class PortfolioController extends Controller
 {
+    public function __construct(private LoanAccessService $loanAccessService)
+    {
+    }
+
     public function running(Request $request)
     {
-        return redirect()->route('admin.loans.active', $request->query());
+        $request->attributes->set('portfolio_title', 'Active / Disbursed Loans');
+
+        return app(RepaymentController::class)->activeLoans($request);
     }
 
     public function pending(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->whereIn('status', ['pending', 'approved']);
+        return $this->loanRegister($request, 0, 'Pending Loan Applications');
+    }
 
-        // Apply filters
-        $this->applyFilters($query, $request);
-
-        $loans = $query->paginate(20);
-        $stats = $this->getPendingLoansStats();
-
-        return view('admin.portfolio.pending', compact('loans', 'stats'));
+    public function approved(Request $request)
+    {
+        return $this->loanRegister($request, 1, 'Approved — Awaiting Disbursement');
     }
 
     public function overdue(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->where('status', 'disbursed')
-                     ->where('due_date', '<', now())
-                     ->where('outstanding_amount', '>', 0);
+        $request->merge(['status' => 'overdue']);
+        $request->attributes->set('portfolio_title', 'Overdue Active Loans');
 
-        // Apply filters
-        $this->applyFilters($query, $request);
-
-        $loans = $query->paginate(20);
-        $stats = $this->getOverdueLoansStats();
-
-        return view('admin.portfolio.overdue', compact('loans', 'stats'));
+        return app(RepaymentController::class)->activeLoans($request);
     }
 
     public function paid(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch', 'repayments'])
-                     ->where('status', 3);
-
-        // Apply filters
-        $this->applyFilters($query, $request);
-
-        $loans = $query->orderByDesc('date_closed')->paginate(20);
-        $loans->getCollection()->transform(fn ($loan) => $this->hydratePaidLoan($loan));
-        $stats = $this->getPaidLoansStats();
-
-        return view('admin.portfolio.paid', compact('loans', 'stats'));
+        return $this->loanRegister($request, 3, 'Closed Loans');
     }
 
+    /**
+     * Keep the legacy URL working, but map it to the real stopped-loan state.
+     */
     public function bad(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->whereIn('status', ['default', 'written_off']);
-
-        // Apply filters
-        $this->applyFilters($query, $request);
-
-        $loans = $query->paginate(20);
-        $stats = $this->getBadLoansStats();
-
-        return view('admin.portfolio.bad', compact('loans', 'stats'));
+        return $this->stopped($request);
     }
 
-    public function branch(Request $request)
+    public function rejected(Request $request)
     {
-        $branches = Branch::with(['loans' => function($query) {
-            $query->select('branch_id', 'status', 'loan_amount', 'outstanding_amount', 'paid_amount');
-        }])->get();
-
-        $branchStats = [];
-        foreach ($branches as $branch) {
-            $branchStats[] = [
-                'branch' => $branch,
-                'total_loans' => $branch->loans->count(),
-                'disbursed_amount' => $branch->loans->sum('loan_amount'),
-                'outstanding_amount' => $branch->loans->sum('outstanding_amount'),
-                'paid_amount' => $branch->loans->sum('paid_amount'),
-                'running_loans' => $branch->loans->where('status', 'disbursed')->where('outstanding_amount', '>', 0)->count(),
-                'overdue_loans' => $branch->loans->where('status', 'disbursed')->where('due_date', '<', now())->where('outstanding_amount', '>', 0)->count(),
-            ];
-        }
-
-        return view('admin.portfolio.branch', compact('branchStats'));
+        return $this->loanRegister($request, 4, 'Rejected Loans');
     }
 
-    public function product(Request $request)
+    public function restructured(Request $request)
     {
-        $products = Product::loanProducts()->with(['loans' => function($query) {
-            $query->select('loan_product_id', 'status', 'loan_amount', 'outstanding_amount', 'paid_amount');
-        }])->get();
+        // Status 5 belongs to the original loan that was replaced. The usable
+        // restructured facility is a separate R-prefixed loan record and keeps
+        // its operational status (normally status 2 while it is being repaid).
+        $request->attributes->set('portfolio_restructured_replacements', true);
+        $request->attributes->set('portfolio_title', 'Restructured Loans');
 
-        $productStats = [];
-        foreach ($products as $product) {
-            $productStats[] = [
-                'product' => $product,
-                'total_loans' => $product->loans->count(),
-                'disbursed_amount' => $product->loans->sum('loan_amount'),
-                'outstanding_amount' => $product->loans->sum('outstanding_amount'),
-                'paid_amount' => $product->loans->sum('paid_amount'),
-                'running_loans' => $product->loans->where('status', 'disbursed')->where('outstanding_amount', '>', 0)->count(),
-                'overdue_loans' => $product->loans->where('status', 'disbursed')->where('due_date', '<', now())->where('outstanding_amount', '>', 0)->count(),
-            ];
-        }
-
-        return view('admin.portfolio.product', compact('productStats'));
+        return app(LoanController::class)->index($request);
     }
 
-    public function individual(Request $request)
+    public function stopped(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->where('loan_type', 'individual');
+        return $this->loanRegister($request, 6, 'Stopped Loans');
+    }
 
-        // Apply filters
-        $this->applyFilters($query, $request);
+    public function branch()
+    {
+        $items = $this->loanAccessService->branchesForUser(Branch::active())
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Branch $branch) => $this->dimensionRow(
+                $branch->name,
+                'Branch',
+                ['branch_id' => $branch->id],
+                $this->loanAccessService->scopeLoanQuery(PersonalLoan::where('branch_id', $branch->id)),
+                $this->loanAccessService->scopeLoanQuery(GroupLoan::where('branch_id', $branch->id))
+            ));
 
-        $loans = $query->paginate(20);
-        $stats = $this->getIndividualLoansStats();
+        return view('admin.portfolio.dimension', [
+            'pageTitle' => 'Portfolio by Branch',
+            'pageSubtitle' => 'Loan value and lifecycle distribution for every accessible branch.',
+            'dimensionLabel' => 'Branch',
+            'items' => $items,
+        ]);
+    }
 
-        return view('admin.portfolio.individual', compact('loans', 'stats'));
+    public function product()
+    {
+        $items = Product::loanProducts()
+            ->active()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Product $product) => $this->dimensionRow(
+                $product->name,
+                'Product',
+                ['product_id' => $product->id],
+                $this->loanAccessService->scopeLoanQuery(PersonalLoan::where('product_type', $product->id)),
+                $this->loanAccessService->scopeLoanQuery(GroupLoan::where('product_type', $product->id))
+            ));
+
+        return view('admin.portfolio.dimension', [
+            'pageTitle' => 'Portfolio by Product',
+            'pageSubtitle' => 'Loan value and lifecycle distribution for every active loan product.',
+            'dimensionLabel' => 'Product',
+            'items' => $items,
+        ]);
     }
 
     public function group(Request $request)
     {
-        $query = Loan::with(['member', 'product', 'branch'])
-                     ->where('loan_type', 'group');
+        $request->merge(['type' => 'group']);
+        $request->attributes->set('portfolio_title', 'Group Loan Portfolio');
 
-        // Apply filters
-        $this->applyFilters($query, $request);
-
-        $loans = $query->paginate(20);
-        $stats = $this->getGroupLoansStats();
-
-        return view('admin.portfolio.group', compact('loans', 'stats'));
+        return app(LoanController::class)->index($request);
     }
 
-    private function applyFilters($query, Request $request)
+    private function loanRegister(Request $request, int $status, string $title)
     {
-        // Search functionality
-        if ($request->has('search') && !empty($request->search)) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('code', 'LIKE', "%{$search}%")
-                  ->orWhereHas('member', function ($q2) use ($search) {
-                      $q2->where('fname', 'LIKE', "%{$search}%")
-                         ->orWhere('lname', 'LIKE', "%{$search}%")
-                         ->orWhere('code', 'LIKE', "%{$search}%")
-                         ->orWhere('contact', 'LIKE', "%{$search}%");
-                  });
-            });
+        $request->merge(['status' => (string) $status]);
+        $request->attributes->set('portfolio_title', $title);
+
+        return app(LoanController::class)->index($request);
+    }
+
+    private function dimensionRow($name, string $type, array $filters, $personalQuery, $groupQuery): array
+    {
+        $statusCounts = [];
+
+        foreach (range(0, 6) as $status) {
+            $statusCounts[$status] = (clone $personalQuery)->where('status', $status)->count()
+                + (clone $groupQuery)->where('status', $status)->count();
         }
 
-        // Date range filtering
-        if ($request->has('start_date') && !empty($request->start_date)) {
-            $query->whereDate('date_closed', '>=', $request->start_date);
-        }
-        if ($request->has('end_date') && !empty($request->end_date)) {
-            $query->whereDate('date_closed', '<=', $request->end_date);
-        }
-
-        // Branch filtering
-        if ($request->has('branch_id') && !empty($request->branch_id)) {
-            $query->where('branch_id', $request->branch_id);
-        }
-
-        // Product filtering
-        if ($request->has('product_id') && !empty($request->product_id)) {
-            $query->where('product_type', $request->product_id);
-        }
-    }
-
-    private function getRunningLoansStats()
-    {
         return [
-            'total_loans' => Loan::where('status', 'disbursed')->where('outstanding_amount', '>', 0)->count(),
-            'total_amount' => Loan::where('status', 'disbursed')->where('outstanding_amount', '>', 0)->sum('loan_amount'),
-            'outstanding_amount' => Loan::where('status', 'disbursed')->sum('outstanding_amount'),
-            'paid_amount' => Loan::where('status', 'disbursed')->sum('paid_amount'),
-        ];
-    }
-
-    private function getPendingLoansStats()
-    {
-        return [
-            'total_pending' => Loan::whereIn('status', ['pending', 'approved'])->count(),
-            'pending_amount' => Loan::whereIn('status', ['pending', 'approved'])->sum('loan_amount'),
-            'today_applications' => Loan::whereIn('status', ['pending', 'approved'])->whereDate('created_at', today())->count(),
-        ];
-    }
-
-    private function getOverdueLoansStats()
-    {
-        return [
-            'total_overdue' => Loan::where('status', 'disbursed')->where('due_date', '<', now())->where('outstanding_amount', '>', 0)->count(),
-            'overdue_amount' => Loan::where('status', 'disbursed')->where('due_date', '<', now())->sum('outstanding_amount'),
-            'average_overdue_days' => Loan::where('status', 'disbursed')->where('due_date', '<', now())->where('outstanding_amount', '>', 0)->avg(DB::raw('DATEDIFF(NOW(), due_date)')),
-        ];
-    }
-
-    private function getPaidLoansStats()
-    {
-        $closedLoans = Loan::with('repayments')->where('status', 3)->get();
-        $averagePaymentPeriod = $closedLoans
-            ->filter(fn ($loan) => $loan->date_approved && $loan->date_closed)
-            ->avg(fn ($loan) => $loan->date_approved->diffInDays($loan->date_closed));
-
-        return [
-            'total_paid' => $closedLoans->count(),
-            'total_paid_amount' => $closedLoans->sum(fn ($loan) => (float) $loan->repayments->sum('amount')),
-            'average_payment_period' => $averagePaymentPeriod,
-        ];
-    }
-
-    private function hydratePaidLoan(Loan $loan): Loan
-    {
-        $paidAmount = (float) $loan->repayments->sum('amount');
-
-        $loan->loan_id = $loan->code;
-        $loan->loan_amount = (float) $loan->principal;
-        $loan->loan_period = $loan->period;
-        $loan->loan_type = 'personal';
-        $loan->paid_amount = $paidAmount;
-        $loan->paid_date = $loan->date_closed ?? $loan->repayments->max('date_created') ?? $loan->datecreated;
-        $loan->disbursed_at = $loan->date_approved ?? $loan->datecreated;
-        $loan->interest_rate = $loan->interest;
-        $loan->final_payment = $loan->repayments->sortByDesc('date_created')->first();
-
-        return $loan;
-    }
-
-    private function getBadLoansStats()
-    {
-        return [
-            'total_bad' => Loan::whereIn('status', ['default', 'written_off'])->count(),
-            'bad_debt_amount' => Loan::whereIn('status', ['default', 'written_off'])->sum('outstanding_amount'),
-            'written_off_amount' => Loan::where('status', 'written_off')->sum('outstanding_amount'),
-        ];
-    }
-
-    private function getIndividualLoansStats()
-    {
-        return [
-            'total_individual' => Loan::where('loan_type', 'individual')->count(),
-            'individual_amount' => Loan::where('loan_type', 'individual')->sum('loan_amount'),
-            'individual_outstanding' => Loan::where('loan_type', 'individual')->sum('outstanding_amount'),
-        ];
-    }
-
-    private function getGroupLoansStats()
-    {
-        return [
-            'total_group' => Loan::where('loan_type', 'group')->count(),
-            'group_amount' => Loan::where('loan_type', 'group')->sum('loan_amount'),
-            'group_outstanding' => Loan::where('loan_type', 'group')->sum('outstanding_amount'),
+            'name' => $name,
+            'type' => $type,
+            'filters' => $filters,
+            'total' => (clone $personalQuery)->count() + (clone $groupQuery)->count(),
+            'principal' => (float) (clone $personalQuery)->sum('principal')
+                + (float) (clone $groupQuery)->sum('principal'),
+            'statuses' => $statusCounts,
         ];
     }
 }

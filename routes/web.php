@@ -331,14 +331,14 @@ Route::middleware([
     });
     
     // NEW: Enhanced Repayment Routes for UI
-    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class)->only(['index', 'show']);
-    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class)
-        ->only(['create', 'store', 'edit', 'update', 'destroy'])
-        ->middleware('super_admin');
     Route::get('/repayments/pending', [\App\Http\Controllers\Admin\RepaymentController::class, 'pending'])->name('repayments.pending');
     Route::get('/repayments/history', [\App\Http\Controllers\Admin\RepaymentController::class, 'history'])->name('repayments.history');
     Route::get('/repayments/loan-details/{loan}', [\App\Http\Controllers\Admin\RepaymentController::class, 'getLoanDetails'])->name('repayments.loan-details');
     Route::get('/repayments/{repayment}/receipt', [\App\Http\Controllers\Admin\RepaymentController::class, 'receipt'])->name('repayments.receipt');
+    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class)->only(['index', 'show']);
+    Route::resource('repayments', \App\Http\Controllers\Admin\RepaymentController::class)
+        ->only(['create', 'store', 'edit', 'update', 'destroy'])
+        ->middleware('super_admin');
     
     // Late Fees Management
     Route::get('/late-fees', [\App\Http\Controllers\Admin\LateFeeController::class, 'index'])->name('late-fees.index');
@@ -396,12 +396,15 @@ Route::middleware([
     // Portfolio Management Routes
     Route::get('/portfolio/running', [\App\Http\Controllers\Admin\PortfolioController::class, 'running'])->name('portfolio.running');
     Route::get('/portfolio/pending', [\App\Http\Controllers\Admin\PortfolioController::class, 'pending'])->name('portfolio.pending');
+    Route::get('/portfolio/approved', [\App\Http\Controllers\Admin\PortfolioController::class, 'approved'])->name('portfolio.approved');
     Route::get('/portfolio/overdue', [\App\Http\Controllers\Admin\PortfolioController::class, 'overdue'])->name('portfolio.overdue');
     Route::get('/portfolio/paid', [\App\Http\Controllers\Admin\PortfolioController::class, 'paid'])->name('portfolio.paid');
+    Route::get('/portfolio/rejected', [\App\Http\Controllers\Admin\PortfolioController::class, 'rejected'])->name('portfolio.rejected');
+    Route::get('/portfolio/restructured', [\App\Http\Controllers\Admin\PortfolioController::class, 'restructured'])->name('portfolio.restructured');
+    Route::get('/portfolio/stopped', [\App\Http\Controllers\Admin\PortfolioController::class, 'stopped'])->name('portfolio.stopped');
     Route::get('/portfolio/bad', [\App\Http\Controllers\Admin\PortfolioController::class, 'bad'])->name('portfolio.bad');
     Route::get('/portfolio/branch', [\App\Http\Controllers\Admin\PortfolioController::class, 'branch'])->name('portfolio.branch');
     Route::get('/portfolio/product', [\App\Http\Controllers\Admin\PortfolioController::class, 'product'])->name('portfolio.product');
-    Route::get('/portfolio/individual', [\App\Http\Controllers\Admin\PortfolioController::class, 'individual'])->name('portfolio.individual');
     Route::get('/portfolio/group', [\App\Http\Controllers\Admin\PortfolioController::class, 'group'])->name('portfolio.group');
     
     // Bulk SMS Routes
@@ -452,12 +455,12 @@ Route::middleware([
     Route::get('/accounting/chart-of-accounts/download', [\App\Http\Controllers\Admin\AccountingController::class, 'downloadChartOfAccounts'])->name('accounting.chart-of-accounts.download');
     
     // Savings Management Routes
-    Route::resource('savings', \App\Http\Controllers\Admin\SavingController::class);
     Route::get('/savings/pending', [\App\Http\Controllers\Admin\SavingController::class, 'pending'])->name('savings.pending');
     Route::get('/savings/approved', [\App\Http\Controllers\Admin\SavingController::class, 'approved'])->name('savings.approved');
     Route::post('/savings/{saving}/approve', [\App\Http\Controllers\Admin\SavingController::class, 'approve'])->name('savings.approve');
     Route::post('/savings/{saving}/reject', [\App\Http\Controllers\Admin\SavingController::class, 'reject'])->name('savings.reject');
     Route::post('/savings/check-payment-status', [\App\Http\Controllers\Admin\SavingController::class, 'checkPaymentStatus'])->name('savings.check-payment-status');
+    Route::resource('savings', \App\Http\Controllers\Admin\SavingController::class);
     
     // Investment Management Routes
     Route::prefix('investments')->name('investments.')->group(function () {
