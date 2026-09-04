@@ -31,6 +31,11 @@ class ModuleNavigationController extends Controller
         return view('admin.navigation.reports-accounting');
     }
 
+    public function expenditures()
+    {
+        return view('admin.navigation.expenditures');
+    }
+
     public function investments()
     {
         return view('admin.navigation.investments');

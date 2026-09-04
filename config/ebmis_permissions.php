@@ -160,6 +160,7 @@ return [
             'admin.modules.loan-portfolio',
             'admin.modules.collections',
             'admin.modules.reports-accounting',
+            'admin.modules.expenditures',
         ]),
         $routes('manage-investments', ['admin.modules.investments']),
         $routes('manage-dashboard-events', ['admin.dashboard-events.store']),

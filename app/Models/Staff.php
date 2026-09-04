@@ -27,6 +27,7 @@ class Staff extends Model
         'district',
         'next_of_kin_name',
         'next_of_kin_phone',
+        'next_of_kin_relationship',
         'staff_type',
         'position',
         'department',
@@ -89,8 +90,15 @@ class Staff extends Model
     public static function generateStaffId($schoolId)
     {
         $year = date('Y');
-        $count = self::where('school_id', $schoolId)->whereYear('created_at', $year)->count() + 1;
-        return 'STF' . $year . str_pad($count, 4, '0', STR_PAD_LEFT);
+        $schoolCode = str_pad((string) $schoolId, 4, '0', STR_PAD_LEFT);
+        $count = self::withTrashed()->where('school_id', $schoolId)->whereYear('created_at', $year)->count() + 1;
+
+        do {
+            $staffId = 'STF' . $year . $schoolCode . str_pad((string) $count, 4, '0', STR_PAD_LEFT);
+            $count++;
+        } while (self::withTrashed()->where('staff_id', $staffId)->exists());
+
+        return $staffId;
     }
 
     /**

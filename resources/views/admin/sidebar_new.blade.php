@@ -264,6 +264,17 @@
     </li>
     @endif
 
+    @if($sidebarCan('manage-expenditures') || $sidebarCanManageStaffPaymentRollout)
+    <li class="nav-item menu-items">
+      <a class="nav-link" href="{{ route('admin.modules.expenditures') }}">
+        <span class="menu-icon">
+          <i class="mdi mdi-cash-minus"></i>
+        </span>
+        <span class="menu-title">Expenses & Staff Pay</span>
+      </a>
+    </li>
+    @endif
+
     @if($sidebarCan('manage-investments'))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.investments') }}">

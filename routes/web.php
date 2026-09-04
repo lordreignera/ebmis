@@ -138,6 +138,7 @@ Route::middleware([
         Route::get('/loan-portfolio', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'loanPortfolio'])->name('loan-portfolio');
         Route::get('/collections', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'collections'])->name('collections');
         Route::get('/reports-accounting', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'reportsAccounting'])->name('reports-accounting');
+        Route::get('/expenditures', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'expenditures'])->name('expenditures');
         Route::get('/investments', [\App\Http\Controllers\Admin\ModuleNavigationController::class, 'investments'])->name('investments');
     });
     

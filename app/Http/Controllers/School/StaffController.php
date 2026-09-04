@@ -86,6 +86,7 @@ class StaffController extends Controller
             'district' => 'nullable|string|max:100',
             'next_of_kin_name' => 'nullable|string|max:255',
             'next_of_kin_phone' => 'nullable|string|max:50',
+            'next_of_kin_relationship' => 'nullable|string|max:100',
             'staff_type' => 'required|in:Teaching,Non-Teaching',
             'position' => 'required|string|max:255',
             'department' => 'nullable|string|max:255',
@@ -175,6 +176,7 @@ class StaffController extends Controller
             'district' => 'nullable|string|max:100',
             'next_of_kin_name' => 'nullable|string|max:255',
             'next_of_kin_phone' => 'nullable|string|max:50',
+            'next_of_kin_relationship' => 'nullable|string|max:100',
             'staff_type' => 'required|in:Teaching,Non-Teaching',
             'position' => 'required|string|max:255',
             'department' => 'nullable|string|max:255',
@@ -205,13 +207,9 @@ class StaffController extends Controller
         // Handle file uploads
         if ($request->hasFile('cv')) {
             if ($staff->cv_path) {
-                $oldPath = public_path($staff->cv_path);
-                if (file_exists($oldPath)) {
-                    unlink($oldPath);
-                }
+                FileStorageService::deleteFile($staff->cv_path);
             }
-            
-            $file = $request->file('cv');
+
             $validated['cv_path'] = FileStorageService::storeFile(
                 $request->file('cv'),
                 'staff-documents/' . $staff->school_id
@@ -255,22 +253,13 @@ class StaffController extends Controller
 
         // Delete uploaded files
         if ($staff->cv_path) {
-            $cvPath = public_path($staff->cv_path);
-            if (file_exists($cvPath)) {
-                unlink($cvPath);
-            }
+            FileStorageService::deleteFile($staff->cv_path);
         }
         if ($staff->certificate_path) {
-            $certPath = public_path($staff->certificate_path);
-            if (file_exists($certPath)) {
-                unlink($certPath);
-            }
+            FileStorageService::deleteFile($staff->certificate_path);
         }
         if ($staff->id_photo_path) {
-            $photoPath = public_path($staff->id_photo_path);
-            if (file_exists($photoPath)) {
-                unlink($photoPath);
-            }
+            FileStorageService::deleteFile($staff->id_photo_path);
         }
 
         $staff->delete();

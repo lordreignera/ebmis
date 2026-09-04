@@ -147,6 +147,10 @@ class ExpenditureController extends Controller
             return back()->with('error', 'Only expenditures pending approval can be approved.');
         }
 
+        if ($this->isSameUser($request, $expenditure->requested_by)) {
+            return back()->with('error', 'Maker-checker control: the requester cannot approve this expenditure.');
+        }
+
         $expenditure->update([
             'status' => Expenditure::STATUS_APPROVED,
             'approved_by' => $request->user()?->id,
@@ -190,6 +194,14 @@ class ExpenditureController extends Controller
 
         if (!$expenditure->canBePaid()) {
             return back()->with('error', 'This expenditure cannot be paid in its current status.');
+        }
+
+        if ($this->isSameUser($request, $expenditure->requested_by)) {
+            return back()->with('error', 'Maker-checker control: the requester cannot pay this expenditure.');
+        }
+
+        if ($this->isSameUser($request, $expenditure->approved_by)) {
+            return back()->with('error', 'Maker-checker control: the approver cannot also pay this expenditure.');
         }
 
         $request->merge([
@@ -469,11 +481,9 @@ class ExpenditureController extends Controller
             'assigned_user_id' => $row['user_id'],
             'amount' => $payoutAmount,
             'expense_date' => now()->toDateString(),
-            'status' => Expenditure::STATUS_APPROVED,
+            'status' => Expenditure::STATUS_PENDING,
             'payment_method' => self::MOBILE_MONEY_METHOD,
             'payment_channel' => 'mobile_money',
-            'approved_by' => $request->user()?->id,
-            'approved_at' => now(),
             'staff_payment_period_start' => $periodStart,
             'staff_payment_period_end' => $periodEnd,
             'notes' => trim(($validated['notes'] ?? '') . "\nStaff payment basis: "
@@ -499,7 +509,7 @@ class ExpenditureController extends Controller
 
         return redirect()
             ->route('admin.expenditures.show', $expense)
-            ->with('success', 'Individual staff payment created. Complete the mobile money payment from this page.');
+            ->with('success', 'Individual staff payment created and is pending approval.');
     }
 
     public function showRollout(ExpenditureRollout $rollout)
@@ -521,6 +531,10 @@ class ExpenditureController extends Controller
 
         if ($rollout->status !== 'draft') {
             return back()->with('error', 'Only draft rollouts can be approved.');
+        }
+
+        if ($this->isSameUser($request, $rollout->generated_by)) {
+            return back()->with('error', 'Maker-checker control: the rollout generator cannot approve this rollout.');
         }
 
         $rollout->update([
@@ -546,6 +560,18 @@ class ExpenditureController extends Controller
 
         if ($rollout->status === 'payment_failed') {
             return back()->with('error', 'This rollout has failed mobile-money payouts. Open each failed payout from the rollout and retry it from the expenditure page.');
+        }
+
+        if ($rollout->status !== 'approved') {
+            return back()->with('error', 'Approve this staff payment rollout before sending mobile-money payments.');
+        }
+
+        if ($this->isSameUser($request, $rollout->generated_by)) {
+            return back()->with('error', 'Maker-checker control: the rollout generator cannot pay this rollout.');
+        }
+
+        if ($this->isSameUser($request, $rollout->approved_by)) {
+            return back()->with('error', 'Maker-checker control: the rollout approver cannot also pay this rollout.');
         }
 
         $request->merge([
@@ -622,12 +648,27 @@ class ExpenditureController extends Controller
             return back()->withInput()->with('error', 'Mobile-money payout has invalid staff phone numbers for: ' . $invalidPhones->implode(', '));
         }
 
-        $createdExpenses = DB::transaction(function () use ($request, $rollout, $validated) {
-            if ($rollout->status !== 'approved') {
-                $rollout->approved_by = $request->user()?->id;
-                $rollout->approved_at = now();
-            }
+        $duplicatePayments = $payoutItems
+            ->map(function ($item) use ($rollout) {
+                $existing = $this->existingStaffPaymentForPeriod(
+                    (int) $item->user_id,
+                    $rollout->period_start->toDateString(),
+                    $rollout->period_end->toDateString()
+                );
 
+                return $existing
+                    ? (($item->user->name ?? 'User #' . $item->user_id) . ' already has ' . $existing->expense_number)
+                    : null;
+            })
+            ->filter()
+            ->values();
+
+        if ($duplicatePayments->isNotEmpty()) {
+            return back()->withInput()->with('error', 'Duplicate staff payment blocked: ' . $duplicatePayments->implode('; '));
+        }
+
+        try {
+            $createdExpenses = DB::transaction(function () use ($rollout, $validated) {
             $rollout->payment_account_id = $validated['payment_account_id'];
             $rollout->investment_id = $validated['investment_id'];
             $rollout->status = 'payment_pending';
@@ -641,6 +682,18 @@ class ExpenditureController extends Controller
             foreach ($rollout->items as $item) {
                 if ($item->expenditure_id || (float) $item->payout_amount <= 0) {
                     continue;
+                }
+
+                $existing = $this->existingStaffPaymentForPeriod(
+                    (int) $item->user_id,
+                    $rollout->period_start->toDateString(),
+                    $rollout->period_end->toDateString()
+                );
+
+                if ($existing) {
+                    throw new \RuntimeException('Duplicate staff payment blocked for '
+                        . ($item->user->name ?? 'User #' . $item->user_id)
+                        . ': ' . $existing->expense_number);
                 }
 
                 $expense = Expenditure::create([
@@ -659,8 +712,8 @@ class ExpenditureController extends Controller
                     'status' => Expenditure::STATUS_APPROVED,
                     'payment_method' => self::MOBILE_MONEY_METHOD,
                     'payment_channel' => 'mobile_money',
-                    'approved_by' => $request->user()?->id,
-                    'approved_at' => now(),
+                    'approved_by' => $rollout->approved_by,
+                    'approved_at' => $rollout->approved_at,
                     'rollout_batch_id' => $rollout->id,
                     'staff_payment_period_start' => $rollout->period_start->toDateString(),
                     'staff_payment_period_end' => $rollout->period_end->toDateString(),
@@ -687,7 +740,10 @@ class ExpenditureController extends Controller
             }
 
             return $createdExpenses;
-        });
+            });
+        } catch (\RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
 
         foreach ($createdExpenses as $createdExpense) {
             $expense = Expenditure::with('assignedUser')->find($createdExpense['expense_id']);
@@ -835,13 +891,40 @@ class ExpenditureController extends Controller
         $expenditure->loadMissing('assignedUser');
         $recipientName = $expenditure->assignedUser->name ?? $expenditure->title;
 
-        $result = $this->mobileMoneyService->disburse(
-            $formattedPhone,
-            (float) $expenditure->amount,
-            $network,
-            $recipientName,
-            $this->mobileMoneyRequestId()
-        );
+        try {
+            $result = $this->mobileMoneyService->disburse(
+                $formattedPhone,
+                (float) $expenditure->amount,
+                $network,
+                $recipientName,
+                $this->mobileMoneyRequestId()
+            );
+        } catch (\Throwable $e) {
+            Log::error('Expenditure mobile-money disbursement exception', [
+                'expenditure_id' => $expenditure->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            DB::transaction(function () use ($expenditure, $e) {
+                $expenditure = Expenditure::whereKey($expenditure->id)->lockForUpdate()->firstOrFail();
+                $this->releaseInvestmentDebit($expenditure);
+                $expenditure->status = Expenditure::STATUS_PAYMENT_FAILED;
+                $expenditure->mobile_money_status = 'exception';
+                $expenditure->mobile_money_message = 'Disbursement failed before provider reference was returned: ' . $e->getMessage();
+                $expenditure->mobile_money_raw = json_encode([
+                    'success' => false,
+                    'status_code' => 'EXCEPTION',
+                    'message' => $e->getMessage(),
+                ]);
+                $expenditure->save();
+            });
+
+            return [
+                'success' => false,
+                'completed' => false,
+                'message' => 'Disbursement failed: ' . $e->getMessage(),
+            ];
+        }
 
         $reference = $result['reference']
             ?? $result['transaction_reference']
@@ -1835,6 +1918,11 @@ class ExpenditureController extends Controller
         if (!$request->user()?->canManageStaffPaymentRollout()) {
             abort(403, 'Access denied. Only the Super Administrator or Administrator can manage staff payment rollout.');
         }
+    }
+
+    private function isSameUser(Request $request, mixed $userId): bool
+    {
+        return $userId !== null && (int) $request->user()?->id === (int) $userId;
     }
 
     private function mobileMoneyRequestId(): string

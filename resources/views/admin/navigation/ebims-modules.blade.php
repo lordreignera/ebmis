@@ -7,6 +7,7 @@
     $user = auth()->user();
     $can = fn (string $permission): bool => $user->isSuperAdmin() || $user->can($permission);
     $canAny = fn (array $permissions): bool => collect($permissions)->contains(fn (string $permission): bool => $can($permission));
+    $canManageStaffPaymentRollout = $user->canManageStaffPaymentRollout();
 @endphp
 
 <div class="row">
@@ -66,6 +67,20 @@
                 <h4 class="card-title mb-2"><i class="mdi mdi-file-chart-outline text-secondary"></i> Reports & Accounting</h4>
                 <p class="text-muted">Reports, UMRA compliance, and accounting.</p>
                 <a href="{{ route('admin.modules.reports-accounting') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="mdi mdi-open-in-new"></i> Open Module
+                </a>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    @if($can('manage-expenditures') || $canManageStaffPaymentRollout)
+    <div class="col-md-4 grid-margin stretch-card">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-2"><i class="mdi mdi-cash-minus text-danger"></i> Expenses & Staff Payments</h4>
+                <p class="text-muted">Expense entry, approvals, payments, and staff rollout access.</p>
+                <a href="{{ route('admin.modules.expenditures') }}" class="btn btn-outline-danger btn-sm">
                     <i class="mdi mdi-open-in-new"></i> Open Module
                 </a>
             </div>
