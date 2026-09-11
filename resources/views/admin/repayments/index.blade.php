@@ -276,7 +276,9 @@
     <div class="repayment-toolbar">
         <div>
             <h1 class="h3 mb-1 text-gray-800">{{ $pageTitle ?? 'Loan Repayments' }}</h1>
-            <p class="text-muted mb-0">Filtered repayment records and collection KPIs</p>
+            <p class="text-muted mb-0">
+                {{ ($canViewCompanyRepayments ?? false) ? 'Filtered repayment records and collection KPIs' : 'Your successful repayment records and collection KPIs' }}
+            </p>
         </div>
         <a href="{{ route('admin.repayments.create', $resetParams) }}" class="btn btn-primary">
             <i class="fas fa-plus me-2"></i>Record Repayment
@@ -361,7 +363,7 @@
                 <div class="col-xl-2 col-lg-4 col-md-6">
                     <label class="form-label">Branch</label>
                     <select class="form-select" name="branch_id">
-                        <option value="">All branches</option>
+                        <option value="">{{ ($canViewCompanyRepayments ?? false) ? 'All branches' : 'My collected repayments' }}</option>
                         @foreach($branches as $branch)
                             <option value="{{ $branch->id }}" {{ (string) request('branch_id') === (string) $branch->id ? 'selected' : '' }}>
                                 {{ $branch->name }}

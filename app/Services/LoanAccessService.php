@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Facades\Schema;
 
 class LoanAccessService
 {
@@ -124,7 +127,142 @@ class LoanAccessService
             return $query;
         }
 
+        if (!$this->queryHasColumn($query, $assignedColumn)) {
+            return $query->whereRaw('1 = 0');
+        }
+
         return $query->where($assignedColumn, $user->id);
+    }
+
+    public function scopeRepaymentQueryByLoanAccess(
+        $query,
+        string $loanRelation = 'loan',
+        ?User $user = null
+    ) {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($this->canWorkAcrossBranchesOnActiveLoans($user)) {
+            return $query;
+        }
+
+        return $query->whereHas($loanRelation, function ($loanQuery) use ($user) {
+            $loanQuery->where('assigned_to', $user->id);
+        });
+    }
+
+    public function scopeRepaymentTableByLoanAccess(
+        $query,
+        string $loanAlias = 'l',
+        ?User $user = null
+    ) {
+        $user ??= auth()->user();
+
+        if (!$user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($this->canWorkAcrossBranchesOnActiveLoans($user)) {
+            return $query;
+        }
+
+        if (!$this->queryHasColumn($query, "{$loanAlias}.assigned_to", $loanAlias)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where("{$loanAlias}.assigned_to", $user->id);
+    }
+
+    private function queryHasColumn($query, string $qualifiedColumn, ?string $tableAlias = null): bool
+    {
+        [$columnAlias, $column] = $this->splitQualifiedColumn($qualifiedColumn);
+        $tableAlias ??= $columnAlias;
+        $table = $this->resolveQueryTable($query, $tableAlias);
+
+        if (!$table) {
+            return true;
+        }
+
+        return Schema::hasColumn($table, $column);
+    }
+
+    private function splitQualifiedColumn(string $qualifiedColumn): array
+    {
+        $parts = explode('.', str_replace('`', '', $qualifiedColumn));
+
+        if (count($parts) === 1) {
+            return [null, $parts[0]];
+        }
+
+        return [$parts[count($parts) - 2], end($parts)];
+    }
+
+    private function resolveQueryTable($query, ?string $tableAlias): ?string
+    {
+        if ($query instanceof EloquentBuilder) {
+            $baseQuery = $query->getQuery();
+            $modelTable = $query->getModel()->getTable();
+
+            if (!$tableAlias || $tableAlias === $modelTable) {
+                return $modelTable;
+            }
+
+            return $this->resolveQueryBuilderTable($baseQuery, $tableAlias) ?? $modelTable;
+        }
+
+        if ($query instanceof QueryBuilder) {
+            return $this->resolveQueryBuilderTable($query, $tableAlias);
+        }
+
+        return null;
+    }
+
+    private function resolveQueryBuilderTable(QueryBuilder $query, ?string $tableAlias): ?string
+    {
+        foreach (array_filter([$query->from ?? null]) as $tableExpression) {
+            [$table, $alias] = $this->parseTableExpression($tableExpression);
+
+            if (!$tableAlias || $tableAlias === $alias || $tableAlias === $table) {
+                return $table;
+            }
+        }
+
+        foreach ($query->joins ?? [] as $join) {
+            [$table, $alias] = $this->parseTableExpression($join->table);
+
+            if ($tableAlias === $alias || $tableAlias === $table) {
+                return $table;
+            }
+        }
+
+        return null;
+    }
+
+    private function parseTableExpression($tableExpression): array
+    {
+        $expression = trim(str_replace('`', '', (string) $tableExpression));
+
+        if (preg_match('/^(.+?)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/i', $expression, $matches)) {
+            return [$this->normalizeTableName($matches[1]), $matches[2]];
+        }
+
+        if (preg_match('/^(.+?)\s+([A-Za-z_][A-Za-z0-9_]*)$/', $expression, $matches)) {
+            return [$this->normalizeTableName($matches[1]), $matches[2]];
+        }
+
+        $table = $this->normalizeTableName($expression);
+
+        return [$table, $table];
+    }
+
+    private function normalizeTableName(string $table): string
+    {
+        $parts = explode('.', trim($table));
+
+        return end($parts);
     }
 
     public function ensureBranchAccess($record, string $branchKey = 'branch_id', ?User $user = null): void

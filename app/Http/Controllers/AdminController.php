@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use App\Models\DashboardEvent;
 use App\Models\PersonalLoan;
 use App\Models\GroupLoan;
+use App\Services\LoanAccessService;
 
 class AdminController extends Controller
 {
@@ -39,8 +40,12 @@ class AdminController extends Controller
         return Schema::hasColumn($tableName, 'datecreated') ? 'datecreated' : 'created_at';
     }
 
-    public function home()
+    public function home(Request $request, LoanAccessService $loanAccessService)
     {
+        if (!$loanAccessService->canWorkAcrossBranchesOnActiveLoans($request->user())) {
+            return $this->officerHome($request, $loanAccessService);
+        }
+
         // Get current date
         $today = Carbon::today()->format('Y-m-d'); // Format as string for comparison
         $currentMonth = Carbon::now()->month;
@@ -329,6 +334,185 @@ class AdminController extends Controller
         $recentActivity = $this->getRecentActivity();
 
         return view('admin.home', compact('stats', 'chartData', 'calendarPreview', 'recentActivity'));
+    }
+
+    private function officerHome(Request $request, LoanAccessService $loanAccessService)
+    {
+        $today = Carbon::today();
+        $weekStart = Carbon::now()->startOfWeek();
+        $weekEnd = Carbon::now()->endOfWeek();
+        $monthStart = Carbon::now()->startOfMonth();
+        $monthEnd = Carbon::now()->endOfMonth();
+        $todayDisplay = $today->format('d-m-Y');
+
+        $personalLoans = $loanAccessService->scopeActiveLoanQuery(
+            PersonalLoan::query(),
+            user: $request->user()
+        )->whereIn('status', [2, 3]);
+
+        $groupLoans = $loanAccessService->scopeActiveLoanQuery(
+            GroupLoan::query(),
+            user: $request->user()
+        )->whereIn('status', [2, 3]);
+
+        $activePersonalLoans = (clone $personalLoans)
+            ->whereHas('schedules', fn ($query) => $query->where('status', '!=', 1))
+            ->count();
+
+        $activeGroupLoans = (clone $groupLoans)
+            ->whereHas('schedules', fn ($query) => $query->where('status', '!=', 1))
+            ->count();
+
+        $baseRepayments = DB::table('repayments as r')
+            ->join('personal_loans as l', 'l.id', '=', 'r.loan_id')
+            ->where('r.amount', '>', 0)
+            ->where(function ($query) {
+                $query->where('r.status', 1)
+                    ->orWhere('r.payment_status', 'Completed');
+            });
+
+        $loanAccessService->scopeRepaymentTableByLoanAccess($baseRepayments, 'l', $request->user());
+
+        $baseGroupRepayments = DB::table('group_repayments as gr')
+            ->join('group_loans as l', 'l.id', '=', 'gr.loan_id')
+            ->where('gr.amount', '>', 0);
+
+        $loanAccessService->scopeRepaymentTableByLoanAccess($baseGroupRepayments, 'l', $request->user());
+
+        $dueToday = DB::table('loan_schedules as s')
+            ->join('personal_loans as l', 'l.id', '=', 's.loan_id')
+            ->where('s.status', '0')
+            ->where('s.payment_date', $todayDisplay);
+        $loanAccessService->scopeRepaymentTableByLoanAccess($dueToday, 'l', $request->user());
+
+        $overdue = DB::table('loan_schedules as s')
+            ->join('personal_loans as l', 'l.id', '=', 's.loan_id')
+            ->where('s.status', '0')
+            ->whereRaw($this->dashboardScheduleDateExpression('s') . ' < ?', [$today->toDateString()]);
+        $loanAccessService->scopeRepaymentTableByLoanAccess($overdue, 'l', $request->user());
+
+        $groupDueToday = DB::table('group_loan_schedules as s')
+            ->join('group_loans as l', 'l.id', '=', 's.loan_id')
+            ->where('s.status', '0')
+            ->where('s.payment_date', $todayDisplay);
+        $loanAccessService->scopeRepaymentTableByLoanAccess($groupDueToday, 'l', $request->user());
+
+        $groupOverdue = DB::table('group_loan_schedules as s')
+            ->join('group_loans as l', 'l.id', '=', 's.loan_id')
+            ->where('s.status', '0')
+            ->whereRaw($this->dashboardScheduleDateExpression('s') . ' < ?', [$today->toDateString()]);
+        $loanAccessService->scopeRepaymentTableByLoanAccess($groupOverdue, 'l', $request->user());
+
+        $recentPersonalCollections = (clone $baseRepayments)
+            ->leftJoin('members as m', 'm.id', '=', 'l.member_id')
+            ->leftJoin('branches as b', 'b.id', '=', 'l.branch_id')
+            ->select([
+                'r.id',
+                'r.amount',
+                'r.date_created',
+                'r.transaction_reference',
+                'l.id as loan_id',
+                'l.code as loan_code',
+                'b.name as branch_name',
+                DB::raw("'personal' as loan_type"),
+                DB::raw($this->dashboardBorrowerNameExpression('m') . ' as borrower_name'),
+            ])
+            ->orderBy('r.date_created', 'desc')
+            ->limit(8)
+            ->get();
+
+        $recentGroupCollections = (clone $baseGroupRepayments)
+            ->leftJoin('groups as g', 'g.id', '=', 'l.group_id')
+            ->leftJoin('branches as b', 'b.id', '=', 'l.branch_id')
+            ->select([
+                'gr.id',
+                'gr.amount',
+                'gr.created_at as date_created',
+                DB::raw('NULL as transaction_reference'),
+                'l.id as loan_id',
+                'l.code as loan_code',
+                'b.name as branch_name',
+                DB::raw("'group' as loan_type"),
+                'g.name as borrower_name',
+            ])
+            ->orderBy('gr.created_at', 'desc')
+            ->limit(8)
+            ->get();
+
+        $recentCollections = $recentPersonalCollections
+            ->concat($recentGroupCollections)
+            ->sortByDesc(fn ($collection) => $collection->date_created)
+            ->take(8)
+            ->values();
+
+        $collectionsToday = (float) (clone $baseRepayments)->whereDate('r.date_created', $today)->sum('r.amount')
+            + (float) (clone $baseGroupRepayments)->whereDate('gr.created_at', $today)->sum('gr.amount');
+        $collectionsWeek = (float) (clone $baseRepayments)->whereBetween('r.date_created', [$weekStart, $weekEnd])->sum('r.amount')
+            + (float) (clone $baseGroupRepayments)->whereBetween('gr.created_at', [$weekStart, $weekEnd])->sum('gr.amount');
+        $collectionsMonth = (float) (clone $baseRepayments)->whereBetween('r.date_created', [$monthStart, $monthEnd])->sum('r.amount')
+            + (float) (clone $baseGroupRepayments)->whereBetween('gr.created_at', [$monthStart, $monthEnd])->sum('gr.amount');
+        $collectionsMonthCount = (int) (clone $baseRepayments)->whereBetween('r.date_created', [$monthStart, $monthEnd])->count()
+            + (int) (clone $baseGroupRepayments)->whereBetween('gr.created_at', [$monthStart, $monthEnd])->count();
+
+        $officerStats = [
+            'assigned_active_loans' => $activePersonalLoans + $activeGroupLoans,
+            'assigned_personal_loans' => $activePersonalLoans,
+            'assigned_group_loans' => $activeGroupLoans,
+            'assigned_principal' => (float) (clone $personalLoans)->sum('principal') + (float) (clone $groupLoans)->sum('principal'),
+            'due_today_count' => (clone $dueToday)->distinct('s.loan_id')->count('s.loan_id')
+                + (clone $groupDueToday)->distinct('s.loan_id')->count('s.loan_id'),
+            'due_today_amount' => (float) (clone $dueToday)->sum('s.payment') + (float) (clone $groupDueToday)->sum('s.payment'),
+            'overdue_count' => (clone $overdue)->distinct('s.loan_id')->count('s.loan_id')
+                + (clone $groupOverdue)->distinct('s.loan_id')->count('s.loan_id'),
+            'overdue_amount' => (float) (clone $overdue)->sum('s.payment') + (float) (clone $groupOverdue)->sum('s.payment'),
+            'collections_today' => $collectionsToday,
+            'collections_week' => $collectionsWeek,
+            'collections_month' => $collectionsMonth,
+            'collections_month_count' => $collectionsMonthCount,
+        ];
+
+        $performanceLinks = [
+            'today' => route('admin.repayments.history', [
+                'start_date' => $today->toDateString(),
+                'end_date' => $today->toDateString(),
+            ]),
+            'week' => route('admin.repayments.history', [
+                'start_date' => $weekStart->toDateString(),
+                'end_date' => $weekEnd->toDateString(),
+            ]),
+            'month' => route('admin.repayments.history', [
+                'kpi_month' => $today->format('Y-m'),
+            ]),
+        ];
+
+        return view('admin.home', [
+            'officerDashboardMode' => true,
+            'officerStats' => $officerStats,
+            'recentCollections' => $recentCollections,
+            'performanceLinks' => $performanceLinks,
+        ]);
+    }
+
+    private function dashboardScheduleDateExpression(string $scheduleAlias): string
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $column = "{$scheduleAlias}.payment_date";
+
+            return "CASE WHEN substr({$column}, 3, 1) = '-' AND substr({$column}, 6, 1) = '-' "
+                . "THEN date(substr({$column}, 7, 4) || '-' || substr({$column}, 4, 2) || '-' || substr({$column}, 1, 2)) "
+                . "ELSE date({$column}) END";
+        }
+
+        return "COALESCE(STR_TO_DATE({$scheduleAlias}.payment_date, '%d-%m-%Y'), DATE({$scheduleAlias}.payment_date))";
+    }
+
+    private function dashboardBorrowerNameExpression(string $memberAlias): string
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return "TRIM(COALESCE({$memberAlias}.fname, '') || ' ' || COALESCE({$memberAlias}.lname, ''))";
+        }
+
+        return "TRIM(CONCAT(COALESCE({$memberAlias}.fname, ''), ' ', COALESCE({$memberAlias}.lname, '')))";
     }
 
     public function storeDashboardEvent(Request $request)

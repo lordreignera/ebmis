@@ -38,6 +38,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 return redirect()->route('login', ['expired' => 1]);
             }
 
+            if ($response->getStatusCode() === 419 && request()->is('apply') && request()->isMethod('post') && !request()->expectsJson()) {
+                return redirect()->route('client.apply')
+                    ->withInput(request()->except('_token'))
+                    ->with('error', 'Your application session expired before it was submitted. We have kept your details where possible. Please re-upload any documents and submit again.');
+            }
+
             return $response;
         });
     })->create();

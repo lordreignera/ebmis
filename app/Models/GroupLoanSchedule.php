@@ -36,6 +36,11 @@ class GroupLoanSchedule extends Model
         return $this->belongsTo(GroupLoan::class, 'loan_id');
     }
 
+    public function repayments()
+    {
+        return $this->hasMany(GroupRepayment::class, 'schedule_id');
+    }
+
     /**
      * Get status name
      */

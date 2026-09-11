@@ -18,6 +18,40 @@
     $showSecurityActions = $activeLoanPage === 'security';
     $canManageSensitiveLoanOperations = $canManageSensitiveLoanOperations ?? false;
     $showOperationsActions = $activeLoanPage === 'operations' && $canManageSensitiveLoanOperations;
+    $useLeanLoanRows = in_array($activeLoanPage, ['schedule', 'group'], true);
+    $showFollowUpSummary = !$useLeanLoanRows;
+    $statusFilterOptions = match ($activeLoanPage) {
+        'collections' => [
+            'due_today' => 'Due Today',
+            'overdue' => 'Overdue',
+            'risk_followup' => 'Risk Follow-up',
+            'missing_followup' => 'No Follow-up',
+        ],
+        'risk' => [
+            'overdue' => 'Overdue',
+            'risk_followup' => 'Risk Follow-up',
+            'missing_followup' => 'No Follow-up',
+        ],
+        'security' => [
+            'missing_collateral' => 'No Collateral',
+            'overdue' => 'Overdue',
+        ],
+        'operations' => [
+            'current' => 'Current',
+            'due_today' => 'Due Today',
+            'overdue' => 'Overdue',
+            'restructured' => 'Restructured',
+            'risk_followup' => 'Risk Follow-up',
+            'missing_followup' => 'No Follow-up',
+            'missing_collateral' => 'No Collateral',
+        ],
+        default => [
+            'current' => 'Current',
+            'due_today' => 'Due Today',
+            'overdue' => 'Overdue',
+            'restructured' => 'Restructured',
+        ],
+    };
 @endphp
 
 @section('title', $activeLoanPageConfig['title'] ?? 'Active Loans')
@@ -86,6 +120,11 @@
         border-radius: 8px;
         background: #fff;
         overflow: visible;
+    }
+
+    .loan-list.is-compact .loan-list-head,
+    .loan-list.is-compact .loan-list-row {
+        grid-template-columns: 1.3fr .82fr .95fr .9fr .95fr 1fr .82fr;
     }
 
     .loan-list-row.is-warning {
@@ -553,13 +592,9 @@
                             <label for="status" class="form-label">Status</label>
                             <select class="form-select" id="status" name="status">
                                 <option value="">All Status</option>
-                                <option value="current" {{ request('status') == 'current' ? 'selected' : '' }}>Current</option>
-                                <option value="due_today" {{ request('status') == 'due_today' ? 'selected' : '' }}>Due Today</option>
-                                <option value="overdue" {{ request('status') == 'overdue' ? 'selected' : '' }}>Overdue</option>
-                                <option value="restructured" {{ request('status') == 'restructured' ? 'selected' : '' }}>Restructured</option>
-                                <option value="risk_followup" {{ request('status') == 'risk_followup' ? 'selected' : '' }}>Risk Follow-up</option>
-                                <option value="missing_followup" {{ request('status') == 'missing_followup' ? 'selected' : '' }}>No Follow-up</option>
-                                <option value="missing_collateral" {{ request('status') == 'missing_collateral' ? 'selected' : '' }}>No Collateral</option>
+                                @foreach($statusFilterOptions as $statusValue => $statusLabel)
+                                    <option value="{{ $statusValue }}" {{ request('status') === $statusValue ? 'selected' : '' }}>{{ $statusLabel }}</option>
+                                @endforeach
                             </select>
                         </div>
                         
@@ -608,6 +643,7 @@
                 </div>
                 <div class="card-body">
                     @if($loans->count() > 0)
+                        @if($showFollowUpSummary)
                         <div class="followup-strip">
                             <div class="followup-chip">
                                 <span>Risk follow-up</span>
@@ -630,12 +666,10 @@
                                 <strong class="text-danger">{{ $stats['missing_collateral_count'] ?? 0 }}</strong>
                             </div>
                         </div>
+                        @endif
                         <div class="table-container">
                             <div class="table-header">
-                                <div class="table-search">
-                                    <input type="text" placeholder="Search active loans..." id="quickSearch">
-                                </div>
-                                <div class="table-actions">
+                                <div class="table-actions ms-auto">
                                     <div class="table-show-entries">
                                         Show 
                                         <select onchange="const url = new URL(window.location.href); url.searchParams.set('per_page', this.value); url.searchParams.delete('page'); window.location.href = url.toString();">
@@ -647,23 +681,19 @@
                                         </select>
                                         entries
                                     </div>
-                                    <div class="dropdown">
-                                        <button class="export-btn dropdown-toggle" data-bs-toggle="dropdown">
-                                            <i class="mdi mdi-export"></i> Export
-                                        </button>
-                                        <div class="dropdown-menu dropdown-menu-end">
-                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'excel', 'active_page' => $activeLoanPage] + request()->all()) }}">
-                                                <i class="mdi mdi-file-excel me-1"></i> Excel
-                                            </a>
-                                            <a class="dropdown-item" href="{{ route('admin.loans.active.export', ['format' => 'pdf', 'active_page' => $activeLoanPage] + request()->all()) }}">
-                                                <i class="mdi mdi-file-pdf me-1"></i> PDF
-                                            </a>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
-                            <div class="loan-list">
+                            <div class="loan-list {{ $useLeanLoanRows ? 'is-compact' : '' }}">
                                 <div class="loan-list-head">
+                                    @if($useLeanLoanRows)
+                                    <div>Borrower</div>
+                                    <div>Loan Type</div>
+                                    <div>Next Schedule</div>
+                                    <div>Amount To Pay</div>
+                                    <div>Outstanding</div>
+                                    <div>Branch</div>
+                                    <div>Actions</div>
+                                    @else
                                     <div>Borrower</div>
                                     <div>Branch</div>
                                     <div>Loan</div>
@@ -674,6 +704,7 @@
                                     <div>Security</div>
                                     <div>Follow-up</div>
                                     <div>Actions</div>
+                                    @endif
                                 </div>
                                     @foreach($loans as $index => $loan)
                                         @php
@@ -688,8 +719,98 @@
                                                 $loanTypeLabel = 'Daily';
                                             }
                                             $latestFollowUp = $loan->latest_follow_up ?? null;
+                                            $loanSearchParts = $useLeanLoanRows
+                                                ? [
+                                                    $loan->borrower_name,
+                                                    $loan->phone_number ?? '',
+                                                    $loan->loan_code,
+                                                    $loan->branch_name ?? '',
+                                                    $loan->product_name ?? '',
+                                                    $loanTypeLabel,
+                                                    $loan->next_due_date ?? '',
+                                                ]
+                                                : [
+                                                    $loan->borrower_name,
+                                                    $loan->loan_code,
+                                                    $loan->branch_name ?? '',
+                                                    $loan->assignedTo->name ?? '',
+                                                    $loan->collateral_summary ?? '',
+                                                    $loan->risk_classification ?? '',
+                                                ];
                                         @endphp
-                                        <div class="loan-list-row {{ ($loan->is_potential_duplicate ?? false) ? 'is-warning' : '' }}" data-loan-search="{{ strtolower($loan->borrower_name . ' ' . $loan->loan_code . ' ' . ($loan->branch_name ?? '') . ' ' . ($loan->assignedTo->name ?? '') . ' ' . ($loan->collateral_summary ?? '') . ' ' . ($loan->risk_classification ?? '')) }}">
+                                        <div class="loan-list-row {{ ($loan->is_potential_duplicate ?? false) ? 'is-warning' : '' }}" data-loan-search="{{ strtolower(implode(' ', array_filter($loanSearchParts))) }}">
+                                            @if($useLeanLoanRows)
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Borrower</span>
+                                                <div class="fw-semibold">{{ $loans->firstItem() + $index }}. {{ $loan->borrower_name }}</div>
+                                                <div class="loan-subtext">{{ $loan->phone_number ?? 'N/A' }}</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Loan Type</span>
+                                                <span class="status-badge status-{{ $periodType == 1 ? 'verified' : ($periodType == 2 ? 'pending' : 'individual') }}">
+                                                    {{ ucfirst($loan->loan_type ?? 'personal') }} {{ $loanTypeLabel }}
+                                                </span>
+                                                <div class="loan-subtext">{{ $loan->loan_code }}</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Next Schedule</span>
+                                                @if($loan->next_due_date)
+                                                    <div class="fw-semibold">{{ $loan->next_due_date }}</div>
+                                                    @if(($loan->days_overdue ?? 0) > 0)
+                                                        <span class="badge bg-danger">{{ $loan->days_overdue }} days late</span>
+                                                    @else
+                                                        <span class="badge bg-success">Current</span>
+                                                    @endif
+                                                @else
+                                                    <span class="badge bg-light text-dark">No pending schedule</span>
+                                                @endif
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Amount To Pay</span>
+                                                <div class="loan-money">{{ number_format($loan->next_due_amount ?? 0, 0) }}</div>
+                                                <div class="loan-subtext">Next installment</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Outstanding</span>
+                                                <div class="loan-money">{{ number_format($loan->outstanding_balance ?? 0, 0) }}</div>
+                                                <div class="loan-subtext">Total balance</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Branch</span>
+                                                <div>{{ $loan->branch_name ?? 'No Branch' }}</div>
+                                                <div class="loan-subtext">{{ $loan->product_name ?? 'N/A' }}</div>
+                                            </div>
+                                            <div class="loan-cell">
+                                                <span class="loan-cell-label">Actions</span>
+                                                <div class="loan-actions">
+                                                    <div class="dropdown">
+                                                        <button class="btn btn-sm btn-primary dropdown-toggle loan-options-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                            <i class="mdi mdi-dots-vertical"></i> Options
+                                                        </button>
+                                                        <div class="dropdown-menu dropdown-menu-end loan-options-menu">
+                                                            <a href="{{ route('admin.loans.repayments.schedules', ['id' => $loan->id, 'type' => $loan->loan_type ?? 'personal']) }}"
+                                                               class="dropdown-item" title="View repayment schedules">
+                                                                <i class="mdi mdi-calendar-clock"></i> Schedules
+                                                            </a>
+
+                                                            @if($showScheduleActions)
+                                                                <button type="button"
+                                                                        class="dropdown-item"
+                                                                        onclick="quickRepay('{{ $loan->id }}', '{{ $loan->loan_code }}', '{{ $loan->next_due_amount ?? 0 }}', '{{ $loan->phone_number ?? '' }}')"
+                                                                        title="Record payment against the next unpaid schedule">
+                                                                    <i class="mdi mdi-cash-check"></i> Record Payment
+                                                                </button>
+                                                            @endif
+
+                                                            <a href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => $loan->loan_type ?? 'personal']) }}"
+                                                               class="dropdown-item" title="View loan details, security, follow-up responsibility, and approvals">
+                                                                <i class="mdi mdi-information-outline"></i> Loan Info
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            @else
                                             <div class="loan-cell">
                                                 <span class="loan-cell-label">Borrower</span>
                                                 <div class="fw-semibold">{{ $loans->firstItem() + $index }}. {{ $loan->borrower_name }}</div>
@@ -765,7 +886,7 @@
                                                             <i class="mdi mdi-dots-vertical"></i> Options
                                                         </button>
                                                         <div class="dropdown-menu dropdown-menu-end loan-options-menu">
-                                                            <a href="{{ route('admin.loans.repayments.schedules', $loan->id) }}"
+                                                            <a href="{{ route('admin.loans.repayments.schedules', ['id' => $loan->id, 'type' => $loan->loan_type ?? 'personal']) }}"
                                                                class="dropdown-item" title="View repayment schedules">
                                                                 <i class="mdi mdi-calendar-clock"></i> Schedules
                                                             </a>
@@ -778,6 +899,11 @@
                                                                     <i class="mdi mdi-cash-check"></i> Record Payment
                                                                 </button>
                                                             @endif
+
+                                                            <a href="{{ route('admin.loans.show', ['id' => $loan->id, 'type' => $loan->loan_type ?? 'personal']) }}"
+                                                               class="dropdown-item" title="View loan details, security, follow-up responsibility, and approvals">
+                                                                <i class="mdi mdi-information-outline"></i> Loan Info
+                                                            </a>
 
                                                             @if($showCollectionActions)
                                                                 <button type="button"
@@ -873,6 +999,7 @@
                                                     </div>
                                                 </div>
                                             </div>
+                                            @endif
                                         </div>
                                     @endforeach
                             </div>
@@ -1156,7 +1283,7 @@
                             <option value="non_cash">Non-cash collateral</option>
                             <option value="cash_security">Cash security deposit</option>
                         </select>
-                        <div class="form-text">Cash security must be completed before the disbursement collateral check passes.</div>
+                        <div class="form-text">Cash security must be completed for this member or loan before the disbursement collateral check passes.</div>
                     </div>
 
                     <div id="nonCashCollateralFields">
@@ -1435,34 +1562,6 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
-    // Quick search functionality - redirect to search URL
-    $('#quickSearch').on('keyup', function(e) {
-        var value = $(this).val().trim();
-        
-        // Build URL with search parameter
-        var url = new URL(window.location.href);
-        
-        if (value.length > 0) {
-            url.searchParams.set('search', value);
-            url.searchParams.delete('page'); // Reset to page 1 when searching
-        } else {
-            url.searchParams.delete('search');
-        }
-        
-        // Debounce the search (wait 500ms after user stops typing)
-        clearTimeout(window.searchTimeout);
-        window.searchTimeout = setTimeout(function() {
-            window.location.href = url.toString();
-        }, 500);
-    });
-    
-    // Set search box value from URL parameter
-    var urlParams = new URLSearchParams(window.location.search);
-    var searchValue = urlParams.get('search');
-    if (searchValue) {
-        $('#quickSearch').val(searchValue);
-    }
-
     // Local fallback for row action dropdowns. This keeps Options working even
     // when Bootstrap's dropdown binding is blocked by older admin scripts.
     $(document).on('click', '.loan-options-toggle', function(e) {
@@ -1759,7 +1858,7 @@ function renderCollateralDetails(response) {
             `;
         }).join(''));
     } else {
-        $('#view_cash_security').html('<div class="text-muted">No cash security linked to this loan.</div>');
+        $('#view_cash_security').html('<div class="text-muted">No cash security recorded for this member or loan.</div>');
     }
 
     if (documents.length) {
@@ -2017,9 +2116,20 @@ $('#quickRepayForm').on('submit', function(e) {
         success: function(response) {
             if (response.success) {
                 $('#quickRepayModal').modal('hide');
-                Swal.fire('Success!', response.message, 'success').then(() => {
-                    window.location.reload();
-                });
+                if (response.transaction_reference) {
+                    Swal.fire({
+                        title: 'Payment request sent',
+                        text: response.message || 'Waiting for mobile money confirmation...',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        didOpen: () => Swal.showLoading()
+                    });
+                    pollQuickRepaymentStatus(response.transaction_reference, 0);
+                } else {
+                    Swal.fire('Success!', response.message, 'success').then(() => {
+                        window.location.reload();
+                    });
+                }
             } else {
                 Swal.fire('Error!', response.message, 'error');
             }
@@ -2030,6 +2140,44 @@ $('#quickRepayForm').on('submit', function(e) {
         }
     });
 });
+
+function pollQuickRepaymentStatus(transactionRef, attempts) {
+    if (attempts >= 12) {
+        Swal.fire({
+            title: 'Still pending',
+            text: 'The payment is still being processed. Refresh later or open the schedule to check status again.',
+            icon: 'info'
+        }).then(() => window.location.reload());
+        return;
+    }
+
+    setTimeout(function() {
+        $.ajax({
+            url: '{{ url("admin/loans/repayments/check-mm-status") }}/' + transactionRef,
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            },
+            success: function(response) {
+                if (response.status === 'completed') {
+                    Swal.fire('Confirmed', response.message || 'Payment completed successfully.', 'success')
+                        .then(() => window.location.reload());
+                    return;
+                }
+
+                if (response.status === 'failed') {
+                    Swal.fire('Payment failed', response.message || 'The mobile money payment failed.', 'error');
+                    return;
+                }
+
+                pollQuickRepaymentStatus(transactionRef, attempts + 1);
+            },
+            error: function() {
+                pollQuickRepaymentStatus(transactionRef, attempts + 1);
+            }
+        });
+    }, attempts === 0 ? 3000 : 10000);
+}
 
 // Auto-detect network from phone number
 $('#modal_phone').on('input', function() {

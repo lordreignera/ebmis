@@ -247,7 +247,7 @@
                                 <p class="mb-1">{{ $collateralGate['summary'] }}</p>
                                 @if(!$collateralGate['met'])
                                     <small>
-                                        Disbursement is blocked until non-cash collateral evidence is uploaded or a loan-linked cash security deposit is completed.
+                                        Disbursement is blocked until non-cash collateral evidence is uploaded or a paid cash security deposit exists for this member or loan.
                                         @if(($collateralGate['pending_cash'] ?? 0) > 0)
                                             Pending cash security cannot pass this check until mobile money is confirmed.
                                         @endif

@@ -748,11 +748,19 @@
                                         <td class="text-center" data-label="Action">
                                             @php
                                                 // ── Shared: confirmed repayments for this schedule ──────────────────
-                                                $confirmedPayments = \App\Models\Repayment::where('schedule_id', $schedule->id)
-                                                    ->whereNotIn('status', [-1, 2])
-                                                    ->where(function($q) {
+                                                $repaymentModelClass = $repaymentModelClass ?? \App\Models\Repayment::class;
+                                                $canRecordSchedulePayments = $canRecordSchedulePayments ?? true;
+                                                $confirmedPaymentsQuery = $repaymentModelClass::where('schedule_id', $schedule->id)
+                                                    ->where('amount', '>', 0);
+
+                                                if (($loan->loan_type ?? 'personal') === 'personal') {
+                                                    $confirmedPaymentsQuery->whereNotIn('status', [-1, 2])
+                                                        ->where(function($q) {
                                                         $q->where('status', 1)->orWhere('payment_status', 'Completed');
-                                                    })
+                                                    });
+                                                }
+
+                                                $confirmedPayments = $confirmedPaymentsQuery
                                                     ->orderBy('id', 'desc')
                                                     ->get();
                                                 $latestConfirmedRepayment = $confirmedPayments->first();
@@ -775,7 +783,7 @@
 
                                             @if($schedule->status == 1)
                                                 {{-- Fully Paid --}}
-                                                @if($latestConfirmedRepayment)
+                                                @if($latestConfirmedRepayment && ($loan->loan_type ?? 'personal') === 'personal')
                                                     <div class="btn-group btn-group-sm">
                                                         <a href="{{ route('admin.repayments.receipt', $latestConfirmedRepayment->id) }}"
                                                            class="btn btn-primary btn-sm px-2 py-1"
@@ -791,6 +799,8 @@
                                                             </button>
                                                         @endif
                                                     </div>
+                                                @elseif($latestConfirmedRepayment)
+                                                    <span class="text-success">Paid</span>
                                                 @else
                                                     <span class="text-muted">Paid</span>
                                                 @endif
@@ -799,14 +809,14 @@
                                                 {{-- P+I confirmed, late fees still outstanding --}}
                                                 @php $lateFeeRemaining = $schedule->total_balance ?? 0; @endphp
                                                 <div class="btn-group btn-group-sm" role="group">
-                                                    @if($latestConfirmedRepayment)
+                                                    @if($latestConfirmedRepayment && ($loan->loan_type ?? 'personal') === 'personal')
                                                         <a href="{{ route('admin.repayments.receipt', $latestConfirmedRepayment->id) }}"
                                                            class="btn btn-primary btn-sm px-2 py-1"
                                                            target="_blank" title="View Receipt">
                                                             <i class="fas fa-receipt"></i> Receipt
                                                         </a>
                                                     @endif
-                                                    @if($lateFeeRemaining > 1)
+                                                    @if($canRecordSchedulePayments && $lateFeeRemaining > 1)
                                                         <button type="button" class="btn btn-warning btn-sm px-2 py-1"
                                                                 onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $lateFeeRemaining }})"
                                                                 title="Pay outstanding late fee: UGX {{ number_format($lateFeeRemaining, 0) }}">
@@ -821,12 +831,14 @@
                                                     $scheduleRemaining = $schedule->total_balance ?? 0;
                                                     $shouldShowRepay = $scheduleRemaining > 1;
                                                 @endphp
-                                                @if($shouldShowRepay && !$hasEarlierUnpaid)
+                                                @if($shouldShowRepay && !$hasEarlierUnpaid && $canRecordSchedulePayments)
                                                     <button type="button" class="btn btn-success btn-sm px-2 py-1"
                                                             onclick="openRepayModal({{ $schedule->id }}, '{{ date('M d, Y', strtotime($schedule->payment_date)) }}', {{ $scheduleRemaining }})"
                                                             title="Repay">
                                                         Repay
                                                     </button>
+                                                @elseif($shouldShowRepay && !$canRecordSchedulePayments)
+                                                    <span class="text-muted">View only</span>
                                                 @elseif($shouldShowRepay && $hasEarlierUnpaid)
                                                     <button type="button" class="btn btn-secondary btn-sm px-2 py-1"
                                                             disabled

@@ -6,7 +6,13 @@ use App\Http\Middleware\SuperAdminMiddleware;
 use App\Http\Middleware\EbimsModuleAccess;
 use App\Http\Middleware\EbimsPermissionAccess;
 use App\Models\Branch;
+use App\Models\Group;
+use App\Models\GroupLoan;
+use App\Models\GroupLoanSchedule;
+use App\Models\Member;
 use App\Models\PersonalLoan;
+use App\Models\Product;
+use App\Models\Repayment;
 use App\Models\User;
 use App\Services\LoanAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,6 +108,106 @@ class LoanAccessServiceTest extends TestCase
             ->pluck('id');
 
         $this->assertSame([$assignedLoan->id], $loanIds->all());
+    }
+
+    public function test_field_officer_repayment_query_only_includes_assigned_loan_collections(): void
+    {
+        $branch = $this->branch();
+        $officer = $this->userWithRole('Loan Officer', $branch->id);
+        $otherOfficer = User::factory()->create(['branch_id' => $branch->id]);
+        $assignedLoan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $officer->id,
+            'status' => 2,
+        ]);
+        $otherLoan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $otherOfficer->id,
+            'status' => 2,
+        ]);
+        $assignedScheduleId = $this->loanSchedule($assignedLoan->id);
+        $otherScheduleId = $this->loanSchedule($otherLoan->id);
+
+        $visibleRepayment = Repayment::create([
+            'type' => 2,
+            'loan_id' => $assignedLoan->id,
+            'schedule_id' => $assignedScheduleId,
+            'amount' => 50000,
+            'date_created' => now(),
+            'added_by' => $officer->id,
+            'status' => 1,
+            'payment_status' => 'Completed',
+            'platform' => 'Web',
+        ]);
+        Repayment::create([
+            'type' => 2,
+            'loan_id' => $otherLoan->id,
+            'schedule_id' => $otherScheduleId,
+            'amount' => 90000,
+            'date_created' => now(),
+            'added_by' => $otherOfficer->id,
+            'status' => 1,
+            'payment_status' => 'Completed',
+            'platform' => 'Web',
+        ]);
+
+        $repaymentIds = $this->service
+            ->scopeRepaymentQueryByLoanAccess(Repayment::query(), user: $officer)
+            ->pluck('id');
+
+        $this->assertSame([$visibleRepayment->id], $repaymentIds->all());
+    }
+
+    public function test_field_officer_repayment_table_query_only_includes_assigned_loan_collections(): void
+    {
+        $branch = $this->branch();
+        $officer = $this->userWithRole('Loan Officer', $branch->id);
+        $otherOfficer = User::factory()->create(['branch_id' => $branch->id]);
+        $assignedLoan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $officer->id,
+            'status' => 2,
+        ]);
+        $otherLoan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $otherOfficer->id,
+            'status' => 2,
+        ]);
+        $assignedScheduleId = $this->loanSchedule($assignedLoan->id);
+        $otherScheduleId = $this->loanSchedule($otherLoan->id);
+
+        Repayment::create([
+            'type' => 2,
+            'loan_id' => $assignedLoan->id,
+            'schedule_id' => $assignedScheduleId,
+            'amount' => 50000,
+            'date_created' => now(),
+            'added_by' => $officer->id,
+            'status' => 1,
+            'payment_status' => 'Completed',
+            'platform' => 'Web',
+        ]);
+        Repayment::create([
+            'type' => 2,
+            'loan_id' => $otherLoan->id,
+            'schedule_id' => $otherScheduleId,
+            'amount' => 90000,
+            'date_created' => now(),
+            'added_by' => $otherOfficer->id,
+            'status' => 1,
+            'payment_status' => 'Completed',
+            'platform' => 'Web',
+        ]);
+
+        $total = $this->service
+            ->scopeRepaymentTableByLoanAccess(
+                \DB::table('repayments as r')->join('personal_loans as l', 'l.id', '=', 'r.loan_id'),
+                'l',
+                $officer
+            )
+            ->sum('r.amount');
+
+        $this->assertSame(50000.0, (float) $total);
     }
 
     public function test_branch_manager_active_loan_query_only_includes_loans_assigned_to_them(): void
@@ -371,6 +477,134 @@ class LoanAccessServiceTest extends TestCase
             ->assertRedirect(route('admin.home'));
     }
 
+    public function test_loan_officer_admin_home_shows_assigned_collection_dashboard(): void
+    {
+        $officer = $this->userWithRole('Loan Officer', $this->branch()->id);
+
+        $this->actingAs($officer)
+            ->get(route('admin.home'))
+            ->assertOk()
+            ->assertSee('My Collections Dashboard')
+            ->assertDontSee('Investments Overview');
+    }
+
+    public function test_loan_officer_dashboard_only_shows_assigned_collection_amounts(): void
+    {
+        $branch = $this->branch();
+        $officer = $this->userWithRole('Loan Officer', $branch->id);
+        $otherOfficer = User::factory()->create(['branch_id' => $branch->id]);
+        $assignedLoan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $officer->id,
+            'status' => 2,
+            'code' => 'ASSIGNED-OFFICER-LOAN',
+        ]);
+        $otherLoan = PersonalLoan::factory()->create([
+            'branch_id' => $branch->id,
+            'assigned_to' => $otherOfficer->id,
+            'status' => 2,
+            'code' => 'OTHER-OFFICER-LOAN',
+        ]);
+
+        Repayment::create([
+            'type' => 2,
+            'loan_id' => $assignedLoan->id,
+            'schedule_id' => $this->loanSchedule($assignedLoan->id),
+            'amount' => 12345,
+            'date_created' => now(),
+            'added_by' => $officer->id,
+            'status' => 1,
+            'payment_status' => 'Completed',
+            'platform' => 'Web',
+            'transaction_reference' => 'ASSIGNED-REF',
+        ]);
+        Repayment::create([
+            'type' => 2,
+            'loan_id' => $otherLoan->id,
+            'schedule_id' => $this->loanSchedule($otherLoan->id),
+            'amount' => 98765,
+            'date_created' => now(),
+            'added_by' => $otherOfficer->id,
+            'status' => 1,
+            'payment_status' => 'Completed',
+            'platform' => 'Web',
+            'transaction_reference' => 'OTHER-REF',
+        ]);
+
+        $this->actingAs($officer)
+            ->get(route('admin.home'))
+            ->assertOk()
+            ->assertSee('ASSIGNED-OFFICER-LOAN')
+            ->assertSee('UGX 12,345')
+            ->assertDontSee('OTHER-OFFICER-LOAN')
+            ->assertDontSee('UGX 98,765');
+    }
+
+    public function test_group_schedule_route_respects_requested_loan_type_when_ids_overlap(): void
+    {
+        $branch = $this->branch();
+        $officer = $this->userWithRole('Loan Officer', $branch->id);
+        $productId = $this->loanProductId($officer->id);
+        $personalMember = Member::factory()->create([
+            'fname' => 'Personal',
+            'lname' => 'Collision',
+            'branch_id' => $branch->id,
+            'added_by' => $officer->id,
+        ]);
+        PersonalLoan::factory()->create([
+            'member_id' => $personalMember->id,
+            'product_type' => $productId,
+            'branch_id' => $branch->id,
+            'assigned_to' => $officer->id,
+            'status' => 2,
+            'code' => 'PERSONAL-COLLISION',
+        ]);
+
+        $group = Group::create([
+            'code' => 'GRP-COLLISION',
+            'name' => 'Assigned Group Borrower',
+            'inception_date' => now()->toDateString(),
+            'address' => 'Kampala',
+            'sector' => 'Trade',
+            'type' => 1,
+            'verified' => 1,
+            'branch_id' => $branch->id,
+            'added_by' => $officer->id,
+            'datecreated' => now(),
+        ]);
+        $groupLoan = GroupLoan::create([
+            'group_id' => $group->id,
+            'product_type' => $productId,
+            'code' => 'GROUP-COLLISION',
+            'interest' => '5',
+            'period' => '12',
+            'principal' => '100000',
+            'status' => 2,
+            'verified' => 1,
+            'branch_id' => $branch->id,
+            'added_by' => $officer->id,
+            'assigned_to' => $officer->id,
+            'datecreated' => now(),
+        ]);
+        GroupLoanSchedule::create([
+            'loan_id' => $groupLoan->id,
+            'payment_date' => now()->format('d-m-Y'),
+            'payment' => 50000,
+            'interest' => 10000,
+            'principal' => 40000,
+            'balance' => 0,
+            'status' => 0,
+        ]);
+
+        $this->actingAs($officer)
+            ->get(route('admin.loans.repayments.schedules', ['id' => $groupLoan->id, 'type' => 'group']))
+            ->assertOk()
+            ->assertSee('Assigned Group Borrower')
+            ->assertSee('GROUP-COLLISION')
+            ->assertDontSee('Personal Collision')
+            ->assertDontSee('PERSONAL-COLLISION');
+    }
+
     public function test_field_officer_still_cannot_enter_super_admin_pages(): void
     {
         $officer = $this->userWithRole('Field Officer', $this->branch()->id);
@@ -496,6 +730,39 @@ class LoanAccessServiceTest extends TestCase
         $user->assignRole($role);
 
         return $user;
+    }
+
+    private function loanSchedule(int $loanId): int
+    {
+        return \DB::table('loan_schedules')->insertGetId([
+            'loan_id' => $loanId,
+            'payment_date' => now()->format('d-m-Y'),
+            'payment' => 50000,
+            'interest' => 10000,
+            'principal' => 40000,
+            'balance' => 0,
+            'status' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function loanProductId(int $addedBy): int
+    {
+        return Product::create([
+            'code' => 'LP-' . fake()->unique()->numerify('######'),
+            'name' => 'Test Loan Product',
+            'type' => 1,
+            'loan_type' => 1,
+            'description' => 'Test loan product',
+            'max_amt' => '10000000',
+            'interest' => '5',
+            'period_type' => 3,
+            'cash_sceurity' => '25',
+            'account' => 1,
+            'isactive' => 1,
+            'added_by' => $addedBy,
+        ])->id;
     }
 
     private function namedRequest(string $name): Request

@@ -162,7 +162,7 @@ class GroupLoan extends Model
      */
     public function repayments()
     {
-        return $this->hasMany(GroupRepayment::class, 'group_loan_id');
+        return $this->hasMany(GroupRepayment::class, 'loan_id');
     }
 
     /**

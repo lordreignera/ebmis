@@ -778,16 +778,40 @@ class DisbursementController extends Controller
         $documentCount = $this->getLoanCollateralDocumentCount($loan, $loanType);
 
         $cashSecurityQuery = CashSecurity::query()
-            ->where('loan_id', $loan->id)
-            ->where('returned', 0);
+            ->where(function ($query) {
+                $query->whereNull('returned')->orWhere('returned', 0);
+            });
 
         if ($loanType === 'personal' && isset($loan->member_id)) {
-            $cashSecurityQuery->where('member_id', $loan->member_id);
+            $cashSecurityQuery
+                ->where('member_id', $loan->member_id)
+                ->where(function ($query) use ($loan) {
+                    $query->where('loan_id', $loan->id)
+                        ->orWhereNull('loan_id');
+                });
+        } else {
+            $cashSecurityQuery->where('loan_id', $loan->id);
         }
 
         $cashSecurities = $cashSecurityQuery->get();
         $confirmedCash = (float) $cashSecurities->where('status', 1)->sum('amount');
         $pendingCash = (float) $cashSecurities->where('status', 0)->sum('amount');
+        $loanLinkedConfirmedCash = (float) $cashSecurities
+            ->where('loan_id', $loan->id)
+            ->where('status', 1)
+            ->sum('amount');
+        $memberAccountConfirmedCash = (float) $cashSecurities
+            ->whereNull('loan_id')
+            ->where('status', 1)
+            ->sum('amount');
+        $loanLinkedPendingCash = (float) $cashSecurities
+            ->where('loan_id', $loan->id)
+            ->where('status', 0)
+            ->sum('amount');
+        $memberAccountPendingCash = (float) $cashSecurities
+            ->whereNull('loan_id')
+            ->where('status', 0)
+            ->sum('amount');
         $hasDocumentedNonCash = !empty($nonCashTypes) && $documentCount > 0;
         $met = $hasDocumentedNonCash || $confirmedCash > 0;
 
@@ -795,13 +819,19 @@ class DisbursementController extends Controller
         if (!empty($nonCashTypes)) {
             $summaryParts[] = $documentCount > 0
                 ? $documentCount . ' collateral document(s)'
-                : 'collateral document missing';
+                : 'non-cash collateral document missing';
         }
-        if ($confirmedCash > 0) {
-            $summaryParts[] = 'Confirmed cash security UGX ' . number_format($confirmedCash, 0);
+        if ($loanLinkedConfirmedCash > 0) {
+            $summaryParts[] = 'Loan cash security UGX ' . number_format($loanLinkedConfirmedCash, 0);
         }
-        if ($pendingCash > 0) {
-            $summaryParts[] = 'Pending cash security UGX ' . number_format($pendingCash, 0);
+        if ($memberAccountConfirmedCash > 0) {
+            $summaryParts[] = 'Member cash security account UGX ' . number_format($memberAccountConfirmedCash, 0);
+        }
+        if ($loanLinkedPendingCash > 0) {
+            $summaryParts[] = 'Pending loan cash security UGX ' . number_format($loanLinkedPendingCash, 0);
+        }
+        if ($memberAccountPendingCash > 0) {
+            $summaryParts[] = 'Pending member cash security account UGX ' . number_format($memberAccountPendingCash, 0);
         }
 
         return [
@@ -810,10 +840,14 @@ class DisbursementController extends Controller
             'document_count' => $documentCount,
             'confirmed_cash' => $confirmedCash,
             'pending_cash' => $pendingCash,
+            'loan_linked_confirmed_cash' => $loanLinkedConfirmedCash,
+            'member_account_confirmed_cash' => $memberAccountConfirmedCash,
+            'loan_linked_pending_cash' => $loanLinkedPendingCash,
+            'member_account_pending_cash' => $memberAccountPendingCash,
             'summary' => empty($summaryParts) ? 'No loan collateral or completed cash security recorded.' : implode('; ', $summaryParts),
             'message' => $met
                 ? 'Collateral requirement met.'
-                : 'Collateral required before disbursement. Upload evidence for non-cash collateral or complete a cash security deposit linked to this loan.',
+                : 'Collateral required before disbursement. Upload evidence for non-cash collateral or complete a paid cash security deposit for this member or loan.',
         ];
     }
 

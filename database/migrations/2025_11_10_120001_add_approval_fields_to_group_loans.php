@@ -12,11 +12,25 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('group_loans', function (Blueprint $table) {
-            $table->integer('approved_by')->nullable()->after('added_by');
-            $table->datetime('date_approved')->nullable()->after('approved_by');
-            $table->integer('rejected_by')->nullable()->after('date_approved');
-            $table->datetime('date_rejected')->nullable()->after('rejected_by');
-            $table->integer('assigned_to')->nullable()->after('date_rejected');
+            if (!Schema::hasColumn('group_loans', 'approved_by')) {
+                $table->integer('approved_by')->nullable()->after('added_by');
+            }
+
+            if (!Schema::hasColumn('group_loans', 'date_approved')) {
+                $table->datetime('date_approved')->nullable()->after('approved_by');
+            }
+
+            if (!Schema::hasColumn('group_loans', 'rejected_by')) {
+                $table->integer('rejected_by')->nullable()->after('date_approved');
+            }
+
+            if (!Schema::hasColumn('group_loans', 'date_rejected')) {
+                $table->datetime('date_rejected')->nullable()->after('rejected_by');
+            }
+
+            if (!Schema::hasColumn('group_loans', 'assigned_to')) {
+                $table->integer('assigned_to')->nullable()->after('date_rejected');
+            }
         });
     }
 
@@ -26,7 +40,14 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('group_loans', function (Blueprint $table) {
-            $table->dropColumn(['approved_by', 'date_approved', 'rejected_by', 'date_rejected', 'assigned_to']);
+            $columns = array_filter(
+                ['approved_by', 'date_approved', 'rejected_by', 'date_rejected', 'assigned_to'],
+                fn ($column) => Schema::hasColumn('group_loans', $column)
+            );
+
+            if (!empty($columns)) {
+                $table->dropColumn($columns);
+            }
         });
     }
 };

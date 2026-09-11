@@ -418,6 +418,21 @@
 
 <div class="container py-4" style="max-width:860px">
 
+    @if (session('error'))
+    <div class="alert alert-danger alert-dismissible fade show">
+        <strong>We could not submit the application:</strong>
+        <div class="mt-1">{{ session('error') }}</div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
+
+    @if (session('success'))
+    <div class="alert alert-success alert-dismissible fade show">
+        {{ session('success') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
+
     @if ($errors->any())
     <div class="alert alert-danger alert-dismissible fade show">
         <strong>Please fix the following errors:</strong>
@@ -1297,14 +1312,16 @@ function selectProductAndStart(productId) {
     }, 50);
 }
 
-// If there are validation errors, skip landing and show the form directly
-@if ($errors->any())
+// If there are validation/session errors, skip landing and show the form directly
+@if ($errors->any() || session('error') || session('success'))
     document.addEventListener('DOMContentLoaded', function() { showForm(); });
 @endif
 
 const TOTAL_STEPS = 8;
 const STEP_LABELS = ['Personal Info','Loan Details','Residence','Business','Financials','Collateral','Guarantors','Declarations'];
 let currentStep = 0;
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_UPLOAD_EXTENSIONS = ['jpg', 'jpeg', 'png', 'pdf'];
 
 function showStep(step) {
     document.querySelectorAll('.step-section').forEach((s, i) => {
@@ -1325,6 +1342,16 @@ function showStep(step) {
 }
 
 // ── Per-step client-side validation ─────────────────────────────────
+function getUploadErrorContainer(input) {
+    let errDiv = input.parentElement.querySelector('.invalid-feedback');
+    if (!errDiv) {
+        errDiv = document.createElement('div');
+        errDiv.className = 'invalid-feedback';
+        input.insertAdjacentElement('afterend', errDiv);
+    }
+    return errDiv;
+}
+
 function validateStep(stepIndex) {
     const section = document.getElementById('section-' + stepIndex);
     if (!section) return true;
@@ -1345,6 +1372,26 @@ function validateStep(stepIndex) {
             if (errDiv && !errDiv.dataset.serverMsg) {
                 errDiv.textContent = el.validationMessage || 'This field is required.';
             }
+            valid = false;
+        }
+    });
+
+    section.querySelectorAll('input[type="file"]').forEach(function(input) {
+        input.classList.remove('is-invalid');
+        const file = input.files && input.files.length ? input.files[0] : null;
+        if (!file) return;
+
+        const ext = file.name.split('.').pop().toLowerCase();
+        let msg = '';
+        if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
+            msg = 'Only JPG, PNG, and PDF documents are allowed.';
+        } else if (file.size > MAX_UPLOAD_BYTES) {
+            msg = 'This document is too large. Please upload a file of 5 MB or less.';
+        }
+
+        if (msg) {
+            input.classList.add('is-invalid');
+            getUploadErrorContainer(input).textContent = msg;
             valid = false;
         }
     });
@@ -1540,8 +1587,51 @@ if (productSelect) {
     }
 }
 
-// ── Single consolidated submit handler: validate all → freq backup → clear draft ──
+let isSubmittingWithFreshToken = false;
+
+function refreshCsrfToken() {
+    return fetch('{{ route("csrf-token.refresh") }}', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            throw new Error('Unable to refresh security token');
+        }
+        return response.json();
+    })
+    .then(function(data) {
+        if (!data.token) {
+            throw new Error('Security token missing from response');
+        }
+
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) meta.setAttribute('content', data.token);
+
+        const tokenInput = document.querySelector('#applyForm input[name="_token"]');
+        if (tokenInput) tokenInput.value = data.token;
+
+        return data.token;
+    });
+}
+
+// Keep the public form session alive while applicants complete the long form.
+setInterval(function() {
+    refreshCsrfToken().catch(function() {});
+}, 10 * 60 * 1000);
+
+// ── Single consolidated submit handler: validate all → refresh token → submit ──
 document.getElementById('applyForm').addEventListener('submit', function(e) {
+    const form = this;
+
+    if (isSubmittingWithFreshToken) {
+        return;
+    }
+
     // Validate every step in order; stop at first failure
     for (let s = 0; s < TOTAL_STEPS; s++) {
         if (!validateStep(s)) {
@@ -1554,19 +1644,35 @@ document.getElementById('applyForm').addEventListener('submit', function(e) {
             return;
         }
     }
+
+    e.preventDefault();
+
     // All valid — inject freq hidden input if select is disabled
-    if (freqSelect && freqSelect.disabled) {
+    if (freqSelect && freqSelect.disabled && !form.querySelector('input[name="repayment_frequency"][data-auto-frequency="1"]')) {
         const hid = document.createElement('input');
         hid.type  = 'hidden';
         hid.name  = 'repayment_frequency';
+        hid.dataset.autoFrequency = '1';
         hid.value = freqSelect.value;
-        this.appendChild(hid);
+        form.appendChild(hid);
     }
-    // Clear localStorage draft so the phone can start fresh next time
-    const phoneField = document.getElementById('phoneField');
-    if (phoneField && phoneField.value.trim()) {
-        try { localStorage.removeItem(DRAFT_PREFIX + phoneField.value.trim()); } catch(ex) {}
+
+    const btnSubmit = document.getElementById('btnSubmit');
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Submitting...';
     }
+
+    saveDraft();
+
+    refreshCsrfToken()
+        .catch(function() {
+            return null;
+        })
+        .finally(function() {
+            isSubmittingWithFreshToken = true;
+            form.submit();
+        });
 });
 
 // Toggle reference fields

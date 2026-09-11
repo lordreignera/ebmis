@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use App\Services\MobileMoneyService;
 use App\Services\RepaymentService;
 
 class CheckTransactions extends Command
@@ -28,12 +29,16 @@ class CheckTransactions extends Command
 
     protected $processedCount = 0;
     protected $autoApprovedCount = 0;
+    protected $directPendingCheckedCount = 0;
+    protected $directPendingFailedCount = 0;
     protected RepaymentService $repaymentService;
+    protected MobileMoneyService $mobileMoneyService;
 
-    public function __construct(RepaymentService $repaymentService)
+    public function __construct(RepaymentService $repaymentService, MobileMoneyService $mobileMoneyService)
     {
         parent::__construct();
         $this->repaymentService = $repaymentService;
+        $this->mobileMoneyService = $mobileMoneyService;
     }
 
     /**
@@ -55,25 +60,162 @@ class CheckTransactions extends Command
 
         $transactions = $transactions->get();
 
-        if ($transactions->isEmpty()) {
-            $this->info('No pending transactions found.');
-            return 0;
-        }
-
-        $this->info('Found ' . $transactions->count() . ' pending transactions.');
+        $this->info('Found ' . $transactions->count() . ' pending raw payment transaction(s).');
 
         foreach ($transactions as $transaction) {
             $this->processTransaction($transaction);
         }
 
-        $this->info("Summary: Processed={$this->processedCount}, Auto-approved={$this->autoApprovedCount}");
+        $this->processDirectPendingRepayments();
+
+        $this->info("Summary: RawProcessed={$this->processedCount}, DirectChecked={$this->directPendingCheckedCount}, Auto-approved={$this->autoApprovedCount}, Failed={$this->directPendingFailedCount}");
         
         Log::info('Transaction check completed', [
             'processed' => $this->processedCount,
-            'auto_approved' => $this->autoApprovedCount
+            'direct_pending_checked' => $this->directPendingCheckedCount,
+            'auto_approved' => $this->autoApprovedCount,
+            'failed' => $this->directPendingFailedCount,
         ]);
 
         return 0;
+    }
+
+    /**
+     * Reconcile newer repayment rows that were created directly without a raw_payments row.
+     * This protects online repayments when the browser polling is closed or the provider
+     * callback does not reach the app.
+     */
+    protected function processDirectPendingRepayments(): void
+    {
+        $query = DB::table('repayments')
+            ->where('type', 2)
+            ->where('status', 0)
+            ->where(function ($query) {
+                $query->where('payment_status', 'Pending')
+                    ->orWhere('pay_status', 'PENDING');
+            })
+            ->where(function ($query) {
+                $query->whereNotNull('txn_id')
+                    ->orWhereNotNull('transaction_reference');
+            })
+            ->orderBy('id');
+
+        if ($this->option('txn')) {
+            $transactionRef = $this->option('txn');
+            $query->where(function ($query) use ($transactionRef) {
+                $query->where('txn_id', $transactionRef)
+                    ->orWhere('transaction_reference', $transactionRef);
+            });
+        } else {
+            $query->where('date_created', '>=', Carbon::now()->subDays(7));
+        }
+
+        $repayments = $query->limit(100)->get();
+
+        if ($repayments->isEmpty()) {
+            $this->info('No direct pending repayment rows found.');
+            return;
+        }
+
+        $this->info('Found ' . $repayments->count() . ' direct pending repayment row(s).');
+
+        foreach ($repayments as $repayment) {
+            $this->processDirectPendingRepayment($repayment);
+        }
+    }
+
+    protected function processDirectPendingRepayment(object $repayment): void
+    {
+        $transactionRef = $repayment->txn_id ?: $repayment->transaction_reference;
+
+        if (!$transactionRef) {
+            return;
+        }
+
+        $this->directPendingCheckedCount++;
+        $this->info("Checking repayment #{$repayment->id} - Ref: {$transactionRef}");
+
+        try {
+            $network = null;
+            if (!empty($repayment->payment_phone)) {
+                $network = $this->mobileMoneyService->detectNetwork($repayment->payment_phone);
+            }
+
+            $statusResult = $this->mobileMoneyService->checkTransactionStatus($transactionRef, $network);
+
+            if (!($statusResult['success'] ?? false)) {
+                $this->warn('  Status check failed: ' . ($statusResult['message'] ?? 'Unknown error'));
+                return;
+            }
+
+            $status = $statusResult['status'] ?? 'pending';
+            $statusCode = (string) ($statusResult['status_code'] ?? '');
+            $message = $statusResult['message'] ?? '';
+
+            $this->line("  Status: {$status} {$statusCode} - {$message}");
+
+            if ($status === 'completed') {
+                $result = $this->repaymentService->approveRepayment(
+                    (int) $repayment->id,
+                    $statusCode !== '' ? $statusCode : '00',
+                    $message ?: 'Payment confirmed by scheduled checker'
+                );
+
+                if ($result['success']) {
+                    $this->autoApprovedCount++;
+                    $this->info('  Repayment marked as PAID');
+                    if ($repayment->schedule_id) {
+                        $this->syncSchedulePendingCount((int) $repayment->schedule_id);
+                    }
+                    return;
+                }
+
+                Log::error('Scheduled checker could not approve completed direct repayment', [
+                    'repayment_id' => $repayment->id,
+                    'transaction_ref' => $transactionRef,
+                    'message' => $result['message'] ?? 'Unknown approval error',
+                ]);
+
+                $this->error('  Gateway completed, but local approval failed: ' . ($result['message'] ?? 'Unknown approval error'));
+                return;
+            }
+
+            if ($status === 'failed') {
+                $createdAt = $repayment->date_created ? Carbon::parse($repayment->date_created) : Carbon::now()->subMinutes(10);
+
+                if ($createdAt->diffInMinutes(now()) < 2) {
+                    $this->comment('  Still inside gateway retry window; leaving pending.');
+                    return;
+                }
+
+                DB::table('repayments')
+                    ->where('id', $repayment->id)
+                    ->update([
+                        'status' => 2,
+                        'payment_status' => 'Failed',
+                        'pay_status' => 'FAILED',
+                        'pay_message' => $message,
+                        'payment_raw' => json_encode($statusResult['raw_response'] ?? $statusResult),
+                    ]);
+
+                if ($repayment->schedule_id) {
+                    $this->syncSchedulePendingCount((int) $repayment->schedule_id);
+                }
+
+                $this->directPendingFailedCount++;
+                $this->error('  Repayment marked as FAILED');
+                return;
+            }
+
+            $this->comment('  Still pending.');
+        } catch (\Exception $e) {
+            $this->error("  Error: {$e->getMessage()}");
+            Log::error('Direct repayment status check error', [
+                'repayment_id' => $repayment->id,
+                'transaction_ref' => $transactionRef,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
