@@ -37,7 +37,24 @@ class AdminController extends Controller
     
     private function getTimestampColumn($tableName)
     {
-        return Schema::hasColumn($tableName, 'datecreated') ? 'datecreated' : 'created_at';
+        foreach (['datecreated', 'date_created', 'created_at'] as $column) {
+            if (Schema::hasColumn($tableName, $column)) {
+                return $column;
+            }
+        }
+
+        return 'created_at';
+    }
+
+    private function getNullableTimestampColumn(string $tableName): ?string
+    {
+        foreach (['datecreated', 'date_created', 'created_at'] as $column) {
+            if (Schema::hasColumn($tableName, $column)) {
+                return $column;
+            }
+        }
+
+        return null;
     }
 
     public function home(Request $request, LoanAccessService $loanAccessService)
@@ -376,6 +393,10 @@ class AdminController extends Controller
         $baseGroupRepayments = DB::table('group_repayments as gr')
             ->join('group_loans as l', 'l.id', '=', 'gr.loan_id')
             ->where('gr.amount', '>', 0);
+        $groupRepaymentTimestamp = $this->getNullableTimestampColumn('group_repayments');
+        $groupRepaymentDateExpression = $groupRepaymentTimestamp
+            ? "gr.{$groupRepaymentTimestamp}"
+            : null;
 
         $loanAccessService->scopeRepaymentTableByLoanAccess($baseGroupRepayments, 'l', $request->user());
 
@@ -427,7 +448,9 @@ class AdminController extends Controller
             ->select([
                 'gr.id',
                 'gr.amount',
-                'gr.created_at as date_created',
+                $groupRepaymentDateExpression
+                    ? DB::raw("{$groupRepaymentDateExpression} as date_created")
+                    : DB::raw('NULL as date_created'),
                 DB::raw('NULL as transaction_reference'),
                 'l.id as loan_id',
                 'l.code as loan_code',
@@ -435,7 +458,11 @@ class AdminController extends Controller
                 DB::raw("'group' as loan_type"),
                 'g.name as borrower_name',
             ])
-            ->orderBy('gr.created_at', 'desc')
+            ->when(
+                $groupRepaymentDateExpression,
+                fn ($query) => $query->orderBy($groupRepaymentDateExpression, 'desc'),
+                fn ($query) => $query->orderBy('gr.id', 'desc')
+            )
             ->limit(8)
             ->get();
 
@@ -445,14 +472,27 @@ class AdminController extends Controller
             ->take(8)
             ->values();
 
+        $groupCollectionsToday = $groupRepaymentDateExpression
+            ? (float) (clone $baseGroupRepayments)->whereDate($groupRepaymentDateExpression, $today)->sum('gr.amount')
+            : 0.0;
+        $groupCollectionsWeek = $groupRepaymentDateExpression
+            ? (float) (clone $baseGroupRepayments)->whereBetween($groupRepaymentDateExpression, [$weekStart, $weekEnd])->sum('gr.amount')
+            : 0.0;
+        $groupCollectionsMonth = $groupRepaymentDateExpression
+            ? (float) (clone $baseGroupRepayments)->whereBetween($groupRepaymentDateExpression, [$monthStart, $monthEnd])->sum('gr.amount')
+            : 0.0;
+        $groupCollectionsMonthCount = $groupRepaymentDateExpression
+            ? (int) (clone $baseGroupRepayments)->whereBetween($groupRepaymentDateExpression, [$monthStart, $monthEnd])->count()
+            : 0;
+
         $collectionsToday = (float) (clone $baseRepayments)->whereDate('r.date_created', $today)->sum('r.amount')
-            + (float) (clone $baseGroupRepayments)->whereDate('gr.created_at', $today)->sum('gr.amount');
+            + $groupCollectionsToday;
         $collectionsWeek = (float) (clone $baseRepayments)->whereBetween('r.date_created', [$weekStart, $weekEnd])->sum('r.amount')
-            + (float) (clone $baseGroupRepayments)->whereBetween('gr.created_at', [$weekStart, $weekEnd])->sum('gr.amount');
+            + $groupCollectionsWeek;
         $collectionsMonth = (float) (clone $baseRepayments)->whereBetween('r.date_created', [$monthStart, $monthEnd])->sum('r.amount')
-            + (float) (clone $baseGroupRepayments)->whereBetween('gr.created_at', [$monthStart, $monthEnd])->sum('gr.amount');
+            + $groupCollectionsMonth;
         $collectionsMonthCount = (int) (clone $baseRepayments)->whereBetween('r.date_created', [$monthStart, $monthEnd])->count()
-            + (int) (clone $baseGroupRepayments)->whereBetween('gr.created_at', [$monthStart, $monthEnd])->count();
+            + $groupCollectionsMonthCount;
 
         $officerStats = [
             'assigned_active_loans' => $activePersonalLoans + $activeGroupLoans,
