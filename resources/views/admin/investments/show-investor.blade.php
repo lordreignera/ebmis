@@ -2,13 +2,17 @@
 
 @section('title', 'Investor Profile - ' . $investor->full_name)
 
+@php
+    $currency = config('loan_management.currency_symbol', 'UGX');
+@endphp
+
 @section('content')
 <div class="row">
     <div class="col-md-12 grid-margin">
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h4 class="font-weight-bold mb-0">Investor Profile</h4>
-                <p class="text-muted mb-0">{{ $investor->full_name }} - {{ ucfirst($investor->type) }} Investor</p>
+                <p class="text-muted mb-0">{{ $investor->full_name }} - Investor profile</p>
             </div>
             <div>
                 <a href="{{ route('admin.investments.create-investment', $investor->id) }}" class="btn btn-primary btn-sm">
@@ -33,11 +37,11 @@
                 <div class="text-center mb-4">
                     <div class="avatar-lg mx-auto mb-3">
                         <div class="avatar-title bg-primary text-white rounded-circle" style="width: 80px; height: 80px; line-height: 80px; font-size: 32px;">
-                            {{ strtoupper(substr($investor->first_name, 0, 1) . substr($investor->last_name, 0, 1)) }}
+                            {{ strtoupper(substr((string) $investor->fname, 0, 1) . substr((string) $investor->lname, 0, 1)) }}
                         </div>
                     </div>
                     <h5 class="mb-1">{{ $investor->full_name }}</h5>
-                    <p class="text-muted mb-2">{{ ucfirst($investor->type) }} Investor</p>
+                    <p class="text-muted mb-2">{{ $investor->portal_status_label }}</p>
                     <span class="badge {{ $investor->is_active ? 'badge-success' : 'badge-secondary' }}">
                         {{ $investor->is_active ? 'Active' : 'Inactive' }}
                     </span>
@@ -75,23 +79,13 @@
                         <span class="text-muted">Gender:</span>
                         <span>{{ $investor->gender ?? 'N/A' }}</span>
                     </div>
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Marital Status:</span>
-                        <span>{{ $investor->marital_status ?? 'N/A' }}</span>
-                    </div>
-                    @if($investor->occupation)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Occupation:</span>
-                        <span>{{ $investor->occupation }}</span>
-                    </div>
-                    @endif
                 </div>
 
                 <div class="mb-3">
                     <h6 class="mb-2">Location</h6>
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Country:</span>
-                        <span>{{ $investor->country->name ?? 'N/A' }}</span>
+                        <span>{{ $investor->countryDetails->name ?? 'N/A' }}</span>
                     </div>
                     @if($investor->city)
                     <div class="d-flex justify-content-between mb-1">
@@ -99,61 +93,37 @@
                         <span>{{ $investor->city }}</span>
                     </div>
                     @endif
-                    @if($investor->postal_code)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Postal Code:</span>
-                        <span>{{ $investor->postal_code }}</span>
-                    </div>
-                    @endif
                 </div>
 
-                @if($investor->investment_goal || $investor->risk_tolerance || $investor->experience)
-                <div class="mb-3">
-                    <h6 class="mb-2">Investment Profile</h6>
-                    @if($investor->investment_goal)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Goal:</span>
-                        <span>{{ $investor->investment_goal }}</span>
-                    </div>
-                    @endif
-                    @if($investor->risk_tolerance)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Risk Tolerance:</span>
-                        <span>{{ $investor->risk_tolerance }}</span>
-                    </div>
-                    @endif
-                    @if($investor->experience)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Experience:</span>
-                        <span>{{ $investor->experience }}</span>
-                    </div>
-                    @endif
-                    @if($investor->income_range)
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Income Range:</span>
-                        <span>{{ $investor->income_range }}</span>
-                    </div>
-                    @endif
-                </div>
-                @endif
-
-                @if($investor->notes)
+                @if($investor->description)
                 <div class="mb-3">
                     <h6 class="mb-2">Notes</h6>
-                    <p class="small text-muted mb-0">{{ $investor->notes }}</p>
+                    <p class="small text-muted mb-0">{{ $investor->description }}</p>
                 </div>
                 @endif
 
                 <div class="mb-3">
+                    @php
+                        $registeredAt = $investor->date_created ?? $investor->created_at;
+                    @endphp
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Registered:</span>
-                        <span>{{ $investor->created_at->format('M d, Y') }}</span>
+                        <span>{{ $registeredAt ? \Carbon\Carbon::parse($registeredAt)->format('M d, Y') : 'N/A' }}</span>
                     </div>
                     <div class="d-flex justify-content-between mb-1">
-                        <span class="text-muted">Last Updated:</span>
-                        <span>{{ $investor->updated_at->diffForHumans() }}</span>
+                        <span class="text-muted">Portal access:</span>
+                        <span>{{ $investor->can_access_portal ? 'Enabled' : 'Not enabled' }}</span>
                     </div>
                 </div>
+
+                @if($areas !== [])
+                <div class="mb-3">
+                    <h6 class="mb-2">Areas of interest</h6>
+                    @foreach($areas as $area)
+                        <span class="badge badge-outline-primary mb-1">{{ $area }}</span>
+                    @endforeach
+                </div>
+                @endif
 
                 @if(!$investor->is_active)
                 <div class="mt-3">
@@ -182,7 +152,7 @@
             <div class="col-md-3">
                 <div class="card card-bordered">
                     <div class="card-body text-center">
-                        <h3 class="text-primary mb-1">{{ $portfolio_stats['total_investments'] }}</h3>
+                        <h3 class="text-primary mb-1">{{ $stats['total_investments'] }}</h3>
                         <p class="text-muted mb-0">Total Investments</p>
                     </div>
                 </div>
@@ -190,7 +160,7 @@
             <div class="col-md-3">
                 <div class="card card-bordered">
                     <div class="card-body text-center">
-                        <h3 class="text-success mb-1">${{ number_format($portfolio_stats['total_amount'], 2) }}</h3>
+                        <h3 class="text-success mb-1">{{ $currency }} {{ number_format($stats['total_invested'], 2) }}</h3>
                         <p class="text-muted mb-0">Total Invested</p>
                     </div>
                 </div>
@@ -198,7 +168,7 @@
             <div class="col-md-3">
                 <div class="card card-bordered">
                     <div class="card-body text-center">
-                        <h3 class="text-info mb-1">${{ number_format($portfolio_stats['total_interest'], 2) }}</h3>
+                        <h3 class="text-info mb-1">{{ $currency }} {{ number_format($stats['total_returns'] - $stats['total_invested'], 2) }}</h3>
                         <p class="text-muted mb-0">Expected Returns</p>
                     </div>
                 </div>
@@ -206,7 +176,7 @@
             <div class="col-md-3">
                 <div class="card card-bordered">
                     <div class="card-body text-center">
-                        <h3 class="text-warning mb-1">{{ $portfolio_stats['active_investments'] }}</h3>
+                        <h3 class="text-warning mb-1">{{ $stats['active_investments'] }}</h3>
                         <p class="text-muted mb-0">Active Investments</p>
                     </div>
                 </div>
@@ -239,36 +209,33 @@
                             <tr>
                                 <td>
                                     <div class="d-flex flex-column">
-                                        <span class="font-weight-medium">{{ $investment->inv_name }}</span>
-                                        @if($investment->areas)
-                                        <small class="text-muted">{{ implode(', ', json_decode($investment->areas, true) ?: []) }}</small>
-                                        @endif
+                                        <span class="font-weight-medium">{{ $investment->name }}</span>
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="font-weight-medium">${{ number_format($investment->inv_amt, 2) }}</span>
+                                    <span class="font-weight-medium">{{ $currency }} {{ number_format($investment->amount, 2) }}</span>
                                 </td>
                                 <td>
-                                    @if($investment->inv_term == 1)
+                                    @if($investment->type == 1)
                                         <span class="badge badge-primary">Standard</span>
                                     @else
                                         <span class="badge badge-info">Compound</span>
                                     @endif
                                 </td>
-                                <td>{{ $investment->inv_period }} year{{ $investment->inv_period > 1 ? 's' : '' }}</td>
+                                <td>{{ $investment->period }} year{{ $investment->period > 1 ? 's' : '' }}</td>
                                 <td>
                                     <span class="text-success font-weight-medium">
-                                        ${{ number_format($investment->total_return, 2) }}
+                                        {{ $currency }} {{ number_format($investment->total_return, 2) }}
                                     </span>
                                     <br>
                                     <small class="text-muted">
-                                        ${{ number_format($investment->interest_amt, 2) }} profit
+                                        {{ $currency }} {{ number_format($investment->interest, 2) }} profit
                                     </small>
                                 </td>
                                 <td>
                                     @php
-                                        $startDate = \Carbon\Carbon::parse($investment->term_start);
-                                        $endDate = \Carbon\Carbon::parse($investment->term_end);
+                                        $startDate = $investment->start_date;
+                                        $endDate = $investment->end_date;
                                         $now = \Carbon\Carbon::now();
                                         
                                         if ($now->lt($startDate)) {
@@ -284,7 +251,7 @@
                                     @endphp
                                     <span class="badge {{ $statusClass }}">{{ $statusText }}</span>
                                 </td>
-                                <td>{{ \Carbon\Carbon::parse($investment->term_start)->format('M d, Y') }}</td>
+                                <td>{{ $investment->start_date?->format('M d, Y') ?? 'N/A' }}</td>
                                 <td>
                                     <div class="btn-group" role="group">
                                         <a href="{{ route('admin.investments.show-investment', $investment->id) }}" 

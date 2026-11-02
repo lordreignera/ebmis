@@ -17,6 +17,15 @@ class Expenditure extends Model
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_CANCELLED = 'cancelled';
 
+    /** Shared by ordinary expenditure requests and calculated remuneration payouts. */
+    public static function nextExpenseNumber(): string
+    {
+        $prefix = 'EXP-' . now()->format('Ymd') . '-';
+        $last = static::where('expense_number', 'like', $prefix . '%')->orderByDesc('expense_number')->value('expense_number');
+        $next = $last ? ((int) substr($last, -4)) + 1 : 1;
+        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+    }
+
     protected $fillable = [
         'expense_number',
         'type',
@@ -115,6 +124,11 @@ class Expenditure extends Model
     public function rollout()
     {
         return $this->belongsTo(ExpenditureRollout::class, 'rollout_batch_id');
+    }
+
+    public function remunerationCalculation()
+    {
+        return $this->hasOne(StaffRemunerationCalculation::class, 'expenditure_id');
     }
 
     public function getStatusLabelAttribute(): string

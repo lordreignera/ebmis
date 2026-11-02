@@ -1,30 +1,40 @@
 @php
+    $navbarUser = auth()->user();
+    $navbarCanRoute = static function (string $routeName) use ($navbarUser): bool {
+        $permission = \App\Support\EbmisPermissionRegistry::routePermission($routeName);
+
+        return $navbarUser->isSuperAdmin() || ($permission !== null && $navbarUser->can($permission));
+    };
+    $navbarHasQuickActions = collect([
+        'admin.loans.active',
+        'admin.client-applications.index',
+        'admin.umra.dashboard',
+        'admin.accounting.journal-entries',
+        'admin.expenditures.index',
+    ])->contains($navbarCanRoute);
+    $navbarHasNotifications = collect([
+        'admin.client-applications.index',
+        'admin.loans.approvals',
+        'admin.loans.active',
+    ])->contains($navbarCanRoute);
     $navbarTableExists = fn (string $table): bool => \Illuminate\Support\Facades\Schema::hasTable($table);
 
-    $navbarSelfApplicationsCount = $navbarTableExists('client_loan_applications')
+    $navbarSelfApplicationsCount = $navbarCanRoute('admin.client-applications.index') && $navbarTableExists('client_loan_applications')
         ? \Illuminate\Support\Facades\DB::table('client_loan_applications')
             ->whereIn('status', ['pending_fo_verification', 'pending_scoring', 'pending_fo_review'])
             ->count()
         : 0;
 
     $navbarPendingApprovalsCount = 0;
-    if ($navbarTableExists('personal_loans')) {
-        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('personal_loans')->where('status', 0)->count();
-    }
-    if ($navbarTableExists('group_loans')) {
-        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('group_loans')->where('status', 0)->count();
-    }
-    if ($navbarTableExists('school_loans')) {
-        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('school_loans')->where('status', 0)->count();
-    }
-    if ($navbarTableExists('student_loans')) {
-        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('student_loans')->where('status', 0)->count();
-    }
-    if ($navbarTableExists('staff_loans')) {
-        $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table('staff_loans')->where('status', 0)->count();
+    if ($navbarCanRoute('admin.loans.approvals')) {
+        foreach (['personal_loans', 'group_loans', 'school_loans', 'student_loans', 'staff_loans'] as $loanTable) {
+            if ($navbarTableExists($loanTable)) {
+                $navbarPendingApprovalsCount += \Illuminate\Support\Facades\DB::table($loanTable)->where('status', 0)->count();
+            }
+        }
     }
 
-    $navbarDueTodayCount = $navbarTableExists('loan_schedules')
+    $navbarDueTodayCount = $navbarCanRoute('admin.loans.active') && $navbarTableExists('loan_schedules')
         ? \Illuminate\Support\Facades\DB::table('loan_schedules')
             ->whereDate('payment_date', today())
             ->where('status', '!=', 1)
@@ -38,7 +48,7 @@
 <nav class="navbar p-0 fixed-top d-flex flex-row" style="background: #ffffff !important; height: 64px !important; box-shadow: 0 1px 6px rgba(17,24,39,0.08) !important; border-bottom: 1px solid #e5e7eb !important;">
     <!-- Mobile Brand -->
     <div class="navbar-brand-wrapper d-flex d-lg-none align-items-center justify-content-center" style="background: #ffffff !important; width: 260px !important; border-right: 1px solid #e5e7eb !important;">
-        <a class="custom-brand" href="{{ url('admin/home') }}">
+        <a class="custom-brand" href="{{ route($navbarUser->preferredHomeRouteName()) }}">
             <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="Emuria" style="max-height: 40px; width: auto;">
         </a>
     </div>
@@ -51,6 +61,7 @@
         </button>
         
         <!-- Search Bar -->
+        @if($navbarCanRoute('admin.global-search'))
         <div class="d-none d-lg-flex align-items-center flex-grow-1 ebims-navbar-search" style="max-width: 600px; margin-left: 2rem;">
             <form class="w-100" id="globalSearchForm" style="margin: 0;">
                 <div class="input-group" style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 2px;">
@@ -63,10 +74,12 @@
                 <div class="ebims-global-search-results" id="globalSearchResults" aria-live="polite"></div>
             </form>
         </div>
+        @endif
         
         <!-- Right Side Items -->
         <ul class="navbar-nav navbar-nav-right ms-auto d-flex align-items-center">
             <!-- Quick Actions Button -->
+            @if($navbarHasQuickActions)
             <li class="nav-item dropdown d-none d-lg-block me-3">
                 <a class="nav-link btn create-new-button" 
                    id="createbuttonDropdown" 
@@ -88,6 +101,7 @@
                      aria-labelledby="createbuttonDropdown"
                      style="border-radius: 10px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; min-width: 250px !important;">
                     <h6 class="p-3 mb-0 fw-bold" style="color: #333; border-bottom: 1px solid #e9ecef;">Quick Actions</h6>
+                    @if($navbarCanRoute('admin.loans.active'))
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.loans.active', ['type' => 'personal']) }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
                             <div class="preview-icon bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
@@ -99,6 +113,8 @@
                             <small class="text-muted">Loan responsibility and follow-up</small>
                         </div>
                     </a>
+                    @endif
+                    @if($navbarCanRoute('admin.client-applications.index'))
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.client-applications.index') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
@@ -111,6 +127,8 @@
                             <small class="text-muted">FO verification and scoring queue</small>
                         </div>
                     </a>
+                    @endif
+                    @if($navbarCanRoute('admin.umra.dashboard'))
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.umra.dashboard') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
@@ -123,6 +141,8 @@
                             <small class="text-muted">Risk and compliance dashboard</small>
                         </div>
                     </a>
+                    @endif
+                    @if($navbarCanRoute('admin.accounting.journal-entries'))
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.accounting.journal-entries') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
@@ -135,6 +155,8 @@
                             <small class="text-muted">Journal entries and GL records</small>
                         </div>
                     </a>
+                    @endif
+                    @if($navbarCanRoute('admin.expenditures.index'))
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.expenditures.index') }}" style="padding: 12px 20px !important; transition: background 0.2s !important;">
                         <div class="preview-thumbnail me-3">
@@ -147,8 +169,10 @@
                             <small class="text-muted">Expenses and payout rollout</small>
                         </div>
                     </a>
+                    @endif
                 </div>
             </li>
+            @endif
             
             <!-- Grid Icon -->
             <li class="nav-item nav-settings d-none d-lg-block me-2">
@@ -197,6 +221,7 @@
             </li>
             
             <!-- Notifications -->
+            @if($navbarHasNotifications)
             <li class="nav-item dropdown me-3">
                 <a class="nav-link count-indicator d-flex align-items-center justify-content-center" 
                    id="notificationDropdown" 
@@ -224,6 +249,7 @@
                             <span class="badge bg-danger">{{ number_format($navbarNotificationTotal) }}</span>
                         @endif
                     </h6>
+                    @if($navbarCanRoute('admin.client-applications.index'))
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.client-applications.index') }}" style="padding: 12px 20px !important;">
                         <div class="preview-thumbnail me-3">
                             <div class="preview-icon {{ $navbarSelfApplicationsCount > 0 ? 'bg-danger' : 'bg-secondary' }} rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
@@ -235,6 +261,8 @@
                             <p class="text-muted small mb-0">{{ number_format($navbarSelfApplicationsCount) }} needing FO/scoring attention</p>
                         </div>
                     </a>
+                    @endif
+                    @if($navbarCanRoute('admin.loans.approvals'))
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.loans.approvals') }}" style="padding: 12px 20px !important;">
                         <div class="preview-thumbnail me-3">
@@ -247,6 +275,8 @@
                             <p class="text-muted small mb-0">{{ number_format($navbarPendingApprovalsCount) }} loans awaiting approval</p>
                         </div>
                     </a>
+                    @endif
+                    @if($navbarCanRoute('admin.loans.active'))
                     <div class="dropdown-divider m-0"></div>
                     <a class="dropdown-item preview-item d-flex align-items-center" href="{{ route('admin.loans.active', ['type' => 'personal', 'status' => 'due_today']) }}" style="padding: 12px 20px !important;">
                         <div class="preview-thumbnail me-3">
@@ -259,12 +289,14 @@
                             <p class="text-muted small mb-0">{{ number_format($navbarDueTodayCount) }} schedules need repayment follow-up today</p>
                         </div>
                     </a>
+                    @endif
                     @if($navbarNotificationTotal === 0)
                         <div class="dropdown-divider m-0"></div>
                         <p class="p-3 mb-0 text-center text-muted fw-medium">No items need attention right now</p>
                     @endif
                 </div>
             </li>
+            @endif
             
             <!-- User Profile Dropdown -->
             <li class="nav-item dropdown">

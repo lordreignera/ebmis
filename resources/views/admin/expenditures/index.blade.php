@@ -4,7 +4,6 @@
 
 @section('content')
 @php
-    $canManageStaffPaymentRollout = auth()->user()->canManageStaffPaymentRollout();
     $statusOptions = [
         'pending' => 'Pending approval',
         'approved' => 'Approved, pending payment',
@@ -16,9 +15,7 @@
 @endphp
 <div class="container-fluid expenditure-page">
     @php
-        $expenditureActions = ($canManageStaffPaymentRollout
-            ? '<a href="' . route('admin.expenditures.rollout') . '" class="btn btn-outline-dark"><i class="mdi mdi-account-cash-outline me-1"></i> Staff Payment Rollout</a>'
-            : '')
+        $expenditureActions = '<a href="' . route('admin.expenditures.remuneration') . '" class="btn btn-outline-dark me-2"><i class="mdi mdi-account-cash-outline me-1"></i> Review Remuneration</a>'
             . '<a href="' . route('admin.expenditures.create') . '" class="btn btn-dark"><i class="mdi mdi-plus me-1"></i> New Expenditure</a>';
     @endphp
 

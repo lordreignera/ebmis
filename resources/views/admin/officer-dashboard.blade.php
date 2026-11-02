@@ -210,6 +210,10 @@
         <div class="card-body">
           <h5 class="mb-3">My Performance</h5>
           <div class="d-grid gap-2">
+            <a href="{{ route('admin.remuneration.performance') }}" class="btn btn-outline-dark text-start">
+              <i class="mdi mdi-cash-multiple me-1"></i>
+              My Remuneration Performance
+            </a>
             <a href="{{ $performanceLinks['today'] ?? route('admin.repayments.history') }}" class="btn btn-outline-success text-start">
               <i class="mdi mdi-calendar-today me-1"></i>
               Today: UGX {{ number_format($stats['collections_today'] ?? 0) }}

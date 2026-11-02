@@ -154,10 +154,29 @@
                     <p class="text-muted">Define system permissions and access controls.</p>
                     <div class="d-grid gap-2">
                         <a href="{{ route('admin.permissions.index') }}" class="btn btn-outline-info">
-                            <i class="fas fa-list me-2"></i>View All Permissions
+                            <i class="fas fa-list-check me-2"></i>Manage Permissions
                         </a>
                         <a href="{{ route('admin.permissions.create') }}" class="btn btn-info">
                             <i class="fas fa-plus me-2"></i>Add Permission
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-warning text-dark">
+                    <h6 class="mb-0"><i class="fas fa-user-check me-2"></i>Investor Approvals</h6>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Review investor registrations, verify private KYC documents, and approve or reject portal access.</p>
+                    <div class="d-flex align-items-center justify-content-between gap-2">
+                        <span class="access-control-badge {{ ($pendingInvestorApprovals ?? 0) > 0 ? 'orange' : 'green' }}">
+                            {{ number_format($pendingInvestorApprovals ?? 0) }} pending
+                        </span>
+                        <a href="{{ route('admin.investments.investor-approvals.index') }}" class="btn btn-warning">
+                            <i class="fas fa-clipboard-check me-2"></i>Review registrations
                         </a>
                     </div>
                 </div>
@@ -168,13 +187,12 @@
     <!-- Recent Activity -->
     <div class="row">
         <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header">
+            <div class="access-control-table-shell">
+                <div class="card-header px-4 py-3">
                     <h6 class="mb-0"><i class="fas fa-history me-2"></i>Recent Users</h6>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
+                <div class="access-control-table-scroll">
+                        <table class="table access-control-table mb-0">
                             <thead>
                                 <tr>
                                     <th>User</th>
@@ -182,7 +200,7 @@
                                     <th>Roles</th>
                                     <th>Status</th>
                                     <th>Created</th>
-                                    <th>Actions</th>
+                                    <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -196,37 +214,38 @@
                                                 </div>
                                             </div>
                                             <div>
-                                                <div class="fw-bold">{{ $user->name }}</div>
-                                                <div class="text-muted small">{{ $user->email }}</div>
+                                                <div class="table-primary-text">{{ $user->name }}</div>
+                                                <div class="table-secondary-text">{{ $user->email }}</div>
                                             </div>
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{ $user->user_type === 'super_admin' ? 'danger' : ($user->user_type === 'school' ? 'info' : 'warning') }}">
+                                        <span class="access-control-badge {{ $user->user_type === 'super_admin' ? 'red' : ($user->user_type === 'school' ? 'blue' : 'orange') }}">
                                             {{ ucwords(str_replace('_', ' ', $user->user_type)) }}
                                         </span>
                                     </td>
                                     <td>
                                         @foreach($user->roles as $role)
-                                            <span class="badge bg-secondary me-1">{{ $role->name }}</span>
+                                            <span class="access-control-badge dark me-1">{{ $role->name }}</span>
                                         @endforeach
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{ $user->status === 'active' ? 'success' : ($user->status === 'pending' ? 'warning' : 'danger') }}">
+                                        <span class="access-control-badge {{ $user->status === 'active' ? 'green' : ($user->status === 'pending' ? 'orange' : 'red') }}">
                                             {{ ucfirst($user->status) }}
                                         </span>
                                     </td>
-                                    <td>{{ $user->created_at->diffForHumans() }}</td>
-                                    <td>
-                                        <a href="{{ route('admin.users.edit', $user) }}" class="btn btn-sm btn-outline-primary">
-                                            <i class="fas fa-edit"></i>
+                                    <td class="table-secondary-text">{{ $user->created_at->diffForHumans() }}</td>
+                                    <td class="action-cell">
+                                        <div class="access-control-actions">
+                                        <a href="{{ route('admin.users.edit', $user) }}" class="access-control-action edit">
+                                            <i class="fas fa-edit"></i><span>Edit</span>
                                         </a>
+                                        </div>
                                     </td>
                                 </tr>
                                 @endforeach
                             </tbody>
                         </table>
-                    </div>
                 </div>
             </div>
         </div>

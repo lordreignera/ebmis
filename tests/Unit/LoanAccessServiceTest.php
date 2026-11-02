@@ -396,7 +396,7 @@ class LoanAccessServiceTest extends TestCase
         $this->expectException(HttpException::class);
 
         (new EbimsModuleAccess())->handle(
-            $this->namedRequest('admin.home'),
+            $this->namedRequest('admin.modules.dashboard'),
             fn () => response('not allowed')
         );
     }
@@ -408,7 +408,7 @@ class LoanAccessServiceTest extends TestCase
         $this->actingAs($user);
 
         $response = (new EbimsModuleAccess())->handle(
-            $this->namedRequest('admin.home'),
+            $this->namedRequest('admin.modules.dashboard'),
             fn () => response('ok')
         );
 

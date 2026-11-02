@@ -41,9 +41,9 @@
             <div class="col-lg-12 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body">
-                        <h4 class="card-title">Active Savings Products ({{ $savingsProducts->count() }})</h4>
-                        <div class="table-responsive">
-                            <table class="table table-hover">
+                        <h4 class="card-title">Active Savings Products ({{ $savingsProductStats['total'] }})</h4>
+                        <div class="access-control-table-shell access-control-table-scroll">
+                            <table class="table access-control-table align-middle mb-0">
                                 <thead>
                                     <tr>
                                         <th>Code</th>
@@ -113,6 +113,14 @@
                                 </tbody>
                             </table>
                         </div>
+                        @if($savingsProducts->hasPages())
+                        <div class="access-control-table-footer d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
+                            <span class="table-secondary-text">
+                                Showing {{ $savingsProducts->firstItem() ?? 0 }} to {{ $savingsProducts->lastItem() ?? 0 }} of {{ $savingsProducts->total() }} entries
+                            </span>
+                            {{ $savingsProducts->links() }}
+                        </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -126,7 +134,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-0">Total Products</h6>
-                                <h3 class="mb-0">{{ $savingsProducts->count() }}</h3>
+                                <h3 class="mb-0">{{ $savingsProductStats['total'] }}</h3>
                             </div>
                             <i class="mdi mdi-bank mdi-36px"></i>
                         </div>
@@ -139,7 +147,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-0">Active Products</h6>
-                                <h3 class="mb-0">{{ $savingsProducts->where('isactive', 1)->count() }}</h3>
+                                <h3 class="mb-0">{{ $savingsProductStats['active'] }}</h3>
                             </div>
                             <i class="mdi mdi-check-circle mdi-36px"></i>
                         </div>
@@ -152,7 +160,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-0">Avg Interest Rate</h6>
-                                <h3 class="mb-0">{{ number_format($savingsProducts->avg('interest'), 2) }}%</h3>
+                                <h3 class="mb-0">{{ number_format($savingsProductStats['average_interest'], 2) }}%</h3>
                             </div>
                             <i class="mdi mdi-percent mdi-36px"></i>
                         </div>

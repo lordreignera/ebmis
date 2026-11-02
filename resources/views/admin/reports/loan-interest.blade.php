@@ -197,15 +197,15 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{{ route('loans.show', $loan->id) }}" class="btn btn-outline-info" title="View">
+                                            <a href="{{ route('admin.loans.show', $loan->id) }}" class="btn btn-outline-info" title="View">
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
                                             <button type="button" class="btn btn-outline-primary" 
                                                     onclick="viewInterestBreakdown({{ $loan->id }})" title="Interest Breakdown">
                                                 <i class="mdi mdi-chart-pie"></i>
                                             </button>
-                                            @if($interestDue > 0)
-                                            <a href="{{ route('payments.create', ['loan_id' => $loan->id]) }}" 
+                                            @if($interestDue > 0 && auth()->user()?->isSuperAdmin())
+                                            <a href="{{ route('admin.repayments.create', ['loan_id' => $loan->id]) }}"
                                                class="btn btn-outline-success" title="Record Payment">
                                                 <i class="mdi mdi-plus"></i>
                                             </a>

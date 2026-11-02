@@ -23,6 +23,8 @@
     <link rel="stylesheet" href="{{ asset('css/modern-tables.css') }}">
     <!-- Shared EBIMS UI Styles -->
     <link rel="stylesheet" href="{{ asset('css/ebims-ui.css') }}">
+    <!-- EduKit-inspired Access Control tables -->
+    <link rel="stylesheet" href="{{ asset('css/access-control-tables.css') }}">
     <!-- Force Scroll CSS -->
     <link rel="stylesheet" href="{{ asset('css/force-scroll.css') }}">
     <!-- Select2 CSS -->

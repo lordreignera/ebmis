@@ -2,6 +2,10 @@
 
 @section('title', 'Investors Management')
 
+@php
+    $currency = config('loan_management.currency_symbol', 'UGX');
+@endphp
+
 @section('content')
 <div class="row">
     <div class="col-md-12 grid-margin">
@@ -94,7 +98,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h4 class="card-title mb-2">Investment Value</h4>
-                        <h2 class="text-warning mb-2">${{ number_format($stats['total_investment_value'], 0) }}</h2>
+                        <h2 class="text-warning mb-2">{{ $currency }} {{ number_format($stats['total_investment_value'], 0) }}</h2>
                     </div>
                     <div class="icon-container">
                         <i class="mdi mdi-cash-multiple icon-lg text-warning"></i>
@@ -177,7 +181,7 @@
                                 <td>
                                     <span class="badge bg-light text-dark">
                                         <i class="mdi mdi-flag me-1"></i>
-                                        {{ $investor->country->name ?? 'Unknown' }}
+                                        {{ $investor->countryDetails->name ?? 'Unknown' }}
                                     </span>
                                 </td>
                                 <td>
@@ -305,8 +309,8 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="admin_code">Admin Security Code</label>
-                        <input type="password" class="form-control" id="admin_code" name="code" required>
+                        <label for="admin_code">Confirm your administrator password</label>
+                        <input type="password" class="form-control" id="admin_code" name="code" autocomplete="current-password" required>
                     </div>
                     
                     <div class="form-group">

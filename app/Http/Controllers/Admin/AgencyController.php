@@ -37,9 +37,23 @@ class AgencyController extends Controller
     /**
      * Display a listing of agencies
      */
-    public function index()
+    public function index(Request $request)
     {
-        $agencies = Agency::with('addedBy')->orderBy('name')->get();
+        $query = Agency::with('addedBy')->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($agencyQuery) use ($search) {
+                $agencyQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('location', 'like', "%{$search}%")
+                    ->orWhere('contact_person', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $agencies = $query->paginate(20)->withQueryString();
         return view('admin.settings.agencies', compact('agencies'));
     }
 

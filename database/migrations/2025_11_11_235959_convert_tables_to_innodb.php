@@ -15,6 +15,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         // List of tables that need to be converted to InnoDB
         $tables = [
             'schools',

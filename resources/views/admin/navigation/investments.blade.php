@@ -23,12 +23,15 @@
                     <div class="icon-lg text-info"><i class="mdi mdi-trending-up"></i></div>
                 </div>
                 <div class="module-action-grid mt-3">
+                    @if(auth()->user()->isSuperAdmin())
+                    <a href="{{ route('admin.investments.investor-approvals.index') }}" class="btn btn-outline-warning btn-sm module-action-btn"><i class="mdi mdi-account-check-outline"></i><span>Investor Approvals</span></a>
+                    @endif
                     <a href="{{ route('admin.investments.index') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-view-dashboard"></i><span>Investment Dashboard</span></a>
                     <a href="{{ route('admin.investments.investors') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-account-cash"></i><span>All Investors</span></a>
                     <a href="{{ route('admin.investments.create-investor') }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-account-plus"></i><span>Add Investor</span></a>
-                    <a href="{{ route('admin.investments.index') }}?status=active" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-check-circle"></i><span>Active Investments</span></a>
-                    <a href="{{ route('admin.investments.index') }}?status=pending" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-clock-outline"></i><span>Pending Investments</span></a>
-                    <a href="{{ route('admin.investments.index') }}?status=matured" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-calendar-check"></i><span>Matured Investments</span></a>
+                    <a href="{{ route('admin.investments.index', ['status' => 1]) }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-check-circle"></i><span>Active Investments</span></a>
+                    <a href="{{ route('admin.investments.index', ['status' => 0]) }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-clock-outline"></i><span>Pending Investments</span></a>
+                    <a href="{{ route('admin.investments.index', ['status' => 2]) }}" class="btn btn-outline-info btn-sm module-action-btn"><i class="mdi mdi-calendar-check"></i><span>Completed Investments</span></a>
                 </div>
             </div>
         </div>

@@ -14,7 +14,7 @@
                             <h2 class="h4 mb-1 text-primary">
                                 <i class="mdi mdi-key-plus me-2"></i>Create New Permission
                             </h2>
-                            <p class="text-muted mb-0">Add a new permission to the system</p>
+                            <p class="text-muted mb-0">Add a permission for an application feature</p>
                         </div>
                         <a href="{{ route('admin.permissions.index') }}" class="btn btn-outline-secondary">
                             <i class="mdi mdi-arrow-left me-1"></i>Back to Permissions
@@ -36,6 +36,8 @@
                     @if(session('error'))
                         <div class="alert alert-danger">{{ session('error') }}</div>
                     @endif
+
+                    <div class="alert alert-info">A new permission name does not grant access to an EBIMS screen until that route is explicitly mapped in the application. Use an existing route-controlled permission to grant screen access now.</div>
 
                     <form action="{{ route('admin.permissions.store') }}" method="POST">
                         @csrf

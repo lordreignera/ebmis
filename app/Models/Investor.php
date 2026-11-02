@@ -3,11 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 
-class Investor extends Model
+class Investor extends Authenticatable
 {
-    use HasFactory;
+    use HasFactory, Notifiable;
 
     // Disable Laravel timestamps in favor of legacy structure
     public $timestamps = false;
@@ -15,12 +16,14 @@ class Investor extends Model
     protected $fillable = [
         'title',
         'fname',
-        'lname', 
+        'lname',
         'address',
         'city',
         'country',
         'zip',
         'email',
+        'password',
+        'remember_token',
         'passcode',
         'phone',
         'gender',
@@ -33,7 +36,19 @@ class Investor extends Model
         'dob',
         'soft_delete',
         'del_user',
-        'del_comments'
+        'del_comments',
+        'portal_status',
+        'approved_by',
+        'approved_at',
+        'rejected_by',
+        'rejected_at',
+        'rejection_reason',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'passcode',
     ];
 
     protected $casts = [
@@ -42,13 +57,41 @@ class Investor extends Model
         'status' => 'integer',
         'soft_delete' => 'integer',
         'del_user' => 'integer',
-        'passcode' => 'integer'
+        'passcode' => 'integer',
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
+
+    public function getAuthPasswordName(): string
+    {
+        return 'password';
+    }
+
+    public function getAuthPassword(): string
+    {
+        return (string) $this->password;
+    }
+
+    public function getPortalStatusLabelAttribute(): string
+    {
+        return match ($this->portal_status) {
+            'approved' => 'Approved',
+            'rejected' => 'Rejected',
+            default => 'Pending review',
+        };
+    }
+
+    public function getCanAccessPortalAttribute(): bool
+    {
+        return $this->portal_status === 'approved'
+            && (int) $this->status === 1
+            && (int) $this->soft_delete === 0;
+    }
 
     /**
      * Get the country that owns the investor
      */
-    public function country()
+    public function countryDetails()
     {
         return $this->belongsTo(Country::class, 'country');
     }
@@ -158,7 +201,7 @@ class Investor extends Model
      */
     public function scopeInternational($query)
     {
-        return $query->whereHas('country', function($q) {
+        return $query->whereHas('countryDetails', function($q) {
             $q->where('name', '!=', 'Uganda'); // Assuming Uganda is local
         });
     }
@@ -168,7 +211,7 @@ class Investor extends Model
      */
     public function scopeLocal($query)
     {
-        return $query->whereHas('country', function($q) {
+        return $query->whereHas('countryDetails', function($q) {
             $q->where('name', 'Uganda'); // Assuming Uganda is local
         });
     }

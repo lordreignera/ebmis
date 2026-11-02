@@ -41,15 +41,15 @@
                     <p class="table-subtitle">Manage and view all registered branches</p>
                 </div>
                 <div class="table-header-right">
-                    <div class="table-search">
+                    <form method="GET" action="{{ route('admin.settings.branches') }}" class="table-search">
                         <i class="mdi mdi-magnify"></i>
-                        <input type="text" placeholder="Search branches..." id="branchSearch">
-                    </div>
+                        <input type="text" name="search" value="{{ request('search') }}" placeholder="Search branches..." id="branchSearch">
+                    </form>
                 </div>
             </div>
             
-            <div class="table-responsive">
-                <table class="table modern-table" id="branchesTable">
+            <div class="access-control-table-shell access-control-table-scroll">
+                <table class="table access-control-table align-middle mb-0" id="branchesTable">
                     <thead>
                         <tr>
                             <th>#</th>
@@ -66,7 +66,7 @@
                     <tbody>
                         @forelse($branches as $branch)
                         <tr>
-                            <td>{{ $loop->iteration }}</td>
+                            <td>{{ ($branches->currentPage() - 1) * $branches->perPage() + $loop->iteration }}</td>
                             <td>{{ $branch->name }}</td>
                             <td>{{ $branch->code ?? 'BRN' . str_pad($branch->id, 3, '0', STR_PAD_LEFT) }}</td>
                             <td>{{ $branch->address ?? 'N/A' }}</td>
@@ -115,6 +115,14 @@
                     </tbody>
                 </table>
             </div>
+            @if($branches->hasPages())
+            <div class="access-control-table-footer d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <span class="table-secondary-text">
+                    Showing {{ $branches->firstItem() ?? 0 }} to {{ $branches->lastItem() ?? 0 }} of {{ $branches->total() }} entries
+                </span>
+                {{ $branches->links() }}
+            </div>
+            @endif
         </div>
 
 <!-- Add Branch Modal -->

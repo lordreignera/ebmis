@@ -3,7 +3,9 @@
 @section('title', 'Dashboard')
 
 @section('content')
-    @if($officerDashboardMode ?? false)
+    @if($limitedDashboardMode ?? false)
+        @include('admin.dashboard-landing')
+    @elseif($officerDashboardMode ?? false)
         @include('admin.officer-dashboard')
     @else
         @include('admin.body')

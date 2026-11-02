@@ -98,8 +98,14 @@
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="password" class="form-label">Password *</label>
-                                <input type="password" class="form-control @error('password') is-invalid @enderror" 
-                                       id="password" name="password" required minlength="8">
+                                <div class="input-group">
+                                    <input type="password" class="form-control @error('password') is-invalid @enderror"
+                                           id="password" name="password" required minlength="8">
+                                    <button type="button" class="btn btn-outline-secondary password-visibility-toggle"
+                                            data-password-target="password" aria-label="Show password" title="Show password">
+                                        <i class="mdi mdi-eye" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                                 <small class="text-muted">Minimum 8 characters</small>
                                 @error('password')
                                     <div class="invalid-feedback">{{ $message }}</div>
@@ -107,8 +113,14 @@
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="password_confirmation" class="form-label">Confirm Password *</label>
-                                <input type="password" class="form-control" 
-                                       id="password_confirmation" name="password_confirmation" required>
+                                <div class="input-group">
+                                    <input type="password" class="form-control"
+                                           id="password_confirmation" name="password_confirmation" required>
+                                    <button type="button" class="btn btn-outline-secondary password-visibility-toggle"
+                                            data-password-target="password_confirmation" aria-label="Show password confirmation" title="Show password confirmation">
+                                        <i class="mdi mdi-eye" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="user_type" class="form-label">User Type *</label>
@@ -161,7 +173,7 @@
                             <div class="col-12">
                                 <h6 class="text-primary border-bottom pb-2 mb-3">Role Assignment</h6>
                                 <div class="alert alert-info">
-                                    <small><strong>Note:</strong> Select one or more roles to assign to this user. Roles determine what actions the user can perform.</small>
+                                    <small><strong>Note:</strong> Select a role with route-controlled permissions for EBIMS screen access. A branch user must also be assigned a branch. Administrator-only screens remain restricted.</small>
                                 </div>
                             </div>
                             <div class="col-12">
@@ -251,6 +263,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const branchSelect = document.getElementById('branch_id');
     const schoolField = document.getElementById('school_field');
     const schoolSelect = document.getElementById('school_id');
+
+    document.querySelectorAll('[data-password-target]').forEach(function(toggle) {
+        const input = document.getElementById(toggle.dataset.passwordTarget);
+        const icon = toggle.querySelector('i');
+
+        if (!input) {
+            return;
+        }
+
+        toggle.addEventListener('click', function() {
+            const isVisible = input.type === 'text';
+            input.type = isVisible ? 'password' : 'text';
+            toggle.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password');
+            toggle.setAttribute('title', isVisible ? 'Show password' : 'Hide password');
+            toggle.setAttribute('aria-pressed', String(!isVisible));
+
+            if (icon) {
+                icon.classList.toggle('mdi-eye', isVisible);
+                icon.classList.toggle('mdi-eye-off', !isVisible);
+            }
+        });
+    });
 
     function validatePassword() {
         if (password.value != confirmPassword.value) {

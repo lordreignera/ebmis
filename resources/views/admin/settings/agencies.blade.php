@@ -130,15 +130,15 @@
                     <button class="btn btn-sm btn-outline-secondary me-2">
                         <i class="mdi mdi-export"></i> Export
                     </button>
-                    <div class="table-search">
+                    <form method="GET" action="{{ route('admin.settings.agencies') }}" class="table-search">
                         <i class="mdi mdi-magnify"></i>
-                        <input type="text" placeholder="Search agencies..." id="agencySearch">
-                    </div>
+                        <input type="text" name="search" value="{{ request('search') }}" placeholder="Search agencies..." id="agencySearch">
+                    </form>
                 </div>
             </div>
             
-            <div class="table-responsive">
-                <table class="table modern-table" id="agenciesTable">
+            <div class="access-control-table-shell access-control-table-scroll">
+                <table class="table access-control-table align-middle mb-0" id="agenciesTable">
                     <thead>
                         <tr>
                             <th>#</th>
@@ -155,7 +155,7 @@
                     <tbody>
                         @forelse($agencies as $agency)
                         <tr>
-                            <td>{{ $loop->iteration }}</td>
+                            <td>{{ ($agencies->currentPage() - 1) * $agencies->perPage() + $loop->iteration }}</td>
                             <td>{{ $agency->name }}</td>
                             <td>{{ $agency->code ?? 'AGN' . str_pad($agency->id, 3, '0', STR_PAD_LEFT) }}</td>
                             <td>{{ $agency->location ?? 'N/A' }}</td>
@@ -206,28 +206,14 @@
                 </table>
             </div>
 
-            <div class="table-pagination">
-                <div class="pagination-info">
-                    Showing {{ $agencies->count() }} of {{ $agencies->count() }} entries
-                </div>
-                <nav>
-                    <ul class="pagination pagination-modern">
-                        <li class="page-item disabled">
-                            <a class="page-link" href="#" aria-label="Previous">
-                                <i class="mdi mdi-chevron-left"></i>
-                            </a>
-                        </li>
-                        <li class="page-item active">
-                            <a class="page-link" href="#">1</a>
-                        </li>
-                        <li class="page-item disabled">
-                            <a class="page-link" href="#" aria-label="Next">
-                                <i class="mdi mdi-chevron-right"></i>
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
+            @if($agencies->hasPages())
+            <div class="access-control-table-footer d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <span class="table-secondary-text">
+                    Showing {{ $agencies->firstItem() ?? 0 }} to {{ $agencies->lastItem() ?? 0 }} of {{ $agencies->total() }} entries
+                </span>
+                {{ $agencies->links() }}
             </div>
+            @endif
         </div>
 
 <!-- Add Agency Modal -->
@@ -401,14 +387,13 @@ setTimeout(function() {
     if (typeof $ !== 'undefined' && $.fn.DataTable) {
         try {
             const table = $('#agenciesTable').DataTable({
-                "paging": true,
+                "paging": false,
                 "lengthChange": false,
-                "searching": true,
+                "searching": false,
                 "ordering": true,
                 "info": false,
                 "autoWidth": false,
-                "pageLength": 10,
-                "dom": '<"top"f>rt<"bottom"p><"clear">',
+                "dom": 't',
                 "language": {
                     "search": "",
                     "searchPlaceholder": "Search agencies...",
@@ -419,10 +404,6 @@ setTimeout(function() {
                 }
             });
 
-            // Search functionality
-            $('#agencySearch').on('keyup', function() {
-                table.search(this.value).draw();
-            });
         } catch(e) {
             console.log('DataTable initialization skipped:', e);
         }

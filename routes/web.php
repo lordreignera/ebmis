@@ -14,6 +14,28 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+// Investor Portal (separate from staff/administrator authentication)
+Route::prefix('investor')->name('investor.')->group(function () {
+    Route::get('/login', [\App\Http\Controllers\InvestorPortal\AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [\App\Http\Controllers\InvestorPortal\AuthController::class, 'login'])
+        ->middleware('throttle:5,1')
+        ->name('login.store');
+    Route::get('/register', [\App\Http\Controllers\InvestorPortal\AuthController::class, 'showRegistration'])->name('register');
+    Route::post('/register', [\App\Http\Controllers\InvestorPortal\AuthController::class, 'register'])
+        ->middleware('throttle:5,1')
+        ->name('register.store');
+    Route::post('/registration-status', [\App\Http\Controllers\InvestorPortal\AuthController::class, 'registrationStatus'])
+        ->middleware('throttle:10,1')
+        ->name('registration-status');
+    Route::view('/registration-submitted', 'investor.auth.registration-submitted')
+        ->name('registration-submitted');
+
+    Route::middleware('investor.portal')->group(function () {
+        Route::get('/dashboard', [\App\Http\Controllers\InvestorPortal\DashboardController::class, 'index'])->name('dashboard');
+        Route::post('/logout', [\App\Http\Controllers\InvestorPortal\AuthController::class, 'logout'])->name('logout');
+    });
+});
+
 // Cron endpoint for external scheduling (secured with token)
 Route::get('/cron/run', [CronController::class, 'runScheduler'])
     ->middleware('throttle:6,1')
@@ -57,24 +79,24 @@ Route::middleware([
 ])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
-        
-        // EBIMS staff begin from the operational dashboard.
-        if ($user->isSuperAdmin() || $user->can('access-ebmis-modules')) {
-            return redirect()->route('admin.home');
+
+        $homeRoute = $user->preferredHomeRouteName();
+        if ($homeRoute !== 'dashboard') {
+            return redirect()->route($homeRoute);
         }
-        
-        // Redirect School users to school dashboard
-        if ($user->user_type === 'school' && $user->school) {
-            return redirect()->route('school.dashboard');
-        }
-        
-        // Default dashboard for other users
+
         return view('dashboard');
     })->name('dashboard');
 
     Route::get('/admin/home', [\App\Http\Controllers\AdminController::class, 'home'])
-        ->middleware(['ebims_module', 'ebmis_permission'])
+        ->middleware('ebmis_permission')
         ->name('admin.home');
+
+    Route::get('/admin/remuneration/performance', [\App\Http\Controllers\Admin\StaffRemunerationPerformanceController::class, 'index'])
+        ->middleware(['ebims_module', 'ebmis_permission'])
+        ->name('admin.remuneration.performance');
+    Route::post('/admin/remuneration/spending-report', [\App\Http\Controllers\Admin\StaffRemunerationPerformanceController::class, 'submitReport'])
+        ->middleware(['auth', 'ebims_module', 'ebmis_permission'])->name('admin.remuneration.spending-report.store');
     
     // Table Demo Route (for testing enhanced tables)
     Route::get('/admin/tables-demo', function() {
@@ -465,6 +487,25 @@ Route::middleware([
     
     // Investment Management Routes
     Route::prefix('investments')->name('investments.')->group(function () {
+        Route::get('/investor-approvals', [\App\Http\Controllers\Admin\InvestorApprovalController::class, 'index'])
+            ->middleware('super_admin')
+            ->name('investor-approvals.index');
+        Route::get('/investor-approvals/{investor}/documents/{type}', [\App\Http\Controllers\Admin\InvestorApprovalController::class, 'document'])
+            ->middleware('super_admin')
+            ->name('investor-approvals.document');
+        Route::post('/investor-approvals/{investor}/approve', [\App\Http\Controllers\Admin\InvestorApprovalController::class, 'approve'])
+            ->middleware('super_admin')
+            ->name('investor-approvals.approve');
+        Route::post('/investor-approvals/{investor}/reject', [\App\Http\Controllers\Admin\InvestorApprovalController::class, 'reject'])
+            ->middleware('super_admin')
+            ->name('investor-approvals.reject');
+
+        // Keep static calculation endpoints ahead of parameter routes and
+        // constrain IDs so values such as "calculate-returns" cannot be
+        // interpreted as an investor ID.
+        Route::post('/calculate-returns', [\App\Http\Controllers\Admin\InvestmentController::class, 'calculateReturns'])
+            ->name('calculate-returns');
+
         // Investment Dashboard
         Route::get('/', [\App\Http\Controllers\Admin\InvestmentController::class, 'index'])->name('index');
         
@@ -480,15 +521,24 @@ Route::middleware([
         Route::post('/investors/{investor}/delete', [\App\Http\Controllers\Admin\InvestmentController::class, 'deleteInvestor'])->name('delete-investor');
         
         // Investment Management
-        Route::get('/{investor}/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestment'])->name('create-investment');
-        Route::post('/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'storeInvestment'])->name('store-investment');
-        Route::get('/{investment}/show', [\App\Http\Controllers\Admin\InvestmentController::class, 'showInvestment'])->name('show-investment');
-        Route::get('/{investment}/edit', [\App\Http\Controllers\Admin\InvestmentController::class, 'editInvestment'])->name('edit-investment');
-        Route::put('/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestment'])->name('update-investment');
-        Route::delete('/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'destroyInvestment'])->name('destroy');
-        
-        // Investment Calculations
-        Route::post('/calculate-returns', [\App\Http\Controllers\Admin\InvestmentController::class, 'calculateReturns'])->name('calculate-returns');
+        Route::get('/{investor}/create', [\App\Http\Controllers\Admin\InvestmentController::class, 'createInvestment'])
+            ->whereNumber('investor')
+            ->name('create-investment');
+        Route::post('/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'storeInvestment'])
+            ->whereNumber('investor')
+            ->name('store-investment');
+        Route::get('/{investment}/show', [\App\Http\Controllers\Admin\InvestmentController::class, 'showInvestment'])
+            ->whereNumber('investment')
+            ->name('show-investment');
+        Route::get('/{investment}/edit', [\App\Http\Controllers\Admin\InvestmentController::class, 'editInvestment'])
+            ->whereNumber('investment')
+            ->name('edit-investment');
+        Route::put('/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'updateInvestment'])
+            ->whereNumber('investment')
+            ->name('update-investment');
+        Route::delete('/{investment}', [\App\Http\Controllers\Admin\InvestmentController::class, 'destroyInvestment'])
+            ->whereNumber('investment')
+            ->name('destroy');
         
         // API Routes for dropdowns
         Route::get('/api/investor-portfolio/{investor}', [\App\Http\Controllers\Admin\InvestmentController::class, 'getInvestorPortfolio'])->name('api.investor-portfolio');
@@ -526,6 +576,22 @@ Route::middleware([
         Route::get('/create', [\App\Http\Controllers\Admin\ExpenditureController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\Admin\ExpenditureController::class, 'store'])->name('store');
         Route::middleware('staff_payment_rollout')->group(function () {
+            Route::get('/remuneration', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'index'])->name('remuneration');
+            Route::post('/remuneration/calculations', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'storeCalculation'])->name('remuneration.calculations.store');
+            Route::post('/remuneration/calculations/{calculation}/payout', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'createPayout'])->name('remuneration.calculations.payout');
+            Route::post('/remuneration/calculations/{calculation}/spending-report', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'reviewSpendingReport'])->name('remuneration.calculations.report-review');
+            Route::post('/remuneration/calculations/{calculation}/funds', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'postFundAllocations'])->name('remuneration.calculations.funds');
+            Route::post('/remuneration/calculations/{calculation}/settle-zero', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'settleZeroPayout'])->name('remuneration.calculations.settle-zero');
+            Route::post('/remuneration/calculations/{calculation}/reopen', [\App\Http\Controllers\Admin\StaffRemunerationController::class, 'reopenRejectedPayout'])->name('remuneration.calculations.reopen');
+            Route::get('/remuneration/policies', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'index'])->name('remuneration.policies.index');
+            Route::get('/remuneration/policies/create', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'create'])->name('remuneration.policies.create');
+            Route::post('/remuneration/policies', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'store'])->name('remuneration.policies.store');
+            Route::get('/remuneration/policies/{policy}', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'show'])->name('remuneration.policies.show');
+            Route::get('/remuneration/policies/{policy}/edit', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'edit'])->name('remuneration.policies.edit');
+            Route::put('/remuneration/policies/{policy}', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'update'])->name('remuneration.policies.update');
+            Route::post('/remuneration/policies/{policy}/approve', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'approve'])->name('remuneration.policies.approve');
+            Route::post('/remuneration/policies/{policy}/activate', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'activate'])->name('remuneration.policies.activate');
+            Route::delete('/remuneration/policies/{policy}', [\App\Http\Controllers\Admin\StaffRemunerationPolicyController::class, 'destroy'])->name('remuneration.policies.destroy');
             Route::get('/rollout', [\App\Http\Controllers\Admin\ExpenditureController::class, 'rollout'])->name('rollout');
             Route::post('/rollout/generate', [\App\Http\Controllers\Admin\ExpenditureController::class, 'generateRollout'])->name('rollout.generate');
             Route::post('/rollout/individual', [\App\Http\Controllers\Admin\ExpenditureController::class, 'generateIndividualPayout'])->name('rollout.individual');
@@ -596,6 +662,8 @@ Route::middleware([
     
     // Permission Management
     Route::get('/permissions', [\App\Http\Controllers\Admin\AccessControlController::class, 'permissions'])->name('permissions.index');
+    Route::post('/permissions/role', [\App\Http\Controllers\Admin\AccessControlController::class, 'saveRolePermissions'])->name('permissions.role.store');
+    Route::post('/permissions/matrix', [\App\Http\Controllers\Admin\AccessControlController::class, 'savePermissionMatrix'])->name('permissions.matrix.store');
     Route::get('/permissions/create', [\App\Http\Controllers\Admin\AccessControlController::class, 'createPermission'])->name('permissions.create');
     Route::post('/permissions', [\App\Http\Controllers\Admin\AccessControlController::class, 'storePermission'])->name('permissions.store');
     Route::delete('/permissions/{permission}', [\App\Http\Controllers\Admin\AccessControlController::class, 'deletePermission'])->name('permissions.delete');

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">EBIMS Investor Portal</title>
+  <desc id="desc">EBIMS shield mark on a green background</desc>
+  <rect width="512" height="512" rx="96" fill="#176b4d"/>
+  <path d="M256 72 390 126v111c0 91-54 157-134 203-80-46-134-112-134-203V126L256 72Z" fill="#fff" opacity=".96"/>
+  <path d="M256 104 360 146v89c0 68-38 119-104 160-66-41-104-92-104-160v-89l104-42Z" fill="#176b4d"/>
+  <path d="M205 244h102v28H205zM205 300h102v28H205z" fill="#fff"/>
+  <circle cx="256" cy="188" r="30" fill="#d7b45a"/>
+  <path d="M245 171h22v34h-22z" fill="#176b4d"/>
+  <text x="256" y="438" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#fff">EBIMS</text>
+</svg>

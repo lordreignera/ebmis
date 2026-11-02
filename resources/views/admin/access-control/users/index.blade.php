@@ -62,25 +62,25 @@
     <!-- Users Table -->
     <div class="row">
         <div class="col-12">
-            <div class="card border-0 shadow-sm users-directory">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="bg-light">
+            <div class="access-control-table-shell users-directory">
+                <div class="access-control-table-scroll">
+                        <table class="table access-control-table mb-0">
+                            <thead>
                                 <tr>
-                                    <th class="ps-4">User</th>
+                                    <th>User</th>
                                     <th>Type</th>
                                     <th>Roles</th>
                                     <th>Status</th>
                                     <th>School/Branch</th>
                                     <th>Created</th>
-                                    <th class="pe-4">Actions</th>
+                                    <th>Last Login</th>
+                                    <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($users as $user)
                                 <tr>
-                                    <td class="ps-4">
+                                    <td>
                                         <div class="d-flex align-items-center">
                                             <div class="avatar me-3">
                                                 <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 45px; height: 45px;">
@@ -88,55 +88,63 @@
                                                 </div>
                                             </div>
                                             <div>
-                                                <div class="fw-bold">{{ $user->name }}</div>
-                                                <div class="text-muted small">{{ $user->email }}</div>
+                                                <div class="table-primary-text">{{ $user->name }}</div>
+                                                <div class="table-secondary-text">{{ $user->email }}</div>
                                                 @if($user->phone)
-                                                    <div class="text-muted small">{{ $user->phone }}</div>
+                                                    <div class="table-secondary-text">{{ $user->phone }}</div>
                                                 @endif
                                             </div>
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{ $user->user_type === 'super_admin' ? 'danger' : ($user->user_type === 'school' ? 'info' : 'warning') }}">
+                                        <span class="access-control-badge {{ $user->user_type === 'super_admin' ? 'red' : ($user->user_type === 'school' ? 'blue' : 'orange') }}">
                                             {{ ucwords(str_replace('_', ' ', $user->user_type)) }}
                                         </span>
                                     </td>
                                     <td>
                                         @forelse($user->roles as $role)
-                                            <span class="badge bg-secondary me-1 mb-1">{{ $role->name }}</span>
+                                            <span class="access-control-badge dark me-1 mb-1">{{ $role->name }}</span>
                                         @empty
                                             <span class="text-muted small">No roles assigned</span>
                                         @endforelse
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{ $user->status === 'active' ? 'success' : ($user->status === 'pending' ? 'warning' : 'danger') }}">
+                                            <span class="access-control-badge {{ $user->status === 'active' ? 'green' : ($user->status === 'pending' ? 'orange' : 'red') }}">
                                             {{ ucfirst($user->status) }}
                                         </span>
                                     </td>
                                     <td>
                                         @if($user->school)
-                                            <small class="text-info">{{ $user->school->school_name ?? 'School #' . $user->school_id }}</small>
+                                            <span class="table-secondary-text">{{ $user->school->school_name ?? 'School #' . $user->school_id }}</span>
                                         @elseif($user->branch)
-                                            <small class="text-warning">{{ $user->branch->name }}</small>
+                                            <span class="table-secondary-text">{{ $user->branch->name }}</span>
                                         @else
-                                            <small class="text-muted">-</small>
+                                            <span class="table-secondary-text">-</span>
                                         @endif
                                     </td>
                                     <td>
-                                        <small>{{ $user->created_at->format('M d, Y') }}</small>
-                                        <div class="text-muted" style="font-size: 0.75rem;">{{ $user->created_at->diffForHumans() }}</div>
+                                        <div class="table-primary-text" style="font-size: 0.75rem;">{{ $user->created_at->format('M d, Y') }}</div>
+                                        <div class="table-secondary-text">{{ $user->created_at->diffForHumans() }}</div>
                                     </td>
-                                    <td class="pe-4">
-                                        <div class="d-flex gap-1">
-                                            <a href="{{ route('admin.users.edit', $user) }}" class="btn btn-sm btn-outline-primary" title="Edit User">
-                                                <i class="mdi mdi-pencil"></i>
+                                    <td>
+                                        @if($user->last_login_at)
+                                            <div class="table-primary-text" style="font-size: 0.75rem;">{{ $user->last_login_at->format('M d, Y H:i') }}</div>
+                                            <div class="table-secondary-text">{{ $user->last_login_at->diffForHumans() }}</div>
+                                        @else
+                                            <span class="table-secondary-text">Never logged in</span>
+                                        @endif
+                                    </td>
+                                    <td class="action-cell">
+                                        <div class="access-control-actions">
+                                            <a href="{{ route('admin.users.edit', $user) }}" class="access-control-action edit" title="Edit User">
+                                                <i class="mdi mdi-pencil"></i><span>Edit</span>
                                             </a>
                                             @if($user->id !== auth()->id())
                                             <form action="{{ route('admin.users.delete', $user) }}" method="POST" class="d-inline">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this user?')" title="Delete User">
-                                                    <i class="mdi mdi-delete"></i>
+                                                <button type="submit" class="access-control-action delete" onclick="return confirm('Are you sure you want to delete this user?')" title="Delete User">
+                                                    <i class="mdi mdi-delete"></i><span>Delete</span>
                                                 </button>
                                             </form>
                                             @endif
@@ -145,7 +153,7 @@
                                 </tr>
                                 @empty
                                 <tr>
-                                    <td colspan="7" class="text-center py-5">
+                                    <td colspan="8" class="text-center py-5">
                                         <i class="mdi mdi-account-multiple fa-3x text-muted mb-3"></i>
                                         <h5 class="text-muted">No users found</h5>
                                         <p class="text-muted mb-4">{{ request('search') ? 'No users match your search criteria' : 'Get started by creating your first user' }}</p>
@@ -159,11 +167,10 @@
                                 @endforelse
                             </tbody>
                         </table>
-                    </div>
                 </div>
                 
                 @if($users->hasPages())
-                <div class="card-footer bg-white">
+                <div class="access-control-table-footer">
                     {{ $users->links() }}
                 </div>
                 @endif

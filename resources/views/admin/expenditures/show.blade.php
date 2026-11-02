@@ -14,6 +14,13 @@
 
     @include('admin.expenditures.partials.alerts')
 
+    @if($expenditure->remunerationCalculation)
+        <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <span>This payment uses a saved weekly remuneration calculation. Review its officer fund allocations before payment.</span>
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.expenditures.remuneration', ['officer_id' => $expenditure->assigned_user_id, 'period_start' => $expenditure->staff_payment_period_start?->toDateString()]) }}">Open remuneration and fund allocations</a>
+        </div>
+    @endif
+
     <div class="row g-4">
         <div class="col-lg-8">
             <div class="card">

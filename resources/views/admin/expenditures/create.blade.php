@@ -6,7 +6,7 @@
 <div class="container-fluid expenditure-page">
     @include('admin.partials.page-header', [
         'title' => 'New Money Request',
-        'subtitle' => 'Create an expenditure or staff payment request.',
+        'subtitle' => 'Create an operational, allowance or other expenditure request. Staff payments start from remuneration review.',
         'icon' => 'mdi mdi-cash-plus',
         'backFallback' => route('admin.expenditures.index'),
         'backLabel' => 'Back',
@@ -22,7 +22,6 @@
                     <label class="form-label">Type <span class="text-danger">*</span></label>
                     <select name="type" class="form-select" required>
                         <option value="operational" @selected(old('type') === 'operational')>Operational</option>
-                        <option value="performance_payout" @selected(old('type') === 'performance_payout')>Staff payment</option>
                         <option value="allowance" @selected(old('type') === 'allowance')>Allowance</option>
                         <option value="other" @selected(old('type') === 'other')>Other</option>
                     </select>

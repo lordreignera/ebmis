@@ -7,13 +7,22 @@
         || in_array($sidebarUser->user_type, ['administrator', 'admin'], true)
         || $sidebarUser->hasRole(['Administrator', 'admin']);
     $sidebarCanManageStaffPaymentRollout = $sidebarUser->canManageStaffPaymentRollout();
+    $sidebarHasWorkspaceAccess = \App\Support\EbmisPermissionRegistry::userCanAccessWorkspace($sidebarUser);
+    $sidebarModulePermissions = config('ebmis_permissions.module_permissions', []);
+    $sidebarCanModule = fn (string $module): bool => $sidebarCanAny($sidebarModulePermissions[$module] ?? []);
+    $sidebarHasAnyModule = collect(['clients', 'loan-portfolio', 'collections', 'reports-accounting', 'expenditures', 'investments'])
+        ->contains(fn (string $module): bool => $sidebarCanModule($module));
+    $sidebarHasAnyOperationalLink = $sidebarHasWorkspaceAccess && ($sidebarHasAnyModule
+        || $sidebarCanModule('remuneration')
+        || $sidebarCanManageStaffPaymentRollout);
+    $sidebarHomeRoute = $sidebarUser->preferredHomeRouteName();
   @endphp
 
   <div class="sidebar-brand-wrapper d-flex align-items-center justify-content-center">
-    <a class="sidebar-brand brand-logo" href="{{ url('admin/home') }}">
+    <a class="sidebar-brand brand-logo" href="{{ route($sidebarHomeRoute) }}">
       <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS" style="max-height: 50px; width: auto;" />
     </a>
-    <a class="sidebar-brand brand-logo-mini" href="{{ url('admin/home') }}">
+    <a class="sidebar-brand brand-logo-mini" href="{{ route($sidebarHomeRoute) }}">
       <img src="{{ asset('admin/assets/images/ebims-logo.jpg') }}" alt="EBIMS" style="max-height: 40px; width: auto;" />
     </a>
   </div>
@@ -34,7 +43,7 @@
     </li>
 
     <li class="nav-item menu-items">
-      <a class="nav-link" href="{{ auth()->user()->user_type === 'school' ? route('school.dashboard') : url('admin/home') }}">
+      <a class="nav-link" href="{{ route($sidebarHomeRoute) }}">
         <span class="menu-icon">
           <i class="mdi mdi-speedometer"></i>
         </span>
@@ -42,7 +51,7 @@
       </a>
     </li>
 
-    @if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+    @if($sidebarUser->isSuperAdmin())
     <!-- SUPER ADMIN ONLY: SCHOOL MANAGEMENT -->
     <li class="nav-item nav-category">
       <span class="nav-link">SCHOOL MANAGEMENT</span>
@@ -205,12 +214,13 @@
     @endif
     <!-- END SCHOOL PORTAL SECTION -->
 
-    @if(auth()->user()->user_type !== 'school' && $sidebarCan('access-ebmis-modules'))
+    @if(auth()->user()->user_type !== 'school' && $sidebarHasAnyOperationalLink)
     <!-- EBIMS MODULES (For operational EBIMS staff) -->
     <li class="nav-item nav-category">
       <span class="nav-link">EBIMS MODULES</span>
     </li>
 
+    @if($sidebarHasWorkspaceAccess && ($sidebarHasAnyModule || $sidebarCanManageStaffPaymentRollout))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.dashboard') }}">
         <span class="menu-icon">
@@ -219,8 +229,9 @@
         <span class="menu-title">All EBIMS Modules</span>
       </a>
     </li>
+    @endif
 
-    @if($sidebarCanAny(['view-client-details', 'add-client', 'send-sms-notifications', 'manage-group-members']))
+    @if($sidebarCanModule('clients'))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.clients') }}">
         <span class="menu-icon">
@@ -231,7 +242,7 @@
     </li>
     @endif
 
-    @if($sidebarCanAny(['create-loan-application', 'manage-client-applications', 'manage-loans', 'view-disbursements', 'view-active-loans', 'view-repayment-history', 'manage-late-fees', 'generate-loan-reports']))
+    @if($sidebarCanModule('loan-portfolio'))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.loan-portfolio') }}">
         <span class="menu-icon">
@@ -242,7 +253,7 @@
     </li>
     @endif
 
-    @if($sidebarCanAny(['view-repayment-history', 'view-active-loans', 'manage-late-fees', 'manage-fees', 'manage-cash-securities', 'manage-savings-accounts']))
+    @if($sidebarCanModule('collections'))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.collections') }}">
         <span class="menu-icon">
@@ -253,7 +264,7 @@
     </li>
     @endif
 
-    @if($sidebarCanAny(['generate-loan-reports', 'view-accounting-reports', 'view-umra-reports']))
+    @if($sidebarCanModule('reports-accounting'))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.reports-accounting') }}">
         <span class="menu-icon">
@@ -264,7 +275,7 @@
     </li>
     @endif
 
-    @if($sidebarCan('manage-expenditures') || $sidebarCanManageStaffPaymentRollout)
+    @if($sidebarCanModule('expenditures') || $sidebarCanManageStaffPaymentRollout)
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.expenditures') }}">
         <span class="menu-icon">
@@ -275,7 +286,16 @@
     </li>
     @endif
 
-    @if($sidebarCan('manage-investments'))
+      @if($sidebarCanModule('remuneration'))
+      <li class="nav-item menu-items">
+        <a class="nav-link" href="{{ route('admin.remuneration.performance') }}">
+          <span class="menu-icon"><i class="mdi mdi-account-cash-outline"></i></span>
+          <span class="menu-title">My Remuneration</span>
+        </a>
+      </li>
+      @endif
+
+    @if($sidebarCanModule('investments'))
     <li class="nav-item menu-items">
       <a class="nav-link" href="{{ route('admin.modules.investments') }}">
         <span class="menu-icon">
@@ -290,7 +310,7 @@
 
     @endif
 
-@if(auth()->user()->hasRole('Super Administrator') || auth()->user()->hasRole('superadmin'))
+@if($sidebarUser->isSuperAdmin())
         <!-- ACCESS CONTROL SECTION - ADMIN ONLY -->
     <li class="nav-item nav-category">
       <span class="nav-link">ACCESS CONTROL</span>
@@ -337,9 +357,8 @@
         <ul class="nav flex-column sub-menu">
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.roles.index') }}">All Roles</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.roles.create') }}">Create Role</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ route('admin.permissions.index') }}">All Permissions</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ route('admin.permissions.index') }}">Manage Permissions</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ route('admin.permissions.create') }}">Add Permission</a></li>
-          <li class="nav-item"><a class="nav-link" href="#">Role Assignments</a></li>
         </ul>
       </div>
     </li>
@@ -367,6 +386,7 @@
 
   </ul>
 
+  @if($sidebarCan('view-branch-dashboard'))
   <div class="sidebar-help-panel">
     <a href="{{ route('admin.help.guide') }}" class="sidebar-help-link">
       <span class="sidebar-help-icon"><i class="mdi mdi-help-circle-outline"></i></span>
@@ -376,6 +396,7 @@
       </span>
     </a>
   </div>
+  @endif
 </nav>
 
 <style>

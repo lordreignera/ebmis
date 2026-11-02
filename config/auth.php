@@ -45,6 +45,11 @@ return [
             'driver' => 'sanctum',
             'provider' => null,
         ],
+
+        'investor' => [
+            'driver' => 'session',
+            'provider' => 'investors',
+        ],
     ],
 
     /*
@@ -68,6 +73,11 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
+        ],
+
+        'investors' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Investor::class,
         ],
 
         // 'users' => [

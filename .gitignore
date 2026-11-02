@@ -16,8 +16,12 @@
 /public/build
 /public/hot
 /public/storage
+/public/uploads/client-loan-applications/
+/public/templates/__MACOSX/
+/public/templates/ebims_investor-master/
 /public/uploads/loan-collateral-documents/
 /storage/*.key
+/private_key_pkcs1.pem
 /storage/pail
 /vendor
 /bimsadmin
@@ -73,3 +77,4 @@ schema_*.php
 !README.md
 !/docs/route-security.md
 !/docs/SYSTEM_MODULE_REVIEW_2026-08-27.md
+!/docs/staff-remuneration.md

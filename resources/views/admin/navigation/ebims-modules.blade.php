@@ -6,7 +6,9 @@
 @php
     $user = auth()->user();
     $can = fn (string $permission): bool => $user->isSuperAdmin() || $user->can($permission);
-    $canAny = fn (array $permissions): bool => collect($permissions)->contains(fn (string $permission): bool => $can($permission));
+    $modulePermissions = config('ebmis_permissions.module_permissions', []);
+    $canModule = fn (string $module): bool => collect($modulePermissions[$module] ?? [])
+        ->contains(fn (string $permission): bool => $can($permission));
     $canManageStaffPaymentRollout = $user->canManageStaffPaymentRollout();
 @endphp
 
@@ -18,7 +20,7 @@
 </div>
 
 <div class="row">
-    @if($canAny(['view-client-details', 'add-client', 'send-sms-notifications', 'manage-group-members']))
+    @if($canModule('clients'))
     <div class="col-md-4 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
@@ -32,7 +34,7 @@
     </div>
     @endif
 
-    @if($canAny(['create-loan-application', 'manage-client-applications', 'manage-loans', 'view-disbursements', 'view-active-loans', 'view-repayment-history', 'manage-late-fees', 'generate-loan-reports']))
+    @if($canModule('loan-portfolio'))
     <div class="col-md-4 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
@@ -46,7 +48,7 @@
     </div>
     @endif
 
-    @if($canAny(['view-repayment-history', 'view-active-loans', 'manage-late-fees', 'manage-fees', 'manage-cash-securities', 'manage-savings-accounts']))
+    @if($canModule('collections'))
     <div class="col-md-4 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
@@ -60,7 +62,7 @@
     </div>
     @endif
 
-    @if($canAny(['generate-loan-reports', 'view-accounting-reports', 'view-umra-reports']))
+    @if($canModule('reports-accounting'))
     <div class="col-md-4 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
@@ -74,7 +76,7 @@
     </div>
     @endif
 
-    @if($can('manage-expenditures') || $canManageStaffPaymentRollout)
+    @if($canModule('expenditures') || $canManageStaffPaymentRollout)
     <div class="col-md-4 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">
@@ -88,7 +90,7 @@
     </div>
     @endif
 
-    @if($can('manage-investments'))
+    @if($canModule('investments'))
     <div class="col-md-4 grid-margin stretch-card">
         <div class="card">
             <div class="card-body">

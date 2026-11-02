@@ -159,7 +159,7 @@
                             <label>Per Page</label>
                             <select class="form-control" name="per_page">
                                 <option value="10" {{ request('per_page') == '10' ? 'selected' : '' }}>10</option>
-                                <option value="25" {{ request('per_page', 25) == '25' ? 'selected' : '' }}>25</option>
+                                <option value="20" {{ request('per_page', 20) == '20' ? 'selected' : '' }}>20</option>
                                 <option value="50" {{ request('per_page') == '50' ? 'selected' : '' }}>50</option>
                                 <option value="100" {{ request('per_page') == '100' ? 'selected' : '' }}>100</option>
                             </select>
@@ -186,8 +186,8 @@
                             <h4 class="card-title mb-0">All System Accounts ({{ $systemAccounts->total() }})</h4>
                             <span class="text-muted">Showing {{ $systemAccounts->firstItem() ?? 0 }} to {{ $systemAccounts->lastItem() ?? 0 }} of {{ $systemAccounts->total() }} entries</span>
                         </div>
-                        <div class="table-responsive">
-                            <table class="table table-hover" id="accountsTable">
+                        <div class="access-control-table-shell access-control-table-scroll">
+                            <table class="table access-control-table align-middle mb-0" id="accountsTable">
                                 <thead>
                                     <tr>
                                         <th>#</th>

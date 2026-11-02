@@ -387,23 +387,17 @@
                 </button>
                 
                 <!-- School Registration Link -->
-                <div class="text-center mt-4">
-                    <div class="divider mb-3">
-                        <span class="divider-text">New to our platform?</span>
+                <div class="text-center mt-3">
+                    <div class="divider mb-2">
+                        <span class="divider-text">Quick access</span>
                     </div>
-                    <button type="button" class="btn btn-school-join w-100" data-bs-toggle="modal" data-bs-target="#schoolBenefitsModal">
-                        🏫 Join us as a School
-                    </button>
-
-                    <!-- Complete Assessment Link -->
-                    <div class="mt-3">
-                        <a href="{{ route('school.complete-assessment') }}" class="btn btn-outline-warning w-100 btn-complete-assessment">
-                            <i class="fas fa-clipboard-check me-2"></i>Complete School Assessment
-                        </a>
-                        <small class="text-muted d-block mt-2">
-                            Already registered but didn't finish? Continue your assessment here
-                        </small>
+                    <div class="quick-access" aria-label="Additional access options">
+          <button type="button" class="quick-access-link" data-bs-toggle="modal" data-bs-target="#schoolBenefitsModal" aria-label="Join us as a School"><i class="fas fa-school" aria-hidden="true"></i>School signup</button>
+          <a href="{{ route('investor.login') }}" class="quick-access-link" aria-label="Investor Login"><i class="fas fa-user-tie" aria-hidden="true"></i>Investor login</a>
+          <a href="{{ route('investor.register') }}" class="quick-access-link" aria-label="Register as Investor"><i class="fas fa-user-plus" aria-hidden="true"></i>Investor signup</a>
+          <a href="{{ route('school.complete-assessment') }}" class="quick-access-link" aria-label="Complete School Assessment"><i class="fas fa-clipboard-check" aria-hidden="true"></i>Continue assessment</a>
                     </div>
+        <small class="access-note">Resume an unfinished school application</small>
                 </div>
             </form>
         </div>
@@ -520,64 +514,73 @@
         }
         
         .divider::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: #e0e0e0;
+            display: none;
         }
         
         .divider-text {
-            background: white;
-            padding: 0 15px;
-            color: #666;
-            font-size: 0.9rem;
+            color: #8a94a3;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 0;
+            text-transform: uppercase;
         }
-        
-        .btn-school-join {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 15px 30px;
-            border-radius: 10px;
+
+        .quick-access {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            justify-content: center;
+            padding: 0.2rem 0;
+        }
+
+        .quick-access-link {
+            appearance: none;
+            align-items: center;
+            background: #f7f8fc;
+            border: 1px solid #e2e5ef;
+            border-radius: 7px;
+            box-shadow: 0 2px 5px rgba(35, 45, 90, 0.05);
+            color: #465064;
+            cursor: pointer;
+            display: inline-flex;
+            font-family: inherit;
+            font-size: 0.74rem;
             font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-        }
-        
-        .btn-school-join:hover {
-            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-        }
-        
-        .btn-complete-assessment {
-            background: transparent;
-            border: 2px solid #ffc107;
-            color: #ff8f00;
-            padding: 12px 25px;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 1rem;
-            transition: all 0.3s ease;
+            gap: 0.35rem;
+            line-height: 1;
+            margin: 0;
+            padding: 0.42rem 0.62rem;
             text-decoration: none;
-            display: inline-block;
+            transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, transform 0.2s ease;
         }
-        
-        .btn-complete-assessment:hover {
-            background: #ffc107;
-            color: #fff;
-            border-color: #ffc107;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(255, 193, 7, 0.3);
+
+        .quick-access-link:hover {
+            background: #eef0ff;
+            border-color: #bfc6f2;
+            box-shadow: 0 4px 10px rgba(101, 82, 184, 0.12);
+            color: #4f46a5;
+            text-decoration: none;
+            transform: translateY(-1px);
         }
-        
-        .btn-complete-assessment i {
-            font-size: 1.1rem;
+
+        .quick-access-link:focus-visible {
+            outline: 2px solid rgba(101, 82, 184, 0.4);
+            outline-offset: 2px;
+        }
+
+        .quick-access-link i {
+            color: #6552b8;
+            font-size: 0.7rem;
+        }
+
+        .access-note {
+            color: #8a94a3;
+            display: block;
+            font-size: 0.72rem;
+            line-height: 1.4;
+            margin-top: 0.35rem;
         }
         
         .bg-gradient {
@@ -640,6 +643,15 @@
             
             .school-icon {
                 font-size: 3rem;
+            }
+
+            .quick-access {
+                gap: 0.35rem;
+            }
+
+            .quick-access-link {
+                font-size: 0.7rem;
+                padding: 0.4rem 0.55rem;
             }
         }
     </style>

@@ -43,6 +43,12 @@ class RouteSecurityAudit
                 $issues->push("Admin route {$route['name']} is missing authentication middleware.");
             }
 
+            // The shared authenticated landing page intentionally has no module
+            // permission so every authenticated non-school user can reach it.
+            if ($route['name'] === 'admin.home') {
+                continue;
+            }
+
             if ($route['access'] === 'super_admin') {
                 continue;
             }

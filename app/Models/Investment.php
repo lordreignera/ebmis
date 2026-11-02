@@ -81,7 +81,7 @@ class Investment extends Model
      */
     public function getFormattedAmountAttribute()
     {
-        return '$' . number_format($this->amount, 2);
+        return config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($this->amount, 2);
     }
 
     /**
@@ -89,7 +89,7 @@ class Investment extends Model
      */
     public function getFormattedInterestAttribute()
     {
-        return '$' . number_format($this->interest, 2);
+        return config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($this->interest, 2);
     }
 
     /**
@@ -105,7 +105,7 @@ class Investment extends Model
      */
     public function getFormattedTotalReturnAttribute()
     {
-        return '$' . number_format($this->total_return, 2);
+        return config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($this->total_return, 2);
     }
 
     /**

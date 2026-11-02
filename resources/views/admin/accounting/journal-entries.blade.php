@@ -212,7 +212,7 @@
                             </div>
                             <div class="col-md-3">
                                 <p class="mb-1"><strong>Country:</strong></p>
-                                <p class="text-muted">{{ $investor->country->name ?? 'N/A' }}</p>
+                                <p class="text-muted">{{ $investor->countryDetails->name ?? 'N/A' }}</p>
                             </div>
                             <div class="col-md-3">
                                 <p class="mb-1"><strong>Accounts:</strong></p>

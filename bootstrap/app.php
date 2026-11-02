@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'ebmis_permission' => \App\Http\Middleware\EbimsPermissionAccess::class,
             'approved_school' => \App\Http\Middleware\EnsureSchoolIsApproved::class,
             'check_password_change' => \App\Http\Middleware\CheckPasswordChange::class,
+            'investor.portal' => \App\Http\Middleware\EnsureInvestorPortalAccess::class,
         ]);
         
         // Add password change check to web middleware group

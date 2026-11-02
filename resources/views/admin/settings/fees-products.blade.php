@@ -49,17 +49,16 @@
                     <div class="col-md-8 text-end">
                         <span class="text-muted">Show</span>
                         <select class="form-select d-inline-block w-auto" name="per_page" onchange="updatePerPage(this.value)">
-                            <option value="10" {{ request('per_page', 15) == 10 ? 'selected' : '' }}>10</option>
-                            <option value="15" {{ request('per_page', 15) == 15 ? 'selected' : '' }}>15</option>
-                            <option value="25" {{ request('per_page', 15) == 25 ? 'selected' : '' }}>25</option>
-                            <option value="50" {{ request('per_page', 15) == 50 ? 'selected' : '' }}>50</option>
-                            <option value="100" {{ request('per_page', 15) == 100 ? 'selected' : '' }}>100</option>
+                            <option value="10" {{ request('per_page', 20) == 10 ? 'selected' : '' }}>10</option>
+                            <option value="20" {{ request('per_page', 20) == 20 ? 'selected' : '' }}>20</option>
+                            <option value="50" {{ request('per_page', 20) == 50 ? 'selected' : '' }}>50</option>
+                            <option value="100" {{ request('per_page', 20) == 100 ? 'selected' : '' }}>100</option>
                         </select>
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-hover">
+                <div class="access-control-table-shell access-control-table-scroll">
+                    <table class="table access-control-table align-middle mb-0">
                         <thead>
                             <tr>
                                 <th>#</th>

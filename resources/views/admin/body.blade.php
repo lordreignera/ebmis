@@ -980,6 +980,16 @@
                     <div class="amount text-secondary" style="font-size: 1.2rem">{{ number_format($stats['pending_members'] ?? 0) }}</div>
                   </div>
                 </a>
+                @if(auth()->user()?->isSuperAdmin())
+                  <a href="{{ route('admin.investments.investor-approvals.index') }}" class="text-decoration-none">
+                    <div class="analytic-data analytic-au-data" style="cursor: pointer; transition: background 0.2s;">
+                      <div class="title">
+                        <i class="mdi mdi-account-check-outline text-warning"></i> Investor Registrations
+                      </div>
+                      <div class="amount text-warning" style="font-size: 1.2rem">{{ number_format($stats['pending_investor_approvals'] ?? 0) }}</div>
+                    </div>
+                  </a>
+                @endif
               </div>
             </div>
           </div>

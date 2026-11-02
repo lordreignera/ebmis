@@ -34,6 +34,14 @@ class EbimsPermissionAccess
 
         $routeName = $request->route()?->getName();
 
+        // The EBIMS home dashboard is the common landing page for staff users.
+        // Access to operational screens remains permission-controlled below.
+        if ($routeName === 'admin.home') {
+            abort_if($user->user_type === 'school', 403, 'School users must use the school dashboard.');
+
+            return $next($request);
+        }
+
         if (
             in_array($routeName, config('ebmis_permissions.sensitive_loan_operations_admin_routes', []), true)
             && $this->loanAccessService->canManageSensitiveLoanOperations($user)
@@ -52,6 +60,17 @@ class EbimsPermissionAccess
 
         if (!$permission) {
             abort(403, 'Access denied. This operational route has not been assigned a permission.');
+        }
+
+        // Module landing pages use the workspace permission as their route
+        // mapping. Treat an operational module permission as satisfying that
+        // umbrella so legacy roles do not lose access just because the
+        // umbrella permission was added after the role was created.
+        if (
+            $permission === 'access-ebmis-modules'
+            && EbmisPermissionRegistry::userCanAccessWorkspace($user)
+        ) {
+            return $next($request);
         }
 
         if (!$user->can($permission)) {

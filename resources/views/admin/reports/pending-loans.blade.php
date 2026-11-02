@@ -201,10 +201,10 @@
                                     <td>{{ $loan->created_at->format('d M Y') }}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{{ route('loans.show', $loan->id) }}" class="btn btn-outline-info" title="View">
+                                            <a href="{{ route('admin.loans.show', $loan->id) }}" class="btn btn-outline-info" title="View">
                                                 <i class="mdi mdi-eye"></i>
                                             </a>
-                                            <a href="{{ route('loans.edit', $loan->id) }}" class="btn btn-outline-primary" title="Edit">
+                                            <a href="{{ route('admin.loans.edit', $loan->id) }}" class="btn btn-outline-primary" title="Edit">
                                                 <i class="mdi mdi-pencil"></i>
                                             </a>
                                             @if($loan->status == 'pending')

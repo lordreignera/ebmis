@@ -8,6 +8,8 @@ use App\Models\Investor;
 use App\Models\Country;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
@@ -18,7 +20,7 @@ class InvestmentController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Investment::with(['investor.country']);
+        $query = Investment::with(['investor.countryDetails']);
 
         // Search functionality
         if ($request->has('search')) {
@@ -44,8 +46,21 @@ class InvestmentController extends Controller
             $query->where('type', $request->type);
         }
 
-        $perPage = $request->get('per_page', 10);
-        $investments = $query->orderBy('datecreated', 'desc')->paginate($perPage)->appends($request->except('page'));
+        $investmentCreatedColumn = Schema::hasColumn('investment', 'datecreated')
+            ? 'datecreated'
+            : 'created_at';
+
+        if ($request->filled('start_date')) {
+            $query->whereDate($investmentCreatedColumn, '>=', $request->input('start_date'));
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate($investmentCreatedColumn, '<=', $request->input('end_date'));
+        }
+
+        $perPage = (int) $request->integer('per_page', 10);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true) ? $perPage : 10;
+        $investments = $query->orderByDesc('id')->paginate($perPage)->appends($request->except('page'));
 
         // Calculate statistics
         $stats = [
@@ -66,7 +81,7 @@ class InvestmentController extends Controller
     {
         $type = $request->get('type', 'all'); // all, local, international
 
-        $query = Investor::with(['country', 'investments'])
+        $query = Investor::with(['countryDetails', 'investments'])
                          ->notDeleted()
                          ->withCount('investments');
 
@@ -88,7 +103,7 @@ class InvestmentController extends Controller
             });
         }
 
-        $investors = $query->orderBy('date_created', 'desc')->paginate(20);
+        $investors = $query->orderByDesc('id')->paginate(20);
 
         // Calculate statistics
         $stats = [
@@ -210,7 +225,9 @@ class InvestmentController extends Controller
      */
     public function createInvestment($investorId)
     {
-        $investor = Investor::findOrFail($investorId);
+        $investor = Investor::query()
+            ->notDeleted()
+            ->findOrFail($investorId);
         
         return view('admin.investments.create-investment', compact('investor'));
     }
@@ -220,7 +237,9 @@ class InvestmentController extends Controller
      */
     public function storeInvestment(Request $request, $investorId)
     {
-        $investor = Investor::findOrFail($investorId);
+        $investor = Investor::query()
+            ->notDeleted()
+            ->findOrFail($investorId);
 
         $validated = $request->validate([
             'inv_name' => 'required|string|max:200',
@@ -257,16 +276,23 @@ class InvestmentController extends Controller
             'added_by' => auth()->user()->name
         ];
 
-        Investment::create($investmentData);
+        $areaTimestampColumn = Schema::hasColumn('areas_of_interest', 'datecreated')
+            ? 'datecreated'
+            : 'created_at';
 
-        // Store areas of interest
-        foreach ($validated['areas'] as $area) {
-            DB::table('areas_of_interest')->insert([
-                'inv_id' => $investor->id,
-                'area' => $area,
-                'datecreated' => now()
-            ]);
-        }
+        DB::transaction(function () use ($investmentData, $investor, $validated, $areaTimestampColumn): void {
+            Investment::create($investmentData);
+
+            // Areas of interest are legacy investor-level records. Preserve
+            // that schema while keeping the investment write atomic.
+            foreach ($validated['areas'] as $area) {
+                DB::table('areas_of_interest')->insert([
+                    'inv_id' => $investor->id,
+                    'area' => $area,
+                    $areaTimestampColumn => now(),
+                ]);
+            }
+        });
 
         return redirect()->route('admin.investments.show-investor', $investor->id)
                         ->with('success', 'Investment created successfully.');
@@ -277,18 +303,24 @@ class InvestmentController extends Controller
      */
     public function showInvestor(Investor $investor)
     {
-        $investor->load(['country', 'investments']);
+        $investor->load('countryDetails');
+        $allInvestments = $investor->investments()->get();
+        $investments = $investor->investments()->orderByDesc('id')->paginate(10)->withQueryString();
+        $areas = DB::table('areas_of_interest')
+            ->where('inv_id', $investor->id)
+            ->pluck('area')
+            ->all();
         
         $stats = [
-            'total_investments' => $investor->investments->count(),
-            'active_investments' => $investor->activeInvestments->count(),
+            'total_investments' => $allInvestments->count(),
+            'active_investments' => $allInvestments->where('status', 1)->count(),
             'total_invested' => $investor->total_investment,
-            'total_returns' => $investor->investments->sum(function($inv) {
+            'total_returns' => $allInvestments->sum(function($inv) {
                 return (float)$inv->amount + (float)$inv->interest;
             })
         ];
 
-        return view('admin.investments.show-investor', compact('investor', 'stats'));
+        return view('admin.investments.show-investor', compact('investor', 'investments', 'areas', 'stats'));
     }
 
     /**
@@ -296,9 +328,14 @@ class InvestmentController extends Controller
      */
     public function showInvestment(Investment $investment)
     {
-        $investment->load(['investor.country']);
+        $investment->load(['investor.countryDetails']);
+        $areas = DB::table('areas_of_interest')
+            ->where('inv_id', $investment->userid)
+            ->pluck('area')
+            ->all();
+        $createdAt = $investment->datecreated ?? $investment->created_at;
         
-        return view('admin.investments.show-investment', compact('investment'));
+        return view('admin.investments.show-investment', compact('investment', 'areas', 'createdAt'));
     }
 
     /**
@@ -306,7 +343,7 @@ class InvestmentController extends Controller
      */
     public function editInvestment(Investment $investment)
     {
-        $investment->load(['investor.country']);
+        $investment->load(['investor.countryDetails']);
         
         // Get areas of interest for this investment
         $areas = DB::table('areas_of_interest')
@@ -348,29 +385,35 @@ class InvestmentController extends Controller
         
         $endDate = $startDate->copy()->addYears($validated['inv_period']);
 
-        // Update investment
-        $investment->update([
-            'type' => $validated['inv_term'],
-            'name' => $validated['inv_name'],
-            'amount' => $validated['inv_amt'],
-            'period' => $validated['inv_period'],
-            'percentage' => $calculation['rate'],
-            'end' => $endDate->format('m/d/Y'),
-            'interest' => $calculation['total_interest'],
-            'details' => $validated['details'],
-            'status' => $validated['status']
-        ]);
+        $areaTimestampColumn = Schema::hasColumn('areas_of_interest', 'datecreated')
+            ? 'datecreated'
+            : 'created_at';
 
-        // Update areas of interest - remove old ones and add new
-        DB::table('areas_of_interest')->where('inv_id', $investment->userid)->delete();
-        
-        foreach ($validated['areas'] as $area) {
-            DB::table('areas_of_interest')->insert([
-                'inv_id' => $investment->userid,
-                'area' => $area,
-                'datecreated' => now()
+        DB::transaction(function () use ($investment, $validated, $calculation, $endDate, $areaTimestampColumn): void {
+            $investment->update([
+                'type' => $validated['inv_term'],
+                'name' => $validated['inv_name'],
+                'amount' => $validated['inv_amt'],
+                'period' => $validated['inv_period'],
+                'percentage' => $calculation['rate'],
+                'end' => $endDate->format('m/d/Y'),
+                'interest' => $calculation['total_interest'],
+                'details' => $validated['details'],
+                'status' => $validated['status'],
             ]);
-        }
+
+            // Areas of interest are stored at investor level in the legacy
+            // schema, so replace the investor's set atomically.
+            DB::table('areas_of_interest')->where('inv_id', $investment->userid)->delete();
+
+            foreach ($validated['areas'] as $area) {
+                DB::table('areas_of_interest')->insert([
+                    'inv_id' => $investment->userid,
+                    'area' => $area,
+                    $areaTimestampColumn => now(),
+                ]);
+            }
+        });
 
         return redirect()->route('admin.investments.show-investment', $investment->id)
                         ->with('success', 'Investment updated successfully.');
@@ -472,12 +515,12 @@ class InvestmentController extends Controller
             'start_date' => $startDate->format('F d, Y'),
             'end_date' => $endDate->format('F d, Y'),
             'formatted' => [
-                'amount' => '$' . number_format($request->amount, 2),
-                'annual_profit' => '$' . number_format($calculation['annual_profit'], 2),
-                'total_interest' => '$' . number_format($calculation['total_interest'], 2),
-                'total_return' => '$' . number_format($calculation['total_return'], 2),
-                'conversion_fee' => '$' . number_format($conversionFee, 2),
-                'total_charge' => '$' . number_format($totalCharge, 2)
+                'amount' => config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($request->amount, 2),
+                'annual_profit' => config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($calculation['annual_profit'], 2),
+                'total_interest' => config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($calculation['total_interest'], 2),
+                'total_return' => config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($calculation['total_return'], 2),
+                'conversion_fee' => config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($conversionFee, 2),
+                'total_charge' => config('loan_management.currency_symbol', 'UGX') . ' ' . number_format($totalCharge, 2)
             ]
         ]);
     }
@@ -487,16 +530,18 @@ class InvestmentController extends Controller
      */
     public function deleteInvestor(Request $request, Investor $investor)
     {
-        $request->validate([
+        $validated = $request->validate([
             'code' => 'required|string',
             'del_comments' => 'required|string|max:100'
         ]);
 
-        // Verify admin security code (you may want to implement proper verification)
-        // For now, just check if code is provided
+        if (!Hash::check($validated['code'], (string) auth()->user()->getAuthPassword())) {
+            return back()->withErrors(['code' => 'The administrator password is incorrect.']);
+        }
 
         $investor->update([
             'soft_delete' => 1,
+            'status' => 3,
             'del_user' => auth()->id(),
             'del_comments' => $request->del_comments
         ]);

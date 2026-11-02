@@ -119,6 +119,11 @@ return [
             'label' => 'Manage Expenditures',
             'description' => 'Record, approve, pay, and roll out expenditure payments.',
         ],
+        'view-own-remuneration' => [
+            'group' => 'Staff performance',
+            'label' => 'View Own Remuneration Performance',
+            'description' => 'View your own weekly and monthly remuneration performance summaries.',
+        ],
         'view-umra-reports' => [
             'group' => 'Reporting',
             'label' => 'View UMRA Reports',
@@ -138,6 +143,80 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Module Visibility Groups
+    |--------------------------------------------------------------------------
+    |
+    | These groups drive the module cards and sidebar links. A module is shown
+    | when the user has at least one permission that opens work in that module.
+    | The actual route middleware remains the final authority.
+    |
+    */
+    'module_permissions' => [
+        'clients' => [
+            'view-client-details',
+            'add-client',
+            'edit-client',
+            'delete-client',
+            'manage-member-assessments',
+            'manage-group-members',
+            'send-sms-notifications',
+        ],
+        'loan-portfolio' => [
+            'manage-client-applications',
+            'perform-field-verification',
+            'approve-loan',
+            'reject-loan',
+            'create-loan-application',
+            'edit-loan-application',
+            'manage-loans',
+            'view-loan-details',
+            'view-loan-schedule',
+            'view-active-loans',
+            'record-loan-collateral',
+            'record-loan-follow-up',
+            'view-disbursements',
+            'manage-loan-documents',
+            'manage-loan-guarantors',
+            'manage-loan-agreements',
+            'generate-loan-schedules',
+            'manage-loan-charge-type',
+            'restructure-loan',
+            'generate-loan-reports',
+            'collect-loan-fees',
+            'record-mobile-money-repayment',
+            'view-repayment-history',
+            'manage-late-fees',
+            'manage-school-loans',
+        ],
+        'collections' => [
+            'view-repayment-history',
+            'view-loan-schedule',
+            'record-repayment',
+            'record-mobile-money-repayment',
+            'collect-loan-fees',
+            'manage-late-fees',
+            'manage-fees',
+            'manage-cash-securities',
+            'manage-savings-accounts',
+        ],
+        'reports-accounting' => [
+            'generate-loan-reports',
+            'view-accounting-reports',
+            'view-umra-reports',
+        ],
+        'expenditures' => [
+            'manage-expenditures',
+        ],
+        'investments' => [
+            'manage-investments',
+        ],
+        'remuneration' => [
+            'view-own-remuneration',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Route Permission Mapping
     |--------------------------------------------------------------------------
     |
@@ -147,7 +226,6 @@ return [
     */
     'route_permissions' => array_merge(
         $routes('view-branch-dashboard', [
-            'admin.home',
             'admin.global-search',
             'admin.help.guide',
             'admin.help.guide.download',
@@ -386,6 +464,22 @@ return [
             'admin.expenditures.index',
             'admin.expenditures.create',
             'admin.expenditures.store',
+            'admin.expenditures.remuneration',
+            'admin.expenditures.remuneration.calculations.store',
+            'admin.expenditures.remuneration.calculations.payout',
+            'admin.expenditures.remuneration.calculations.report-review',
+            'admin.expenditures.remuneration.calculations.funds',
+            'admin.expenditures.remuneration.calculations.settle-zero',
+            'admin.expenditures.remuneration.calculations.reopen',
+            'admin.expenditures.remuneration.policies.index',
+            'admin.expenditures.remuneration.policies.create',
+            'admin.expenditures.remuneration.policies.store',
+            'admin.expenditures.remuneration.policies.show',
+            'admin.expenditures.remuneration.policies.edit',
+            'admin.expenditures.remuneration.policies.update',
+            'admin.expenditures.remuneration.policies.approve',
+            'admin.expenditures.remuneration.policies.activate',
+            'admin.expenditures.remuneration.policies.destroy',
             'admin.expenditures.show',
             'admin.expenditures.approve',
             'admin.expenditures.reject',
@@ -397,6 +491,10 @@ return [
             'admin.expenditures.rollout.show',
             'admin.expenditures.rollout.approve',
             'admin.expenditures.rollout.pay',
+        ]),
+        $routes('view-own-remuneration', [
+            'admin.remuneration.performance',
+            'admin.remuneration.spending-report.store',
         ]),
         $routes('send-sms-notifications', [
             'admin.bulk-sms.index',
@@ -564,6 +662,22 @@ return [
     ],
 
     'sensitive_staff_payment_rollout_routes' => [
+        'admin.expenditures.remuneration',
+        'admin.expenditures.remuneration.calculations.store',
+        'admin.expenditures.remuneration.calculations.payout',
+        'admin.expenditures.remuneration.calculations.report-review',
+        'admin.expenditures.remuneration.calculations.funds',
+        'admin.expenditures.remuneration.calculations.settle-zero',
+        'admin.expenditures.remuneration.calculations.reopen',
+        'admin.expenditures.remuneration.policies.index',
+        'admin.expenditures.remuneration.policies.create',
+        'admin.expenditures.remuneration.policies.store',
+        'admin.expenditures.remuneration.policies.show',
+        'admin.expenditures.remuneration.policies.edit',
+        'admin.expenditures.remuneration.policies.update',
+        'admin.expenditures.remuneration.policies.approve',
+        'admin.expenditures.remuneration.policies.activate',
+        'admin.expenditures.remuneration.policies.destroy',
         'admin.expenditures.rollout',
         'admin.expenditures.rollout.generate',
         'admin.expenditures.rollout.individual',
@@ -674,6 +788,7 @@ return [
             'generate-loan-reports',
             'view-accounting-reports',
             'manage-expenditures',
+            'view-own-remuneration',
             'view-umra-reports',
             'manage-school-loans',
         ],
@@ -692,6 +807,7 @@ return [
             'record-loan-follow-up',
             'record-loan-collateral',
             'view-umra-reports',
+            'view-own-remuneration',
         ],
         'Field Officer' => [
             'access-ebmis-modules',
@@ -708,6 +824,7 @@ return [
             'record-loan-follow-up',
             'record-loan-collateral',
             'view-umra-reports',
+            'view-own-remuneration',
         ],
     ],
 ];

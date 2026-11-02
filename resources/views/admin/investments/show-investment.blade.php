@@ -2,6 +2,10 @@
 
 @section('title', 'Investment Details - ' . $investment->name)
 
+@php
+    $currency = config('loan_management.currency_symbol', 'UGX');
+@endphp
+
 @section('content')
 <div class="row">
     <div class="col-md-12 grid-margin">
@@ -79,7 +83,7 @@
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Investment Amount:</span>
-                            <span class="font-weight-medium text-primary">${{ number_format($investment->amount, 2) }}</span>
+                            <span class="font-weight-medium text-primary">{{ $currency }} {{ number_format($investment->amount, 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Investment Type:</span>
@@ -105,24 +109,24 @@
                         <h6 class="text-success">Financial Summary</h6>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Total Interest:</span>
-                            <span class="font-weight-medium text-success">${{ number_format($investment->interest, 2) }}</span>
+                            <span class="font-weight-medium text-success">{{ $currency }} {{ number_format($investment->interest, 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Total Return:</span>
-                            <span class="font-weight-medium text-primary">${{ number_format(($investment->amount + $investment->interest), 2) }}</span>
+                            <span class="font-weight-medium text-primary">{{ $currency }} {{ number_format(($investment->amount + $investment->interest), 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Conversion Fee:</span>
-                            <span class="font-weight-medium">${{ number_format(($investment->amount * 0.005), 2) }}</span>
+                            <span class="font-weight-medium">{{ $currency }} {{ number_format(($investment->amount * 0.005), 2) }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Total Charge:</span>
-                            <span class="font-weight-medium">${{ number_format(($investment->amount + ($investment->amount * 0.005)), 2) }}</span>
+                            <span class="font-weight-medium">{{ $currency }} {{ number_format(($investment->amount + ($investment->amount * 0.005)), 2) }}</span>
                         </div>
                         @if($investment->type == 1)
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Annual Profit:</span>
-                            <span class="font-weight-medium">${{ $investment->period > 0 ? number_format(($investment->interest / $investment->period), 2) : '0.00' }}</span>
+                            <span class="font-weight-medium">{{ $currency }} {{ $investment->period > 0 ? number_format(($investment->interest / $investment->period), 2) : '0.00' }}</span>
                         </div>
                         @endif
                     </div>
@@ -211,9 +215,8 @@
                     </div>
                     
                     <div class="col-md-6">
-                        @if($investment->areas)
+                        @if($areas !== [])
                         <h6 class="text-warning">Investment Areas</h6>
-                        @php $areas = json_decode($investment->areas, true) ?: []; @endphp
                         @foreach($areas as $area)
                         <span class="badge badge-outline-primary mb-1">{{ $area }}</span>
                         @endforeach
@@ -412,12 +415,12 @@
                 <div class="d-flex align-items-center mb-3">
                     <div class="avatar-sm mr-3">
                         <div class="avatar-title bg-primary text-white rounded-circle">
-                            {{ strtoupper(substr($investment->investor->first_name, 0, 1) . substr($investment->investor->last_name, 0, 1)) }}
+                            {{ strtoupper(substr((string) $investment->investor->fname, 0, 1) . substr((string) $investment->investor->lname, 0, 1)) }}
                         </div>
                     </div>
                     <div>
                         <h6 class="mb-0">{{ $investment->investor->full_name }}</h6>
-                        <p class="text-muted mb-0">{{ ucfirst($investment->investor->type) }} Investor</p>
+                        <p class="text-muted mb-0">Investor</p>
                     </div>
                 </div>
                 
@@ -436,7 +439,7 @@
                 <div class="mb-2">
                     <div class="d-flex justify-content-between">
                         <span class="text-muted">Country:</span>
-                        <span>{{ $investment->investor->country->name ?? 'N/A' }}</span>
+                        <span>{{ $investment->investor->countryDetails->name ?? 'N/A' }}</span>
                     </div>
                 </div>
                 
@@ -507,9 +510,9 @@
                         <span class="text-muted">Daily Interest:</span>
                         <span class="font-weight-medium">
                             @if($investment->period > 0)
-                                ${{ number_format($investment->interest / ($investment->period * 365), 2) }}
+                                {{ $currency }} {{ number_format($investment->interest / ($investment->period * 365), 2) }}
                             @else
-                                $0.00
+                                {{ $currency }} 0.00
                             @endif
                         </span>
                     </div>
@@ -520,9 +523,9 @@
                         <span class="text-muted">Monthly Interest:</span>
                         <span class="font-weight-medium">
                             @if($investment->period > 0)
-                                ${{ number_format($investment->interest / ($investment->period * 12), 2) }}
+                                {{ $currency }} {{ number_format($investment->interest / ($investment->period * 12), 2) }}
                             @else
-                                $0.00
+                                {{ $currency }} 0.00
                             @endif
                         </span>
                     </div>
@@ -532,19 +535,7 @@
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Created:</span>
                         <span>
-                            @php
-                                try {
-                                    $createdDate = \Carbon\Carbon::createFromFormat('m/d/Y', trim($investment->datecreated));
-                                    echo $createdDate ? $createdDate->format('M d, Y') : ($investment->datecreated ?? 'N/A');
-                                } catch (\Exception $e) {
-                                    try {
-                                        $createdDate = \Carbon\Carbon::parse($investment->datecreated);
-                                        echo $createdDate ? $createdDate->format('M d, Y') : ($investment->datecreated ?? 'N/A');
-                                    } catch (\Exception $e2) {
-                                        echo $investment->datecreated ?? 'N/A';
-                                    }
-                                }
-                            @endphp
+                            {{ $createdAt ? \Carbon\Carbon::parse($createdAt)->format('M d, Y') : 'N/A' }}
                         </span>
                     </div>
                 </div>
@@ -564,15 +555,15 @@
                 </button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete the investment <strong>"{{ $investment->name }}"</strong>?</p>
-                <p class="text-danger"><strong>Warning:</strong> This action cannot be undone and will permanently remove all investment data.</p>
+                <p>Are you sure you want to cancel the investment <strong>"{{ $investment->name }}"</strong>?</p>
+                <p class="text-danger"><strong>Warning:</strong> The investment will be marked cancelled and its financial history will be retained.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                 <form action="{{ route('admin.investments.destroy', $investment->id) }}" method="POST" style="display: inline;">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="btn btn-danger">Delete Investment</button>
+                    <button type="submit" class="btn btn-danger">Cancel Investment</button>
                 </form>
             </div>
         </div>

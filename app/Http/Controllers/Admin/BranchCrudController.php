@@ -36,9 +36,25 @@ class BranchCrudController extends Controller
     /**
      * Display a listing of branches
      */
-    public function index()
+    public function index(Request $request)
     {
-        $branches = Branch::with('addedBy')->orderBy('name')->get();
+        $query = Branch::with(['addedBy', 'country'])->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($branchQuery) use ($search) {
+                $branchQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('address', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhereHas('country', function ($countryQuery) use ($search) {
+                        $countryQuery->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $branches = $query->paginate(20)->withQueryString();
         return view('admin.settings.branches', compact('branches'));
     }
 

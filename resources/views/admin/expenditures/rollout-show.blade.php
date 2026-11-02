@@ -37,8 +37,8 @@
                         <div class="col-md-4"><small class="text-muted">Total</small><div class="fw-bold">UGX {{ number_format((float) $rollout->total_amount, 0) }}</div></div>
                         <div class="col-md-4 mt-3"><small class="text-muted">Investment Account</small><div>{{ $rollout->investment->name ?? 'Not selected' }}</div></div>
                         <div class="col-md-4 mt-3"><small class="text-muted">Payment Account</small><div>{{ $rollout->paymentAccount->full_name ?? 'Not selected' }}</div></div>
-                        <div class="col-md-4 mt-3"><small class="text-muted">Weekly Wage</small><div>UGX {{ number_format((float) data_get($policy, 'minimum_wage', 75000), 0) }}</div></div>
-                        <div class="col-md-4 mt-3"><small class="text-muted">Weekly Calculations</small><div>{{ number_format((int) data_get($policy, 'weekly_periods_count', 1)) }}</div></div>
+                        <div class="col-md-4 mt-3"><small class="text-muted">Historical weekly wage</small><div>{{ data_get($policy, 'minimum_wage') === null ? 'Not captured' : 'UGX '.number_format((float) $policy['minimum_wage'], 0) }}</div></div>
+                        <div class="col-md-4 mt-3"><small class="text-muted">Weekly calculations</small><div>{{ data_get($policy, 'weekly_periods_count') === null ? 'Not captured' : number_format((int) $policy['weekly_periods_count']) }}</div></div>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-hover mb-0 expenditure-table">
@@ -109,55 +109,10 @@
             <div class="card">
                 <div class="card-header bg-light text-dark"><strong>Actions</strong></div>
                 <div class="card-body">
-                    @if($rollout->status === 'draft')
-                        <form method="POST" action="{{ route('admin.expenditures.rollout.approve', $rollout) }}" class="mb-3">
-                            @csrf
-                            <button class="btn btn-outline-dark w-100"><i class="mdi mdi-check me-1"></i> Approve Staff Payment Rollout</button>
-                        </form>
-                    @endif
-
-                    @if(in_array($rollout->status, ['draft', 'approved'], true))
-                        <form method="POST" action="{{ route('admin.expenditures.rollout.pay', $rollout) }}">
-                            @csrf
-                            <input type="hidden" name="payment_channel" value="mobile_money">
-                            <label class="form-label">Payment Channel</label>
-                            <input type="text" class="form-control bg-light mb-2" value="Mobile Money" readonly>
-                            <label class="form-label">Investment Account</label>
-                            <select name="investment_id" class="form-select mb-2" required>
-                                <option value="">Select investment funding account</option>
-                                @foreach($investments as $investment)
-                                    <option value="{{ $investment->id }}" @selected((string) old('investment_id', $rollout->investment_id) === (string) $investment->id)>
-                                        {{ $investment->name }} - UGX {{ number_format((float) $investment->amount, 0) }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <label class="form-label">GL Payment Account</label>
-                            <select name="payment_account_id" class="form-select mb-2" required>
-                                <option value="">Select settlement account</option>
-                                @foreach($paymentAccounts as $account)
-                                    <option value="{{ $account->Id }}" @selected((string) old('payment_account_id', $rollout->payment_account_id) === (string) $account->Id)>{{ $account->full_name }}</option>
-                                @endforeach
-                            </select>
-                            <label class="form-label">Payment Method</label>
-                            <input type="text" name="payment_method" class="form-control mb-3" value="{{ old('payment_method', 'Staff Mobile Money Rollout') }}">
-                            <div class="alert alert-warning small">
-                                This sends mobile money to each staff member's saved phone number. Open each generated payout to check pending statuses.
-                            </div>
-                            <button class="btn btn-dark w-100"><i class="mdi mdi-cellphone-arrow-down me-1"></i> Send Staff Mobile Money</button>
-                        </form>
-                    @elseif($rollout->status === 'payment_pending')
-                        <div class="alert alert-info small mb-0">
-                            Mobile-money payouts are pending. Open each generated payout below and use Check Mobile Money Status before retrying.
-                        </div>
-                    @elseif($rollout->status === 'payment_failed')
-                        <div class="alert alert-danger small mb-0">
-                            Some staff mobile-money payouts failed. Open the failed payout records below and retry from each expenditure page.
-                        </div>
-                    @elseif($rollout->status !== 'paid')
-                        <div class="alert alert-light border small mb-0">No unsent staff payouts are available for this rollout.</div>
-                    @else
-                        <div class="alert alert-light border mb-0">Paid {{ optional($rollout->paid_at)->format('Y-m-d H:i') }}</div>
-                    @endif
+                    <div class="alert alert-warning small mb-0">
+                        This is a historical legacy staff rollout. The old payroll calculation, approval, and batch payout actions have been retired.
+                        Existing records are preserved for audit and reference. Regular expenditure mobile-money records remain available separately.
+                    </div>
                 </div>
             </div>
         </div>

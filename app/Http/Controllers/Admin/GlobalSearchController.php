@@ -118,7 +118,6 @@ class GlobalSearchController extends Controller
             $this->component('Savings Accounts', 'Savings account management.', 'Savings', 'admin.savings.index', 'mdi-piggy-bank-outline', ['savings', 'savings accounts']),
             $this->component('Investments', 'Investment dashboard and records.', 'Investments', 'admin.investments.index', 'mdi-finance', ['investments', 'investors']),
             $this->component('Expenditures', 'Expenditure records and payments.', 'Accounting', 'admin.expenditures.index', 'mdi-cash-minus', ['expenditures', 'expenses']),
-            $this->component('Staff Payment Rollout', 'Weekly staff performance payment rollout.', 'Accounting', 'admin.expenditures.rollout', 'mdi-account-cash-outline', ['staff payment', 'salary rollout', 'pay officers', 'performance payout', 'expenses']),
 
             $this->component('Access Control', 'Users, roles, and permission administration.', 'Settings', 'admin.access-control.index', 'mdi-account-key-outline', ['access control', 'roles', 'permissions', 'users'], [], true),
             $this->component('User Management', 'Manage system users.', 'Settings', 'admin.users.index', 'mdi-account-cog-outline', ['users', 'staff users'], [], true),

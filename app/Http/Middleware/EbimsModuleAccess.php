@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\EbmisPermissionRegistry;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,8 +24,7 @@ class EbimsModuleAccess
 
         $user = auth()->user();
         
-        $hasEbimsAccess = $user->isSuperAdmin()
-                        || $user->can('access-ebmis-modules');
+        $hasEbimsAccess = EbmisPermissionRegistry::userCanAccessWorkspace($user);
 
         if (!$hasEbimsAccess) {
             abort(403, 'Access denied. You do not have permission to access EBIMS modules.');

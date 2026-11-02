@@ -78,9 +78,9 @@
                                 Score and integer fields are entered directly.
                             </div>
 
-                            <div class="table-responsive">
-                                <table id="policyTable" class="table table-bordered table-hover align-middle" style="width:100%">
-                                    <thead class="thead-dark">
+                            <div class="access-control-table-shell access-control-table-scroll">
+                                <table id="policyTable" class="table access-control-table align-middle mb-0">
+                                    <thead>
                                         <tr>
                                             <th>Key</th>
                                             <th>Label</th>
@@ -218,7 +218,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var table = $('#policyTable').DataTable({
         orderCellsTop: true,
         fixedHeader: true,
-        pageLength: 25,
+        pageLength: 20,
         order: [],
         columnDefs: [
             { orderable: false, targets: 5 }

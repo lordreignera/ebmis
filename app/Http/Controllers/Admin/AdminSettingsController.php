@@ -35,15 +35,45 @@ class AdminSettingsController extends Controller
     /**
      * Organization Settings
      */
-    public function agencies()
+    public function agencies(Request $request)
     {
-        $agencies = Agency::with('addedBy')->orderBy('name')->get();
+        $query = Agency::with('addedBy')->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($agencyQuery) use ($search) {
+                $agencyQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('location', 'like', "%{$search}%")
+                    ->orWhere('contact_person', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $agencies = $query->paginate(20)->withQueryString();
         return view('admin.settings.agencies', compact('agencies'));
     }
 
-    public function branches()
+    public function branches(Request $request)
     {
-        $branches = Branch::with(['country'])->orderBy('name')->get();
+        $query = Branch::with(['country'])->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($branchQuery) use ($search) {
+                $branchQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('address', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhereHas('country', function ($countryQuery) use ($search) {
+                        $countryQuery->where('name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $branches = $query->paginate(20)->withQueryString();
         return view('admin.settings.branches', compact('branches'));
     }
 
@@ -86,7 +116,7 @@ class AdminSettingsController extends Controller
         }
         
         // Get paginated results
-        $products = $query->orderBy('datecreated', 'desc')->paginate(15)->withQueryString();
+        $products = $query->orderBy('datecreated', 'desc')->paginate(20)->withQueryString();
         
         return view('admin.settings.loan-products', compact('products'));
     }
@@ -125,17 +155,25 @@ class AdminSettingsController extends Controller
         $products = $query->orderBy('loan_type')
                           ->orderBy('period_type')
                           ->orderBy('name')
-                          ->paginate(15)
+                          ->paginate(20)
                           ->withQueryString();
                           
         return view('admin.settings.school-loan-products', compact('products'));
     }
 
-    public function savingsProducts()
+    public function savingsProducts(Request $request)
     {
-        $savingsProducts = SavingsProduct::orderBy('name')->get();
+        $savingsProducts = SavingsProduct::orderBy('name')
+            ->paginate(20)
+            ->withQueryString();
         $systemAccounts = \DB::table('system_accounts')->select('id', 'name')->orderBy('name')->get();
-        return view('admin.settings.savings-products', compact('savingsProducts', 'systemAccounts'));
+        $savingsProductStats = [
+            'total' => SavingsProduct::count(),
+            'active' => SavingsProduct::where('isactive', 1)->count(),
+            'average_interest' => (float) (SavingsProduct::avg('interest') ?? 0),
+        ];
+
+        return view('admin.settings.savings-products', compact('savingsProducts', 'systemAccounts', 'savingsProductStats'));
     }
 
     public function feesProducts(Request $request)
@@ -155,7 +193,8 @@ class AdminSettingsController extends Controller
         }
 
         // Get paginated results
-        $perPage = $request->get('per_page', 15);
+        $requestedPerPage = (int) $request->get('per_page', 20);
+        $perPage = in_array($requestedPerPage, [10, 20, 50, 100], true) ? $requestedPerPage : 20;
         $feeTypes = $query->orderBy('name')->paginate($perPage)->appends($request->except('page'));
 
         $systemAccounts = \App\Models\SystemAccount::where('status', 1)->orderBy('code')->get();
@@ -202,7 +241,8 @@ class AdminSettingsController extends Controller
               ->orderBy('sub_code');
 
           // Get paginated results
-          $perPage = $request->get('per_page', 25);
+          $requestedPerPage = (int) $request->get('per_page', 20);
+          $perPage = in_array($requestedPerPage, [10, 20, 50, 100], true) ? $requestedPerPage : 20;
           $systemAccounts = $query->paginate($perPage)->withQueryString();
 
         return view('admin.settings.system-accounts', compact('systemAccounts'));
@@ -285,12 +325,13 @@ class AdminSettingsController extends Controller
     /**
      * Field Users Management
      */
-    public function fieldUsers()
+    public function fieldUsers(Request $request)
     {
         $fieldUsers = \App\Models\Member::where('member_type', 4)
             ->with(['branch', 'country'])
             ->orderBy('datecreated', 'desc')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
         
         return view('admin.settings.field-users', compact('fieldUsers'));
     }

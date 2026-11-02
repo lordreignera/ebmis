@@ -2,6 +2,10 @@
 
 @section('title', 'Edit Investment - ' . $investment->name)
 
+@php
+    $currency = config('loan_management.currency_symbol', 'UGX');
+@endphp
+
 @section('content')
 <div class="row">
     <div class="col-md-12 grid-margin">
@@ -67,27 +71,27 @@
                         <div class="row">
                             <div class="col-md-2 mb-2">
                                 <input type="radio" class="btn-check" name="quick_amount" id="amt_1000" value="1000" onchange="setAmount(this.value)">
-                                <label class="btn btn-outline-primary w-100" for="amt_1000">$1,000</label>
+                                <label class="btn btn-outline-primary w-100" for="amt_1000">{{ $currency }} 1,000</label>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <input type="radio" class="btn-check" name="quick_amount" id="amt_2500" value="2500" onchange="setAmount(this.value)">
-                                <label class="btn btn-outline-primary w-100" for="amt_2500">$2,500</label>
+                                <label class="btn btn-outline-primary w-100" for="amt_2500">{{ $currency }} 2,500</label>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <input type="radio" class="btn-check" name="quick_amount" id="amt_5000" value="5000" onchange="setAmount(this.value)">
-                                <label class="btn btn-outline-primary w-100" for="amt_5000">$5,000</label>
+                                <label class="btn btn-outline-primary w-100" for="amt_5000">{{ $currency }} 5,000</label>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <input type="radio" class="btn-check" name="quick_amount" id="amt_10000" value="10000" onchange="setAmount(this.value)">
-                                <label class="btn btn-outline-primary w-100" for="amt_10000">$10,000</label>
+                                <label class="btn btn-outline-primary w-100" for="amt_10000">{{ $currency }} 10,000</label>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <input type="radio" class="btn-check" name="quick_amount" id="amt_15000" value="15000" onchange="setAmount(this.value)">
-                                <label class="btn btn-outline-primary w-100" for="amt_15000">$15,000</label>
+                                <label class="btn btn-outline-primary w-100" for="amt_15000">{{ $currency }} 15,000</label>
                             </div>
                             <div class="col-md-2 mb-2">
                                 <input type="radio" class="btn-check" name="quick_amount" id="amt_20000" value="20000" onchange="setAmount(this.value)">
-                                <label class="btn btn-outline-primary w-100" for="amt_20000">$20,000</label>
+                                <label class="btn btn-outline-primary w-100" for="amt_20000">{{ $currency }} 20,000</label>
                             </div>
                         </div>
                     </div>
@@ -96,14 +100,14 @@
                         <label class="form-label">Investment Amount</label>
                         <div class="input-group">
                             <div class="input-group-prepend">
-                                <span class="input-group-text">USD</span>
+                                <span class="input-group-text">{{ $currency }}</span>
                             </div>
                             <input type="number" class="form-control" id="inv_amt" name="inv_amt" 
                                    value="{{ old('inv_amt', $investment->amount) }}" min="1000" step="0.01" required
                                    onchange="calculateReturns()" onkeyup="calculateReturns()" 
                                    placeholder="Enter investment amount">
                         </div>
-                        <small class="form-text text-muted">Note: Minimum investment to start cycle is $1,000</small>
+                        <small class="form-text text-muted">Note: Minimum investment to start cycle is {{ $currency }} 1,000</small>
                     </div>
 
                     <div class="row">
@@ -190,7 +194,7 @@
                     </div>
                     <div class="d-flex justify-content-between">
                         <span>Country:</span>
-                        <span>{{ $investment->investor->country->name ?? 'Unknown' }}</span>
+                        <span>{{ $investment->investor->countryDetails->name ?? 'Unknown' }}</span>
                     </div>
                     <div class="d-flex justify-content-between">
                         <span>Email:</span>
@@ -227,13 +231,13 @@
                     <div class="mb-2">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Total net profit</span>
-                            <span class="text-success fw-bold" id="summary_interest">${{ number_format($investment->interest, 2) }}</span>
+                            <span class="text-success fw-bold" id="summary_interest">{{ $currency }} {{ number_format($investment->interest, 2) }}</span>
                         </div>
                     </div>
                     <div class="mb-2">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Total Return</span>
-                            <span class="text-primary fw-bold" id="summary_total">${{ number_format($investment->amount + $investment->interest, 2) }}</span>
+                            <span class="text-primary fw-bold" id="summary_total">{{ $currency }} {{ number_format($investment->amount + $investment->interest, 2) }}</span>
                         </div>
                     </div>
                     <hr>
@@ -281,20 +285,20 @@
                     <div class="mb-2">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Amount to invest</span>
-                            <span id="summary_amount">${{ number_format($investment->amount, 2) }}</span>
+                            <span id="summary_amount">{{ $currency }} {{ number_format($investment->amount, 2) }}</span>
                         </div>
                     </div>
                     <div class="mb-2">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Conversion Fee (0.5%)</span>
-                            <span id="summary_fee">${{ number_format($investment->amount * 0.005, 2) }}</span>
+                            <span id="summary_fee">{{ $currency }} {{ number_format($investment->amount * 0.005, 2) }}</span>
                         </div>
                     </div>
                     <hr>
                     <div class="mb-2">
                         <div class="d-flex justify-content-between">
                             <span class="fw-bold">Total Charge</span>
-                            <span class="text-primary fw-bold" id="summary_charge">${{ number_format($investment->amount + ($investment->amount * 0.005), 2) }}</span>
+                            <span class="text-primary fw-bold" id="summary_charge">{{ $currency }} {{ number_format($investment->amount + ($investment->amount * 0.005), 2) }}</span>
                         </div>
                     </div>
                 </div>

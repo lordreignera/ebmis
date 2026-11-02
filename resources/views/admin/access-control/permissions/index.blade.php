@@ -1,53 +1,27 @@
 @extends('layouts.admin')
 
-@section('title', 'Permissions Management')
+@section('title', 'Manage Role Permissions')
 
 @section('content')
-<div class="container-fluid">
-    <!-- Page Header -->
+<div class="container-fluid permission-manager-page">
     <div class="row mb-4">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                         <div>
                             <h2 class="h4 mb-1 text-primary">
-                                <i class="mdi mdi-key-variant me-2"></i>Permissions Management
+                                <i class="mdi mdi-shield-key me-2"></i>Manage Role Permissions
                             </h2>
-                            <p class="text-muted mb-0">Manage system permissions and access controls</p>
+                            <p class="text-muted mb-0">Choose a role, select its access, and save.</p>
                         </div>
-                        <a href="{{ route('admin.permissions.create') }}" class="btn btn-primary">
-                            <i class="mdi mdi-plus me-1"></i>Create New Permission
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Search and Filter Bar -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-md-8">
-                            <div class="input-group">
-                                <span class="input-group-text bg-white">
-                                    <i class="mdi mdi-magnify"></i>
-                                </span>
-                                <input 
-                                    type="text" 
-                                    class="form-control" 
-                                    id="searchPermissions" 
-                                    placeholder="Search permissions by name..."
-                                >
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <button class="btn btn-outline-secondary w-100" onclick="clearSearch()">
-                                <i class="mdi mdi-filter-off me-1"></i>Clear Search
-                            </button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a href="{{ route('admin.roles.index') }}" class="btn btn-outline-secondary">
+                                <i class="mdi mdi-shield-account me-1"></i>Manage Roles
+                            </a>
+                            <a href="{{ route('admin.roles.create') }}" class="btn btn-primary">
+                                <i class="mdi mdi-plus me-1"></i>Add Role
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -55,413 +29,654 @@
         </div>
     </div>
 
-    <!-- Permissions Directory -->
-    @if($flatPermissions->isEmpty())
-        <div class="row">
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body text-center py-5">
-                        <i class="mdi mdi-key-variant fa-3x text-muted mb-3"></i>
-                        <h5 class="text-muted">No permissions found</h5>
-                        <p class="text-muted mb-4">Get started by creating your first permission</p>
-                        <a href="{{ route('admin.permissions.create') }}" class="btn btn-primary">
-                            <i class="mdi mdi-plus me-2"></i>Create First Permission
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @else
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card border-0 shadow-sm permissions-directory">
-                    <div class="card-header bg-gradient-primary text-white">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <i class="mdi mdi-folder-key me-2"></i>All Permissions
-                            </h5>
-                            <span class="badge bg-light text-dark">{{ $flatPermissions->count() }} permissions</span>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width: 50px;">#</th>
-                                        <th>Category</th>
-                                        <th>Permission Name</th>
-                                        <th>Display Name</th>
-                                        <th>Enforcement</th>
-                                        <th>Roles Using</th>
-                                        <th style="width: 150px;">Created</th>
-                                        <th style="width: 100px;" class="text-end">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($flatPermissions as $index => $permission)
-                                    <tr>
-                                        <td class="text-muted">{{ $index + 1 }}</td>
-                                        <td>
-                                            <span class="badge category-badge">{{ $permission->access_group }}</span>
-                                        </td>
-                                        <td>
-                                            <code class="text-primary">{{ $permission->name }}</code>
-                                        </td>
-                                        <td>
-                                            <span class="fw-medium permission-display">{{ $permission->display_name }}</span>
-                                            @if($permission->description)
-                                                <div class="text-muted small">{{ $permission->description }}</div>
-                                            @endif
-                                        </td>
-                                        <td>
-                                            @if($permission->is_route_controlled)
-                                                <span class="badge status-badge route-controlled">Route controlled</span>
-                                            @else
-                                                <span class="badge status-badge assignable">Assignable</span>
-                                            @endif
-                                        </td>
-                                        <td>
-                                            @php
-                                                $rolesCount = $permission->roles->count();
-                                            @endphp
-                                            @if($rolesCount > 0)
-                                                <span class="badge roles-count-badge">{{ $rolesCount }} {{ Str::plural('role', $rolesCount) }}</span>
-                                                <button 
-                                                    class="btn btn-sm btn-link roles-toggle p-0 ms-1"
-                                                    type="button"
-                                                    data-bs-toggle="collapse" 
-                                                    data-bs-target="#roles-{{ $permission->id }}" 
-                                                    aria-expanded="false">
-                                                    <i class="mdi mdi-chevron-down"></i>
-                                                </button>
-                                            @else
-                                                <span class="text-muted small">No roles</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-muted small">{{ $permission->created_at->format('M d, Y') }}</td>
-                                        <td class="text-end">
-                                            <form action="{{ route('admin.permissions.delete', $permission->id) }}" method="POST" class="d-inline">
-                                                @csrf
-                                                @method('DELETE')
-                                                @if($permission->is_route_controlled)
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Route-controlled permissions cannot be deleted">
-                                                        <i class="mdi mdi-lock"></i>
-                                                    </button>
-                                                @else
-                                                    <button
-                                                        type="submit"
-                                                        class="btn btn-sm btn-outline-danger"
-                                                        onclick="return confirm('Are you sure you want to delete this permission? This will remove it from all roles.')">
-                                                        <i class="mdi mdi-delete"></i>
-                                                    </button>
-                                                @endif
-                                            </form>
-                                        </td>
-                                    </tr>
-                                    @if($rolesCount > 0)
-                                    <tr class="collapse" id="roles-{{ $permission->id }}">
-                                        <td colspan="8" class="roles-collapse-cell">
-                                            <div class="roles-collapse-panel p-2">
-                                                <small class="fw-bold">Roles with this permission:</small>
-                                                <div class="mt-2">
-                                                    @foreach($permission->roles as $role)
-                                                        <a href="{{ route('admin.roles.edit', $role->id) }}" class="badge role-link-badge me-1 text-decoration-none">
-                                                            {{ $role->name }}
-                                                        </a>
-                                                    @endforeach
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    @endif
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-check-circle me-1"></i>{{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     @endif
 
-    <!-- Statistics -->
-    @if(!$flatPermissions->isEmpty())
-    <div class="row">
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="icon-box bg-primary text-white rounded-circle p-3">
-                                <i class="mdi mdi-key-variant mdi-24px"></i>
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="mdi mdi-alert-circle me-1"></i>{{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if($roles->isEmpty())
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-5">
+                <i class="mdi mdi-shield-account mdi-48px text-muted mb-3"></i>
+                <h5 class="text-muted">Create a role first</h5>
+                <p class="text-muted mb-4">Permissions can be assigned after the role is created.</p>
+                <a href="{{ route('admin.roles.create') }}" class="btn btn-primary">
+                    <i class="mdi mdi-plus me-1"></i>Create Role
+                </a>
+            </div>
+        </div>
+    @else
+        @php($activeRoleIsAdministrator = $administratorRole && $activeRole && $activeRole->id === $administratorRole->id)
+
+        <div class="card border-0 shadow-sm mb-4 role-picker-card">
+            <div class="card-body">
+                <div class="row align-items-end g-3">
+                    <div class="col-lg-7">
+                        <label for="rolePicker" class="form-label fw-bold mb-2">
+                            <i class="mdi mdi-account-key me-1"></i>Role to configure
+                        </label>
+                        <select id="rolePicker" class="form-select form-select-lg">
+                            @foreach($roles as $role)
+                                <option value="{{ $role->id }}" @selected($activeRoleId == $role->id)>
+                                    {{ $role->name }} ({{ $role->permissions->count() }} permissions)
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="role-summary-box">
+                            <div class="text-muted small">Currently editing</div>
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <strong>{{ $activeRole->name }}</strong>
+                                <span class="access-control-badge blue">{{ $activeRole->permissions->count() }} assigned</span>
                             </div>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Total Permissions</h6>
-                            <h4 class="mb-0">{{ $flatPermissions->count() }}</h4>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="icon-box bg-info text-white rounded-circle p-3">
-                                <i class="mdi mdi-folder-key mdi-24px"></i>
-                            </div>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Categories</h6>
-                            <h4 class="mb-0">{{ $permissions->count() }}</h4>
-                        </div>
-                    </div>
-                </div>
+        @if($activeRoleIsAdministrator)
+            <div class="alert alert-info d-flex align-items-center gap-2" role="status">
+                <i class="mdi mdi-lock-check fs-5"></i>
+                <span><strong>{{ $activeRole->name }}</strong> always receives all permissions and cannot be edited.</span>
             </div>
-        </div>
+        @else
+            <div class="alert alert-primary d-flex align-items-center gap-2" role="status">
+                <i class="mdi mdi-lightbulb-on-outline fs-5"></i>
+                <span>Permissions are grouped by module. Use the module buttons to select everything in one group.</span>
+            </div>
+        @endif
 
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="icon-box bg-success text-white rounded-circle p-3">
-                                <i class="mdi mdi-shield-check mdi-24px"></i>
-                            </div>
+        <form method="GET" action="{{ route('admin.permissions.index') }}" class="card border-0 shadow-sm mb-4" id="permissionSearchForm">
+            <div class="card-body">
+                <input type="hidden" name="role" value="{{ $activeRoleId }}">
+                <div class="row g-2 align-items-center">
+                    <div class="col-lg-8">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="mdi mdi-magnify"></i></span>
+                            <input type="search" class="form-control" name="search" value="{{ request('search') }}" placeholder="Find a permission...">
+                            <button type="submit" class="btn btn-primary">Search</button>
                         </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">In Use</h6>
-                            <h4 class="mb-0">{{ $flatPermissions->filter(fn($p) => $p->roles->count() > 0)->count() }}</h4>
-                        </div>
+                    </div>
+                    <div class="col-lg-2">
+                        <a href="{{ route('admin.permissions.index', ['role' => $activeRoleId]) }}" class="btn btn-outline-secondary w-100" data-permission-navigation>Clear</a>
+                    </div>
+                    <div class="col-lg-2 text-lg-end">
+                        <span class="text-muted small">{{ $permissionsPage->firstItem() ?? 0 }}–{{ $permissionsPage->lastItem() ?? 0 }} of {{ $permissionsPage->total() }}</span>
                     </div>
                 </div>
             </div>
-        </div>
+        </form>
 
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="icon-box bg-warning text-white rounded-circle p-3">
-                                <i class="mdi mdi-key-remove mdi-24px"></i>
-                            </div>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Unused</h6>
-                            <h4 class="mb-0">{{ $flatPermissions->filter(fn($p) => $p->roles->count() == 0)->count() }}</h4>
-                        </div>
+        <form method="POST" action="{{ route('admin.permissions.role.store', array_filter(['page' => request('page'), 'search' => request('search')])) }}" id="rolePermissionForm">
+            @csrf
+            <input type="hidden" name="role_id" value="{{ $activeRoleId }}">
+            <input type="hidden" name="page" value="{{ request('page') }}">
+            <input type="hidden" name="search" value="{{ request('search') }}">
+            @foreach($flatPermissions as $permission)
+                <input type="hidden" name="permission_ids[]" value="{{ $permission->id }}">
+            @endforeach
+
+            <div class="card border-0 shadow-sm permission-checklist-card">
+                <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+                    <div>
+                        <h5 class="mb-1"><i class="mdi mdi-format-list-checks me-1 text-primary"></i>All Permissions</h5>
+                        <div class="text-muted small">{{ $permissionsPage->total() }} permissions, shown 20 at a time</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <span class="text-muted small"><span id="selectedPermissionCount">{{ count(array_intersect($assignedPermissionNames, $flatPermissions->pluck('name')->all())) }}</span> selected on this page</span>
+                        <label class="select-page-control mb-0 {{ $activeRoleIsAdministrator ? 'disabled' : '' }}">
+                            <input type="checkbox" id="selectAllPage" {{ $activeRoleIsAdministrator ? 'disabled' : '' }}>
+                            <span>Select page</span>
+                        </label>
+                        <button type="submit" class="btn btn-primary" {{ $activeRoleIsAdministrator ? 'disabled' : '' }}>
+                            <i class="mdi mdi-content-save me-1"></i>Save permissions
+                        </button>
                     </div>
                 </div>
+
+                @if($flatPermissions->isEmpty())
+                    <div class="card-body text-center py-5">
+                        <i class="mdi mdi-key-variant mdi-48px text-muted mb-3"></i>
+                        <h5 class="text-muted">No permissions found</h5>
+                        <p class="text-muted mb-0">Try another search.</p>
+                    </div>
+                @else
+                    <div class="permission-groups-list">
+                        @foreach($permissions as $category => $categoryPermissions)
+                            @php($permissionGroup = 'permission-group-' . $loop->index)
+                            @php($groupSelectedCount = $categoryPermissions->filter(fn ($permission) => in_array($permission->name, $assignedPermissionNames, true))->count())
+                            <details class="permission-group" {{ $loop->first || request('search') ? 'open' : '' }}>
+                                <summary class="permission-group-header">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="mdi mdi-chevron-right permission-group-chevron"></i>
+                                        <span class="access-control-badge blue">{{ $category }}</span>
+                                        <span class="text-muted small">{{ $categoryPermissions->count() }} permissions</span>
+                                        <span class="access-control-badge green group-selected-count {{ $groupSelectedCount > 0 ? '' : 'd-none' }}" data-permission-group-count="{{ $permissionGroup }}">{{ $groupSelectedCount }} selected</span>
+                                    </div>
+                                    <label class="group-select-control {{ $activeRoleIsAdministrator ? 'disabled' : '' }}" title="Select all permissions in {{ $category }}">
+                                        <input type="checkbox" class="category-select-checkbox" data-permission-group="{{ $permissionGroup }}" {{ $activeRoleIsAdministrator ? 'disabled' : '' }}>
+                                        <span>Select group</span>
+                                    </label>
+                                </summary>
+                                <div class="permission-group-body" data-permission-group-body="{{ $permissionGroup }}">
+                                    <div class="permission-checklist-grid">
+                                        @foreach($categoryPermissions as $permission)
+                                            <div class="permission-option {{ $activeRoleIsAdministrator ? 'is-locked' : '' }}" @if($permission->description) title="{{ $permission->description }}" @endif>
+                                                <input
+                                                    id="role_permission_{{ $permission->id }}"
+                                                    class="form-check-input permission-checkbox"
+                                                    data-permission-group="{{ $permissionGroup }}"
+                                                    type="checkbox"
+                                                    name="permissions[]"
+                                                    value="{{ $permission->id }}"
+                                                    @checked(in_array($permission->name, $assignedPermissionNames, true))
+                                                    {{ $activeRoleIsAdministrator ? 'disabled' : '' }}
+                                                >
+                                                <label class="permission-option-copy" for="role_permission_{{ $permission->id }}">
+                                                    <span class="permission-option-title">{{ $permission->display_name ?: $permission->name }}</span>
+                                                    <code>{{ $permission->name }}</code>
+                                                    @if($permission->is_route_controlled)
+                                                        <span class="access-control-badge green">Route controlled</span>
+                                                    @else
+                                                        <span class="access-control-badge slate">Assignable</span>
+                                                    @endif
+                                                </label>
+                                                @if($activeRoleIsAdministrator)
+                                                    <i class="mdi mdi-lock-check permission-lock" title="Always granted"></i>
+                                                @endif
+                                                @if(! $permission->is_route_controlled)
+                                                    <button type="submit" form="delete-permission-{{ $permission->id }}" class="permission-delete-button" title="Delete permission" onclick="return confirm('Are you sure you want to delete this permission? This will remove it from all roles.')">
+                                                        <i class="mdi mdi-delete"></i>
+                                                    </button>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </details>
+                        @endforeach
+                    </div>
+                @endif
+
+                @if(! $flatPermissions->isEmpty())
+                    <div class="permission-manager-footer">
+                        <div class="text-muted small">Save this page before moving to the next page.</div>
+                        <div class="permission-manager-footer-actions">
+                            <nav class="permission-pagination" aria-label="Permissions pagination">
+                                <div class="permission-pagination-summary">
+                                    Showing <strong>{{ $permissionsPage->firstItem() ?? 0 }}</strong>
+                                    to <strong>{{ $permissionsPage->lastItem() ?? 0 }}</strong>
+                                    of <strong>{{ $permissionsPage->total() }}</strong>
+                                </div>
+                                <div class="permission-pagination-controls">
+                                    @if($permissionsPage->onFirstPage())
+                                        <span class="permission-pagination-button disabled" aria-disabled="true">
+                                            <i class="mdi mdi-chevron-left"></i><span>Previous</span>
+                                        </span>
+                                    @else
+                                        <a class="permission-pagination-button" href="{{ $permissionsPage->previousPageUrl() }}" rel="prev" data-permission-navigation>
+                                            <i class="mdi mdi-chevron-left"></i><span>Previous</span>
+                                        </a>
+                                    @endif
+
+                                    @foreach($permissionsPage->getUrlRange(1, $permissionsPage->lastPage()) as $page => $url)
+                                        @if($page == $permissionsPage->currentPage())
+                                            <span class="permission-pagination-button active" aria-current="page">{{ $page }}</span>
+                                        @else
+                                            <a class="permission-pagination-button" href="{{ $url }}" data-permission-navigation>{{ $page }}</a>
+                                        @endif
+                                    @endforeach
+
+                                    @if($permissionsPage->hasMorePages())
+                                        <a class="permission-pagination-button" href="{{ $permissionsPage->nextPageUrl() }}" rel="next" data-permission-navigation>
+                                            <span>Next</span><i class="mdi mdi-chevron-right"></i>
+                                        </a>
+                                    @else
+                                        <span class="permission-pagination-button disabled" aria-disabled="true">
+                                            <span>Next</span><i class="mdi mdi-chevron-right"></i>
+                                        </span>
+                                    @endif
+                                </div>
+                            </nav>
+                            <button type="submit" class="btn btn-primary" {{ $activeRoleIsAdministrator ? 'disabled' : '' }}>
+                                <i class="mdi mdi-content-save me-1"></i>Save permissions
+                            </button>
+                        </div>
+                    </div>
+                @endif
             </div>
-        </div>
-    </div>
+        </form>
+
+        @foreach($flatPermissions as $permission)
+            @if(! $permission->is_route_controlled)
+                <form id="delete-permission-{{ $permission->id }}" action="{{ route('admin.permissions.delete', $permission->id) }}" method="POST" class="d-none">
+                    @csrf
+                    @method('DELETE')
+                </form>
+            @endif
+        @endforeach
     @endif
 </div>
 @endsection
 
 @push('styles')
 <style>
-.bg-gradient-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.permission-manager-page .role-picker-card {
+    border-left: 4px solid #2563eb !important;
 }
 
-.icon-box {
-    width: 48px;
-    height: 48px;
-    display: flex;
+.permission-manager-page .role-summary-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+}
+
+.permission-manager-page .permission-checklist-card {
+    overflow: hidden;
+}
+
+.permission-manager-page .permission-groups-list {
+    padding: 0.75rem 1rem;
+}
+
+.permission-manager-page .permission-group {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.6rem;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+}
+
+.permission-manager-page .permission-group:last-child {
+    margin-bottom: 0;
+}
+
+.permission-manager-page .permission-group-header {
     align-items: center;
-    justify-content: center;
+    background: #f8fafc;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    list-style: none;
+    padding: 0.7rem 0.9rem;
 }
 
-code {
-    font-size: 0.875rem;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-    background-color: rgba(79, 209, 199, 0.1);
+.permission-manager-page .permission-group-header::-webkit-details-marker {
+    display: none;
 }
 
-.table tbody tr {
-    transition: background-color 0.2s ease;
+.permission-manager-page .permission-group-chevron {
+    color: #64748b;
+    transition: transform 0.15s ease;
 }
 
-.table tbody tr:hover {
-    background-color: #f8f9fa !important;
+.permission-manager-page .permission-group[open] .permission-group-chevron {
+    transform: rotate(90deg);
 }
 
-.table tbody tr:hover td {
-    color: #000000 !important;
+.permission-manager-page .permission-group-body {
+    border-top: 1px solid #e2e8f0;
+    padding: 0.75rem;
 }
 
-.table tbody tr:hover .badge {
-    opacity: 1 !important;
+.permission-manager-page .permission-checklist-grid {
+    display: grid;
+    gap: 0.55rem 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.badge {
-    font-weight: 500;
+.permission-manager-page .permission-option {
+    align-items: flex-start;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.45rem;
+    cursor: pointer;
+    display: flex;
+    gap: 0.65rem;
+    min-height: 64px;
+    padding: 0.65rem 0.7rem;
+    position: relative;
+    transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-/* Make all text darker/black for better readability */
-.card-body h5,
-.card-body h6,
-.card-body p,
-.card-body span,
-.card-title,
-.text-muted,
-.table td,
-.table th,
-.small {
-    color: #000000 !important;
+.permission-manager-page .permission-option:hover {
+    background: #f8fafc;
+    border-color: #93c5fd;
 }
 
-.table thead th {
-    color: #000000 !important;
-    font-weight: 600 !important;
+.permission-manager-page .permission-option:has(.permission-checkbox:checked) {
+    background: #eff6ff;
+    border-color: #93c5fd;
 }
 
-code {
-    color: #000000 !important;
+.permission-manager-page .permission-option.is-locked {
+    cursor: default;
 }
 
-.fw-medium {
-    color: #000000 !important;
+.permission-manager-page .permission-option .permission-checkbox {
+    cursor: pointer;
+    flex: 0 0 auto;
+    height: 1.05rem;
+    margin-top: 0.15rem;
+    width: 1.05rem;
 }
 
-.permissions-directory .badge,
-.permissions-directory .badge:hover,
-.permissions-directory .badge:focus {
-    color: inherit;
-    opacity: 1 !important;
+.permission-manager-page .permission-option-copy {
+    cursor: pointer;
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.45rem;
+    min-width: 0;
 }
 
-.permissions-directory .category-badge {
-    background-color: #eef2ff !important;
-    color: #1e3a8a !important;
-    border: 1px solid #c7d2fe;
+.permission-manager-page .permission-option-title {
+    color: #0f172a;
+    flex-basis: 100%;
+    font-size: 0.84rem;
+    font-weight: 700;
 }
 
-.permissions-directory .roles-count-badge {
-    background-color: #e0f2fe !important;
-    color: #075985 !important;
-    border: 1px solid #bae6fd;
+.permission-manager-page .permission-option-copy code {
+    color: #64748b;
+    font-size: 0.7rem;
+    overflow-wrap: anywhere;
 }
 
-.permissions-directory .status-badge.route-controlled {
-    background-color: #dcfce7 !important;
-    color: #166534 !important;
-    border: 1px solid #bbf7d0;
+.permission-manager-page .permission-lock {
+    color: #64748b;
+    font-size: 1rem;
 }
 
-.permissions-directory .status-badge.assignable {
-    background-color: #f1f5f9 !important;
+.permission-manager-page .permission-delete-button {
+    background: transparent;
+    border: 0;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.1rem;
+}
+
+.permission-manager-page .permission-delete-button:hover {
+    color: #dc2626;
+}
+
+.permission-manager-page .select-page-control {
+    align-items: center;
+    color: #475569;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.8rem;
+    gap: 0.35rem;
+}
+
+.permission-manager-page .select-page-control.disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+
+.permission-manager-page .select-page-control input {
+    cursor: pointer;
+    height: 1rem;
+    width: 1rem;
+}
+
+.permission-manager-page .group-select-control {
+    align-items: center;
+    color: #475569;
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
+.permission-manager-page .group-select-control.disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+
+.permission-manager-page .group-select-control input {
+    cursor: pointer;
+    height: 1rem;
+    width: 1rem;
+}
+
+.permission-manager-footer {
+    align-items: center;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0.8rem 1rem;
+}
+
+.permission-manager-footer-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-left: auto;
+}
+
+.permission-pagination {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin: 0;
+}
+
+.permission-pagination-summary {
+    color: #64748b;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.permission-pagination-controls {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.permission-pagination-button {
+    align-items: center;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 0.375rem;
     color: #334155 !important;
-    border: 1px solid #cbd5e1;
+    display: inline-flex;
+    font-size: 0.78rem;
+    gap: 0.25rem;
+    justify-content: center;
+    min-height: 32px;
+    min-width: 34px;
+    padding: 0.35rem 0.55rem;
+    text-decoration: none !important;
 }
 
-.permissions-directory .role-link-badge {
-    background-color: #111827 !important;
-    color: #ffffff !important;
-    border: 1px solid #111827;
-}
-
-.permissions-directory .role-link-badge:hover,
-.permissions-directory .role-link-badge:focus {
-    background-color: #2563eb !important;
-    color: #ffffff !important;
-}
-
-.permissions-directory .roles-toggle,
-.permissions-directory .roles-toggle:hover,
-.permissions-directory .roles-toggle:focus {
+.permission-pagination-button:hover {
+    background: #eff6ff !important;
+    border-color: #93c5fd !important;
     color: #1d4ed8 !important;
-    text-decoration: none;
 }
 
-.permissions-directory .roles-collapse-cell {
-    background-color: #f8fafc !important;
-    color: #0f172a !important;
+.permission-pagination-button.active {
+    background: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
 }
 
-.permissions-directory .roles-collapse-panel,
-.permissions-directory .roles-collapse-panel small {
-    color: #0f172a !important;
+.permission-pagination-button.disabled {
+    background: #f8fafc !important;
+    color: #94a3b8 !important;
+    cursor: not-allowed;
+    opacity: 0.8;
 }
 
-.permissions-directory.table-hover tbody tr:hover > *,
-.permissions-directory .table-hover tbody tr:hover > * {
-    background-color: #f8fafc !important;
-    color: #000000 !important;
+@media (max-width: 767px) {
+    .permission-manager-page .permission-checklist-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .permission-manager-footer {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .permission-manager-footer-actions {
+        align-items: flex-start;
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .permission-pagination {
+        align-items: flex-start;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .permission-pagination-controls {
+        width: 100%;
+    }
 }
 </style>
 @endpush
 
 @push('scripts')
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const searchInput = document.getElementById('searchPermissions');
+document.addEventListener('DOMContentLoaded', function () {
+    const permissionCheckboxes = Array.from(document.querySelectorAll('.permission-checkbox'));
+    const groupSelectors = Array.from(document.querySelectorAll('.category-select-checkbox'));
+    const selectAllPage = document.getElementById('selectAllPage');
+    const selectedCount = document.getElementById('selectedPermissionCount');
+    const permissionForm = document.getElementById('rolePermissionForm');
+    const searchForm = document.getElementById('permissionSearchForm');
+    let hasUnsavedChanges = false;
 
-    function filterPermissions() {
-        const searchTerm = searchInput.value.toLowerCase();
-        const categoryCards = document.querySelectorAll('.card.border-0.shadow-sm');
+    function confirmNavigation(event) {
+        if (!hasUnsavedChanges) {
+            return;
+        }
 
-        categoryCards.forEach(card => {
-            const header = card.querySelector('.card-header');
-            if (!header || !header.classList.contains('bg-gradient-primary')) return;
+        if (!window.confirm('You have unsaved permission changes. Leave this page without saving?')) {
+            event.preventDefault();
+        }
+    }
 
-            const rows = card.querySelectorAll('tbody tr:not(.collapse)');
-            let visibleCount = 0;
+    function updateSelectedCount() {
+        if (selectedCount) {
+            selectedCount.textContent = permissionCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
+        }
 
-            rows.forEach(row => {
-                const permissionName = row.querySelector('code')?.textContent.toLowerCase() || '';
-                const displayName = row.querySelector('.permission-display')?.textContent.toLowerCase() || '';
+        if (selectAllPage && permissionCheckboxes.length > 0) {
+            const checkedCount = permissionCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
+            selectAllPage.checked = checkedCount === permissionCheckboxes.length;
+            selectAllPage.indeterminate = checkedCount > 0 && checkedCount < permissionCheckboxes.length;
+        }
 
-                if (permissionName.includes(searchTerm) || displayName.includes(searchTerm)) {
-                    row.style.display = '';
-                    const collapseRow = row.nextElementSibling;
-                    if (collapseRow && collapseRow.classList.contains('collapse')) {
-                        collapseRow.style.display = '';
-                    }
-                    visibleCount++;
-                } else {
-                    row.style.display = 'none';
-                    // Also hide the collapse row if it exists
-                    const collapseRow = row.nextElementSibling;
-                    if (collapseRow && collapseRow.classList.contains('collapse')) {
-                        collapseRow.style.display = 'none';
-                    }
-                }
+        groupSelectors.forEach(function (selector) {
+            const groupCheckboxes = permissionCheckboxes.filter(function (checkbox) {
+                return checkbox.dataset.permissionGroup === selector.dataset.permissionGroup;
             });
+            const allChecked = groupCheckboxes.length > 0 && groupCheckboxes.every(function (checkbox) { return checkbox.checked; });
+            const checkedCount = groupCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
+            selector.checked = allChecked;
+            selector.indeterminate = checkedCount > 0 && checkedCount < groupCheckboxes.length;
 
-            // Hide the entire category if no permissions match
-            const cardContainer = card.closest('.row');
-            if (visibleCount === 0) {
-                cardContainer.style.display = 'none';
-            } else {
-                cardContainer.style.display = '';
+            const countBadge = selector.closest('summary')?.querySelector('[data-permission-group-count]');
+            if (countBadge) {
+                countBadge.textContent = checkedCount + ' selected';
+                countBadge.classList.toggle('d-none', checkedCount === 0);
             }
         });
     }
 
-    if (searchInput) {
-        searchInput.addEventListener('keyup', filterPermissions);
+    if (selectAllPage) {
+        selectAllPage.addEventListener('change', function () {
+            permissionCheckboxes.forEach(function (checkbox) { checkbox.checked = selectAllPage.checked; });
+            hasUnsavedChanges = true;
+            updateSelectedCount();
+        });
     }
-});
 
-function clearSearch() {
-    const searchInput = document.getElementById('searchPermissions');
-    searchInput.value = '';
-    
-    // Show all rows and categories
-    document.querySelectorAll('tbody tr').forEach(row => {
-        row.style.display = '';
+    groupSelectors.forEach(function (selector) {
+        selector.addEventListener('click', function (event) {
+            event.stopPropagation();
+        });
+
+        selector.addEventListener('change', function () {
+            const groupCheckboxes = permissionCheckboxes.filter(function (checkbox) {
+                return checkbox.dataset.permissionGroup === selector.dataset.permissionGroup;
+            });
+            groupCheckboxes.forEach(function (checkbox) { checkbox.checked = selector.checked; });
+            hasUnsavedChanges = true;
+            updateSelectedCount();
+        });
     });
-    document.querySelectorAll('.row.mb-4').forEach(row => {
-        row.style.display = '';
+
+    permissionCheckboxes.forEach(function (checkbox) {
+        checkbox.addEventListener('change', function () {
+            hasUnsavedChanges = true;
+            updateSelectedCount();
+        });
     });
-}
+
+    document.querySelectorAll('[data-permission-navigation]').forEach(function (link) {
+        link.addEventListener('click', confirmNavigation);
+    });
+
+    if (searchForm) {
+        searchForm.addEventListener('submit', confirmNavigation);
+    }
+
+    if (permissionForm) {
+        permissionForm.addEventListener('submit', function () {
+            hasUnsavedChanges = false;
+        });
+    }
+
+    window.addEventListener('beforeunload', function (event) {
+        if (!hasUnsavedChanges) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
+    const rolePicker = document.getElementById('rolePicker');
+    if (rolePicker) {
+        rolePicker.dataset.currentValue = rolePicker.value;
+        rolePicker.addEventListener('change', function () {
+            if (hasUnsavedChanges && !window.confirm('You have unsaved permission changes. Change roles without saving?')) {
+                rolePicker.value = rolePicker.dataset.currentValue;
+                return;
+            }
+
+            rolePicker.dataset.currentValue = rolePicker.value;
+            const url = new URL(window.location.href);
+            url.searchParams.set('role', rolePicker.value);
+            url.searchParams.delete('page');
+            window.location.href = url.toString();
+        });
+    }
+
+    updateSelectedCount();
+});
 </script>
 @endpush

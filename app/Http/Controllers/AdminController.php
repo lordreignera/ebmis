@@ -59,6 +59,16 @@ class AdminController extends Controller
 
     public function home(Request $request, LoanAccessService $loanAccessService)
     {
+        // The home URL is the common landing page for authenticated staff, but
+        // dashboard data itself requires the explicit dashboard permission.
+        // Users without it receive a safe landing page instead of loan or
+        // financial aggregates.
+        if (!$request->user()?->isSuperAdmin() && !$request->user()?->can('view-branch-dashboard')) {
+            return view('admin.home', [
+                'limitedDashboardMode' => true,
+            ]);
+        }
+
         if (!$loanAccessService->canWorkAcrossBranchesOnActiveLoans($request->user())) {
             return $this->officerHome($request, $loanAccessService);
         }
@@ -248,6 +258,10 @@ class AdminController extends Controller
             ->whereYear($investmentTimestamp, $currentYear)
             ->sum('amount');
 
+        $pendingInvestorApprovals = Schema::hasColumn('investors', 'portal_status')
+            ? DB::table('investors')->where('portal_status', 'pending')->where('soft_delete', 0)->count()
+            : 0;
+
         // === DISBURSEMENTS ===
         $disbursementsThisMonth = DB::table($disbursementInfo['table'])
             ->whereMonth($disbursementInfo['timestamp'], $currentMonth)
@@ -330,6 +344,7 @@ class AdminController extends Controller
             'investors_count' => $totalInvestors,
             'investment_value' => $totalInvestmentValue,
             'investment_month' => $investmentThisMonth,
+            'pending_investor_approvals' => $pendingInvestorApprovals,
 
             // Disbursements
             'disbursements_month' => $disbursementsThisMonth,

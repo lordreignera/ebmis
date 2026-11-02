@@ -1,0 +1,309 @@
+/* EduKit-inspired tables for Access Control pages. */
+.password-visibility-toggle {
+    min-width: 42px;
+    padding: 0.35rem 0.65rem !important;
+}
+
+.access-control-table-shell {
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.access-control-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.access-control-table {
+    min-width: 760px;
+    width: 100%;
+    margin: 0 !important;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #ffffff !important;
+    color: #334155 !important;
+    font-size: 0.875rem;
+}
+
+.access-control-table thead th {
+    padding: 0.75rem 1.25rem !important;
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.06em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.access-control-table tbody td {
+    padding: 1rem 1.25rem !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    color: #475569 !important;
+    vertical-align: middle;
+}
+
+.access-control-table tbody tr:last-child td {
+    border-bottom: 0 !important;
+}
+
+.access-control-table tbody tr:hover td {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+.access-control-table .table-primary-text {
+    color: #0f172a !important;
+    font-weight: 700;
+}
+
+.access-control-table .table-secondary-text {
+    color: #64748b !important;
+    font-size: 0.75rem;
+}
+
+.access-control-table .table-secondary-text strong {
+    color: #334155 !important;
+}
+
+.access-control-table .access-control-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.access-control-table .access-control-badge.blue {
+    background: #eff6ff !important;
+    border-color: #dbeafe !important;
+    color: #1d4ed8 !important;
+}
+
+.access-control-table .access-control-badge.orange {
+    background: #fff7ed !important;
+    border-color: #fed7aa !important;
+    color: #c2410c !important;
+}
+
+.access-control-table .access-control-badge.green {
+    background: #f0fdf4 !important;
+    border-color: #bbf7d0 !important;
+    color: #166534 !important;
+}
+
+.access-control-table .access-control-badge.red {
+    background: #fef2f2 !important;
+    border-color: #fecaca !important;
+    color: #b91c1c !important;
+}
+
+.access-control-table .access-control-badge.slate {
+    background: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+.access-control-table .access-control-badge.dark {
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+    color: #334155 !important;
+}
+
+/* Keep legacy settings badges consistent when their existing badge classes
+   are used inside the shared EduKit-style table. */
+.access-control-table .badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid transparent !important;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.access-control-table .badge-info,
+.access-control-table .badge-primary {
+    background: #eff6ff !important;
+    border-color: #dbeafe !important;
+    color: #1d4ed8 !important;
+}
+
+.access-control-table .badge-success {
+    background: #f0fdf4 !important;
+    border-color: #bbf7d0 !important;
+    color: #166534 !important;
+}
+
+.access-control-table .badge-warning {
+    background: #fff7ed !important;
+    border-color: #fed7aa !important;
+    color: #c2410c !important;
+}
+
+.access-control-table .badge-danger {
+    background: #fef2f2 !important;
+    border-color: #fecaca !important;
+    color: #b91c1c !important;
+}
+
+.access-control-table .badge-secondary,
+.access-control-table .badge-dark,
+.access-control-table .badge-light {
+    background: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+.access-control-table .action-cell {
+    min-width: 185px;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.access-control-table td:last-child {
+    min-width: 185px;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.access-control-table .access-control-actions,
+.access-control-table .action-buttons,
+.access-control-table .btn-group {
+    display: flex;
+    min-width: max-content;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.access-control-table .action-buttons .btn,
+.access-control-table .btn-group .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border-radius: 0.375rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+/* Settings pages historically used icon-only controls. Keep their existing
+   hooks and add compact text labels from the existing title attributes. */
+.access-control-table .action-buttons .btn[title]::after,
+.access-control-table .btn-group .btn[title]::after {
+    content: attr(title);
+}
+
+.access-control-table .access-control-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 0.375rem;
+    padding: 0.4rem 0.7rem;
+    background: #ffffff !important;
+    color: #334155 !important;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-decoration: none !important;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.access-control-table .access-control-action:hover,
+.access-control-table .access-control-action:focus-visible {
+    background: #f8fafc !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+
+.access-control-table .access-control-action.edit {
+    border-color: #fed7aa !important;
+    color: #c2410c !important;
+}
+
+.access-control-table .access-control-action.edit:hover,
+.access-control-table .access-control-action.edit:focus-visible {
+    background: #fff7ed !important;
+    border-color: #fb923c !important;
+    color: #9a3412 !important;
+}
+
+.access-control-table .access-control-action.delete {
+    border-color: #fecaca !important;
+    color: #b91c1c !important;
+}
+
+.access-control-table .access-control-action.delete:hover,
+.access-control-table .access-control-action.delete:focus-visible {
+    background: #fef2f2 !important;
+    border-color: #f87171 !important;
+    color: #991b1b !important;
+}
+
+.access-control-table .access-control-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.access-control-table .empty-state {
+    padding: 2.5rem 1.25rem !important;
+    color: #64748b !important;
+    text-align: center;
+}
+
+.access-control-table-footer {
+    border-top: 1px solid #f1f5f9;
+    padding: 1rem 1.25rem;
+    background: #ffffff;
+}
+
+.access-control-table-footer .pagination {
+    margin-bottom: 0;
+}
+
+.access-control-table-footer .page-link {
+    border-color: #e2e8f0;
+    color: #334155;
+    font-size: 0.78rem;
+}
+
+.access-control-table-footer .page-item.active .page-link {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.access-control-table-footer .page-item.disabled .page-link {
+    color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+    .access-control-table {
+        min-width: 700px;
+    }
+
+    .access-control-table thead th,
+    .access-control-table tbody td {
+        padding-right: 0.85rem !important;
+        padding-left: 0.85rem !important;
+    }
+}

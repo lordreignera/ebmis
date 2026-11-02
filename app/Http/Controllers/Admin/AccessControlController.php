@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Investor;
 use App\Models\School;
 use App\Models\User;
 use App\Support\EbmisPermissionRegistry;
@@ -26,7 +27,12 @@ class AccessControlController extends Controller
     
     public function index()
     {
-        return view('admin.access-control.index');
+        $pendingInvestorApprovals = Investor::query()
+            ->where('portal_status', 'pending')
+            ->where('soft_delete', 0)
+            ->count();
+
+        return view('admin.access-control.index', compact('pendingInvestorApprovals'));
     }
 
     // ===============================================================
@@ -51,9 +57,7 @@ class AccessControlController extends Controller
 
     public function createRole()
     {
-        $permissions = $this->groupedPermissions();
-        
-        return view('admin.access-control.roles.create', compact('permissions'));
+        return view('admin.access-control.roles.create');
     }
 
     public function storeRole(Request $request)
@@ -79,12 +83,14 @@ class AccessControlController extends Controller
                     'guard_name' => self::GUARD,
                 ]);
 
-                $role->syncPermissions($this->permissionModels($validated['permissions'] ?? []));
+                $role->syncPermissions($this->permissionModels(
+                    EbmisPermissionRegistry::rolePermissionsWithWorkspace($validated['permissions'] ?? [])
+                ));
             });
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-            return redirect()->route('admin.roles.index')->with('success', 'Role created successfully!');
+            return redirect()->route('admin.roles.index')->with('success', 'Role created successfully. Open the Permission Matrix to assign access.');
         } catch (\Throwable $e) {
             Log::error('Access control role creation failed', [
                 'name' => $validated['name'] ?? $request->input('name'),
@@ -97,11 +103,10 @@ class AccessControlController extends Controller
 
     public function editRole(Role $role)
     {
-        $permissions = $this->groupedPermissions();
         $role->load('permissions');
         $role->users_count = $this->roleAssignmentCount($role);
         
-        return view('admin.access-control.roles.edit', compact('role', 'permissions'));
+        return view('admin.access-control.roles.edit', compact('role'));
     }
 
     public function updateRole(Request $request, Role $role)
@@ -133,7 +138,15 @@ class AccessControlController extends Controller
                     'name' => $validated['name'],
                     'guard_name' => self::GUARD,
                 ]);
-                $role->syncPermissions($this->permissionModels($validated['permissions'] ?? []));
+
+                // Permission assignment is normally handled by the permission
+                // matrix. Keep accepting a permissions array for existing clients
+                // and older forms that still submit one.
+                if (array_key_exists('permissions', $validated)) {
+                    $role->syncPermissions($this->permissionModels(
+                        EbmisPermissionRegistry::rolePermissionsWithWorkspace($validated['permissions'] ?? [])
+                    ));
+                }
             });
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -174,12 +187,208 @@ class AccessControlController extends Controller
     // PERMISSIONS MANAGEMENT
     // ===============================================================
     
-    public function permissions()
+    public function permissions(Request $request)
     {
-        $permissions = $this->groupedPermissions(withRoles: true);
-        $flatPermissions = $permissions->flatten(1)->values();
+        $permissionQuery = Permission::where('guard_name', self::GUARD)
+            ->with(['roles' => fn ($roles) => $roles->where('guard_name', self::GUARD)->orderBy('name')]);
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $permissionQuery->where('name', 'like', '%' . $search . '%');
+        }
+
+        $permissionsPage = $permissionQuery
+            ->orderBy('name')
+            ->paginate(20)
+            ->withQueryString();
+
+        $flatPermissions = $permissionsPage->getCollection()->values();
+        $permissions = EbmisPermissionRegistry::groupedPermissions($flatPermissions);
+
+        $allPermissions = Permission::where('guard_name', self::GUARD)
+            ->with(['roles' => fn ($roles) => $roles->where('guard_name', self::GUARD)])
+            ->get();
+        $allGroupedPermissions = EbmisPermissionRegistry::groupedPermissions($allPermissions);
+        $permissionsTotal = $allPermissions->count();
+        $permissionsInUseTotal = $allPermissions->filter(fn ($permission) => $permission->roles->isNotEmpty())->count();
+        $permissionsUnusedTotal = $permissionsTotal - $permissionsInUseTotal;
+        $categoriesTotal = $allGroupedPermissions->count();
+        $roles = Role::with('permissions')
+            ->where('guard_name', self::GUARD)
+            ->orderByRaw("CASE WHEN LOWER(name) IN ('super administrator', 'superadmin') THEN 0 ELSE 1 END")
+            ->orderBy('name')
+            ->get();
+        $permissionAssignments = $this->permissionAssignments($flatPermissions, $roles);
+        $administratorRole = $roles->first(fn ($role) => in_array(strtolower($role->name), ['super administrator', 'superadmin'], true));
+        $activeRole = $roles->firstWhere('id', (int) $request->input('role')) ?: $roles->first();
+        $activeRoleId = optional($activeRole)->id;
+        $assignedPermissionNames = optional($activeRole?->permissions)->pluck('name')->all() ?? [];
         
-        return view('admin.access-control.permissions.index', compact('permissions', 'flatPermissions'));
+        return view('admin.access-control.permissions.index', compact(
+            'permissions',
+            'flatPermissions',
+            'permissionsPage',
+            'permissionsTotal',
+            'permissionsInUseTotal',
+            'permissionsUnusedTotal',
+            'categoriesTotal',
+            'roles',
+            'permissionAssignments',
+            'administratorRole',
+            'activeRole',
+            'activeRoleId',
+            'assignedPermissionNames'
+        ));
+    }
+
+    public function saveRolePermissions(Request $request)
+    {
+        $validated = $request->validate([
+            'role_id' => [
+                'required',
+                'integer',
+                Rule::exists('roles', 'id')->where('guard_name', self::GUARD),
+            ],
+            'permission_ids' => ['required', 'array', 'min:1'],
+            'permission_ids.*' => [
+                'integer',
+                Rule::exists('permissions', 'id')->where('guard_name', self::GUARD),
+            ],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [
+                'integer',
+                Rule::exists('permissions', 'id')->where('guard_name', self::GUARD),
+            ],
+        ]);
+
+        $role = Role::where('guard_name', self::GUARD)->findOrFail($validated['role_id']);
+        $permissionIds = collect($validated['permission_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+        $selectedPermissionIds = collect($validated['permissions'] ?? [])->map(fn ($id) => (int) $id)->unique();
+        $permissions = Permission::where('guard_name', self::GUARD)
+            ->whereIn('id', $permissionIds)
+            ->get()
+            ->keyBy('id');
+
+        try {
+            DB::transaction(function () use ($role, $permissionIds, $selectedPermissionIds, $permissions) {
+                $isAdministrator = in_array(strtolower($role->name), ['super administrator', 'superadmin'], true);
+
+                foreach ($permissionIds as $permissionId) {
+                    $permission = $permissions->get($permissionId);
+
+                    if (! $permission) {
+                        continue;
+                    }
+
+                    if ($isAdministrator || $selectedPermissionIds->contains($permissionId)) {
+                        $role->givePermissionTo($permission);
+                    } else {
+                        $role->revokePermissionTo($permission);
+                    }
+                }
+
+                $role->load('permissions');
+                $workspacePermission = Permission::where('guard_name', self::GUARD)
+                    ->where('name', 'access-ebmis-modules')
+                    ->first();
+
+                if ($workspacePermission && $role->permissions->contains(fn ($permission) => EbmisPermissionRegistry::isRouteControlled($permission->name))) {
+                    $role->givePermissionTo($workspacePermission);
+                } elseif ($workspacePermission && $permissions->contains('id', $workspacePermission->id)) {
+                    $role->revokePermissionTo($workspacePermission);
+                }
+            });
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.permissions.index', array_filter([
+                'role' => $role->id,
+                'page' => $request->input('page'),
+                'search' => $request->input('search'),
+            ]))->with('success', 'Permissions saved for ' . $role->name . '.');
+        } catch (\Throwable $e) {
+            Log::error('Access control role permission update failed', [
+                'role_id' => $role->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput()->with('error', 'Permissions could not be saved: ' . $e->getMessage());
+        }
+    }
+
+    public function savePermissionMatrix(Request $request)
+    {
+        $validated = $request->validate([
+            'permission_ids' => ['required', 'array', 'min:1'],
+            'permission_ids.*' => [
+                'integer',
+                Rule::exists('permissions', 'id')->where('guard_name', self::GUARD),
+            ],
+            'permissionRoles' => ['nullable', 'array'],
+            'permissionRoles.*' => ['nullable', 'array'],
+        ]);
+
+        $permissionIds = collect($validated['permission_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+        $permissions = Permission::where('guard_name', self::GUARD)
+            ->whereIn('id', $permissionIds)
+            ->get()
+            ->keyBy('id');
+        $roles = Role::where('guard_name', self::GUARD)->get()->keyBy('id');
+        $assignments = $validated['permissionRoles'] ?? [];
+
+        try {
+            DB::transaction(function () use ($permissionIds, $permissions, $roles, $assignments) {
+                foreach ($permissionIds as $permissionId) {
+                    $permission = $permissions->get($permissionId);
+
+                    if (! $permission) {
+                        continue;
+                    }
+
+                    foreach ($roles as $role) {
+                        $isAdministrator = in_array(strtolower($role->name), ['super administrator', 'superadmin'], true);
+                        $isSelected = ! empty($assignments[$permissionId][$role->id] ?? null);
+
+                        if ($isAdministrator || $isSelected) {
+                            $role->givePermissionTo($permission);
+                        } else {
+                            $role->revokePermissionTo($permission);
+                        }
+                    }
+                }
+
+                // A role needs workspace access before any route-controlled module
+                // permission can take effect. Keep this in sync with role creation
+                // and editing without touching permissions on other matrix pages.
+                foreach ($roles as $role) {
+                    $role->load('permissions');
+
+                    if ($role->permissions->contains(fn ($permission) => EbmisPermissionRegistry::isRouteControlled($permission->name))) {
+                        $workspacePermission = Permission::where('guard_name', self::GUARD)
+                            ->where('name', 'access-ebmis-modules')
+                            ->first();
+
+                        if ($workspacePermission) {
+                            $role->givePermissionTo($workspacePermission);
+                        }
+                    }
+                }
+            });
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return redirect()->route('admin.permissions.index', array_filter([
+                'page' => $request->input('page'),
+                'search' => $request->input('search'),
+                'role' => $request->input('role'),
+            ]))->with('success', 'Permission assignments saved successfully.');
+        } catch (\Throwable $e) {
+            Log::error('Access control permission matrix update failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return back()->withInput()->with('error', 'Permission assignments could not be saved: ' . $e->getMessage());
+        }
     }
 
     public function createPermission()
@@ -457,6 +666,34 @@ class AccessControlController extends Controller
         }
 
         return EbmisPermissionRegistry::groupedPermissions($query->get());
+    }
+
+    private function permissionAssignments($permissions, $roles): array
+    {
+        if ($permissions->isEmpty() || $roles->isEmpty()) {
+            return [];
+        }
+
+        $permissionTable = config('permission.table_names.permissions', 'permissions');
+        $roleTable = config('permission.table_names.roles', 'roles');
+        $pivotTable = config('permission.table_names.role_has_permissions', 'role_has_permissions');
+        $permissionPivot = config('permission.column_names.permission_pivot_key') ?: 'permission_id';
+        $rolePivot = config('permission.column_names.role_pivot_key') ?: 'role_id';
+
+        return DB::table($pivotTable . ' as rhp')
+            ->join($permissionTable . ' as p', 'p.id', '=', 'rhp.' . $permissionPivot)
+            ->join($roleTable . ' as r', 'r.id', '=', 'rhp.' . $rolePivot)
+            ->where('p.guard_name', self::GUARD)
+            ->where('r.guard_name', self::GUARD)
+            ->whereIn('p.name', $permissions->pluck('name')->all())
+            ->whereIn('r.name', $roles->pluck('name')->all())
+            ->select('p.name as permission_name', 'r.name as role_name')
+            ->get()
+            ->reduce(function (array $assignments, $row) {
+                $assignments[$row->permission_name][$row->role_name] = true;
+
+                return $assignments;
+            }, []);
     }
 
     private function permissionModels(array $permissionNames)

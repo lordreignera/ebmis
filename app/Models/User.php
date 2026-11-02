@@ -76,6 +76,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'approved_at' => 'datetime',
+            'last_login_at' => 'datetime',
         ];
     }
 
@@ -196,6 +197,17 @@ class User extends Authenticatable
     {
         return in_array($this->user_type, ['administrator', 'admin'], true)
             || $this->hasRole(['Administrator', 'administrator', 'admin']);
+    }
+
+    public function preferredHomeRouteName(): string
+    {
+        if ($this->user_type === 'school' && $this->school) {
+            return 'school.dashboard';
+        }
+
+        // Every non-school staff user starts at the EBIMS home dashboard.
+        // Permissions still control the operational routes linked from there.
+        return 'admin.home';
     }
 
     public function canManageStaffPaymentRollout(): bool

@@ -1254,7 +1254,7 @@
 
                     @unless(request()->routeIs('admin.home') || request()->routeIs('school.dashboard') || request()->routeIs('admin.modules.*'))
                         <div class="page-back-nav">
-                            <button type="button" class="btn btn-outline-secondary btn-sm" data-fallback-url="{{ route('admin.home') }}" id="globalBackButton">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-fallback-url="{{ route(auth()->user()?->preferredHomeRouteName() ?? 'login') }}" id="globalBackButton">
                                 <i class="mdi mdi-arrow-left"></i>
                                 <span>Back</span>
                             </button>

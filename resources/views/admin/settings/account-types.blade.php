@@ -32,8 +32,8 @@
                     </button>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-hover">
+                <div class="access-control-table-shell access-control-table-scroll">
+                    <table class="table access-control-table align-middle mb-0">
                         <thead>
                             <tr>
                                 <th>#</th>

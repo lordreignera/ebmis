@@ -31,6 +31,42 @@ class EbmisPermissionRegistry
         return in_array($permission, config('ebmis_permissions.route_permissions', []), true);
     }
 
+    /**
+     * A user may enter the EBIMS workspace when they have the explicit
+     * workspace permission or at least one permission for an operational
+     * module. The second condition keeps older roles working when they were
+     * saved before the workspace umbrella permission was introduced.
+     */
+    public static function userCanAccessWorkspace($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($user->isSuperAdmin() || $user->can('access-ebmis-modules')) {
+            return true;
+        }
+
+        return collect(config('ebmis_permissions.module_permissions', []))
+            ->flatten()
+            ->unique()
+            ->contains(fn (string $permission): bool => $user->can($permission));
+    }
+
+    public static function rolePermissionsWithWorkspace(array $permissionNames): array
+    {
+        $permissionNames = array_values(array_unique($permissionNames));
+
+        foreach ($permissionNames as $permissionName) {
+            if ($permissionName !== 'access-ebmis-modules' && self::isRouteControlled($permissionName)) {
+                $permissionNames[] = 'access-ebmis-modules';
+                break;
+            }
+        }
+
+        return array_values(array_unique($permissionNames));
+    }
+
     public static function groupedPermissions(Collection $permissions): Collection
     {
         return $permissions

@@ -2,6 +2,10 @@
 
 @section('title', 'Investments Management')
 
+@php
+    $currency = config('loan_management.currency_symbol', 'UGX');
+@endphp
+
 @push('styles')
 <link rel="stylesheet" href="{{ asset('css/modern-tables.css') }}">
 @endpush
@@ -63,7 +67,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h4 class="card-title mb-2">Total Amount</h4>
-                        <h2 class="text-info mb-2">${{ number_format($stats['total_amount'], 0) }}</h2>
+                        <h2 class="text-info mb-2">{{ $currency }} {{ number_format($stats['total_amount'], 0) }}</h2>
                     </div>
                     <div class="icon-container">
                         <i class="mdi mdi-cash-multiple icon-lg text-info"></i>
@@ -78,7 +82,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h4 class="card-title mb-2">Total Interest</h4>
-                        <h2 class="text-warning mb-2">${{ number_format($stats['total_interest'], 0) }}</h2>
+                        <h2 class="text-warning mb-2">{{ $currency }} {{ number_format($stats['total_interest'], 0) }}</h2>
                     </div>
                     <div class="icon-container">
                         <i class="mdi mdi-trending-up icon-lg text-warning"></i>
@@ -195,7 +199,7 @@
                                             <div class="fw-semibold">{{ $investment->investor->full_name ?? 'Unknown Investor' }}</div>
                                             <small class="text-muted">
                                                 <i class="mdi mdi-map-marker me-1"></i>
-                                                {{ optional(optional($investment->investor)->country)->name ?? 'Unknown' }}
+                                                {{ optional(optional($investment->investor)->countryDetails)->name ?? 'Unknown' }}
                                             </small>
                                         </div>
                                     </td>
@@ -203,7 +207,7 @@
                                         <span class="fw-medium">{{ $investment->name }}</span>
                                     </td>
                                     <td class="text-end">
-                                        <span class="fw-semibold">${{ number_format($investment->amount, 2) }}</span>
+                                        <span class="fw-semibold">{{ $currency }} {{ number_format($investment->amount, 2) }}</span>
                                     </td>
                                     <td>
                                         <span class="text-primary fw-bold">{{ $investment->percentage }}%</span>
@@ -215,7 +219,7 @@
                                     </td>
                                     <td class="text-end">
                                         <span class="text-success fw-bold">
-                                            ${{ number_format($investment->interest, 2) }}
+                                            {{ $currency }} {{ number_format($investment->interest, 2) }}
                                         </span>
                                     </td>
                                     <td>

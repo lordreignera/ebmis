@@ -52,9 +52,9 @@
                         </div>
                     @endif
 
-                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
-                        <table class="table table-hover table-striped">
-                            <thead style="position: sticky; top: 0; z-index: 10; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <div class="access-control-table-shell access-control-table-scroll">
+                        <table class="table access-control-table align-middle mb-0">
+                            <thead>
                                 <tr>
                                     <th>#</th>
                                     <th>Account Code</th>
@@ -71,7 +71,7 @@
                             <tbody>
                                 @forelse($fieldUsers as $index => $user)
                                 <tr>
-                                    <td>{{ $index + 1 }}</td>
+                                    <td>{{ ($fieldUsers->currentPage() - 1) * $fieldUsers->perPage() + $loop->iteration }}</td>
                                     <td><span class="badge bg-primary">{{ $user->code }}</span></td>
                                     <td>{{ $user->fname }}</td>
                                     <td>{{ $user->lname }}</td>
@@ -120,6 +120,14 @@
                             </tbody>
                         </table>
                     </div>
+                    @if($fieldUsers->hasPages())
+                    <div class="access-control-table-footer d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
+                        <span class="table-secondary-text">
+                            Showing {{ $fieldUsers->firstItem() ?? 0 }} to {{ $fieldUsers->lastItem() ?? 0 }} of {{ $fieldUsers->total() }} entries
+                        </span>
+                        {{ $fieldUsers->links() }}
+                    </div>
+                    @endif
                 </div>
             </div>
         </div>
