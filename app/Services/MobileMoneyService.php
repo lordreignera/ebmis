@@ -12,7 +12,7 @@ class MobileMoneyService
     private ?StanbicFlexiPayService $stanbicService = null;
     private string $provider;
     
-    public function __construct(StanbicFlexiPayService $stanbicService = null)
+    public function __construct(?StanbicFlexiPayService $stanbicService = null)
     {
         $this->flexipayEndpoint = 'https://emuria.net/flexipay/marchanToMobilePayprod.php';
         // Increase timeout to 60 seconds for slow mobile money APIs

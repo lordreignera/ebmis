@@ -195,7 +195,7 @@ class FeeManagementService
     /**
      * Pay a fee
      */
-    public function payFee(int $feeId, float $amount = null): bool
+    public function payFee(int $feeId, ?float $amount = null): bool
     {
         try {
             $fee = Fee::findOrFail($feeId);
