@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\LoanAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -377,5 +378,56 @@ class AccessControlControllerTest extends TestCase
 
         $this->assertDatabaseMissing('roles', ['name' => 'Unauthorized Role']);
         $this->assertDatabaseMissing('users', ['email' => 'unauthorized@example.test']);
+    }
+
+    public function test_branch_user_can_be_assigned_and_restricted_to_multiple_branches(): void
+    {
+        $admin = User::factory()->create(['user_type' => 'super_admin', 'status' => 'active']);
+        $firstBranch = Branch::create(['name' => 'Multi Branch One']);
+        $secondBranch = Branch::create(['name' => 'Multi Branch Two']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.users.store'), [
+                'name' => 'Multi Branch User',
+                'email' => 'multi-branch@example.test',
+                'password' => 'SecurePass123',
+                'password_confirmation' => 'SecurePass123',
+                'user_type' => 'branch',
+                'branch_ids' => [$firstBranch->id, $secondBranch->id],
+            ])
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHasNoErrors();
+
+        $user = User::where('email', 'multi-branch@example.test')->firstOrFail();
+
+        $this->assertSame($firstBranch->id, $user->branch_id);
+        $this->assertSame(
+            [$firstBranch->id, $secondBranch->id],
+            $user->branches()->pluck('branches.id')->all()
+        );
+
+        $this->assertEquals(
+            [$firstBranch->id, $secondBranch->id],
+            app(LoanAccessService::class)->accessibleBranchIds($user)
+        );
+
+        $this->actingAs($admin)
+            ->put(route('admin.users.update', $user), [
+                'name' => $user->name,
+                'email' => $user->email,
+                'user_type' => 'branch',
+                'branch_ids' => [$secondBranch->id],
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHasNoErrors();
+
+        $user->refresh();
+        $this->assertSame($secondBranch->id, $user->branch_id);
+        $this->assertSame([$secondBranch->id], $user->branches()->pluck('branches.id')->all());
+        $this->assertDatabaseMissing('user_branches', [
+            'user_id' => $user->id,
+            'branch_id' => $firstBranch->id,
+        ]);
     }
 }

@@ -294,7 +294,7 @@
                         {{-- Pending application found --}}
                         <div id="resumePending" class="alert alert-info mt-3 mb-0 text-start py-3" style="display:none; border-radius:12px">
                             <div class="fw-bold mb-1"><i class="fas fa-clock me-1"></i>Application Already Submitted</div>
-                            <div class="small mb-2">Your application <strong id="resumePendingCode"></strong> was submitted on <strong id="resumePendingDate"></strong> and is currently <strong id="resumePendingStatus"></strong>.</div>
+                            <div class="small mb-2">Your application is already submitted and is currently <strong id="resumePendingStatus"></strong>.</div>
                             <div class="small text-muted">Our team will contact you soon. Please <strong>do not submit a new application</strong> &mdash; it will be blocked. If you need help, visit your nearest branch.</div>
                         </div>
                         {{-- No draft & no pending app --}}
@@ -314,15 +314,24 @@
                         <div class="text-center mb-3">
                             <div style="font-size:2rem; color:#15803d; margin-bottom:.5rem"><i class="fas fa-search-dollar"></i></div>
                             <h5 class="fw-bold mb-1" style="color:#14532d">Already a Member? Check Your Loan Status</h5>
-                            <p class="text-muted small mb-0">Enter the phone number registered on your account to view your active loan and repayment schedule.</p>
+                            <p class="text-muted small mb-0">Enter your registered phone number and loan code to securely view your active loan and repayment schedule.</p>
                         </div>
-                        <div class="d-flex gap-2">
+                        <div class="row g-2">
+                            <div class="col-md-5">
                             <input type="tel" id="lsPhoneInput" class="form-control" placeholder="e.g. 0772 123 456"
                                    style="border-radius:50px; padding-left:1rem"
                                    onkeydown="if(event.key==='Enter'){checkLoanStatus();return false;}">
-                            <button class="btn btn-success px-4" id="lsBtn" onclick="checkLoanStatus()" style="border-radius:50px; white-space:nowrap">
-                                <i class="fas fa-search me-1"></i>Check Status
-                            </button>
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" id="lsLoanCodeInput" class="form-control" placeholder="Loan code"
+                                       style="border-radius:50px; padding-left:1rem"
+                                       onkeydown="if(event.key==='Enter'){checkLoanStatus();return false;}">
+                            </div>
+                            <div class="col-md-3 d-grid">
+                                <button class="btn btn-success px-3" id="lsBtn" onclick="checkLoanStatus()" style="border-radius:50px; white-space:nowrap">
+                                    <i class="fas fa-search me-1"></i>Check Status
+                                </button>
+                            </div>
                         </div>
 
                         {{-- Spinner --}}
@@ -1832,8 +1841,6 @@ function resumeFromLanding() {
 
         if (data.status === 'pending') {
             // Application submitted but not yet approved/rejected — inform user
-            document.getElementById('resumePendingCode').textContent   = data.application_code;
-            document.getElementById('resumePendingDate').textContent   = data.submitted_at;
             document.getElementById('resumePendingStatus').textContent = data.status_label;
             document.getElementById('resumePending').style.display     = '';
             return;
@@ -1898,8 +1905,13 @@ if (phoneFormField) {
             if (data.status === 'pending') {
                 // Overwrite the restore panel to show pending warning instead
                 document.getElementById('inlineRestorePhone').textContent = phone;
-                panel.querySelector('span:first-child').innerHTML =
-                    '<i class="fas fa-clock me-1"></i>Your application <strong>' + data.application_code + '</strong> is already submitted and <strong>' + data.status_label + '</strong>. Our team will contact you — please do not submit again.';
+                const pendingMessage = panel.querySelector('span:first-child');
+                pendingMessage.replaceChildren();
+                const pendingIcon = document.createElement('i');
+                pendingIcon.className = 'fas fa-clock me-1';
+                const pendingStatus = document.createElement('strong');
+                pendingStatus.textContent = data.status_label || 'pending review';
+                pendingMessage.append(pendingIcon, document.createTextNode('Your application is already submitted and is currently '), pendingStatus, document.createTextNode('. Our team will contact you — please do not submit again.'));
                 panel.className = 'alert alert-warning py-2 px-3 mt-2 small';
                 panel.style.display = '';
                 document.getElementById('inlineRestoreConfirmBtn').style.display = 'none';
@@ -1914,8 +1926,14 @@ if (phoneFormField) {
                              (sessionStorage.getItem(SESSION_PHONE) === phone && sessionStorage.getItem(SESSION_DRAFT));
             if (hasDraft) {
                 document.getElementById('inlineRestorePhone').textContent = phone;
-                panel.querySelector('span:first-child').innerHTML =
-                    '<i class="fas fa-history me-1"></i>A saved draft was found for <strong id="inlineRestorePhone">' + phone + '</strong>. Restore it?';
+                const draftMessage = panel.querySelector('span:first-child');
+                draftMessage.replaceChildren();
+                const draftIcon = document.createElement('i');
+                draftIcon.className = 'fas fa-history me-1';
+                const draftPhone = document.createElement('strong');
+                draftPhone.id = 'inlineRestorePhone';
+                draftPhone.textContent = phone;
+                draftMessage.append(draftIcon, document.createTextNode('A saved draft was found for '), draftPhone, document.createTextNode('. Restore it?'));
                 panel.style.display = '';
                 document.getElementById('inlineRestoreConfirmBtn').onclick = function() {
                     restoreDraft(phone);
@@ -1971,8 +1989,15 @@ function removeGuarantor2() {
 function checkLoanStatus() {
     const phoneInput = document.getElementById('lsPhoneInput');
     const phone = phoneInput ? phoneInput.value.trim() : '';
-    if (!phone) { phoneInput.classList.add('is-invalid'); return; }
+    const loanCodeInput = document.getElementById('lsLoanCodeInput');
+    const loanCode = loanCodeInput ? loanCodeInput.value.trim() : '';
+    if (!phone || !loanCode) {
+        if (phoneInput) phoneInput.classList.toggle('is-invalid', !phone);
+        if (loanCodeInput) loanCodeInput.classList.toggle('is-invalid', !loanCode);
+        return;
+    }
     phoneInput.classList.remove('is-invalid');
+    loanCodeInput.classList.remove('is-invalid');
 
     const btn = document.getElementById('lsBtn');
     btn.disabled = true;
@@ -1987,7 +2012,7 @@ function checkLoanStatus() {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').content : '{{ csrf_token() }}'
         },
-        body: JSON.stringify({ phone: phone })
+        body: JSON.stringify({ phone: phone, loan_code: loanCode })
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
@@ -2034,14 +2059,25 @@ function checkLoanStatus() {
         tbody.innerHTML = '';
         (data.schedules || []).forEach(function(s) {
             var statusClass = { 'Paid': 'success', 'Overdue': 'danger', 'Pending': 'secondary' }[s.status] || 'secondary';
-            tbody.innerHTML += '<tr>' +
-                '<td class="ps-3 text-muted">' + s.installment + '</td>' +
-                '<td>' + s.due_date + '</td>' +
-                '<td class="text-end">' + s.amount + '</td>' +
-                '<td class="text-end text-success">' + s.paid + '</td>' +
-                '<td class="text-end text-danger">' + s.balance + '</td>' +
-                '<td class="text-center"><span class="badge bg-' + statusClass + '">' + s.status + '</span></td>' +
-                '</tr>';
+            var row = document.createElement('tr');
+            var cells = [s.installment, s.due_date, s.amount, s.paid, s.balance];
+            cells.forEach(function(value, index) {
+                var cell = document.createElement('td');
+                cell.textContent = value ?? '';
+                if (index === 0) cell.className = 'ps-3 text-muted';
+                if (index >= 2) cell.classList.add('text-end');
+                if (index === 3) cell.classList.add('text-success');
+                if (index === 4) cell.classList.add('text-danger');
+                row.appendChild(cell);
+            });
+            var statusCell = document.createElement('td');
+            statusCell.className = 'text-center';
+            var badge = document.createElement('span');
+            badge.className = 'badge bg-' + statusClass;
+            badge.textContent = s.status || '';
+            statusCell.appendChild(badge);
+            row.appendChild(statusCell);
+            tbody.appendChild(row);
         });
         if (!data.schedules || data.schedules.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No schedule yet — loan may not be disbursed.</td></tr>';

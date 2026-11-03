@@ -43,8 +43,6 @@ class MobileMoneyService
             }
             
             Log::info("Mobile Money Disbursement Request (Emuria)", [
-                'original_phone' => $phone,
-                'formatted_phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount
             ]);
@@ -60,7 +58,7 @@ class MobileMoneyService
             // Make API request
             $response = Http::timeout($this->timeout)
                           ->asForm()
-                          ->withoutVerifying()
+                          ->withOptions(['verify' => true])
                           ->post($this->flexipayEndpoint, $requestData);
             
             $responseBody = $response->body();
@@ -68,8 +66,6 @@ class MobileMoneyService
             
             Log::info("FlexiPay API Response (Emuria)", [
                 'http_code' => $httpCode,
-                'response_body' => $responseBody,
-                'request_data' => $requestData
             ]);
             
             // Parse response
@@ -108,10 +104,8 @@ class MobileMoneyService
             
         } catch (\Exception $e) {
             Log::error("Mobile Money Disbursement Error", [
-                'phone' => $phone,
                 'amount' => $amount,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
             
             return [
@@ -264,12 +258,8 @@ class MobileMoneyService
             $sanitizedName = $this->sanitizeName($recipientName);
             
             Log::info("Mobile Money Send Request (Emuria)", [
-                'recipient_original' => $recipientName,
-                'recipient_sanitized' => $sanitizedName,
-                'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount,
-                'description' => $description
             ]);
             
             // Prepare request data using exact FlexiPay format
@@ -283,7 +273,7 @@ class MobileMoneyService
             // Make API request
             $response = Http::timeout($this->timeout)
                           ->asForm()
-                          ->withoutVerifying()
+                          ->withOptions(['verify' => true])
                           ->post($this->flexipayEndpoint, $requestData);
             
             $responseBody = $response->body();
@@ -291,8 +281,6 @@ class MobileMoneyService
             
             Log::info("FlexiPay Send Response", [
                 'http_code' => $httpCode,
-                'response_body' => $responseBody,
-                'request_data' => $requestData
             ]);
             
             if ($response->successful()) {
@@ -335,7 +323,6 @@ class MobileMoneyService
             
         } catch (\Exception $e) {
             Log::error("Mobile Money Send Error", [
-                'phone' => $phone,
                 'amount' => $amount,
                 'error' => $e->getMessage()
             ]);
@@ -371,12 +358,8 @@ class MobileMoneyService
             $sanitizedName = $this->sanitizeName($payerName);
             
             Log::info("Mobile Money Collection Request (Emuria)", [
-                'payer_original' => $payerName,
-                'payer_sanitized' => $sanitizedName,
-                'phone' => $formattedPhone,
                 'network' => $network,
                 'amount' => $amount,
-                'description' => $description
             ]);
             
             // Use the collection endpoint for receiving money from customers
@@ -390,13 +373,14 @@ class MobileMoneyService
             ];
             
             Log::info("FlexiPay Collection Request (Emuria)", [
-                'request_data' => $requestData
+                'network' => $network,
+                'amount' => $amount,
             ]);
             
             // Make API request
             $response = Http::timeout($this->timeout)
                           ->asForm()
-                          ->withoutVerifying()
+                          ->withOptions(['verify' => true])
                           ->post($collectionEndpoint, $requestData);
             
             $responseBody = $response->body();
@@ -404,8 +388,6 @@ class MobileMoneyService
             
             Log::info("FlexiPay Collection Response (Emuria)", [
                 'http_code' => $httpCode,
-                'response_body' => $responseBody,
-                'request_data' => $requestData
             ]);
             
             if ($response->successful()) {
@@ -437,7 +419,6 @@ class MobileMoneyService
             
         } catch (\Exception $e) {
             Log::error("Mobile Money Collection Error (Emuria)", [
-                'phone' => $phone,
                 'amount' => $amount,
                 'error' => $e->getMessage()
             ]);
@@ -513,7 +494,6 @@ class MobileMoneyService
             
         } catch (\Exception $e) {
             Log::error("Stanbic Collection Error", [
-                'phone' => $phone,
                 'amount' => $amount,
                 'error' => $e->getMessage()
             ]);
@@ -552,7 +532,7 @@ class MobileMoneyService
             
             $response = Http::timeout($this->timeout)
                           ->asForm()
-                          ->withoutVerifying()
+                          ->withOptions(['verify' => true])
                           ->post($statusEndpoint, $requestData);
             
             if ($response->successful()) {
@@ -786,11 +766,21 @@ class MobileMoneyService
             'type' => $type
         ];
         
-        // Log transaction details
+        // Keep payment logs to operational metadata only. The full result can
+        // contain a phone number and must not be copied into application logs.
+        $logContext = [
+            'success' => $result['success'],
+            'status_code' => $result['status_code'],
+            'request_id' => $result['request_id'],
+            'flexipay_reference' => $result['flexipay_reference'],
+            'amount' => $result['amount'],
+            'type' => $result['type'],
+        ];
+
         if ($isSuccessful) {
-            Log::info("Mobile Money {$type} Successful/Initiated", $result);
+            Log::info("Mobile Money {$type} Successful/Initiated", $logContext);
         } else {
-            Log::warning("Mobile Money {$type} Failed", $result);
+            Log::warning("Mobile Money {$type} Failed", $logContext);
         }
         
         return $result;
@@ -954,7 +944,12 @@ class MobileMoneyService
                 'processed_at' => now()
             ];
             
-            Log::info("FlexiPay Callback Processed", $result);
+            Log::info("FlexiPay Callback Processed", [
+                'success' => $result['success'],
+                'transaction_reference' => $result['transaction_reference'],
+                'status_code' => $result['status_code'],
+                'callback_fields' => $result['callback_fields'],
+            ]);
             
             return $result;
             

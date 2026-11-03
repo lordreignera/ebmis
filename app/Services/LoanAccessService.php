@@ -31,11 +31,36 @@ class LoanAccessService
             return $query;
         }
 
-        if (!$user->branch_id) {
+        $branchIds = $this->accessibleBranchIds($user);
+
+        if ($branchIds === []) {
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->where($branchColumn, $user->branch_id);
+        return $query->whereIn($branchColumn, $branchIds);
+    }
+
+    /**
+     * Return all branches the user may access. Older users may not yet have a
+     * pivot row, so their legacy users.branch_id assignment is retained.
+     */
+    public function accessibleBranchIds(?User $user = null): array
+    {
+        $user ??= auth()->user();
+
+        if (!$user || $user->isSuperAdmin()) {
+            return [];
+        }
+
+        $branchIds = $user->relationLoaded('branches')
+            ? $user->branches->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : $user->branches()->pluck('branches.id')->map(fn ($id) => (int) $id)->all();
+
+        if ($branchIds === [] && $user->branch_id) {
+            $branchIds[] = (int) $user->branch_id;
+        }
+
+        return array_values(array_unique(array_filter($branchIds)));
     }
 
     public function scopeLoanQuery(
@@ -277,7 +302,7 @@ class LoanAccessService
             return;
         }
 
-        if (!$user->branch_id || (int) $record->{$branchKey} !== (int) $user->branch_id) {
+        if (!in_array((int) $record->{$branchKey}, $this->accessibleBranchIds($user), true)) {
             abort(403, 'Access denied. This record belongs to another branch.');
         }
     }
@@ -360,14 +385,16 @@ class LoanAccessService
             return (int) $branchId;
         }
 
-        if (!$user->branch_id) {
+        $branchIds = $this->accessibleBranchIds($user);
+
+        if ($branchIds === []) {
             abort(403, 'Access denied. Your user account is not assigned to a branch.');
         }
 
-        if ((int) $branchId !== (int) $user->branch_id) {
+        if (!in_array((int) $branchId, $branchIds, true)) {
             abort(403, 'Access denied. You cannot create or move records into another branch.');
         }
 
-        return (int) $user->branch_id;
+        return (int) $branchId;
     }
 }

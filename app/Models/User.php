@@ -94,6 +94,17 @@ class User extends Authenticatable
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * Branches this user is allowed to access. branch_id remains the primary
+     * branch for compatibility with existing records and workflows.
+     */
+    public function branches()
+    {
+        return $this->belongsToMany(Branch::class, 'user_branches')
+            ->withTimestamps()
+            ->orderBy('name');
+    }
+
     public function region()
     {
         return $this->belongsTo(Region::class);

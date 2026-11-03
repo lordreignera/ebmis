@@ -401,6 +401,8 @@ class RepaymentFinancialRulesTest extends TestCase
         $this->assertEquals($gross, $stats['gross']);
         $this->assertEquals(20000.0, $stats['waived']);
         $this->assertEquals(10000.0, $stats['paid']);
-        $this->assertEquals($gross - 30000.0, $stats['outstanding']);
+        // Outstanding fees cannot be negative when paid and waived amounts
+        // exceed the calculated gross fee.
+        $this->assertEquals(max(0.0, $gross - 30000.0), $stats['outstanding']);
     }
 }

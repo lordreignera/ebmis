@@ -725,7 +725,6 @@ class LoanController extends Controller
     {
         \Log::info('Approve loan called', [
             'id' => $id,
-            'request_all' => $request->all()
         ]);
         
         $request->validate([
@@ -2244,16 +2243,14 @@ class LoanController extends Controller
             // Get the loan
             if ($request->loan_type === 'personal') {
                 $loan = PersonalLoan::with('member')->find($request->loan_id);
-                $recipient = $loan->member;
-                $phone = $loan->member->contact;
+                $phone = $loan?->member?->contact;
             } else {
                 $loan = GroupLoan::with('group.members')->find($request->loan_id);
-                // For group loans, send to group leader or first member
-                $recipient = $loan->group->members->first();
-                $phone = $recipient->contact;
+                // For group loans, send to group leader or first member.
+                $phone = $loan?->group?->members?->first()?->contact;
             }
 
-            if (!$loan) {
+            if (!$loan || !$phone) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Loan not found'
@@ -2261,7 +2258,7 @@ class LoanController extends Controller
             }
 
             // Generate OTP
-            $otp = sprintf('%06d', mt_rand(0, 999999));
+            $otp = (string) random_int(100000, 999999);
             $expiresAt = now()->addMinutes(30); // OTP expires in 30 minutes
 
             // Update loan with OTP
@@ -2271,14 +2268,13 @@ class LoanController extends Controller
                 'signature_status' => 'pending'
             ]);
 
-            // Format phone number
-            $formattedPhone = $this->formatPhoneNumber($phone);
-
-            // Send SMS (implement your SMS service here)
-            $message = "Your loan agreement OTP is: {$otp}. This code expires in 30 minutes. Do not share this code.";
-            
-            // Log the OTP sending (in production, integrate with SMS service)
-            \Log::info("OTP sent to {$formattedPhone}: {$otp}");
+            // Send SMS through the configured notification provider here. Never
+            // write the OTP or recipient phone number to application logs.
+            \Log::info('Loan agreement OTP generated for delivery', [
+                'loan_id' => $loan->id,
+                'loan_type' => $request->loan_type,
+                'expires_at' => $expiresAt->toIso8601String(),
+            ]);
 
             return response()->json([
                 'success' => true,

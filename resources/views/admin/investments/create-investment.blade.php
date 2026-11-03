@@ -311,17 +311,17 @@ function calculateReturns() {
             document.getElementById('investment_summary').style.display = 'block';
             document.getElementById('no_calculation').style.display = 'none';
             
-            document.getElementById('summary_type').innerHTML = response.type_name;
-            document.getElementById('summary_period').innerHTML = response.period;
-            document.getElementById('summary_rate').innerHTML = response.rate;
-            document.getElementById('summary_annual').innerHTML = response.formatted.annual_profit;
-            document.getElementById('summary_interest').innerHTML = response.formatted.total_interest;
-            document.getElementById('summary_total').innerHTML = response.formatted.total_return;
-            document.getElementById('summary_start').innerHTML = response.start_date;
-            document.getElementById('summary_end').innerHTML = response.end_date;
-            document.getElementById('summary_amount').innerHTML = response.formatted.amount;
-            document.getElementById('summary_fee').innerHTML = response.formatted.conversion_fee;
-            document.getElementById('summary_charge').innerHTML = response.formatted.total_charge;
+                    document.getElementById('summary_type').textContent = response.type_name ?? '';
+                    document.getElementById('summary_period').textContent = response.period ?? '';
+                    document.getElementById('summary_rate').textContent = response.rate ?? '';
+                    document.getElementById('summary_annual').textContent = response.formatted.annual_profit ?? '';
+                    document.getElementById('summary_interest').textContent = response.formatted.total_interest ?? '';
+                    document.getElementById('summary_total').textContent = response.formatted.total_return ?? '';
+                    document.getElementById('summary_start').textContent = response.start_date ?? '';
+                    document.getElementById('summary_end').textContent = response.end_date ?? '';
+                    document.getElementById('summary_amount').textContent = response.formatted.amount ?? '';
+                    document.getElementById('summary_fee').textContent = response.formatted.conversion_fee ?? '';
+                    document.getElementById('summary_charge').textContent = response.formatted.total_charge ?? '';
         },
         error: function(xhr) {
             console.error('Error calculating returns:', xhr.responseJSON);

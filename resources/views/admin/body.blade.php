@@ -1211,11 +1211,11 @@
         new Chart(ctx, {
           type: 'line',
           data: {
-            labels: {!! json_encode($chartData['months'] ?? []) !!},
+            labels: {!! json_encode($chartData['months'] ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!},
             datasets: [
               {
                 label: 'Loans Disbursed',
-                data: {!! json_encode($chartData['loans'] ?? []) !!},
+                data: {!! json_encode($chartData['loans'] ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!},
                 borderColor: '#2563eb',
                 backgroundColor: 'rgba(37, 99, 235, 0.12)',
                 pointBackgroundColor: '#2563eb',
@@ -1230,7 +1230,7 @@
               },
               {
                 label: 'Cash Securities',
-                data: {!! json_encode($chartData['savings'] ?? []) !!},
+                data: {!! json_encode($chartData['savings'] ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!},
                 borderColor: '#0f766e',
                 backgroundColor: 'rgba(15, 118, 110, 0.13)',
                 pointBackgroundColor: '#0f766e',

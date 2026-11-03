@@ -2337,7 +2337,7 @@ function pollPaymentStatus(transactionRef, feeId, attempts = 0) {
             } else if (data.status === 'failed') {
                 // Payment failed
                 processingAlert.className = 'alert alert-danger';
-                statusText.innerHTML = '<i class="mdi mdi-close-circle"></i> Payment failed: ' + (data.message || 'Transaction declined');
+                statusText.textContent = 'Payment failed: ' + (data.message || 'Transaction declined');
                 setTimeout(() => location.reload(), 3000);
             } else {
                 // Still pending after 60 seconds - show timeout message
@@ -2477,15 +2477,15 @@ function showRetryPaymentModal(feeId, memberPhone, memberName, amount, feeType) 
     document.getElementById('retryMemberPhone').value = memberPhone;
     document.getElementById('retryMemberName').value = memberName;
     document.getElementById('retryAmount').value = amount;
-    document.getElementById('retryFeeType').innerHTML = feeType;
+    document.getElementById('retryFeeType').textContent = feeType;
     
     // Set editable phone number field
     document.getElementById('retryPhoneNumber').value = memberPhone;
-    document.getElementById('retryOriginalPhone').innerHTML = memberPhone;
+    document.getElementById('retryOriginalPhone').textContent = memberPhone;
     
     // Detect and display network
     const networkInfo = detectNetwork(memberPhone);
-    document.getElementById('retryOriginalPhone').innerHTML = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
+    document.getElementById('retryOriginalPhone').textContent = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
     
     // Hide processing alert
     document.getElementById('retryProcessingAlert').style.display = 'none';
@@ -2764,11 +2764,11 @@ function showRetryCashSecurityModal(securityId, memberPhone, memberName, amount)
     
     // Set editable phone number field
     document.getElementById('retrySecurityPhoneNumber').value = memberPhone;
-    document.getElementById('retrySecurityOriginalPhone').innerHTML = memberPhone;
+    document.getElementById('retrySecurityOriginalPhone').textContent = memberPhone;
     
     // Detect and display network
     const networkInfo = detectNetwork(memberPhone);
-    document.getElementById('retrySecurityOriginalPhone').innerHTML = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
+    document.getElementById('retrySecurityOriginalPhone').textContent = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
     
     // Hide processing alert
     document.getElementById('retrySecurityProcessingAlert').style.display = 'none';
@@ -2980,12 +2980,12 @@ function showReturnCashSecurityModal(securityId, memberPhone, memberName, amount
     // Set display fields
     document.getElementById('returnMemberName').value = memberName;
     document.getElementById('returnPhoneNumber').value = memberPhone;
-    document.getElementById('returnOriginalPhone').innerHTML = memberPhone;
+    document.getElementById('returnOriginalPhone').textContent = memberPhone;
     document.getElementById('returnAmount').value = amount;
     
     // Detect and display network
     const networkInfo = detectNetwork(memberPhone);
-    document.getElementById('returnOriginalPhone').innerHTML = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
+    document.getElementById('returnOriginalPhone').textContent = `${memberPhone} (${networkInfo.icon} ${networkInfo.network})`;
     
     // Hide processing alert
     document.getElementById('returnProcessingAlert').style.display = 'none';
@@ -3204,23 +3204,62 @@ document.addEventListener('DOMContentLoaded', function() {
             
             document.getElementById('viewDocumentTitle').textContent = documentName;
             const viewer = document.getElementById('documentViewerContent');
-            
-            viewer.innerHTML = '';
-            
-            if (fileType.includes('image') || fileUrl.match(/\.(jpg|jpeg|png|gif)$/i)) {
-                viewer.innerHTML = `<img src="${fileUrl}" class="img-fluid" alt="${documentName}" style="max-height: 70vh;">`;
-            } else if (fileType.includes('pdf') || fileUrl.match(/\.pdf$/i)) {
-                viewer.innerHTML = `<iframe src="${fileUrl}" style="width: 100%; height: 70vh; border: none;"></iframe>`;
+
+            viewer.replaceChildren();
+
+            let safeFileUrl;
+            try {
+                safeFileUrl = new URL(fileUrl || '', window.location.origin);
+            } catch (error) {
+                safeFileUrl = null;
+            }
+
+            if (!safeFileUrl || !['http:', 'https:'].includes(safeFileUrl.protocol)) {
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'alert alert-danger';
+                errorMessage.textContent = 'This document cannot be previewed because its file address is invalid.';
+                viewer.appendChild(errorMessage);
+                return;
+            }
+
+            const normalizedFileType = (fileType || '').toLowerCase();
+            const normalizedFileUrl = safeFileUrl.href.toLowerCase();
+
+            if (normalizedFileType.includes('image') || normalizedFileUrl.match(/\.(jpg|jpeg|png|gif|webp)(?:[?#]|$)/i)) {
+                const image = document.createElement('img');
+                image.src = safeFileUrl.href;
+                image.alt = documentName || 'Uploaded document';
+                image.className = 'img-fluid';
+                image.style.maxHeight = '70vh';
+                viewer.appendChild(image);
+            } else if (normalizedFileType.includes('pdf') || normalizedFileUrl.match(/\.pdf(?:[?#]|$)/i)) {
+                const frame = document.createElement('iframe');
+                frame.src = safeFileUrl.href;
+                frame.title = documentName || 'PDF document preview';
+                frame.style.width = '100%';
+                frame.style.height = '70vh';
+                frame.style.border = 'none';
+                viewer.appendChild(frame);
             } else {
-                viewer.innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="mdi mdi-information"></i>
-                        <p>This file type cannot be previewed in the browser.</p>
-                        <a href="${fileUrl}" class="btn btn-primary" download>
-                            <i class="mdi mdi-download"></i> Download to View
-                        </a>
-                    </div>
-                `;
+                const message = document.createElement('div');
+                message.className = 'alert alert-info';
+
+                const icon = document.createElement('i');
+                icon.className = 'mdi mdi-information';
+                message.appendChild(icon);
+
+                const paragraph = document.createElement('p');
+                paragraph.textContent = 'This file type cannot be previewed in the browser.';
+                message.appendChild(paragraph);
+
+                const download = document.createElement('a');
+                download.href = safeFileUrl.href;
+                download.className = 'btn btn-primary';
+                download.download = '';
+                download.textContent = 'Download to View';
+                message.appendChild(download);
+
+                viewer.appendChild(message);
             }
         });
     }

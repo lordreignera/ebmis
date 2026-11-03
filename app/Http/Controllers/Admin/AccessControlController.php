@@ -454,7 +454,7 @@ class AccessControlController extends Controller
     
     public function users(Request $request)
     {
-        $query = User::with('roles', 'school', 'branch');
+        $query = User::with('roles', 'school', 'branch', 'branches');
         
         // Apply filters
         if ($request->filter) {
@@ -506,6 +506,14 @@ class AccessControlController extends Controller
 
     public function storeUser(Request $request)
     {
+        // Accept the legacy single branch field from older clients while the
+        // user interface now submits branch_ids[] for multi-branch access.
+        if ($request->input('user_type') === 'branch'
+            && !$request->filled('branch_ids')
+            && $request->filled('branch_id')) {
+            $request->merge(['branch_ids' => [$request->input('branch_id')]]);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
@@ -514,7 +522,9 @@ class AccessControlController extends Controller
             'phone' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'designation' => 'nullable|string|max:100',
-            'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
+            'branch_ids' => 'required_if:user_type,branch|array|min:1',
+            'branch_ids.*' => 'integer|distinct|exists:branches,id',
             'school_id' => [
                 'required_if:user_type,school',
                 'nullable',
@@ -527,8 +537,12 @@ class AccessControlController extends Controller
             ],
         ]);
 
+        $branchIds = $validated['user_type'] === 'branch'
+            ? array_values(array_unique(array_map('intval', $validated['branch_ids'] ?? [])))
+            : [];
+
         try {
-            DB::transaction(function () use ($validated, $request) {
+            DB::transaction(function () use ($validated, $request, $branchIds) {
                 $user = User::create([
                     'name' => $validated['name'],
                     'email' => $validated['email'],
@@ -538,13 +552,14 @@ class AccessControlController extends Controller
                     'phone' => $validated['phone'] ?? null,
                     'address' => $validated['address'] ?? null,
                     'designation' => $validated['designation'] ?? null,
-                    'branch_id' => $validated['user_type'] === 'branch' ? ($validated['branch_id'] ?? null) : null,
+                    'branch_id' => $branchIds[0] ?? null,
                     'school_id' => $validated['user_type'] === 'school' ? ($validated['school_id'] ?? null) : null,
                     'status' => 'active',
                     'approved_by' => auth()->id(),
                     'approved_at' => now(),
                 ]);
 
+                $user->branches()->sync($branchIds);
                 $user->syncRoles($this->roleModels($validated['roles'] ?? []));
             });
 
@@ -564,6 +579,7 @@ class AccessControlController extends Controller
 
     public function editUser(User $user)
     {
+        $user->load('branches');
         $roles = Role::with('permissions')
             ->withCount('permissions')
             ->where('guard_name', self::GUARD)
@@ -576,6 +592,14 @@ class AccessControlController extends Controller
 
     public function updateUser(Request $request, User $user)
     {
+        // Accept the legacy single branch field from older clients while the
+        // user interface now submits branch_ids[] for multi-branch access.
+        if ($request->input('user_type') === 'branch'
+            && !$request->filled('branch_ids')
+            && $request->filled('branch_id')) {
+            $request->merge(['branch_ids' => [$request->input('branch_id')]]);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
@@ -584,7 +608,9 @@ class AccessControlController extends Controller
             'phone' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'designation' => 'nullable|string|max:100',
-            'branch_id' => 'required_if:user_type,branch|nullable|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
+            'branch_ids' => 'required_if:user_type,branch|array|min:1',
+            'branch_ids.*' => 'integer|distinct|exists:branches,id',
             'school_id' => [
                 'required_if:user_type,school',
                 'nullable',
@@ -598,12 +624,16 @@ class AccessControlController extends Controller
             ],
         ]);
 
+        $branchIds = $validated['user_type'] === 'branch'
+            ? array_values(array_unique(array_map('intval', $validated['branch_ids'] ?? [])))
+            : [];
+
         try {
-            DB::transaction(function () use ($user, $validated) {
+            DB::transaction(function () use ($user, $validated, $branchIds) {
                 $user->update([
                     'name' => $validated['name'],
                     'email' => $validated['email'],
-                    'branch_id' => $validated['user_type'] === 'branch' ? ($validated['branch_id'] ?? null) : null,
+                    'branch_id' => $branchIds[0] ?? null,
                     'school_id' => $validated['user_type'] === 'school' ? ($validated['school_id'] ?? null) : null,
                     'user_type' => $validated['user_type'],
                     'phone' => $validated['phone'] ?? null,
@@ -611,6 +641,8 @@ class AccessControlController extends Controller
                     'designation' => $validated['designation'] ?? null,
                     'status' => $validated['status'],
                 ]);
+
+                $user->branches()->sync($branchIds);
 
                 if (!empty($validated['password'])) {
                     $user->update([

@@ -18,7 +18,30 @@ class FileStorageService
      */
     public static function storeFile(UploadedFile $file, string $folder, ?string $disk = null): string
     {
-        $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+        if (! $file->isValid()) {
+            throw new \InvalidArgumentException('The uploaded file is invalid.');
+        }
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        $blockedExtensions = [
+            'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phar',
+            'cgi', 'pl', 'py', 'sh', 'bash', 'bat', 'cmd', 'com', 'dll', 'exe',
+            'js', 'mjs', 'html', 'htm', 'shtml', 'svg', 'xml', 'xhtml',
+            'htaccess', 'ini', 'inc', 'config',
+        ];
+
+        if ($extension === '' || in_array($extension, $blockedExtensions, true)) {
+            throw new \InvalidArgumentException('This file type is not allowed.');
+        }
+
+        // Never trust an arbitrary client filename or extension when creating
+        // a public path. Keep only a conservative set of non-executable types.
+        $safeExtensions = [
+            'jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf',
+            'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'zip',
+        ];
+        $extension = in_array($extension, $safeExtensions, true) ? $extension : 'bin';
+        $filename = bin2hex(random_bytes(16)) . '.' . $extension;
         $path = $folder . '/' . $filename;
         
         // Use the configured default disk if not specified

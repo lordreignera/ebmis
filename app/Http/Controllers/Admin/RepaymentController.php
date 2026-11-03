@@ -3846,7 +3846,6 @@ class RepaymentController extends Controller
     {
         // Log incoming request for debugging
         \Log::info('storeRepayment called', [
-            'all_data' => $request->all(),
             'is_ajax' => $request->ajax(),
             'wants_json' => $request->wantsJson(),
             'user_id' => auth()->id(),
@@ -4407,7 +4406,6 @@ class RepaymentController extends Controller
             if (!$request->medium) {
                 \Log::error('Balance Payment - Network medium missing', [
                     'loan_id' => $loan->id,
-                    'request_data' => $request->all()
                 ]);
                 return response()->json([
                     'success' => false,
@@ -4419,7 +4417,6 @@ class RepaymentController extends Controller
             \Log::info('Balance Payment - Initiating mobile money collection', [
                 'loan_id' => $loan->id,
                 'amount' => $request->amount,
-                'phone' => $phoneNumber,
                 'network' => $network,
                 'medium' => $request->medium
             ]);

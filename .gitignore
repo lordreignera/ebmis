@@ -22,6 +22,13 @@
 /public/uploads/loan-collateral-documents/
 /storage/*.key
 /private_key_pkcs1.pem
+# Private payment/TLS key material must stay outside Git and be provided by the
+# deployment secret store or the server filesystem.
+/flexipay/certs/**/*.key
+/flexipay/certs/**/key.pem
+/flexipay/certs/**/privkey.pem
+/flexipay/certs/**/*_pkcs1.pem
+/flexipay/certs/**/*_pkcs8*.pem
 /storage/pail
 /vendor
 /bimsadmin

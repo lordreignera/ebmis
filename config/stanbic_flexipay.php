@@ -31,8 +31,10 @@ return [
 
     // SSL Certificates (optional, for production)
     'ssl' => [
-        'verify_host' => env('STANBIC_SSL_VERIFY_HOST', false),
-        'verify_peer' => env('STANBIC_SSL_VERIFY_PEER', false),
+        // TLS verification is secure by default. A local-only override may be
+        // supplied explicitly when diagnosing a development certificate issue.
+        'verify_host' => env('STANBIC_SSL_VERIFY_HOST', true),
+        'verify_peer' => env('STANBIC_SSL_VERIFY_PEER', true),
         'cert_path' => env('STANBIC_CERT_PATH', ''),
     ],
 

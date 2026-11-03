@@ -63,7 +63,9 @@ Route::post('/school/complete-assessment', [SchoolRegistrationController::class,
 Route::get('/apply', [ClientLoanApplicationController::class, 'create'])->name('client.apply');
 Route::post('/apply', [ClientLoanApplicationController::class, 'store'])->middleware('throttle:10,1')->name('client.apply.store');
 Route::get('/apply/success', [ClientLoanApplicationController::class, 'success'])->name('client.apply.success');
-Route::get('/apply/check-status', [ClientLoanApplicationController::class, 'checkStatus'])->name('client.apply.check-status');
+Route::get('/apply/check-status', [ClientLoanApplicationController::class, 'checkStatus'])
+    ->middleware('throttle:30,1')
+    ->name('client.apply.check-status');
 Route::post('/loan-status', [ClientLoanApplicationController::class, 'loanStatusLookup'])->name('client.loan-status')->middleware('throttle:10,1');
 
 // Public callback endpoint for payment providers (no auth/session/csrf)
@@ -296,8 +298,12 @@ Route::middleware([
     
     // Loan Agreement & Signing Routes
     Route::get('/loans/agreements', [\App\Http\Controllers\Admin\LoanController::class, 'agreements'])->name('loans.agreements');
-    Route::post('/loans/send-otp', [\App\Http\Controllers\Admin\LoanController::class, 'sendOTP'])->name('loans.send-otp');
-    Route::post('/loans/sign-agreement', [\App\Http\Controllers\Admin\LoanController::class, 'signAgreement'])->name('loans.sign-agreement');
+    Route::post('/loans/send-otp', [\App\Http\Controllers\Admin\LoanController::class, 'sendOTP'])
+        ->middleware('throttle:5,1')
+        ->name('loans.send-otp');
+    Route::post('/loans/sign-agreement', [\App\Http\Controllers\Admin\LoanController::class, 'signAgreement'])
+        ->middleware('throttle:10,1')
+        ->name('loans.sign-agreement');
     Route::get('/loans/view-agreement/{id}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'viewAgreement'])->name('loans.view-agreement');
     Route::get('/loans/download-signed-agreement/{id}/{type}', [\App\Http\Controllers\Admin\LoanController::class, 'downloadSignedAgreement'])->name('loans.download-signed-agreement');
     Route::post('/loans/save-esignature/{id}', [\App\Http\Controllers\Admin\LoanController::class, 'saveESignature'])->name('loans.save-esignature');

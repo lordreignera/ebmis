@@ -76,7 +76,7 @@ class StanbicFlexiPayService
         
         try {
             $response = Http::timeout($this->timeout)
-                ->withoutVerifying() // Disable SSL verification for development
+                ->withOptions(['verify' => $this->sslVerificationEnabled()])
                 ->withHeaders([
                     'Content-Type' => 'application/x-www-form-urlencoded',
                     'Authorization' => 'Basic ' . $token,
@@ -90,7 +90,6 @@ class StanbicFlexiPayService
             if (!$response->successful()) {
                 $this->log('error', 'OAuth token request failed', [
                     'status' => $response->status(),
-                    'body' => $response->body(),
                 ]);
                 throw new Exception('OAuth authentication failed: ' . $response->body());
             }
@@ -146,9 +145,7 @@ class StanbicFlexiPayService
             // Encode signature
             $encodedSignature = base64_encode($signature);
 
-            $this->log('debug', 'Signature generated successfully', [
-                'message_to_sign' => $message
-            ]);
+            $this->log('debug', 'Signature generated successfully');
 
             return $encodedSignature;
 
@@ -199,11 +196,11 @@ class StanbicFlexiPayService
             
             $this->log('info', 'Making Stanbic API request', [
                 'url' => $url,
-                'payload' => $sortedPayload,
+                'payload_fields' => array_keys($sortedPayload),
             ]);
 
             $response = Http::timeout($this->timeout)
-                ->withoutVerifying() // Disable SSL verification for development
+                ->withOptions(['verify' => $this->sslVerificationEnabled()])
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                     'Authorization' => 'Bearer ' . $accessToken,
@@ -219,7 +216,7 @@ class StanbicFlexiPayService
 
             $this->log('info', 'Stanbic API response received', [
                 'status' => $response->status(),
-                'data' => $responseData,
+                'response_fields' => is_array($responseData) ? array_keys($responseData) : [],
             ]);
 
             if (!$response->successful()) {
@@ -276,7 +273,6 @@ class StanbicFlexiPayService
             ];
 
             $this->log('info', 'Initiating money collection', [
-                'phone' => $phone,
                 'amount' => $amount,
                 'network' => $network,
                 'requestId' => $requestId,
@@ -331,10 +327,8 @@ class StanbicFlexiPayService
             ];
 
             $this->log('info', 'Initiating money disbursement', [
-                'phone' => $phone,
                 'amount' => $amount,
                 'network' => $network,
-                'beneficiary' => $beneficiaryName,
                 'requestId' => $requestId,
             ]);
 
@@ -560,6 +554,16 @@ class StanbicFlexiPayService
             default:
                 Log::info($logMessage, $context);
         }
+    }
+
+    /**
+     * Return whether outbound Stanbic requests may verify the TLS certificate.
+     * Both switches must be explicitly enabled for verification to be active.
+     */
+    private function sslVerificationEnabled(): bool
+    {
+        return (bool) ($this->config['ssl']['verify_host'] ?? true)
+            && (bool) ($this->config['ssl']['verify_peer'] ?? true);
     }
 
     /**

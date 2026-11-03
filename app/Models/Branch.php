@@ -43,6 +43,15 @@ class Branch extends Model
     }
 
     /**
+     * Users assigned to this branch through the multi-branch access pivot.
+     */
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'user_branches')
+            ->withTimestamps();
+    }
+
+    /**
      * Get the country that owns the branch
      */
     public function country()

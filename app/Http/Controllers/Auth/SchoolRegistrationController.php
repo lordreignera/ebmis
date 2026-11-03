@@ -103,7 +103,6 @@ class SchoolRegistrationController extends Controller
             session([
                 'pending_school_id' => $school->id,
                 'pending_school_email' => $school->email,
-                'pending_school_password' => $request->admin_password, // Store for user creation after assessment
             ]);
             
             \Log::info('School registered, redirecting to assessment', [
@@ -132,8 +131,7 @@ class SchoolRegistrationController extends Controller
 
         \Log::info('Assessment page accessed', [
             'session_school_id' => $schoolId,
-            'session_email' => $schoolEmail,
-            'all_sessions' => session()->all()
+            'session_email_present' => filled($schoolEmail),
         ]);
 
         if (!$schoolId) {
@@ -514,7 +512,14 @@ class SchoolRegistrationController extends Controller
             $school->update($updateData);
 
             // NOW create the user account (only after assessment is complete)
-            $password = session('pending_school_password');
+            // The password was hashed when the school record was created. Do
+            // not copy the plaintext password into the session or hash it a
+            // second time when creating the linked user account.
+            $passwordHash = (string) $school->admin_password;
+
+            if ($passwordHash === '') {
+                throw new \RuntimeException('The school password is missing. Please restart registration.');
+            }
             
             // Check if user already exists
             $existingUser = User::where('email', $school->email)->first();
@@ -523,7 +528,7 @@ class SchoolRegistrationController extends Controller
                 User::create([
                     'name' => $school->contact_person,
                     'email' => $school->email,
-                    'password' => Hash::make($password),
+                    'password' => $passwordHash,
                     'user_type' => 'school',
                     'school_id' => $school->id,
                     'branch_id' => null,
@@ -576,14 +581,15 @@ class SchoolRegistrationController extends Controller
     {
         $validated = $request->validate([
             'email' => 'required|email',
+            'password' => 'required|string',
         ]);
 
         // Find school by email
         $school = School::where('email', $validated['email'])->first();
 
-        if (!$school) {
-            return back()->with('error', 'No school found with this email address. Please check and try again.')
-                        ->withInput();
+        if (!$school || !$school->admin_password || !Hash::check($validated['password'], $school->admin_password)) {
+            return back()->with('error', 'We could not verify those registration details. Please check your email and password.')
+                        ->withInput($request->except('password'));
         }
 
         // Check if assessment is already complete
@@ -599,14 +605,13 @@ class SchoolRegistrationController extends Controller
                 $message .= 'Please wait for your school to be approved by the admin. For inquiries, contact us on +256708356505.';
             }
             
-            return back()->with('warning', $message)->withInput();
+            return back()->with('warning', $message)->withInput($request->except('password'));
         }
 
         // Set up session for assessment continuation
         session([
             'pending_school_id' => $school->id,
             'pending_school_email' => $school->email,
-            'pending_school_password' => null, // Password already exists in database
         ]);
 
         \Log::info('Assessment continuation initiated', [

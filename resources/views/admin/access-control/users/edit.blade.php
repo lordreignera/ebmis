@@ -136,18 +136,19 @@
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
+                            @php($selectedBranchIds = collect(old('branch_ids', $user->branches->pluck('id')->all() ?: ($user->branch_id ? [$user->branch_id] : [])))->map(fn ($id) => (string) $id)->all())
                             <div class="col-md-6 mb-3" id="branch_field" style="display: {{ old('user_type', $user->user_type) === 'branch' ? 'block' : 'none' }};">
-                                <label for="branch_id" class="form-label">Branch <span class="text-danger" id="branch_required">*</span></label>
-                                <select class="form-control @error('branch_id') is-invalid @enderror" 
-                                        id="branch_id" name="branch_id">
-                                    <option value="">Select Branch</option>
+                                <label for="branch_ids" class="form-label">Branches <span class="text-danger" id="branch_required">*</span></label>
+                                <select class="form-control @error('branch_ids') is-invalid @enderror"
+                                        id="branch_ids" name="branch_ids[]" multiple size="5">
                                     @foreach($branches as $branch)
-                                        <option value="{{ $branch->id }}" {{ old('branch_id', $user->branch_id) == $branch->id ? 'selected' : '' }}>
+                                        <option value="{{ $branch->id }}" {{ in_array((string) $branch->id, $selectedBranchIds, true) ? 'selected' : '' }}>
                                             {{ $branch->name }}
                                         </option>
                                     @endforeach
                                 </select>
-                                @error('branch_id')
+                                <small class="form-text text-muted">Select one or more branches. Hold Ctrl (Windows) or Command (Mac) to select multiple.</small>
+                                @error('branch_ids')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -285,7 +286,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const confirmPassword = document.getElementById('password_confirmation');
     const userType = document.getElementById('user_type');
     const branchField = document.getElementById('branch_field');
-    const branchSelect = document.getElementById('branch_id');
+    const branchSelect = document.getElementById('branch_ids');
     const schoolField = document.getElementById('school_field');
     const schoolSelect = document.getElementById('school_id');
 
@@ -330,13 +331,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (userType.value === 'school') {
             branchField.style.display = 'none';
             branchSelect.required = false;
-            branchSelect.value = '';
+            Array.from(branchSelect.options).forEach(function(option) { option.selected = false; });
             schoolField.style.display = 'block';
             schoolSelect.required = true;
         } else {
             branchField.style.display = 'none';
             branchSelect.required = false;
-            branchSelect.value = '';
+            Array.from(branchSelect.options).forEach(function(option) { option.selected = false; });
             schoolField.style.display = 'none';
             schoolSelect.required = false;
             schoolSelect.value = '';
@@ -380,6 +381,10 @@ ul li {
 
 .badge {
     font-weight: 500;
+}
+
+#branch_ids {
+    min-height: 8rem;
 }
 </style>
 @endpush

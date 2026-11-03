@@ -197,7 +197,7 @@
                                             <td>
                                                 <button type="button" class="btn btn-warning btn-sm edit-charge-btn" 
                                                         data-id="{{ $charge->id }}"
-                                                        data-charge="{{ json_encode($charge) }}">
+                                                        data-charge='@json($charge)'>
                                                     <i class="fas fa-edit"></i> Edit
                                                 </button>
                                                 <button type="button" class="btn btn-danger btn-sm delete-charge-btn" 

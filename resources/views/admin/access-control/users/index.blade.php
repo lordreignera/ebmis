@@ -116,6 +116,10 @@
                                     <td>
                                         @if($user->school)
                                             <span class="table-secondary-text">{{ $user->school->school_name ?? 'School #' . $user->school_id }}</span>
+                                        @elseif($user->branches->isNotEmpty())
+                                            @foreach($user->branches as $assignedBranch)
+                                                <span class="access-control-badge slate me-1 mb-1">{{ $assignedBranch->name }}</span>
+                                            @endforeach
                                         @elseif($user->branch)
                                             <span class="table-secondary-text">{{ $user->branch->name }}</span>
                                         @else

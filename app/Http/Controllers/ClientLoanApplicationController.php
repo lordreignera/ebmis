@@ -176,7 +176,7 @@ class ClientLoanApplicationController extends Controller
             };
             return redirect()->back()->withInput()->with(
                 'error',
-                "You already have an active application ({$openApp->application_code}) that is currently {$label}. ".
+                "You already have an active application that is currently {$label}. ".
                 "Please wait for our team to contact you. If you need help, visit your nearest branch."
             );
         }
@@ -262,6 +262,11 @@ class ClientLoanApplicationController extends Controller
 
             DB::commit();
 
+            // The success page contains applicant details. Bind it to the
+            // submitting browser session so a guessed reference code cannot
+            // be used to read another applicant's information.
+            session(['client_application_success_code' => $app->application_code]);
+
             return redirect()->route('client.apply.success', ['code' => $app->application_code]);
 
         } catch (\Exception $e) {
@@ -281,7 +286,10 @@ class ClientLoanApplicationController extends Controller
     public function success(Request $request)
     {
         $code = $request->query('code');
-        $app  = $code ? ClientLoanApplication::where('application_code', $code)->first() : null;
+        $sessionCode = session('client_application_success_code');
+        $app = $code && $sessionCode && hash_equals((string) $sessionCode, (string) $code)
+            ? ClientLoanApplication::where('application_code', $code)->first()
+            : null;
 
         return view('client.success', compact('app', 'code'));
     }
@@ -314,10 +322,7 @@ class ClientLoanApplicationController extends Controller
 
         return response()->json([
             'status'           => 'pending',
-            'application_code' => $app->application_code,
             'status_label'     => $labels[$app->status] ?? ucwords(str_replace('_', ' ', $app->status)),
-            'submitted_at'     => $app->created_at->format('d M Y'),
-            'traffic_light'    => $app->traffic_light,
         ]);
     }
 
@@ -325,15 +330,18 @@ class ClientLoanApplicationController extends Controller
 
     /**
      * Public loan status lookup for existing members.
-     * Accepts a phone number, returns the member's active loan + schedule.
+     * Accepts a phone number and loan code, then returns the member's active
+     * loan + schedule. Both values are required so a guessed phone number
+     * cannot disclose financial information.
      * Rate-limited to 10 requests/minute via route middleware.
      */
     public function loanStatusLookup(Request $request)
     {
         $phone = preg_replace('/\s+/', '', trim($request->input('phone', '')));
+        $loanCode = trim((string) $request->input('loan_code', ''));
 
-        if (!$phone || strlen($phone) < 9) {
-            return response()->json(['found' => false, 'message' => 'Please enter a valid phone number.']);
+        if (!$phone || strlen($phone) < 9 || $loanCode === '' || strlen($loanCode) > 100) {
+            return response()->json(['found' => false, 'message' => 'Please enter your registered phone number and loan code.']);
         }
 
         // Normalise: strip leading +256 or 256 → keep as-is for DB match
@@ -352,6 +360,7 @@ class ClientLoanApplicationController extends Controller
                 $q->orderBy('payment_date');
             }])
             ->where('member_id', $member->id)
+            ->where('code', $loanCode)
             ->whereNotIn('status', [4]) // exclude rejected
             ->orderByDesc('datecreated')
             ->first();

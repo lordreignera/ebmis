@@ -104,9 +104,10 @@
                     <div class="col-lg-8">
                         <div class="input-group">
                             <span class="input-group-text bg-white"><i class="mdi mdi-magnify"></i></span>
-                            <input type="search" class="form-control" name="search" value="{{ request('search') }}" placeholder="Find a permission...">
+                            <input type="search" class="form-control" id="permissionSearchInput" name="search" value="{{ request('search') }}" placeholder="Find a permission..." autocomplete="off">
                             <button type="submit" class="btn btn-primary">Search</button>
                         </div>
+                        <div class="permission-search-status" id="permissionSearchStatus" aria-live="polite">Results update as you type</div>
                     </div>
                     <div class="col-lg-2">
                         <a href="{{ route('admin.permissions.index', ['role' => $activeRoleId]) }}" class="btn btn-outline-secondary w-100" data-permission-navigation>Clear</a>
@@ -527,6 +528,12 @@
     opacity: 0.8;
 }
 
+.permission-search-status {
+    color: #64748b;
+    font-size: 0.72rem;
+    margin-top: 0.35rem;
+}
+
 @media (max-width: 767px) {
     .permission-manager-page .permission-checklist-grid {
         grid-template-columns: 1fr;
@@ -566,7 +573,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectedCount = document.getElementById('selectedPermissionCount');
     const permissionForm = document.getElementById('rolePermissionForm');
     const searchForm = document.getElementById('permissionSearchForm');
+    const searchInput = document.getElementById('permissionSearchInput');
+    const searchStatus = document.getElementById('permissionSearchStatus');
     let hasUnsavedChanges = false;
+    let searchTimer = null;
 
     function confirmNavigation(event) {
         if (!hasUnsavedChanges) {
@@ -642,6 +652,39 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (searchForm) {
         searchForm.addEventListener('submit', confirmNavigation);
+    }
+
+    if (searchInput && searchForm) {
+        searchInput.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+
+            if (searchStatus) {
+                searchStatus.textContent = 'Searching...';
+            }
+
+            searchTimer = window.setTimeout(function () {
+                const currentSearch = new URL(window.location.href).searchParams.get('search') || '';
+                const nextSearch = searchInput.value.trim();
+
+                if (nextSearch === currentSearch) {
+                    if (searchStatus) {
+                        searchStatus.textContent = 'Results update as you type';
+                    }
+                    return;
+                }
+
+                if (hasUnsavedChanges && !window.confirm('You have unsaved permission changes. Search without saving?')) {
+                    if (searchStatus) {
+                        searchStatus.textContent = 'Search cancelled — save your changes first';
+                    }
+                    return;
+                }
+
+                // Submit after a short pause, so server-side pagination remains
+                // accurate without sending a request for every keystroke.
+                HTMLFormElement.prototype.submit.call(searchForm);
+            }, 450);
+        });
     }
 
     if (permissionForm) {

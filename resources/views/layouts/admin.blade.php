@@ -1192,31 +1192,11 @@
             color: #b91c1c !important;
         }
 
+        /* Table row hover must not override a button's own colour and hover state. */
         .content-wrapper .table tbody tr:hover .btn,
-        .content-wrapper .table tbody tr:hover .btn *,
-        .content-wrapper table.table tbody tr:hover .btn,
-        .content-wrapper table.table tbody tr:hover .btn * {
-            color: inherit !important;
-        }
-
-        .content-wrapper .table tbody tr:hover .btn-dark,
-        .content-wrapper .table tbody tr:hover .btn-primary,
-        .content-wrapper .table tbody tr:hover .btn-success,
-        .content-wrapper .table tbody tr:hover .btn-info,
-        .content-wrapper .table tbody tr:hover .btn-danger {
-            color: #ffffff !important;
-        }
-
-        .content-wrapper .table tbody tr:hover .btn-warning {
-            color: #111827 !important;
-        }
-
-        .content-wrapper .table tbody tr:hover .btn-outline-dark,
-        .content-wrapper .table tbody tr:hover .btn-outline-secondary,
-        .content-wrapper .table tbody tr:hover .btn-payout-action {
-            background: #ffffff !important;
-            border-color: #111827 !important;
-            color: #111827 !important;
+        .content-wrapper table.table tbody tr:hover .btn {
+            position: relative;
+            z-index: 1;
         }
 
         .content-wrapper .btn:disabled,

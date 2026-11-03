@@ -77,7 +77,7 @@
                             <i class="mdi mdi-calendar-clock"></i> Please select a date as at which to run the report.
                         </div>
                     @else
-                        <p class="mb-3">{!! $rep_msg !!}</p>
+                        <p class="mb-3">{{ strip_tags($rep_msg ?? '') }}</p>
                     @endif
 
                     <!-- Data Table -->

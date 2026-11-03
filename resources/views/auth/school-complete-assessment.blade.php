@@ -240,7 +240,7 @@
         <div class="header-section">
             <i class="fas fa-clipboard-check"></i>
             <h2>Complete Your Assessment</h2>
-            <p>Enter your school email to continue</p>
+            <p>Verify your registration to continue</p>
         </div>
 
         <!-- Form Section -->
@@ -275,7 +275,7 @@
                 <h6 class="mb-2"><i class="fas fa-info-circle"></i>Resume Your Assessment</h6>
                 <p class="mb-2">If you started registering your school but didn't complete the assessment, you can continue here:</p>
                 <ul class="mb-0">
-                    <li>Enter the email you used during registration</li>
+                    <li>Enter the email and password used during registration</li>
                     <li>You'll be taken to your incomplete assessment</li>
                     <li>Complete all required sections to submit</li>
                     <li>Your school will be reviewed after completion</li>
@@ -302,8 +302,23 @@
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                     <small class="text-muted">
-                        <i class="fas fa-lock me-1"></i>Use the same email you provided during initial registration
+                        <i class="fas fa-lock me-1"></i>Your registration password is required to protect the assessment
                     </small>
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">
+                        <i class="fas fa-key me-2"></i>Registration Password
+                    </label>
+                    <input type="password"
+                           class="form-control @error('password') is-invalid @enderror"
+                           id="password"
+                           name="password"
+                           placeholder="Enter your registration password"
+                           required>
+                    @error('password')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
                 </div>
 
                 <button type="submit" class="submit-btn" id="submitBtn">
