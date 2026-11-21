@@ -141,8 +141,7 @@
                                 <label for="branch_picker_toggle" class="form-label">Branches <span class="text-danger" id="branch_required">*</span></label>
                                 <div class="dropdown branch-picker">
                                     <button type="button" class="btn btn-outline-secondary dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
-                                            id="branch_picker_toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside"
-                                            aria-expanded="false">
+                                            id="branch_picker_toggle" aria-haspopup="true" aria-expanded="false">
                                         <span id="branch_selection_label">Select branch(es)</span>
                                     </button>
                                     <div class="dropdown-menu branch-picker-menu w-100 p-2" aria-labelledby="branch_picker_toggle">
@@ -310,6 +309,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const branchSelectionLabel = document.getElementById('branch_selection_label');
     const branchValidationMessage = document.getElementById('branch_validation_message');
     const form = branchField.closest('form');
+    const branchPickerToggle = document.getElementById('branch_picker_toggle');
+    const branchPickerMenu = branchPickerToggle.nextElementSibling;
     const schoolField = document.getElementById('school_field');
     const schoolSelect = document.getElementById('school_id');
 
@@ -381,6 +382,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function setBranchPickerOpen(isOpen) {
+        branchPickerMenu.classList.toggle('show', isOpen);
+        branchPickerToggle.setAttribute('aria-expanded', String(isOpen));
+    }
+
+    branchPickerToggle.addEventListener('click', function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        setBranchPickerOpen(!branchPickerMenu.classList.contains('show'));
+    });
+
+    branchPickerMenu.addEventListener('click', function(event) {
+        event.stopPropagation();
+    });
+
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.branch-picker')) {
+            setBranchPickerOpen(false);
+        }
+    });
+
     selectAllBranches.addEventListener('change', function() {
         branchCheckboxes.forEach(function(checkbox) { checkbox.checked = selectAllBranches.checked; });
         syncBranchPicker();
@@ -443,8 +465,32 @@ ul li {
 }
 
 .branch-picker-menu {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16) !important;
     max-height: 18rem;
     overflow-y: auto;
+}
+
+.branch-picker-menu .form-check-label,
+.branch-picker-menu .branch-option,
+.branch-picker-menu .branch-option span {
+    color: #111827 !important;
+}
+
+.branch-picker-menu .form-check-input {
+    background-color: #ffffff !important;
+    border-color: #9ca3af !important;
+}
+
+.branch-picker-menu .form-check-input:checked {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+}
+
+.branch-picker-menu #clear_branch_selection {
+    color: #dc2626 !important;
 }
 
 .branch-options {
