@@ -9,14 +9,27 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('user_branches', function (Blueprint $table) {
+        // Some existing deployments use INT for branches.id while a fresh
+        // Laravel installation uses BIGINT. The foreign-key column must have
+        // the same type as the referenced column in MySQL.
+        $branchIdColumn = 'foreignId';
+        if (DB::getDriverName() === 'mysql') {
+            $branchId = DB::selectOne("SHOW COLUMNS FROM `branches` WHERE Field = 'id'");
+            $branchIdType = strtolower((string) ($branchId->Type ?? ''));
+            $branchIdColumn = str_contains($branchIdType, 'bigint')
+                ? (str_contains($branchIdType, 'unsigned') ? 'unsignedBigInteger' : 'bigInteger')
+                : (str_contains($branchIdType, 'unsigned') ? 'unsignedInteger' : 'integer');
+        }
+
+        Schema::create('user_branches', function (Blueprint $table) use ($branchIdColumn) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('branch_id')->constrained('branches')->cascadeOnDelete();
+            $table->{$branchIdColumn}('branch_id');
             $table->timestamps();
 
             $table->unique(['user_id', 'branch_id']);
             $table->index('branch_id');
+            $table->foreign('branch_id')->references('id')->on('branches')->cascadeOnDelete();
         });
 
         // Preserve the existing single-branch assignments when introducing the

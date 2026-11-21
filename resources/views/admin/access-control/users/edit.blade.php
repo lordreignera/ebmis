@@ -138,19 +138,37 @@
                             </div>
                             @php($selectedBranchIds = collect(old('branch_ids', $user->branches->pluck('id')->all() ?: ($user->branch_id ? [$user->branch_id] : [])))->map(fn ($id) => (string) $id)->all())
                             <div class="col-md-6 mb-3" id="branch_field" style="display: {{ old('user_type', $user->user_type) === 'branch' ? 'block' : 'none' }};">
-                                <label for="branch_ids" class="form-label">Branches <span class="text-danger" id="branch_required">*</span></label>
-                                <select class="form-control @error('branch_ids') is-invalid @enderror"
-                                        id="branch_ids" name="branch_ids[]" multiple size="5">
-                                    @foreach($branches as $branch)
-                                        <option value="{{ $branch->id }}" {{ in_array((string) $branch->id, $selectedBranchIds, true) ? 'selected' : '' }}>
-                                            {{ $branch->name }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                                <small class="form-text text-muted">Select one or more branches. Hold Ctrl (Windows) or Command (Mac) to select multiple.</small>
-                                @error('branch_ids')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                                <label for="branch_picker_toggle" class="form-label">Branches <span class="text-danger" id="branch_required">*</span></label>
+                                <div class="dropdown branch-picker">
+                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
+                                            id="branch_picker_toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                            aria-expanded="false">
+                                        <span id="branch_selection_label">Select branch(es)</span>
+                                    </button>
+                                    <div class="dropdown-menu branch-picker-menu w-100 p-2" aria-labelledby="branch_picker_toggle">
+                                        <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-2">
+                                            <label class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" id="select_all_branches">
+                                                <span class="form-check-label">Select all</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm btn-link text-danger p-0" id="clear_branch_selection">Clear</button>
+                                        </div>
+                                        <div class="branch-options" role="group" aria-label="Branches">
+                                            @foreach($branches as $branch)
+                                                <label class="branch-option">
+                                                    <input class="form-check-input branch-checkbox" type="checkbox" name="branch_ids[]"
+                                                           value="{{ $branch->id }}" data-branch-name="{{ $branch->name }}"
+                                                           {{ in_array((string) $branch->id, $selectedBranchIds, true) ? 'checked' : '' }}>
+                                                    <span>{{ $branch->name }}</span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Choose one or more branches, or use Select all.</small>
+                                <div id="branch_validation_message" class="text-danger small mt-1 {{ $errors->has('branch_ids') ? '' : 'd-none' }}">
+                                    @error('branch_ids'){{ $message }}@else Select at least one branch.@enderror
+                                </div>
                             </div>
                             <div class="col-md-6 mb-3" id="school_field" style="display: {{ old('user_type', $user->user_type) === 'school' ? 'block' : 'none' }};">
                                 <label for="school_id" class="form-label">Approved School <span class="text-danger">*</span></label>
@@ -286,7 +304,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const confirmPassword = document.getElementById('password_confirmation');
     const userType = document.getElementById('user_type');
     const branchField = document.getElementById('branch_field');
-    const branchSelect = document.getElementById('branch_ids');
+    const branchCheckboxes = Array.from(document.querySelectorAll('.branch-checkbox'));
+    const selectAllBranches = document.getElementById('select_all_branches');
+    const clearBranchSelection = document.getElementById('clear_branch_selection');
+    const branchSelectionLabel = document.getElementById('branch_selection_label');
+    const branchValidationMessage = document.getElementById('branch_validation_message');
+    const form = branchField.closest('form');
     const schoolField = document.getElementById('school_field');
     const schoolSelect = document.getElementById('school_id');
 
@@ -324,25 +347,61 @@ document.addEventListener('DOMContentLoaded', function() {
     function toggleBranchField() {
         if (userType.value === 'branch') {
             branchField.style.display = 'block';
-            branchSelect.required = true;
             schoolField.style.display = 'none';
             schoolSelect.required = false;
             schoolSelect.value = '';
         } else if (userType.value === 'school') {
             branchField.style.display = 'none';
-            branchSelect.required = false;
-            Array.from(branchSelect.options).forEach(function(option) { option.selected = false; });
+            branchCheckboxes.forEach(function(checkbox) { checkbox.checked = false; });
             schoolField.style.display = 'block';
             schoolSelect.required = true;
         } else {
             branchField.style.display = 'none';
-            branchSelect.required = false;
-            Array.from(branchSelect.options).forEach(function(option) { option.selected = false; });
+            branchCheckboxes.forEach(function(checkbox) { checkbox.checked = false; });
             schoolField.style.display = 'none';
             schoolSelect.required = false;
             schoolSelect.value = '';
         }
+        syncBranchPicker();
     }
+
+    function syncBranchPicker() {
+        const selected = branchCheckboxes.filter(function(checkbox) { return checkbox.checked; });
+        const total = branchCheckboxes.length;
+
+        selectAllBranches.checked = total > 0 && selected.length === total;
+        if (selected.length === 0) {
+            branchSelectionLabel.textContent = 'Select branch(es)';
+        } else if (selected.length === total) {
+            branchSelectionLabel.textContent = 'All branches selected';
+        } else if (selected.length === 1) {
+            branchSelectionLabel.textContent = selected[0].dataset.branchName;
+        } else {
+            branchSelectionLabel.textContent = selected.length + ' branches selected';
+        }
+    }
+
+    selectAllBranches.addEventListener('change', function() {
+        branchCheckboxes.forEach(function(checkbox) { checkbox.checked = selectAllBranches.checked; });
+        syncBranchPicker();
+    });
+
+    clearBranchSelection.addEventListener('click', function() {
+        branchCheckboxes.forEach(function(checkbox) { checkbox.checked = false; });
+        syncBranchPicker();
+    });
+
+    branchCheckboxes.forEach(function(checkbox) {
+        checkbox.addEventListener('change', syncBranchPicker);
+    });
+
+    form.addEventListener('submit', function(event) {
+        const valid = userType.value !== 'branch' || branchCheckboxes.some(function(checkbox) { return checkbox.checked; });
+        branchValidationMessage.classList.toggle('d-none', valid);
+        if (!valid) {
+            event.preventDefault();
+        }
+    });
 
     password.addEventListener('change', validatePassword);
     confirmPassword.addEventListener('keyup', validatePassword);
@@ -383,8 +442,27 @@ ul li {
     font-weight: 500;
 }
 
-#branch_ids {
-    min-height: 8rem;
+.branch-picker-menu {
+    max-height: 18rem;
+    overflow-y: auto;
+}
+
+.branch-options {
+    max-height: 12rem;
+    overflow-y: auto;
+}
+
+.branch-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.5rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+
+.branch-option:hover {
+    background: #f8f9fa;
 }
 </style>
 @endpush
